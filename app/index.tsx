@@ -34,13 +34,14 @@ export default function LauncherScreen() {
 
         <View className="border-t border-outline">
           <SpecRow label="Build" value="Pre-alpha" />
-          <SpecRow label="Screens" value="2" />
+          <SpecRow label="Screens" value="7" />
           <SpecRow label="Role" value="Client" />
         </View>
 
         <View className="gap-3">
           <Text className="text-overline text-text-muted">OPEN</Text>
           <PrimaryButton label="Onboarding" onPress={() => router.push("/onboarding")} />
+          <SecondaryButton label="App shell" onPress={() => router.push("/home")} />
           <SecondaryButton label="Design system" onPress={() => router.push("/design-system")} />
         </View>
       </View>
