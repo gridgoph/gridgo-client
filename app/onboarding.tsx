@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import {
   Pressable,
+  StyleSheet,
   Text,
   useWindowDimensions,
   View,
@@ -21,24 +22,26 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { PaginationDots } from "@/components/PaginationDots";
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { ScooterIllustration } from "@/components/illustrations/ScooterIllustration";
+import {
+  illustrations,
+  type IllustrationName,
+  type IllustrationPalette,
+} from "@/components/illustrations";
 import { onboardingSlides } from "@/data/onboarding";
 import { useThemeColors } from "@/hooks/useTheme";
 
 /**
  * Client onboarding.
  *
- * Three regions moving at three rates: a fixed illustration that drifts at
- * half speed, a pager carrying only the text, and a fixed footer. The
- * illustration is one layer rather than one copy per page, which is what
- * makes the parallax possible.
+ * Three regions moving at three rates: a stack of illustrations that drift at
+ * half the text's speed, a pager carrying only the text, and a fixed footer.
+ * The art sits outside the pager and cross-fades on scroll position, which is
+ * what lets it move at its own rate instead of locking to the page.
  *
  * Reachable from the launcher today. The once-only gate lands with the
  * session store, so nothing here persists.
  */
 
-/** Source viewBox is 659.89 x 509.94. */
-const ASPECT = 659.89 / 509.94;
 const HERO_MAX = 360;
 
 export default function OnboardingScreen() {
@@ -83,10 +86,6 @@ export default function OnboardingScreen() {
     else router.replace("/");
   }
 
-  const heroStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: reducedMotion ? 0 : -scrollX.value * 0.5 }],
-  }));
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
       <View className="gg-page flex-row items-center justify-between py-3">
@@ -101,14 +100,18 @@ export default function OnboardingScreen() {
         </Pressable>
       </View>
 
-      <View className="flex-1 items-center justify-center overflow-hidden">
-        <Animated.View style={heroStyle}>
-          <ScooterIllustration
-            width={heroWidth}
-            height={heroWidth / ASPECT}
+      <View className="flex-1 overflow-hidden">
+        {onboardingSlides.map((slide, slideIndex) => (
+          <Hero
+            key={slide.id}
+            index={slideIndex}
+            art={slide.art}
+            scrollX={scrollX}
+            width={width}
+            heroWidth={heroWidth}
             palette={palette}
           />
-        </Animated.View>
+        ))}
       </View>
 
       <Animated.ScrollView
@@ -148,6 +151,52 @@ export default function OnboardingScreen() {
         />
       </View>
     </SafeAreaView>
+  );
+}
+
+type HeroProps = {
+  index: number;
+  art: IllustrationName;
+  scrollX: SharedValue<number>;
+  width: number;
+  heroWidth: number;
+  palette: IllustrationPalette;
+};
+
+/**
+ * One piece of art, fading and drifting as its slide comes into view.
+ *
+ * All three are stacked and absolutely positioned rather than living inside
+ * the pager. That is what lets them travel at 40% of the text's speed, and it
+ * keeps the swap between beats a cross-fade rather than a hard cut.
+ */
+function Hero({ index, art, scrollX, width, heroWidth, palette }: HeroProps) {
+  const reducedMotion = useReducedMotion();
+  const { Component, aspect } = illustrations[art];
+
+  const style = useAnimatedStyle(() => {
+    const page = width > 0 ? scrollX.value / width : 0;
+    const delta = page - index;
+
+    return {
+      // Fades out over a little less than a full page, so two pieces never
+      // sit on top of each other at half strength.
+      opacity: Math.max(0, 1 - Math.abs(delta) * 1.6),
+      transform: [{ translateX: reducedMotion ? 0 : -delta * width * 0.4 }],
+    };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFillObject,
+        { alignItems: "center", justifyContent: "center" },
+        style,
+      ]}
+    >
+      <Component width={heroWidth} height={heroWidth / aspect} palette={palette} />
+    </Animated.View>
   );
 }
 

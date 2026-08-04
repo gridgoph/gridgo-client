@@ -1,28 +1,15 @@
 import Svg, { Circle, Ellipse, G, Path, Polyline } from "react-native-svg";
 
-/**
- * The delivery scooter, recoloured into the GRIDGO ramp.
- *
- * Generated from `assets/illustrations/scooter.svg` — do not hand-edit. The
- * fifteen source fills collapse onto five tokens by luminance, so the whole
- * illustration inverts between themes rather than being authored twice. The
- * original background blobs are dropped and the orange seat became a grey
- * plane: this screen spends its yellow on the CTA and the active dot, never
- * on scenery.
- */
+import type { IllustrationPalette } from "./palette";
 
-export type IllustrationPalette = {
-  /** Outlines. `accent` */
-  ink: string;
-  /** Dark planes. `textSecondary` */
-  shade: string;
-  /** Mid planes. `textMuted` */
-  mid: string;
-  /** Light planes. `outline` */
-  tint: string;
-  /** Highlights. `surface` */
-  highlight: string;
-};
+/**
+ * Track — the rider bringing the finished job to the door.
+ *
+ * Generated from `assets/illustrations/scooter.svg` — do not hand-edit. Every source fill is
+ * ranked by luminance and collapsed onto the five-step GRIDGO ramp, so the
+ * whole illustration inverts between themes rather than being authored twice.
+ * Nothing here carries yellow: the screen spends that budget on the CTA.
+ */
 
 type Props = {
   width: number;
@@ -36,8 +23,8 @@ export function ScooterIllustration({ width, height, palette }: Props) {
       <G>
         <G>
           <G>
-            <G></G>
-            <G></G>
+            <G opacity={0.4}></G>
+            <G opacity={0.4}></G>
             <Path
               d="M388.37,390.79c-5.48,1.32-11.1,1.98-16.74,1.95-38.1,0-68.91-28.91-68.91-64.57s30.89-64.57,68.91-64.57c5.74,0,0,.63,5.25,1.95-29.97,6.95-40.71,32.36-40.71,62.62s22.22,55.67,52.2,62.62Z"
               fill={palette.mid}
