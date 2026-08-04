@@ -60,7 +60,7 @@ Colours come from `useThemeColors()`. `react-native-svg` props are not reachable
 
 `GRID` in `accent`, `GO` in **`brand`** — not `actionYellow`.
 
-Two reasons. `#FFDE58` on the `#F8F8F8` light canvas fails legibility; `brand` resolves to `#D4A017` in Light and `#FFDE58` in Dark, so the `GO` reads as yellow in both themes. And `brand` is the token the design system already reserves for "small links and badges", which leaves `actionYellow` free for the screen's single call to action.
+Two reasons. `#FFDE58` on the `#F8F8F8` light canvas fails legibility; `brand` resolves to `#FFDE587` in Light and `#FFDE58` in Dark, so the `GO` reads as yellow in both themes. And `brand` is the token the design system already reserves for "small links and badges", which leaves `actionYellow` free for the screen's single call to action.
 
 Set in `font-brand` (Satoshi-Black until Poppins ExtraBold is licensed), at the `h3` step.
 
@@ -225,7 +225,7 @@ The screen spends yellow exactly four times, each under a rule the design system
 | Element | Token | Justification |
 |---|---|---|
 | Logo corner dot | `brandLogo` | `constants/theme.ts` reserves this token for the GRIDGO logo dot only |
-| Wordmark `GO` | `brand` | "Small links and badges" — and `#D4A017` in Light, which is a different value from `actionYellow` |
+| Wordmark `GO` | `brand` | "Small links and badges" — and `#FFDE587` in Light, which is a different value from `actionYellow` |
 | Active pagination dot | `actionYellow` | The "active stepper step" carve-out |
 | Primary CTA | `actionYellow` | The one primary action on the screen |
 

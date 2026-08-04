@@ -56,7 +56,7 @@ export function GridgoMark({ size = 28 }: Props) {
  * Mark plus wordmark.
  *
  * `GO` uses `brand`, not `actionYellow`. `#FFDE58` on the light canvas is
- * illegible, and `brand` resolves to `#D4A017` in Light and `#FFDE58` in
+ * illegible, and `brand` resolves to `#FFDE587` in Light and `#FFDE58` in
  * Dark — yellow in both themes, without spending the screen's one CTA colour.
  */
 export function GridgoLogo({ size = 28 }: Props) {

@@ -459,7 +459,7 @@ export function GridgoMark({ size = 28 }: Props) {
  * Mark plus wordmark.
  *
  * `GO` uses `brand`, not `actionYellow`. `#FFDE58` on the light canvas is
- * illegible, and `brand` resolves to `#D4A017` in Light and `#FFDE58` in
+ * illegible, and `brand` resolves to `#FFDE587` in Light and `#FFDE58` in
  * Dark — yellow in both themes, without spending the screen's one CTA colour.
  */
 export function GridgoLogo({ size = 28 }: Props) {
@@ -504,7 +504,7 @@ git commit -m "feat: add the GRIDGO brand lockup
 
 Mark is SVG rather than nine Views so it can be reused for the app icon
 and splash screen. GO uses the brand token, not actionYellow: #FFDE58 is
-illegible on the light canvas, and brand resolves to #D4A017 in Light.
+illegible on the light canvas, and brand resolves to #FFDE587 in Light.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
@@ -1484,7 +1484,7 @@ Work through every check and note the result:
 4. Tap each dot. The pager animates to that slide, the dot stretches into a yellow pill, the others stay grey.
 5. CTA reads **Next** on slides 1 and 2, **Get Started** on slide 3.
 6. **Get Started** and **Skip** both return to the home route.
-7. Set the theme to Light on the home route, then reopen onboarding: the six structural mark dots are black, the corner dot is yellow, `GO` is the deeper `#D4A017` gold, and the scooter shows five distinguishable tones.
+7. Set the theme to Light on the home route, then reopen onboarding: the six structural mark dots are black, the corner dot is yellow, `GO` is the deeper `#FFDE587` gold, and the scooter shows five distinguishable tones.
 8. Set the theme to Dark and repeat: the mark's structural dots are near-white, `GO` is `#FFDE58`, and the scooter reads as light line art that stays clear of the black canvas.
 9. Enable Reduce Motion at the OS level and reopen. Paging and dot taps still work; nothing eases.
 10. Screenshot both themes and desaturate them. Slide position must still be readable from `01 / 03` and from the active dot's width.

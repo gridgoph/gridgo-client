@@ -127,6 +127,7 @@ export default function OnboardingScreen() {
         {onboardingSlides.map((slide, slideIndex) => (
           <Slide
             key={slide.id}
+            active={slideIndex === index}
             index={slideIndex}
             step={slide.step}
             title={slide.title}
@@ -176,13 +177,22 @@ function Hero({ index, art, scrollX, width, heroWidth, palette }: HeroProps) {
 
   const style = useAnimatedStyle(() => {
     const page = width > 0 ? scrollX.value / width : 0;
+
+    // Reduced motion means no drift and no cross-fade — the art cuts between
+    // beats, the way the dots and the text pages already do. Zeroing the
+    // translation alone would still leave two pieces dissolving into each
+    // other on every swipe.
+    if (reducedMotion) {
+      return { opacity: Math.round(page) === index ? 1 : 0, transform: [{ translateX: 0 }] };
+    }
+
     const delta = page - index;
 
     return {
       // Fades out over a little less than a full page, so two pieces never
       // sit on top of each other at half strength.
       opacity: Math.max(0, 1 - Math.abs(delta) * 1.6),
-      transform: [{ translateX: reducedMotion ? 0 : -delta * width * 0.4 }],
+      transform: [{ translateX: -delta * width * 0.4 }],
     };
   });
 
@@ -201,6 +211,8 @@ function Hero({ index, art, scrollX, width, heroWidth, palette }: HeroProps) {
 }
 
 type SlideProps = {
+  /** The settled page, not the scroll position. Drives accessibility only. */
+  active: boolean;
   index: number;
   step: string;
   title: string;
@@ -213,8 +225,13 @@ type SlideProps = {
  * One text page. The hairline and the step number are the job-ticket language
  * the design-system route already uses, and the number is what states position
  * when motion is off.
+ *
+ * All three pages stay mounted so the pager can scroll, and fading one out
+ * does not take it out of the accessibility tree. Without the two hiding props
+ * below, VoiceOver and TalkBack walk straight through headings and copy the
+ * user cannot see.
  */
-function Slide({ index, step, title, body, scrollX, width }: SlideProps) {
+function Slide({ active, index, step, title, body, scrollX, width }: SlideProps) {
   const reducedMotion = useReducedMotion();
 
   const style = useAnimatedStyle(() => {
@@ -224,7 +241,11 @@ function Slide({ index, step, title, body, scrollX, width }: SlideProps) {
   });
 
   return (
-    <Animated.View style={[{ width }, style]}>
+    <Animated.View
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? "auto" : "no-hide-descendants"}
+      style={[{ width }, style]}
+    >
       <View className="gg-page gap-2">
         <View className="gg-divider" />
         <Text className="pt-2 text-overline text-text-muted">{step}</Text>

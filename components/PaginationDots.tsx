@@ -19,8 +19,9 @@ import { useThemeColors } from "@/hooks/useTheme";
 
 const DOT = 8;
 const ACTIVE = 24;
-/** 8px dot + 18px above and below clears the 44px minimum. */
+/** 8px dot + 18px on every side clears the 44px minimum in both directions. */
 const PAD = 18;
+const TARGET = DOT + PAD * 2;
 
 type Props = {
   count: number;
@@ -35,7 +36,9 @@ type Props = {
 
 export function PaginationDots({ count, activeIndex, scrollX, width, onPress }: Props) {
   return (
-    <View className="flex-row items-center gap-2" accessibilityRole="tablist">
+    // No gap: each dot's own 44px target is the spacing. Adding one on top
+    // would push them a thumb-width apart.
+    <View className="flex-row items-center" accessibilityRole="tablist">
       {Array.from({ length: count }, (_, index) => (
         <Dot
           key={index}
@@ -88,7 +91,10 @@ function Dot({ index, count, selected, scrollX, width, onPress }: DotProps) {
       accessibilityRole="tab"
       accessibilityState={{ selected }}
       accessibilityLabel={`Slide ${index + 1} of ${count}`}
-      style={{ paddingVertical: PAD }}
+      // The dot itself is 8px wide, and 8px is not a control. The target is a
+      // fixed 44 square with the dot centred in it, which also stops the row
+      // reflowing as the active dot stretches from 8 to 24.
+      style={{ width: TARGET, height: TARGET, alignItems: "center", justifyContent: "center" }}
     >
       <Animated.View style={[{ height: DOT, borderRadius: DOT / 2 }, style]} />
     </Pressable>

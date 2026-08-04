@@ -143,6 +143,14 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
           <Text
             numberOfLines={1}
             /*
+              The label still grows with the system font scale, but only to
+              14px — the most a 16px line box holds. Left uncapped, a large
+              accessibility scale clips the label against the pinned box below,
+              and letting the box grow instead would hand the bar's height back
+              to text metrics, which is the bug the next comment describes.
+            */
+            maxFontSizeMultiplier={1.4}
+            /*
               Android pads a text box with the font's own ascent and descent on
               top of the line height. Left on, Satoshi's metrics make this label
               taller than the 16px the type scale promises, which pushes the
