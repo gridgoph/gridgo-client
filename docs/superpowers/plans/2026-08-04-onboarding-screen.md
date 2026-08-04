@@ -38,6 +38,16 @@ Test only these:
 
 Reanimated animated style values are also not assertable under the mock. Test the component renders and is reachable; verify motion on device.
 
+### Harness API — established by Task 1, applies to every test file
+
+Three facts discovered and verified while standing the harness up. They are not optional style choices:
+
+1. **`render` and `unmount` are async.** `@testing-library/react-native@14` made them async by default. A synchronous `render(<X />)` returns a pending promise, and the next line fails with "`render` function has not been called". **Every `it` callback is `async`, and every `render`/`unmount` is `await`ed.** All test code below already reflects this.
+2. **Lucide forwards `testID` as `data-testid`**, which never reaches `react-native-svg` and is invisible to RNTL's `getByTestId`. If a Lucide icon needs a test id, wrap it in a plain `View` carrying the id. (No task after Task 1 renders a Lucide icon, so this should not come up.)
+3. **ESM-only packages need a `moduleNameMapper` entry**, not just `transformIgnorePatterns`. `jest-expo`'s transform only matches `\.[jt]sx?$`, so it never touches `.mjs`. `transformIgnorePatterns` controls what Jest *skips*, not what a transform *matches*. If a new package fails with `SyntaxError: Unexpected token 'export'`, map it to its CJS build the way `package.json` already maps `lucide-react-native`.
+
+`jest-expo` is pinned to `^54.0.17` to track the Expo SDK major. Do not let a tool upgrade it — `jest-expo@57` requires `react@^19.2.3` and this project is on `19.1.0`.
+
 ---
 
 ## File Structure
@@ -320,46 +330,46 @@ function circleFills(): string[] {
 describe("GridgoMark", () => {
   afterEach(() => Appearance.setColorScheme(null));
 
-  it("draws nine dots", () => {
-    render(<GridgoMark />);
+  it("draws nine dots", async () => {
+    await render(<GridgoMark />);
 
     expect(circleFills()).toHaveLength(9);
   });
 
-  it("spends exactly one dot on the brand yellow", () => {
-    render(<GridgoMark />);
+  it("spends exactly one dot on the brand yellow", async () => {
+    await render(<GridgoMark />);
 
     expect(circleFills().filter((f) => f === colors.light.brandLogo)).toHaveLength(1);
   });
 
-  it("inverts the structural dots between themes", () => {
+  it("inverts the structural dots between themes", async () => {
     Appearance.setColorScheme("light");
-    const light = render(<GridgoMark />);
+    const light = await render(<GridgoMark />);
     expect(circleFills().filter((f) => f === colors.light.accent)).toHaveLength(6);
-    light.unmount();
+    await light.unmount();
 
     Appearance.setColorScheme("dark");
-    render(<GridgoMark />);
+    await render(<GridgoMark />);
     expect(circleFills().filter((f) => f === colors.dark.accent)).toHaveLength(6);
   });
 
-  it("mutes the two dots below the brand dot", () => {
+  it("mutes the two dots below the brand dot", async () => {
     Appearance.setColorScheme("light");
-    render(<GridgoMark />);
+    await render(<GridgoMark />);
 
     expect(circleFills().filter((f) => f === colors.light.textMuted)).toHaveLength(2);
   });
 });
 
 describe("GridgoLogo", () => {
-  it("reads as a single GRIDGO element to a screen reader", () => {
-    render(<GridgoLogo />);
+  it("reads as a single GRIDGO element to a screen reader", async () => {
+    await render(<GridgoLogo />);
 
     expect(screen.getByLabelText("GRIDGO")).toBeTruthy();
   });
 
-  it("splits the wordmark so GO can carry the brand colour", () => {
-    render(<GridgoLogo />);
+  it("splits the wordmark so GO can carry the brand colour", async () => {
+    await render(<GridgoLogo />);
 
     expect(screen.getByText(/GRID/)).toBeTruthy();
     expect(screen.getByText("GO")).toBeTruthy();
@@ -685,8 +695,8 @@ function fills() {
 }
 
 describe("ScooterIllustration", () => {
-  it("draws every path from the supplied palette and nothing else", () => {
-    render(<ScooterIllustration width={200} height={155} palette={PALETTE} />);
+  it("draws every path from the supplied palette and nothing else", async () => {
+    await render(<ScooterIllustration width={200} height={155} palette={PALETTE} />);
 
     const allowed = new Set(Object.values(PALETTE));
     const strays = fills().filter((f) => !allowed.has(f));
@@ -694,14 +704,14 @@ describe("ScooterIllustration", () => {
     expect(strays).toEqual([]);
   });
 
-  it("uses all five ramp steps, so the art keeps its tonal separation", () => {
-    render(<ScooterIllustration width={200} height={155} palette={PALETTE} />);
+  it("uses all five ramp steps, so the art keeps its tonal separation", async () => {
+    await render(<ScooterIllustration width={200} height={155} palette={PALETTE} />);
 
     expect(new Set(fills()).size).toBe(5);
   });
 
-  it("carries no yellow — the screen spends that budget on the CTA", () => {
-    render(<ScooterIllustration width={200} height={155} palette={PALETTE} />);
+  it("carries no yellow — the screen spends that budget on the CTA", async () => {
+    await render(<ScooterIllustration width={200} height={155} palette={PALETTE} />);
 
     expect(fills().some((f) => f.toLowerCase() === "#ffde58")).toBe(false);
   });
@@ -901,9 +911,9 @@ import { makeMutable } from "react-native-reanimated";
 
 import { PaginationDots } from "@/components/PaginationDots";
 
-function setup(activeIndex = 0, onPress = jest.fn()) {
+async function setup(activeIndex = 0, onPress = jest.fn()) {
   const scrollX = makeMutable(activeIndex * 300);
-  render(
+  await render(
     <PaginationDots
       count={3}
       activeIndex={activeIndex}
@@ -916,21 +926,21 @@ function setup(activeIndex = 0, onPress = jest.fn()) {
 }
 
 describe("PaginationDots", () => {
-  it("exposes one tab per slide", () => {
-    setup();
+  it("exposes one tab per slide", async () => {
+    await setup();
 
     expect(screen.getAllByRole("tab")).toHaveLength(3);
   });
 
-  it("names each tab by position, not by colour", () => {
-    setup();
+  it("names each tab by position, not by colour", async () => {
+    await setup();
 
     expect(screen.getByLabelText("Slide 1 of 3")).toBeTruthy();
     expect(screen.getByLabelText("Slide 3 of 3")).toBeTruthy();
   });
 
-  it("marks only the active tab as selected", () => {
-    setup(1);
+  it("marks only the active tab as selected", async () => {
+    await setup(1);
 
     const selected = screen
       .getAllByRole("tab")
@@ -940,8 +950,8 @@ describe("PaginationDots", () => {
     expect(selected[0].props.accessibilityLabel).toBe("Slide 2 of 3");
   });
 
-  it("reports the tapped index", () => {
-    const { onPress } = setup();
+  it("reports the tapped index", async () => {
+    const { onPress } = await setup();
 
     fireEvent.press(screen.getByLabelText("Slide 3 of 3"));
 
@@ -1114,44 +1124,44 @@ jest.mock("expo-router", () => ({
 describe("OnboardingScreen", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("opens on the first beat of the journey", () => {
-    render(<OnboardingScreen />);
+  it("opens on the first beat of the journey", async () => {
+    await render(<OnboardingScreen />);
 
     expect(screen.getByText(onboardingSlides[0].title)).toBeTruthy();
     expect(screen.getByText(onboardingSlides[0].step)).toBeTruthy();
   });
 
-  it("renders every slide so the pager has something to scroll", () => {
-    render(<OnboardingScreen />);
+  it("renders every slide so the pager has something to scroll", async () => {
+    await render(<OnboardingScreen />);
 
     for (const slide of onboardingSlides) {
       expect(screen.getByText(slide.title)).toBeTruthy();
     }
   });
 
-  it("gives one tab per slide", () => {
-    render(<OnboardingScreen />);
+  it("gives one tab per slide", async () => {
+    await render(<OnboardingScreen />);
 
     expect(screen.getAllByRole("tab")).toHaveLength(onboardingSlides.length);
   });
 
-  it("starts with the advancing CTA, not the finishing one", () => {
-    render(<OnboardingScreen />);
+  it("starts with the advancing CTA, not the finishing one", async () => {
+    await render(<OnboardingScreen />);
 
     expect(screen.getByText("Next")).toBeTruthy();
     expect(screen.queryByText("Get Started")).toBeNull();
   });
 
-  it("lets someone leave without finishing", () => {
-    render(<OnboardingScreen />);
+  it("lets someone leave without finishing", async () => {
+    await render(<OnboardingScreen />);
 
     fireEvent.press(screen.getByText("Skip"));
 
     expect(router.back).toHaveBeenCalled();
   });
 
-  it("marks the slide title as a heading", () => {
-    render(<OnboardingScreen />);
+  it("marks the slide title as a heading", async () => {
+    await render(<OnboardingScreen />);
 
     expect(screen.getByRole("header", { name: onboardingSlides[0].title })).toBeTruthy();
   });
