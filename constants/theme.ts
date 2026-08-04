@@ -111,6 +111,8 @@ export const typography = {
   bodyLarge: { fontSize: 16, lineHeight: 24, fontFamily: fontFamily.regular },
   body: { fontSize: 14, lineHeight: 20, fontFamily: fontFamily.regular },
   caption: { fontSize: 12, lineHeight: 16, fontFamily: fontFamily.regular },
+  /** Tab bar labels only — see the note on `text-nav` in global.css. */
+  nav: { fontSize: 10, lineHeight: 16, fontFamily: fontFamily.regular },
   button: { fontSize: 14, lineHeight: 20, fontFamily: fontFamily.bold },
   overline: {
     fontSize: 12,

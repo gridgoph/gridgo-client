@@ -72,6 +72,10 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+          {/* The tab shell draws its own headers per tab. */}
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="design-system" options={{ title: "Design system" }} />
         </Stack>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       </ThemeProvider>

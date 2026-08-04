@@ -235,6 +235,21 @@
   line-height: 16px;
 }
 
+/**
+ * 10/16. Tab bar labels, and nothing else.
+ *
+ * The only step under the 12px floor, and it matches what iOS sets its own tab
+ * labels at. It is allowed here because a nav label never carries information
+ * on its own — it sits under its icon, in a fixed row, naming a place the user
+ * can also see. Keeping the 16px line box means it still lands on the 4px
+ * grid. Do not reach for this anywhere else.
+ */
+@utility text-nav {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 16px;
+}
+
 /** Button labels. Always a clear verb. */
 @utility text-button {
   font-family: var(--font-bold);
