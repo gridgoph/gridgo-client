@@ -29,8 +29,8 @@ type Illustration = {
 export const illustrations = {
   /** Order — the job specified before anything is printed. */
   workstation: { Component: WorkstationIllustration, aspect: 678.7 / 395.44 },
-  /** Approve — the proof on screen, before it goes to the press. */
-  proof: { Component: ProofIllustration, aspect: 906.52 / 503.88 },
+  /** Approve — the proof held up against the mounted one, before it prints. */
+  proof: { Component: ProofIllustration, aspect: 873.49 / 740.76 },
   /** Track — the rider bringing the finished job to the door. */
   scooter: { Component: ScooterIllustration, aspect: 659.89 / 509.94 },
 } satisfies Record<string, Illustration>;
