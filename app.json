@@ -1,17 +1,19 @@
 {
   "expo": {
-    "name": "gridgo-mobile",
-    "slug": "gridgo-mobile",
+    "name": "GRIDGO",
+    "slug": "gridgo-client",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "gridgomobile",
+    "scheme": "gridgoclient",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "ph.gridgo.client"
     },
     "android": {
+      "package": "ph.gridgo.client",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
