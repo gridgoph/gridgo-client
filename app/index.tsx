@@ -230,11 +230,11 @@ export default function DesignSystemScreen() {
               rule="Icon, label and colour together. The screen still reads in grayscale."
             />
             <View className="flex-row flex-wrap gap-2">
-              <StatusChip tone="success" label="Approved" icon="check-circle" />
-              <StatusChip tone="warning" label="Needs correction" icon="alert-triangle" />
-              <StatusChip tone="error" label="Blocked" icon="x-circle" />
+              <StatusChip tone="success" label="Approved" icon="circle-check" />
+              <StatusChip tone="warning" label="Needs correction" icon="triangle-alert" />
+              <StatusChip tone="error" label="Blocked" icon="circle-x" />
               <StatusChip tone="info" label="Updated 3 min ago" icon="clock" />
-              <StatusChip tone="neutral" label="Draft" icon="edit-3" />
+              <StatusChip tone="neutral" label="Draft" icon="square-pen" />
             </View>
           </View>
 
