@@ -78,8 +78,3 @@ Light and Dark are the same product with different presentation: identical label
 All amounts are PHP minor units — centavos, as integers. Nothing holds a peso float.
 
 Pilot payment is Pilot Credits or eligible Cash on Delivery. COD requires a final total of ₱1,500 or less. Pilot Credits are a non-cash test instrument: the UI never says "Top Up", "Cash Out", or "Transfer", and exposes no purchase, withdrawal, or transfer control.
-
-## Known cruft
-
-- `app-example/` is the stock Expo starter, left behind when the template was reset. Excluded from typecheck; safe to delete.
-- `npm run reset-project` points at `scripts/reset-project.js`, which no longer exists. The script would move `app/` aside if it did — do not run it.
