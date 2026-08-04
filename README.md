@@ -1,50 +1,85 @@
-# Welcome to your Expo app 👋
+# GRIDGO Client
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+The business-client app for GRIDGO, a Davao City managed-printing marketplace. It carries a print job from a structured request through artwork QA and proof approval to tracked delivery and the 24-hour issue window.
 
-## Get started
+React Native, Expo SDK 54, Expo Router, NativeWind.
 
-1. Install dependencies
+## Where this sits
 
-   ```bash
-   npm install
-   ```
+GRIDGO ships one app per role. This repo is the client app only.
 
-2. Start the app
+| Surface | Repo | Notes |
+|---|---|---|
+| **Client mobile** | **this repo** | Request, artwork, proof, payment, tracking |
+| Rider mobile | separate | Background location and navigation keep it out of this binary |
+| Supplier mobile | separate | Time-sensitive actions only; the supplier portal is web |
+| Supplier portal, Operations, Super Admin | separate | Next.js responsive web |
 
-   ```bash
-   npx expo start
-   ```
+All apps share one Clerk application, so a person holding two roles keeps one account. A signed-in user whose role is not `client` is handed off to their own app rather than shown different navigation — there is no role switcher here.
 
-In the output, you'll find options to open the app in a
+Product requirements, the design system, and the operations model live in the `GRIDGO-TINKER` blueprint repo. `AGENTS.md` in this repo is the working source of truth for design tokens and conventions.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Getting started
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Then open the app on a device or simulator from the Expo CLI output.
 
-## Learn more
+**Expo Go is not sufficient.** Background location, the Navigation SDK, and Clerk's native flows require a development build. Expo Go works for early UI work only.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Scripts
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+| Command | Does |
+|---|---|
+| `npm start` | Expo dev server |
+| `npm run android` / `npm run ios` | Dev server targeting one platform |
+| `npm run web` | Web target — useful for quick layout checks, not a shipping surface |
+| `npm run lint` | ESLint via `expo lint` |
+| `npm test` | Jest + `@testing-library/react-native` |
+| `npm run test:watch` | Same, in watch mode |
 
-## Join the community
+Typecheck with `npx tsc --noEmit`. Strict mode is on and `any` is not allowed.
 
-Join our community of developers creating universal apps.
+## Layout
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```text
+app/                 Routes and screens only — no reusable UI, no business logic
+  (tabs)/            Client tab shell: home, orders, new-request, notifications, account
+  index.tsx          Temporary launcher (see below)
+  onboarding.tsx     First-run walkthrough
+  design-system.tsx  Living token and component reference
+components/          Reusable UI
+constants/           theme.ts (token mirror), fonts.ts, tabs.ts
+hooks/               useTheme, useAppFonts
+data/                Typed hardcoded content
+store/               Zustand stores
+lib/                 External service helpers
+```
+
+`app/index.tsx` is scaffolding, not product. It opens the screens built so far without a sign-in flow, and the client home screen replaces it once auth and role gating land.
+
+`app/design-system.tsx` renders every colour token, type step, and base component in both themes. Open it when you need to check a token rather than reading the tables.
+
+## The rules that matter most
+
+Full detail is in `AGENTS.md`, which you should read before any feature. The three most easily broken:
+
+- **Yellow is a finite attention budget.** `#FFDE58` marks one primary action per screen or bounded panel, plus the active stepper step, the selected nav item, and the map route. Navigation, secondary buttons, filters, and inputs stay black, white, or charcoal.
+- **Colour never carries meaning alone.** Every status is icon + label + colour, so a screen stays readable in grayscale and to a screen reader.
+- **No hard-coded hex values.** Style with NativeWind classes, which resolve per theme. `constants/theme.ts` exists for the places a class cannot reach — the navigation theme, the status bar, map styles.
+
+Light and Dark are the same product with different presentation: identical labels, states, validation, and workflows.
+
+## Money
+
+All amounts are PHP minor units — centavos, as integers. Nothing holds a peso float.
+
+Pilot payment is Pilot Credits or eligible Cash on Delivery. COD requires a final total of ₱1,500 or less. Pilot Credits are a non-cash test instrument: the UI never says "Top Up", "Cash Out", or "Transfer", and exposes no purchase, withdrawal, or transfer control.
+
+## Known cruft
+
+- `app-example/` is the stock Expo starter, left behind when the template was reset. Excluded from typecheck; safe to delete.
+- `npm run reset-project` points at `scripts/reset-project.js`, which no longer exists. The script would move `app/` aside if it did — do not run it.
