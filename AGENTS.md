@@ -12,39 +12,23 @@ Think like a senior mobile developer.
 
 ## Project Overview
 
-We are building GRIDGO, the mobile app for a Davao City managed-printing marketplace that carries a print job from structured request through artwork QA, supplier production, and tracked rider delivery.
+This repo is **GRIDGO Client** — the business-client app for a Davao City managed-printing marketplace. It carries a print job from structured request through artwork QA and proof approval to tracked delivery and the 24-hour issue window.
+
+GRIDGO ships one app per role. The Rider app, the Supplier app, and the Supplier Operations Admin / Super Admin web portals are separate codebases. Nothing belonging to another role goes in here: no rider dispatch or location sharing, no supplier production or self-QC, no Operations QA queue or matching. If a task asks for one of those, it is in the wrong repo.
 
 The app includes:
-
-**Client (primary experience)**
 
 - Product catalog with frequently-reordered items and one-tap reorder.
 - Structured print request: a 4-step stepper (Details → Artwork → Review → Confirm) capturing product, size, material, quantity, deadline, and delivery address.
 - Artwork upload, QA correction loop, and proof approval (Approve & Continue / Request Changes) against a preflight checklist.
 - Product Preview: artwork composited into a Flyer, Tarpaulin, Signage, or T-shirt template, always labeled "Visual mockup — not print-ready proof."
 - Payment selection limited to Pilot Credits or eligible Cash on Delivery.
-- Active delivery tracking: map with route, ETA, rider card, and an honest last-updated/stale-location state.
+- Active delivery tracking: map with route, ETA, rider card, and an honest last-updated/stale-location state. The client watches the delivery; it never controls it.
 - Order history and reporting a material issue inside the 24-hour issue window.
-
-**Rider**
-
-- Delivery offer with pickup/drop-off, distance, fee, and an accept countdown.
-- Navigation to pickup and a persistent live-location-sharing status banner.
-- Pickup verification: 4-digit OTP plus photo proof.
-- Delivery verification: photo proof, recipient OTP, and COD cash collection evidence.
-- Failed-delivery reporting with return handling.
-
-**Supplier (time-sensitive actions only — the portal is web)**
-
-- Job alert, job details, and accept/decline inside the response SLA.
-- Production progress updates.
-- Self-QC checklist with photo evidence.
-- Ready-for-pickup handoff and payout notification.
-- A read-only Today / Next 7 Days agenda. No editable calendar on mobile.
 
 **Cross-cutting**
 
-- Auth with role gating; a signed-in user sees only their role's navigation and screens.
+- Auth. A signed-in user whose role is not `client` is told which app to use and deep-linked to it, rather than being shown a different role's navigation. There is no role switcher.
 - Light and Dark themes with identical labels, states, and workflows.
 - Push/in-app notifications for SLA deadlines and state changes.
 
@@ -110,11 +94,11 @@ assets/
 
 **app/** is for routes and screens only. Screens compose components and call hooks or stores. They should not contain large reusable UI blocks or business logic.
 
-**components/** is for reusable UI. Create a component when it is reused in multiple places, when it makes a screen easier to read, or when it represents a clear UI concept. Examples for this app: `RoleHeader`, `PrimaryButton`, `SecondaryButton`, `StatusChip`, `RequestStepper`, `ProductCard`, `SpecRow`, `ArtworkUploadCard`, `ProofViewer`, `ChecklistRow`, `TrackingMapCard`, `RiderContactCard`, `OtpInput`, `PhotoProofCapture`, `CountdownTimer`, `EmptyState`. Do not create components too early.
+**components/** is for reusable UI. Create a component when it is reused in multiple places, when it makes a screen easier to read, or when it represents a clear UI concept. Examples for this app: `PrimaryButton`, `SecondaryButton`, `StatusChip`, `RequestStepper`, `ProductCard`, `SpecRow`, `ArtworkUploadCard`, `ProofViewer`, `TrackingMapCard`, `RiderContactCard`, `CountdownTimer`, `EmptyState`. Do not create components too early.
 
 **data/** holds hardcoded content. Keep it typed.
 
-**store/** holds Zustand stores. Examples of state to keep here: session and active role, theme preference (`system` | `light` | `dark`), the in-progress print request draft (product, size, material, quantity, deadline, address, uploaded artwork), cart/reorder items, order list and selected order, active delivery tracking (rider location, ETA, last-updated timestamp, stale flag), the rider's active job and location-sharing state, the supplier job inbox and its accept countdown, and the unread notification count. Persist with AsyncStorage when needed — theme preference, session, and the request draft are worth persisting. Never persist rider location, ETAs, or OTPs.
+**store/** holds Zustand stores. Examples of state to keep here: session, theme preference (`system` | `light` | `dark`), the in-progress print request draft (product, size, material, quantity, deadline, address, uploaded artwork), cart/reorder items, order list and selected order, active delivery tracking as received (rider location, ETA, last-updated timestamp, stale flag), and the unread notification count. Persist with AsyncStorage when needed — theme preference, session, and the request draft are worth persisting. Never persist rider location or ETAs; they are someone else's live data and go stale the moment the app is backgrounded.
 
 **lib/** holds external service helpers (clerk.ts, api.ts, cn.ts). Never expose secret keys here.
 
@@ -286,7 +270,13 @@ When building a feature:
 
 ## Authentication
 
-Use Clerk. Do not build custom auth.
+Use Clerk. Do not build custom auth, and do not use Supabase Auth.
+
+One Clerk application serves every GRIDGO app, so a person holding two roles keeps one account. The platform role (`client`, `supplier`, `rider`, `ops_admin`, `super_admin`) lives in Clerk `publicMetadata`, is writable only through the Backend API, and reaches this app as a session claim — read it, never write it.
+
+This app serves `client`. Check the role once, at the door, and hand a non-client user off to their own app. That check decides what renders, nothing more: every read and write is decided server-side by Row Level Security against the Clerk user id and role claim, so removing the check would grant no access.
+
+Clients are the only role that signs up. Supplier, rider, and admin accounts exist only by invitation from Operations, so this app never offers a path to create one.
 
 ---
 
