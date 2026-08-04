@@ -45,6 +45,9 @@ Three facts discovered and verified while standing the harness up. They are not 
 1. **`render` and `unmount` are async.** `@testing-library/react-native@14` made them async by default. A synchronous `render(<X />)` returns a pending promise, and the next line fails with "`render` function has not been called". **Every `it` callback is `async`, and every `render`/`unmount` is `await`ed.** All test code below already reflects this.
 2. **Lucide forwards `testID` as `data-testid`**, which never reaches `react-native-svg` and is invisible to RNTL's `getByTestId`. If a Lucide icon needs a test id, wrap it in a plain `View` carrying the id. (No task after Task 1 renders a Lucide icon, so this should not come up.)
 3. **ESM-only packages need a `moduleNameMapper` entry**, not just `transformIgnorePatterns`. `jest-expo`'s transform only matches `\.[jt]sx?$`, so it never touches `.mjs`. `transformIgnorePatterns` controls what Jest *skips*, not what a transform *matches*. If a new package fails with `SyntaxError: Unexpected token 'export'`, map it to its CJS build the way `package.json` already maps `lucide-react-native`.
+4. **RNTL 14 removed every `UNSAFE_*` query.** `UNSAFE_getAllByType` and `UNSAFE_root` do not exist. Descendants come from `screen.root?.queryAll(predicate)` (`test-renderer@1.2.0`'s `TestInstance`), where `node.type` is the **host component name string**.
+5. **`react-native-svg` host nodes carry a processed colour, not your hex string.** Verified empirically: `<Circle fill="#1A1A1A" />` renders host type `RNSVGCircle` with `props.fill === { type: 0, payload: 4279900698 }`. `<Path>` renders `RNSVGPath` the same way. Compare against `processColor(token)` from `react-native` and read `props.fill?.payload` — never the token string. `processColor("#1A1A1A") === 4279900698`, `processColor("#FFDE58") === 4294958680`.
+6. **Change the colour scheme with nothing mounted.** `Appearance.setColorScheme` in an `afterEach` fires the `useSyncExternalStore` subscription of a still-mounted component and produces an `act()` warning. Set it in `beforeEach` instead, and reset in `afterAll`.
 
 `jest-expo` is pinned to `^54.0.17` to track the Expo SDK major. Do not let a tool upgrade it — `jest-expo@57` requires `react@^19.2.3` and this project is on `19.1.0`.
 
@@ -315,20 +318,27 @@ Create `components/__tests__/GridgoLogo.test.tsx`:
 
 ```tsx
 import { render, screen } from "@testing-library/react-native";
-import { Appearance } from "react-native";
-import { Circle } from "react-native-svg";
+import { Appearance, processColor } from "react-native";
 
 import { GridgoLogo, GridgoMark } from "@/components/GridgoLogo";
 import { colors } from "@/constants/theme";
 
-function circleFills(): string[] {
-  return screen
-    .UNSAFE_getAllByType(Circle)
-    .map((circle: { props: { fill: string } }) => circle.props.fill);
+/**
+ * react-native-svg renders to host nodes named `RNSVGCircle`, and their `fill`
+ * prop is a processed colour object rather than the hex string that was passed
+ * in. So: find by host type name, read `fill.payload`, and compare against
+ * `processColor(token)`.
+ */
+function circleFills(): (number | undefined)[] {
+  const circles = screen.root?.queryAll((node) => node.type === "RNSVGCircle") ?? [];
+  return circles.map((circle) => circle.props.fill?.payload);
 }
 
 describe("GridgoMark", () => {
-  afterEach(() => Appearance.setColorScheme(null));
+  // Set the scheme while nothing is mounted, so no subscribed component
+  // updates outside act().
+  beforeEach(() => Appearance.setColorScheme("light"));
+  afterAll(() => Appearance.setColorScheme(null));
 
   it("draws nine dots", async () => {
     await render(<GridgoMark />);
@@ -339,25 +349,31 @@ describe("GridgoMark", () => {
   it("spends exactly one dot on the brand yellow", async () => {
     await render(<GridgoMark />);
 
-    expect(circleFills().filter((f) => f === colors.light.brandLogo)).toHaveLength(1);
+    expect(
+      circleFills().filter((f) => f === processColor(colors.light.brandLogo)),
+    ).toHaveLength(1);
   });
 
-  it("inverts the structural dots between themes", async () => {
-    Appearance.setColorScheme("light");
-    const light = await render(<GridgoMark />);
-    expect(circleFills().filter((f) => f === colors.light.accent)).toHaveLength(6);
-    await light.unmount();
-
-    Appearance.setColorScheme("dark");
+  it("keeps six structural dots on the accent", async () => {
     await render(<GridgoMark />);
-    expect(circleFills().filter((f) => f === colors.dark.accent)).toHaveLength(6);
+
+    expect(circleFills().filter((f) => f === processColor(colors.light.accent))).toHaveLength(6);
   });
 
   it("mutes the two dots below the brand dot", async () => {
-    Appearance.setColorScheme("light");
     await render(<GridgoMark />);
 
-    expect(circleFills().filter((f) => f === colors.light.textMuted)).toHaveLength(2);
+    expect(
+      circleFills().filter((f) => f === processColor(colors.light.textMuted)),
+    ).toHaveLength(2);
+  });
+
+  it("inverts the structural dots in dark mode", async () => {
+    Appearance.setColorScheme("dark");
+
+    await render(<GridgoMark />);
+
+    expect(circleFills().filter((f) => f === processColor(colors.dark.accent))).toHaveLength(6);
   });
 });
 
@@ -468,9 +484,9 @@ export function GridgoLogo({ size = 28 }: Props) {
 - [ ] **Step 4: Run the tests**
 
 Run: `npm test -- GridgoLogo`
-Expected: 6 tests PASS.
+Expected: 7 tests PASS, output pristine (no `act()` warnings).
 
-If `UNSAFE_getAllByType` proves brittle against the installed react-native-svg build, switch the assertion to `screen.UNSAFE_root.findAllByProps({ r: 13 })` and read `fill` from those. Do not change the component to add testIDs per circle — nine testIDs is noise for a decorative mark.
+The `screen.root?.queryAll` + `processColor` pattern above is verified against the installed `@testing-library/react-native@14.0.1`, `test-renderer@1.2.0`, and `react-native-svg@15.12.1` — it is not a guess. Do not substitute `UNSAFE_getAllByType` or `UNSAFE_root`; RNTL 14 removed both. Do not add per-circle `testID`s — nine test ids is noise on a decorative mark.
 
 - [ ] **Step 5: Type check and lint**
 
@@ -678,7 +694,7 @@ Create `components/__tests__/ScooterIllustration.test.tsx`:
 
 ```tsx
 import { render, screen } from "@testing-library/react-native";
-import { Path } from "react-native-svg";
+import { processColor } from "react-native";
 
 import { ScooterIllustration } from "@/components/illustrations/ScooterIllustration";
 
@@ -690,15 +706,21 @@ const PALETTE = {
   highlight: "#555555",
 };
 
-function fills() {
-  return screen.UNSAFE_getAllByType(Path).map((p: { props: { fill: string } }) => p.props.fill);
+/**
+ * `react-native-svg` renders host nodes named `RNSVGPath`, and `fill` arrives
+ * as a processed colour object rather than the hex string. Compare payloads
+ * against `processColor(hex)`.
+ */
+function fills(): (number | undefined)[] {
+  const paths = screen.root?.queryAll((node) => node.type === "RNSVGPath") ?? [];
+  return paths.map((path) => path.props.fill?.payload);
 }
 
 describe("ScooterIllustration", () => {
   it("draws every path from the supplied palette and nothing else", async () => {
     await render(<ScooterIllustration width={200} height={155} palette={PALETTE} />);
 
-    const allowed = new Set(Object.values(PALETTE));
+    const allowed = new Set(Object.values(PALETTE).map((hex) => processColor(hex)));
     const strays = fills().filter((f) => !allowed.has(f));
 
     expect(strays).toEqual([]);
@@ -713,7 +735,7 @@ describe("ScooterIllustration", () => {
   it("carries no yellow — the screen spends that budget on the CTA", async () => {
     await render(<ScooterIllustration width={200} height={155} palette={PALETTE} />);
 
-    expect(fills().some((f) => f.toLowerCase() === "#ffde58")).toBe(false);
+    expect(fills().some((f) => f === processColor("#FFDE58"))).toBe(false);
   });
 });
 ```
