@@ -77,6 +77,7 @@ Prefer these modules over burying rules in screens:
 - `lib/requestValidation.ts` — stepper validation + demo preflight checklist
 - `lib/productPreview.ts` — template map; mockup label is fixed here
 - `lib/navigationHeaders.ts` — multi-origin stack pushes use `headerBackButtonDisplayMode: "minimal"` so iOS never shows the `(tabs)` route name as a back label
+- `components/GridgoTabBar.tsx` — bottom pad is `insets.bottom + design` (never `Math.max`); labelled columns `min-h-20` (MD3 80dp), not rigid `h-13`
 - `store/requestDraft.ts` — in-progress request (Zustand + AsyncStorage)
 - `store/theme.ts` — system/light/dark preference persistence
 

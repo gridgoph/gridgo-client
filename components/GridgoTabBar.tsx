@@ -8,6 +8,21 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { useNotifications } from "@/store/notifications";
 
 /**
+ * Design breathing room beneath the tab content, inside the bar surface.
+ * Stacked on top of `insets.bottom` — never maxed with it. The inset is a
+ * system keep-out zone; this is deliberate padding below the labels.
+ */
+export const TAB_BAR_DESIGN_BOTTOM_PAD = 8;
+
+/**
+ * Compose the bar's bottom padding: system inset + design pad.
+ * Pure so tests can lock the add (not max) composition without a full render tree.
+ */
+export function tabBarPaddingBottom(insetBottom: number): number {
+  return insetBottom + TAB_BAR_DESIGN_BOTTOM_PAD;
+}
+
+/**
  * One Lucide glyph per tab, all outline, all the same optical weight, so the
  * row reads as one set.
  */
@@ -24,17 +39,23 @@ const ICONS: Record<TabName, LucideIcon> = {
  *
  * Four labelled destinations and one unlabelled action.
  *
- * The labelled columns are a fixed 52px: an 8px foot, a 16px label box, a 4px
- * gap and a 24px glyph, bottom-aligned so all four share a baseline. Every one
- * of those boxes is pinned rather than measured, so no platform's text metrics
- * can move the icons. The action is a 56px disc — no label, because a filled
- * yellow plus in the middle of a tab bar needs no caption, and captioning it
- * would put a fifth word in a row of four.
+ * Material Design 3 sizes an icon-plus-label bottom navigation at 80dp. Each
+ * labelled column is therefore `min-h-20` (80) so it meets the platform height
+ * and the 44dp touch floor with room to spare. Stack inside a column:
+ *   pt-2 (8) + icon (24) + gap-1 (4) + label box (16) + pb-2 (8) = 60 natural
+ * The min height lifts that to 80; with `justify-end` the extra 20 sits above
+ * the glyph and absorbs the badge's `-top-1` overhang. No fixed `h-13` — a
+ * rigid 52 left zero top slack and put the badge above the bar border (the
+ * supplier app already fixed this; the raised action disc only hid it here).
  *
- * The disc's column is taller than the labelled ones, so the disc rises out of
- * the row on its own and the bar surface, which starts 16px below the row's
- * top edge, is what it breaks through. Nothing is ever drawn outside its
- * parent, which Android will not reliably render.
+ * The action is a 56px disc in an 80-tall column — no label, because a filled
+ * yellow plus in the middle of a tab bar needs no caption. The disc sits at
+ * the top of that column while the bar surface starts 16px down (`top-4`), so
+ * the disc rises through the hairline without drawing outside its parent.
+ *
+ * Bottom padding is `insets.bottom + TAB_BAR_DESIGN_BOTTOM_PAD`. The surface
+ * and top border are absolute to the outer edges, so they still fill the inset
+ * region down to the physical edge.
  *
  * The open tab is said twice over, in colour and in weight: its glyph goes
  * from muted to full-strength ink and its label from muted regular to medium.
@@ -46,10 +67,15 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const unreadCount = useNotifications((s) => s.unreadCount);
 
   return (
-    <View className="relative" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
+    <View
+      testID="gridgo-tab-bar"
+      className="relative"
+      style={{ paddingBottom: tabBarPaddingBottom(insets.bottom) }}
+    >
       {/*
         Drawn before the row, so the action disc paints over the top border and
-        the hairline breaks around it with no cut-out to maintain.
+        the hairline breaks around it with no cut-out to maintain. Spans the
+        full outer height including the bottom inset region.
       */}
       <View className="absolute inset-x-0 bottom-0 top-4 border-t border-outline bg-surface" />
 
@@ -100,9 +126,9 @@ function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
   const colors = useThemeColors();
   const Icon = ICONS[name];
 
-  // 84 tall against the destinations' 56, which is what lifts the disc out of
-  // the row. Its foot lands just above the labels' cap line, so the four
-  // destinations and the action still read as one row rather than two.
+  // 80 tall, matching the destinations' MD3 height. The 56 disc sits at the
+  // top of the column; the surface starts 16 below the row top, so the disc
+  // breaks the hairline. Foot still lines up with the labelled row.
   if (name === ACTION_TAB) {
     return (
       <Pressable
@@ -128,7 +154,9 @@ function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
       accessibilityRole="tab"
       accessibilityLabel={label}
       accessibilityState={{ selected: focused }}
-      className="h-13 flex-1 items-center justify-end gap-1 pb-2"
+      // min-h-20 = MD3 80dp icon+label bar. pt-2 clears the badge overhang.
+      // Grows with content if the label scales; never a rigid h-13.
+      className="min-h-20 flex-1 items-center justify-end gap-1 pb-2 pt-2"
     >
       {({ pressed }) => (
         <>
@@ -193,4 +221,3 @@ function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
     </Pressable>
   );
 }
-
