@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
+import { multiOriginPushedScreenOptions } from "@/lib/navigationHeaders";
 // Side-effect: rehydrate persisted theme preference from AsyncStorage.
 import "@/store/theme";
 
@@ -78,8 +79,18 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           {/* The tab shell draws its own headers per tab. */}
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="order/[id]" options={{ title: "Order" }} />
-          <Stack.Screen name="design-system" options={{ title: "Design system" }} />
+          <Stack.Screen
+            name="order/[id]"
+            options={{ title: "Order", ...multiOriginPushedScreenOptions }}
+          />
+          <Stack.Screen
+            name="design-system"
+            options={{
+              title: "Design system",
+              ...multiOriginPushedScreenOptions,
+            }}
+          />
+
         </Stack>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       </ThemeProvider>
