@@ -78,3 +78,13 @@ Light and Dark are the same product with different presentation: identical label
 All amounts are PHP minor units — centavos, as integers. Nothing holds a peso float.
 
 Pilot payment is Pilot Credits or eligible Cash on Delivery. COD requires a final total of ₱1,500 or less. Pilot Credits are a non-cash test instrument: the UI never says "Top Up", "Cash Out", or "Transfer", and exposes no purchase, withdrawal, or transfer control.
+
+## Android emulator API URL
+
+From the **Android emulator**, `127.0.0.1` is the emulator itself. Use:
+
+```bash
+EXPO_PUBLIC_API_URL=http://10.0.2.2:8787 npm start
+```
+
+Physical device / Expo Go on phone: use the host LAN IP (e.g. `http://192.168.1.55:8787`).
