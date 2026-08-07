@@ -76,6 +76,7 @@ Prefer these modules over burying rules in screens:
 - `lib/payment.ts` — COD ≤ ₱1,500 + one-active COD; credits shortfall copy
 - `lib/requestValidation.ts` — stepper validation + demo preflight checklist
 - `lib/productPreview.ts` — template map; mockup label is fixed here
+- `lib/navigationHeaders.ts` — multi-origin stack pushes use `headerBackButtonDisplayMode: "minimal"` so iOS never shows the `(tabs)` route name as a back label
 - `store/requestDraft.ts` — in-progress request (Zustand + AsyncStorage)
 - `store/theme.ts` — system/light/dark preference persistence
 
