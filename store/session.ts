@@ -13,6 +13,8 @@ type SessionState = {
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Drop the in-memory user. Routing reacts via Stack.Protected — no router calls here. */
+  clearSession: () => void;
   clearError: () => void;
 };
 
@@ -21,12 +23,15 @@ export const useSession = create<SessionState>((set) => ({
   loading: false,
   error: null,
   clearError: () => set({ error: null }),
+  clearSession: () => set({ user: null, loading: false }),
   login: async (email, password) => {
     set({ loading: true, error: null });
     try {
       const { user } = await api.login(email, password);
       if (user.role !== APP_ROLE) {
         await api.logout();
+        // Same terminal state as sign-out / 401: no user. Root Stack.Protected
+        // keeps the signed-in area unreachable; we stay on login with an error.
         set({
           user: null,
           loading: false,
@@ -54,3 +59,9 @@ export const useSession = create<SessionState>((set) => ({
     set({ user: null });
   },
 }));
+
+// Mid-session 401 (expired / invalid token) clears the same user flag logout
+// does, so the root route guard — not individual screens — returns to login.
+api.onUnauthorized(() => {
+  useSession.getState().clearSession();
+});
