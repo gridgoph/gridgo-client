@@ -64,6 +64,7 @@ Every screen that needs network uses **`lib/api.ts`** against the shared local *
 - **Zustand** — session and feature stores (not React Context for global session).
 - **Money** — PHP minor units only; Pilot Credits + COD ≤ ₱1,500.
 - **Replace later** — keep the same `lib/api.ts` surface when Clerk/Supabase/PayMongo land.
+- **API base URL** — `getApiBase()` / `resolveApiBase()` in `lib/api.ts`. Precedence: `EXPO_PUBLIC_API_URL` → hostname from Expo dev-server `hostUri` (via `expo-constants`, port from `EXPO_PUBLIC_API_PORT` or `8787`) → Android emulator loopback remapped to `10.0.2.2` → `127.0.0.1`. Do not hardcode a LAN IP; physical Expo Go devices need the host derived from the packager.
 
 Product scope for this binary: **`PRD.md`**. Fleet blueprint: `gridgo-tinker`.
 
@@ -310,3 +311,10 @@ Before every feature:
 - Follow it strictly.
 - Build clean, simple code.
 - Replicate UI exactly when designs are provided.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

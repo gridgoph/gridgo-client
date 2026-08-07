@@ -36,10 +36,17 @@ export const useSession = create<SessionState>((set) => ({
       }
       set({ user, loading: false });
     } catch (e) {
-      set({
-        loading: false,
-        error: e instanceof Error ? e.message : "login_failed",
-      });
+      let message: string;
+      if (e instanceof api.ApiError && e.status === 401) {
+        message = "Wrong email or password.";
+      } else if (api.isNetworkFailure(e)) {
+        message = `Cannot reach the backend at ${api.getApiBase()}. Is gridgo-api running on the LAN?`;
+      } else if (e instanceof Error) {
+        message = e.message;
+      } else {
+        message = "login_failed";
+      }
+      set({ loading: false, error: message });
     }
   },
   logout: async () => {
