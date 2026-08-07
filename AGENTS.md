@@ -28,7 +28,7 @@ The app includes:
 
 **Cross-cutting**
 
-- Auth. A signed-in user whose role is not `client` is told which app to use and deep-linked to it, rather than being shown a different role's navigation. There is no role switcher.
+- Auth (**custom MVP** via gridgo-api). A signed-in user whose role is not `client` is told which app to use and deep-linked to it, rather than being shown a different role's navigation. There is no role switcher.
 - Light and Dark themes with identical labels, states, and workflows.
 - Push/in-app notifications for SLA deadlines and state changes.
 
@@ -45,11 +45,27 @@ Keep the implementation simple and readable.
 - NativeWind
 - Zustand
 - AsyncStorage
-- Clerk for authentication
+- Zustand for client session state
+- Local **custom auth + domain API** via `gridgo-api` (MVP — not Clerk/Supabase/PayMongo; replaceable later)
 
 Do not introduce new major libraries unless there is a strong reason. Ask before installing anything new.
 
 ---
+
+
+## MVP stack (current phase)
+
+For this MVP we **do not** integrate Clerk, Supabase, PayMongo, or other production SaaS.
+
+Every screen that needs network uses **`lib/api.ts`** against the shared local **`gridgo-api`**:
+
+- **Custom auth** — email/password → bearer token; role enforced in Zustand session (`store/session.ts`). Mismatched role is rejected (no role switcher).
+- **Custom domain API** — orders/jobs, credits, COD, dispatch, proofs, notifications.
+- **Zustand** — session and feature stores (not React Context for global session).
+- **Money** — PHP minor units only; Pilot Credits + COD ≤ ₱1,500.
+- **Replace later** — keep the same `lib/api.ts` surface when Clerk/Supabase/PayMongo land.
+
+Product scope for this binary: **`PRD.md`**. Fleet blueprint: `gridgo-tinker`.
 
 ## Development Philosophy
 
