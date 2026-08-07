@@ -72,9 +72,9 @@ describe("COD eligibility", () => {
 });
 
 describe("credits shortfall", () => {
-  it("computes shortfall and message", () => {
+  it("computes shortfall and recovery-oriented message", () => {
     expect(creditsShortfallMinor(135000, 50000)).toBe(85000);
-    expect(formatCreditsShortfallMessage(135000, 50000)).toMatch(/short by/);
-    expect(formatCreditsShortfallMessage(135000, 50000)).toMatch(/cannot be topped up/i);
+    expect(formatCreditsShortfallMessage(135000, 50000)).toMatch(/short of this order/);
+    expect(formatCreditsShortfallMessage(135000, 50000)).toMatch(/Cash on Delivery|Operations/);
   });
 });

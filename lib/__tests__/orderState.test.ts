@@ -13,10 +13,11 @@ describe("getOrderStateMeta", () => {
     expect(meta.icon).toBe("square-pen");
   });
 
-  it("falls back with readable label for unknown states", () => {
+  it("never surfaces snake_case for unknown states", () => {
     const meta = getOrderStateMeta("custom_hold");
-    expect(meta.label).toBe("custom hold");
+    expect(meta.label).toBe("In progress");
     expect(meta.tone).toBe("neutral");
+    expect(meta.label).not.toMatch(/_/);
   });
 });
 

@@ -32,7 +32,10 @@ export const useNotifications = create<NotificationsState>((set) => ({
     } catch (e) {
       set({
         loading: false,
-        error: e instanceof Error ? e.message : "Failed to load notifications",
+        error:
+          e instanceof Error && !/^[a-z0-9_]+$/i.test(e.message)
+            ? e.message
+            : "Could not load notifications",
       });
     }
   },

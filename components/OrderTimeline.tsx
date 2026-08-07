@@ -1,5 +1,6 @@
 import { Text, View } from "react-native";
 
+import { actorLabel } from "@/lib/copy";
 import { getOrderStateMeta } from "@/lib/orderState";
 import { formatRelativeTime } from "@/lib/relativeTime";
 
@@ -67,10 +68,4 @@ export function OrderTimeline({ timeline, currentState }: Props) {
       })}
     </View>
   );
-}
-
-function actorLabel(by: string): string {
-  if (by === "system") return "System";
-  if (by.startsWith("user_")) return by.replace("user_", "");
-  return by;
 }

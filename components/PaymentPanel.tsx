@@ -4,8 +4,9 @@ import { Text, View } from "react-native";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
-import { ApiError, formatPhp, type Order } from "@/lib/api";
+import { formatPhp, type Order } from "@/lib/api";
 import * as api from "@/lib/api";
+import { userFacingError } from "@/lib/copy";
 import {
   COD_LIMIT_NOTICE,
   COD_ONE_ACTIVE_NOTICE,
@@ -25,7 +26,7 @@ type Props = {
 
 /**
  * Pilot payment: Pilot Credits or eligible COD only.
- * Rules are explained before submit; no top-up controls.
+ * Rules are explained before the user acts; no top-up controls.
  */
 export function PaymentPanel({ order, balanceMinor, otherOrders, onPaid }: Props) {
   const [busy, setBusy] = useState<"credits" | "cod" | null>(null);
@@ -42,15 +43,18 @@ export function PaymentPanel({ order, balanceMinor, otherOrders, onPaid }: Props
       const result = await api.authorizeCredits(order.id);
       onPaid(result.order);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 402) {
+      if (e instanceof api.ApiError && e.status === 402) {
         const body = e.body as { needMinor?: number; balanceMinor?: number };
         const need = body.needMinor ?? total;
         const bal = body.balanceMinor ?? balanceMinor;
         setError(formatCreditsShortfallMessage(need, bal));
-      } else if (e instanceof Error) {
-        setError(e.message);
       } else {
-        setError("Could not authorize credits.");
+        setError(
+          userFacingError(
+            e,
+            "Could not pay with Pilot Credits. Try again, or choose Cash on Delivery if it is available.",
+          ),
+        );
       }
     } finally {
       setBusy(null);
@@ -59,7 +63,7 @@ export function PaymentPanel({ order, balanceMinor, otherOrders, onPaid }: Props
 
   const payWithCod = async () => {
     if (!cod.eligible) {
-      setError(cod.reason ?? "COD is not available for this order.");
+      setError(cod.reason ?? "Cash on Delivery is not available for this order.");
       return;
     }
     setBusy("cod");
@@ -71,19 +75,12 @@ export function PaymentPanel({ order, balanceMinor, otherOrders, onPaid }: Props
       });
       onPaid(next);
     } catch (e) {
-      if (e instanceof ApiError) {
-        if (e.message === "cod_limit" || e.message === "cod_not_eligible") {
-          setError(COD_LIMIT_NOTICE);
-        } else if (e.message === "cod_one_active") {
-          setError(COD_ONE_ACTIVE_NOTICE);
-        } else {
-          setError(e.message);
-        }
-      } else if (e instanceof Error) {
-        setError(e.message);
-      } else {
-        setError("Could not authorize COD.");
-      }
+      setError(
+        userFacingError(
+          e,
+          "Could not set Cash on Delivery. Check the limits below, then try again.",
+        ),
+      );
     } finally {
       setBusy(null);
     }
@@ -91,10 +88,10 @@ export function PaymentPanel({ order, balanceMinor, otherOrders, onPaid }: Props
 
   return (
     <View className="gg-card gap-4">
-      <Text className="text-h3 text-text-primary">Payment</Text>
+      <Text className="text-h3 text-text-primary">Choose how to pay</Text>
       <Text className="text-body text-text-secondary">
-        Total due {formatPhp(total)} (print {formatPhp(order.totalMinor)} + delivery{" "}
-        {formatPhp(order.deliveryFeeMinor)}).
+        Total due {formatPhp(total)} — print {formatPhp(order.totalMinor)}, delivery{" "}
+        {formatPhp(order.deliveryFeeMinor)}.
       </Text>
 
       <View className="gg-panel gap-2">
@@ -104,24 +101,17 @@ export function PaymentPanel({ order, balanceMinor, otherOrders, onPaid }: Props
         {!enoughCredits ? (
           <StatusChip
             tone="warning"
-            label="Balance below this order total"
+            label={`${formatPhp(total - balanceMinor)} short for this order`}
             icon="triangle-alert"
           />
         ) : null}
       </View>
 
-      <View className="gap-2">
-        <PrimaryButton
-          label={busy === "credits" ? "Authorizing…" : "Pay with Pilot Credits"}
-          disabled={busy !== null}
-          onPress={() => void payWithCredits()}
-        />
-        {!enoughCredits ? (
-          <Text className="text-caption text-warning">
-            You can still try — the server will return the exact shortfall if needed.
-          </Text>
-        ) : null}
-      </View>
+      <PrimaryButton
+        label={busy === "credits" ? "Authorizing…" : "Pay with Pilot Credits"}
+        disabled={busy !== null}
+        onPress={() => void payWithCredits()}
+      />
 
       <View className="gg-divider" />
 
@@ -130,11 +120,11 @@ export function PaymentPanel({ order, balanceMinor, otherOrders, onPaid }: Props
         <Text className="text-caption text-text-muted">{COD_LIMIT_NOTICE}</Text>
         <Text className="text-caption text-text-muted">{COD_ONE_ACTIVE_NOTICE}</Text>
         {cod.eligible ? (
-          <StatusChip tone="success" label="COD available for this order" icon="circle-check" />
+          <StatusChip tone="success" label="Available for this order" icon="circle-check" />
         ) : (
           <StatusChip
             tone="error"
-            label={cod.reason ?? "COD not available"}
+            label={cod.reason ?? "Not available for this order"}
             icon="circle-x"
           />
         )}
@@ -143,9 +133,6 @@ export function PaymentPanel({ order, balanceMinor, otherOrders, onPaid }: Props
           disabled={busy !== null || !cod.eligible}
           onPress={() => void payWithCod()}
         />
-        {!cod.eligible && cod.reason ? (
-          <Text className="text-caption text-error">{cod.reason}</Text>
-        ) : null}
       </View>
 
       {error ? <Text className="text-body text-error">{error}</Text> : null}

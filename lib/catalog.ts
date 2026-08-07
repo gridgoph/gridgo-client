@@ -23,7 +23,7 @@ export const FAMILY_LABELS: Record<string, string> = {
 };
 
 export function familyLabel(family: string): string {
-  return FAMILY_LABELS[family] ?? family.replaceAll("_", " ");
+  return FAMILY_LABELS[family] ?? "Print products";
 }
 
 export function groupCatalogByFamily(

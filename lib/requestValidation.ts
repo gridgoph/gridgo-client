@@ -11,7 +11,7 @@ export const REQUEST_STEPS: { id: RequestStepId; label: string }[] = [
   { id: "details", label: "Details" },
   { id: "artwork", label: "Artwork" },
   { id: "review", label: "Review" },
-  { id: "confirm", label: "Confirm" },
+  { id: "confirm", label: "Send" },
 ];
 
 export type RequestDraftFields = {

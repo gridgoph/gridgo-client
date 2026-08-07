@@ -88,5 +88,5 @@ export function formatCreditsShortfallMessage(needMinor: number, balanceMinor: n
   const shortfall = creditsShortfallMinor(needMinor, balanceMinor);
   const php = (n: number) =>
     `₱${(n / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `Not enough Pilot Credits. You need ${php(needMinor)} but have ${php(balanceMinor)} (short by ${php(shortfall)}). Credits cannot be topped up in this app.`;
+  return `Your Pilot Credits balance is ${php(shortfall)} short of this order (${php(balanceMinor)} available, ${php(needMinor)} needed). Choose Cash on Delivery if it is eligible, or ask Operations to top up the pilot grant.`;
 }

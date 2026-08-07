@@ -2,6 +2,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { StatusChip } from "@/components/StatusChip";
 import { formatPhp, type Order } from "@/lib/api";
+import { paymentMethodLabel } from "@/lib/copy";
 import { getOrderStateMeta, orderGrandTotalMinor } from "@/lib/orderState";
 
 type Props = {
@@ -32,20 +33,15 @@ export function OrderCard({ order, onPress }: Props) {
           </View>
           <Text className="mt-2 text-body text-text-secondary">
             {formatPhp(orderGrandTotalMinor(order))}
-            {order.paymentMethod ? ` · ${paymentLabel(order.paymentMethod)}` : ""}
+            {order.paymentMethod ? ` · ${paymentMethodLabel(order.paymentMethod)}` : ""}
           </Text>
-          <Text className="mt-1 text-caption text-text-muted">
-            Qty {order.quantity} · {order.size || "Size TBD"}
+          <Text className="mt-1 text-caption text-text-muted" numberOfLines={1}>
+            Qty {order.quantity}
+            {order.size ? ` · ${order.size}` : ""}
           </Text>
           {pressed ? <View className="gg-pressed absolute inset-0 rounded-card" /> : null}
         </>
       )}
     </Pressable>
   );
-}
-
-function paymentLabel(method: string): string {
-  if (method === "pilot_credit") return "Pilot Credits";
-  if (method === "cod") return "COD";
-  return method;
 }

@@ -7,6 +7,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
+import { userFacingError } from "@/lib/copy";
 import { buildPreflightChecklist } from "@/lib/requestValidation";
 
 type Props = {
@@ -15,7 +16,8 @@ type Props = {
 };
 
 /**
- * Client decisions at `proof_approval` and resubmit at `client_correction`.
+ * Client decisions at proof approval, and resubmit after correction.
+ * Verbs stay consistent: Approve → Approved, Request changes → Needs correction.
  */
 export function ProofActions({ order, onUpdated }: Props) {
   const [busy, setBusy] = useState(false);
@@ -28,7 +30,9 @@ export function ProofActions({ order, onUpdated }: Props) {
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Action failed");
+      setError(
+        userFacingError(e, "That action did not complete. Check the order status and try again."),
+      );
     } finally {
       setBusy(false);
     }
@@ -38,10 +42,10 @@ export function ProofActions({ order, onUpdated }: Props) {
     return (
       <View className="gap-4">
         <View className="gg-card gap-3">
-          <Text className="text-h3 text-text-primary">Proof approval</Text>
+          <Text className="text-h3 text-text-primary">Approve your proof</Text>
           <Text className="text-body text-text-secondary">
-            Review the preflight results and any QA notes on the timeline, then approve
-            for matching or request changes.
+            Check the preflight list and any QA notes on the timeline. Approving
+            sends this job to supplier matching; requesting changes returns it to you.
           </Text>
           <StatusChip tone="warning" label="Your decision is required" icon="triangle-alert" />
           {checklist.map((item) => (
@@ -51,7 +55,7 @@ export function ProofActions({ order, onUpdated }: Props) {
                 tone={
                   item.status === "pass" ? "success" : item.status === "fail" ? "error" : "info"
                 }
-                label={item.status === "pass" ? "OK" : item.status === "fail" ? "Fail" : "Review"}
+                label={item.status === "pass" ? "OK" : item.status === "fail" ? "Missing" : "Review"}
                 icon={
                   item.status === "pass"
                     ? "circle-check"
@@ -65,7 +69,7 @@ export function ProofActions({ order, onUpdated }: Props) {
         </View>
 
         <PrimaryButton
-          label={busy ? "Working…" : "Approve & Continue"}
+          label={busy ? "Working…" : "Approve & continue"}
           disabled={busy}
           onPress={() =>
             void run(async () => {
@@ -77,7 +81,7 @@ export function ProofActions({ order, onUpdated }: Props) {
           }
         />
         <SecondaryButton
-          label="Request Changes"
+          label="Request changes"
           disabled={busy}
           onPress={() =>
             void run(async () => {
@@ -99,19 +103,19 @@ export function ProofActions({ order, onUpdated }: Props) {
         <View className="gg-card gap-2">
           <Text className="text-h3 text-text-primary">Needs correction</Text>
           <Text className="text-body text-text-secondary">
-            Update the artwork file name if needed, then resubmit for QA. This demo still
-            stores the name only.
+            Fix the artwork file name if Operations asked for a different file, then send
+            the job back to QA. This pilot stores the file name only — no bytes are uploaded.
           </Text>
         </View>
         <ArtworkUploadCard
           artworkName={order.artworkName ?? ""}
           onChangeName={() => {
-            /* resubmit uses existing name; full re-upload would PATCH — not in API */
+            /* resubmit uses existing name; PATCH not on API */
           }}
           readOnly
         />
         <PrimaryButton
-          label={busy ? "Resubmitting…" : "Resubmit for QA"}
+          label={busy ? "Sending…" : "Send back to QA"}
           disabled={busy}
           onPress={() =>
             void run(async () => {

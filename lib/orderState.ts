@@ -46,16 +46,14 @@ const STATE_META: Record<string, OrderStateMeta> = {
 };
 
 const FALLBACK: OrderStateMeta = {
-  label: "Unknown",
+  label: "In progress",
   tone: "neutral",
   icon: "clock",
 };
 
 export function getOrderStateMeta(state: string): OrderStateMeta {
-  return STATE_META[state] ?? {
-    ...FALLBACK,
-    label: state.replaceAll("_", " ") || FALLBACK.label,
-  };
+  // Never surface snake_case API states. Unknown → neutral "In progress".
+  return STATE_META[state] ?? FALLBACK;
 }
 
 /** States where the client watches delivery (never controls it). */
