@@ -93,6 +93,28 @@ export type CreditBalance = {
 
 let tokenMemory: string | null = null;
 
+/** Fired when a request with a bearer token receives 401 — session must clear. */
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+/**
+ * Register a listener for mid-session unauthorized responses.
+ * Returns an unsubscribe function. Used by the session store so the routing
+ * guard — not call sites — handles navigation after token invalidation.
+ */
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+function notifyUnauthorized(): void {
+  for (const listener of unauthorizedListeners) {
+    listener();
+  }
+}
+
 const DEFAULT_API_PORT = "8787";
 
 /** Inputs for {@link resolveApiBase} — pure so unit tests can cover every branch. */
@@ -264,7 +286,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       data = text;
     }
   }
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (!res.ok) {
+    // Only clear when we actually sent a bearer token. Login 401 (wrong password)
+    // has no token and must not touch session state.
+    if (res.status === 401 && tokenMemory) {
+      setToken(null);
+      notifyUnauthorized();
+    }
+    throw new ApiError(res.status, data);
+  }
   return data as T;
 }
 
