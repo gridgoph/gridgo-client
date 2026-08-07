@@ -54,6 +54,43 @@ export type Notification = {
   at: string;
 };
 
+export type CatalogProduct = {
+  id: string;
+  name: string;
+  family: string;
+  basePriceMinor: number;
+  unit: string;
+};
+
+export type CreateOrderInput = {
+  productId: string;
+  title?: string;
+  quantity: number;
+  size: string;
+  material: string;
+  deadline: string | null;
+  address: string;
+  zone?: string;
+  artworkName?: string | null;
+  deliveryFeeMinor?: number;
+  /** When true, order starts as `submitted` rather than `draft`. */
+  submit?: boolean;
+};
+
+export type CreditBalance = {
+  clientId: string;
+  balanceMinor: number;
+  ledger: {
+    id: string;
+    type: string;
+    amountMinor: number;
+    balanceAfterMinor: number;
+    reason: string;
+    at: string;
+    actorId: string;
+  }[];
+};
+
 let tokenMemory: string | null = null;
 
 const DEFAULT_API_PORT = "8787";
@@ -253,9 +290,40 @@ export async function me(): Promise<User> {
   return result.user;
 }
 
+export async function listCatalog(): Promise<CatalogProduct[]> {
+  const result = await request<{ catalog: CatalogProduct[] }>("/catalog");
+  return result.catalog;
+}
+
 export async function listOrders(): Promise<Order[]> {
   const result = await request<{ orders: Order[] }>("/orders");
   return result.orders;
+}
+
+export async function getOrder(orderId: string): Promise<Order> {
+  const result = await request<{ order: Order }>(`/orders/${orderId}`);
+  return result.order;
+}
+
+export async function createOrder(input: CreateOrderInput): Promise<Order> {
+  const result = await request<{ order: Order }>("/orders", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.order;
+}
+
+/**
+ * Authorize Pilot Credits for an order in `awaiting_payment`.
+ * Throws ApiError 402 with `{ error, needMinor, balanceMinor }` when short.
+ */
+export async function authorizeCredits(
+  orderId: string,
+): Promise<{ order: Order; balanceMinor: number }> {
+  return request("/credits/authorize", {
+    method: "POST",
+    body: JSON.stringify({ orderId }),
+  });
 }
 
 export async function listJobs(): Promise<Order[]> {
@@ -293,7 +361,7 @@ export async function listNotifications(): Promise<Notification[]> {
   return result.notifications;
 }
 
-export async function creditBalance(): Promise<{ balanceMinor: number }> {
+export async function creditBalance(): Promise<CreditBalance> {
   return request("/credits/balance");
 }
 
