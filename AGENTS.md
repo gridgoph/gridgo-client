@@ -68,6 +68,22 @@ Every screen that needs network uses **`lib/api.ts`** against the shared local *
 
 Product scope for this binary: **`PRD.md`**. Fleet blueprint: `gridgo-tinker`.
 
+### Client product logic (pure, testable)
+
+Prefer these modules over burying rules in screens:
+
+- `lib/orderState.ts` — state labels/tones, grand total, phase predicates
+- `lib/payment.ts` — COD ≤ ₱1,500 + one-active COD; credits shortfall copy
+- `lib/requestValidation.ts` — stepper validation + demo preflight checklist
+- `lib/productPreview.ts` — template map; mockup label is fixed here
+- `store/requestDraft.ts` — in-progress request (Zustand + AsyncStorage)
+- `store/theme.ts` — system/light/dark preference persistence
+
+### Known API gaps (do not fake)
+
+- No client GET for rider location pings — tracking card must stay honest/watch-only.
+- No material-issue report endpoint — issue window may show countdown with action unavailable.
+
 ## Development Philosophy
 
 Build feature by feature.

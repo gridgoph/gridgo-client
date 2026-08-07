@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ACTION_TAB, TABS, type TabName } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useNotifications } from "@/store/notifications";
 
 /**
  * One Lucide glyph per tab, all outline, all the same optical weight, so the
@@ -42,6 +43,7 @@ const ICONS: Record<TabName, LucideIcon> = {
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const unreadCount = useNotifications((s) => s.unreadCount);
 
   return (
     <View className="relative" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
@@ -77,6 +79,7 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
               label={tab.label}
               focused={focused}
               onPress={onPress}
+              badge={tab.name === "notifications" && unreadCount > 0 ? unreadCount : 0}
             />
           );
         })}
@@ -90,9 +93,10 @@ type TabItemProps = {
   label: string;
   focused: boolean;
   onPress: () => void;
+  badge?: number;
 };
 
-function TabItem({ name, label, focused, onPress }: TabItemProps) {
+function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
   const colors = useThemeColors();
   const Icon = ICONS[name];
 
@@ -134,11 +138,31 @@ function TabItem({ name, label, focused, onPress }: TabItemProps) {
             opens, so the row never shifts under your thumb.
           */}
           <View className={pressed ? "opacity-60" : undefined}>
-            <Icon
-              size={24}
-              strokeWidth={2}
-              color={focused ? colors.textPrimary : colors.textMuted}
-            />
+            <View className="relative">
+              <Icon
+                size={24}
+                strokeWidth={2}
+                color={focused ? colors.textPrimary : colors.textMuted}
+              />
+              {badge > 0 ? (
+                <View
+                  className="absolute -right-2 -top-1 min-h-4 min-w-4 items-center justify-center rounded-pill bg-error px-1"
+                  accessibilityLabel={`${badge} unread`}
+                >
+                  <Text
+                    className="text-caption text-accent-on"
+                    style={{
+                      includeFontPadding: false,
+                      fontSize: 10,
+                      lineHeight: 12,
+                      color: colors.surface,
+                    }}
+                  >
+                    {badge > 9 ? "9+" : String(badge)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
           <Text
             numberOfLines={1}

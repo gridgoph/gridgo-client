@@ -8,12 +8,12 @@ import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import type { ColorToken } from "@/constants/theme";
 import {
-  setThemePreference,
   useThemeColors,
   useThemeName,
   useThemePreference,
   type ThemePreference,
 } from "@/hooks/useTheme";
+import { useThemeStore } from "@/store/theme";
 
 /**
  * Design system reference.
@@ -126,6 +126,7 @@ function InkGroup({ title, inks }: { title: string; inks: Ink[] }) {
 
 function ThemeSwitch() {
   const preference = useThemePreference();
+  const setPreference = useThemeStore((s) => s.setPreference);
 
   return (
     <View className="flex-row gap-2 pt-4">
@@ -134,7 +135,7 @@ function ThemeSwitch() {
         return (
           <Pressable
             key={option.value}
-            onPress={() => setThemePreference(option.value)}
+            onPress={() => setPreference(option.value)}
             accessibilityRole="button"
             accessibilityState={{ selected }}
             // Selected uses the monochrome accent. A theme switch is a routine
