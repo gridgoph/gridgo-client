@@ -1,32 +1,20 @@
+import { router } from "expo-router";
+import { ChevronRight } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { getApiBase } from "@/lib/api";
-import {
-  useThemeColors,
-  useThemeName,
-  useThemePreference,
-  type ThemePreference,
-} from "@/hooks/useTheme";
+import { useThemeColors } from "@/hooks/useTheme";
 import { useSession } from "@/store/session";
-import { useThemeStore } from "@/store/theme";
-
-const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
 
 /**
- * Account: identity, organisation, theme override, resolved backend URL, sign out.
+ * Account: identity, organisation, entry to Settings, resolved backend URL, sign out.
+ * Theme preference lives on Settings — not duplicated here.
  */
 export default function AccountScreen() {
   const { user, logout } = useSession();
   const colors = useThemeColors();
-  const scheme = useThemeName();
-  const preference = useThemePreference();
-  const setPreference = useThemeStore((s) => s.setPreference);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
@@ -48,40 +36,26 @@ export default function AccountScreen() {
             </Text>
           </View>
 
-          <View className="gg-card gap-3">
-            <Text className="text-body-lg font-medium text-text-primary">Theme</Text>
-            <Text className="text-body text-text-secondary">
-              Showing {scheme === "dark" ? "Dark" : "Light"}
-              {preference === "system" ? " (matches your device)" : ""}.
-            </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {THEME_OPTIONS.map((option) => {
-                const selected = option.value === preference;
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() => setPreference(option.value)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    className={
-                      selected
-                        ? "gg-chip gg-touch border-accent bg-accent px-4"
-                        : "gg-chip gg-touch bg-surface px-4"
-                    }
-                  >
-                    <Text
-                      className={
-                        selected
-                          ? "text-button text-accent-on"
-                          : "text-button text-text-secondary"
-                      }
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+          {/* Destination row — not a primary action; chevron + full-row target. */}
+          <View className="gg-card-flush">
+            <Pressable
+              onPress={() => router.push("/settings")}
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              accessibilityHint="Opens app preferences"
+              className="gg-touch min-h-11 flex-row items-center justify-between px-4 py-3"
+              style={({ pressed }) =>
+                pressed ? { backgroundColor: colors.surfaceVariant } : undefined
+              }
+            >
+              <Text className="text-body-lg font-medium text-text-primary">Settings</Text>
+              <ChevronRight
+                size={20}
+                color={colors.textMuted}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              />
+            </Pressable>
           </View>
 
           <View className="gg-card gap-1">

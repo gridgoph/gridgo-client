@@ -77,7 +77,10 @@ Prefer these modules over burying rules in screens:
 - `lib/requestValidation.ts` — stepper validation + demo preflight checklist
 - `lib/productPreview.ts` — template map; mockup label is fixed here
 - `lib/navigationHeaders.ts` — multi-origin stack pushes use `headerBackButtonDisplayMode: "minimal"` so iOS never shows the `(tabs)` route name as a back label
-- `lib/sessionGuard.ts` + root `app/_layout.tsx` — Expo Router `Stack.Protected` guards the signed-in root stack (`(tabs)`, `order/[id]`, `design-system`). Session clear (logout / 401 / rejected role) alone returns to login; do not scatter `router.replace` at call sites. `app/index.tsx` is launch-only mapping.
+- `lib/sessionGuard.ts` + root `app/_layout.tsx` — Expo Router `Stack.Protected` guards the signed-in root stack (`(tabs)`, `order/[id]`, `design-system`, `settings`). Session clear (logout / 401 / rejected role) alone returns to login; do not scatter `router.replace` at call sites. `app/index.tsx` is launch-only mapping.
+- `lib/onboardingExit.ts` — explicit onboarding dismiss targets (`returnTo=settings` vs first-launch). Do not rely on history alone for Settings replay.
+- Onboarding pager is full-height over the content area (art behind, `pointerEvents="none"`) so swipes work over the illustration; parallax stays outside the pager.
+- Account holds identity + Sign out; theme and “View onboarding” live on `app/settings.tsx`.
 - `components/GridgoTabBar.tsx` — bottom pad is `insets.bottom + design` (never `Math.max`); labelled columns `min-h-20` (MD3 80dp), not rigid `h-13`
 - `store/requestDraft.ts` — in-progress request (Zustand + AsyncStorage)
 - `store/theme.ts` — system/light/dark preference persistence

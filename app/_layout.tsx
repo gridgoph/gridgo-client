@@ -106,6 +106,13 @@ export default function RootLayout() {
                 ...multiOriginPushedScreenOptions,
               }}
             />
+            <Stack.Screen
+              name="settings"
+              options={{
+                title: "Settings",
+                ...multiOriginPushedScreenOptions,
+              }}
+            />
           </Stack.Protected>
         </Stack>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />

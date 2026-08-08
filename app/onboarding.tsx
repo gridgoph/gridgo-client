@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
   Pressable,
@@ -29,17 +29,18 @@ import {
 } from "@/components/illustrations";
 import { onboardingSlides } from "@/data/onboarding";
 import { useThemeColors } from "@/hooks/useTheme";
+import { resolveOnboardingDismissTarget } from "@/lib/onboardingExit";
 
 /**
  * Client onboarding.
  *
- * Three regions moving at three rates: a stack of illustrations that drift at
- * half the text's speed, a pager carrying only the text, and a fixed footer.
- * The art sits outside the pager and cross-fades on scroll position, which is
- * what lets it move at its own rate instead of locking to the page.
+ * Full-height horizontal pager over the content area so a swipe on the art,
+ * the text, or the empty space between pages the same way. Illustrations sit
+ * *behind* the pager (pointerEvents none) and still drift at 40% of the text
+ * speed with a cross-fade — that parallax must not move into the pager pages.
  *
- * Reachable from the launcher today. The once-only gate lands with the
- * session store, so nothing here persists.
+ * Entry points are explicit via `returnTo` (see `lib/onboardingExit.ts`).
+ * Finish and Skip both use that map; history alone is not enough for Settings replay.
  */
 
 const HERO_MAX = 360;
@@ -48,10 +49,13 @@ export default function OnboardingScreen() {
   const colors = useThemeColors();
   const { width } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollX = useSharedValue(0);
   const [index, setIndex] = useState(0);
+  /** Text band height so art stays in the upper region (original visual). */
+  const [textBandHeight, setTextBandHeight] = useState(0);
 
   // `useWindowDimensions` reports 0 on the first web paint, and a negative
   // width is not a valid SVG dimension. Clamp rather than let it through.
@@ -82,12 +86,14 @@ export default function OnboardingScreen() {
   }
 
   function dismiss() {
-    if (router.canGoBack()) router.back();
-    else router.replace("/");
+    const target = resolveOnboardingDismissTarget(returnTo, router.canGoBack());
+    if (target.type === "back") router.back();
+    else router.replace(target.href);
   }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
+      {/* Header stays outside the pager so Skip is never swallowed. */}
       <View className="gg-page flex-row items-center justify-between py-3">
         <GridgoLogo />
         <Pressable
@@ -100,43 +106,71 @@ export default function OnboardingScreen() {
         </Pressable>
       </View>
 
+      {/*
+        Content area: art behind (non-interactive), full-height pager on top.
+        Footer (dots + CTA) stays below so it keeps its own targets.
+      */}
       <View className="flex-1 overflow-hidden">
-        {onboardingSlides.map((slide, slideIndex) => (
-          <Hero
-            key={slide.id}
-            index={slideIndex}
-            art={slide.art}
-            scrollX={scrollX}
-            width={width}
-            heroWidth={heroWidth}
-            palette={palette}
-          />
-        ))}
-      </View>
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            // Leave the measured text band clear so art does not sit under copy.
+            bottom: textBandHeight > 0 ? textBandHeight : 0,
+            overflow: "hidden",
+          }}
+        >
+          {onboardingSlides.map((slide, slideIndex) => (
+            <Hero
+              key={slide.id}
+              index={slideIndex}
+              art={slide.art}
+              scrollX={scrollX}
+              width={width}
+              heroWidth={heroWidth}
+              palette={palette}
+            />
+          ))}
+        </View>
 
-      <Animated.ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        scrollEventThrottle={16}
-        style={{ flexGrow: 0 }}
-      >
-        {onboardingSlides.map((slide, slideIndex) => (
-          <Slide
-            key={slide.id}
-            active={slideIndex === index}
-            index={slideIndex}
-            step={slide.step}
-            title={slide.title}
-            body={slide.body}
-            scrollX={scrollX}
-            width={width}
-          />
-        ))}
-      </Animated.ScrollView>
+        <Animated.ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={onScroll}
+          onMomentumScrollEnd={onMomentumScrollEnd}
+          scrollEventThrottle={16}
+          // Full content area — not a short text band — so top/mid/bottom swipes page.
+          style={StyleSheet.absoluteFillObject}
+          // Stretch pages to the pager's laid-out height (gesture surface = art + text).
+          contentContainerStyle={{ height: "100%" }}
+        >
+          {onboardingSlides.map((slide, slideIndex) => (
+            <Slide
+              key={slide.id}
+              active={slideIndex === index}
+              index={slideIndex}
+              step={slide.step}
+              title={slide.title}
+              body={slide.body}
+              scrollX={scrollX}
+              width={width}
+              onTextBandLayout={
+                slideIndex === 0
+                  ? (height) => {
+                      // First page sets the art window; others share the same band.
+                      if (height > 0) setTextBandHeight(height);
+                    }
+                  : undefined
+              }
+            />
+          ))}
+        </Animated.ScrollView>
+      </View>
 
       <View className="gg-page gap-4 pb-2 pt-5">
         <PaginationDots
@@ -219,19 +253,34 @@ type SlideProps = {
   body: string;
   scrollX: SharedValue<number>;
   width: number;
+  /** Report text-band height so the art window stays above the copy. */
+  onTextBandLayout?: (height: number) => void;
 };
 
 /**
- * One text page. The hairline and the step number are the job-ticket language
- * the design-system route already uses, and the number is what states position
- * when motion is off.
+ * One full-height text page. The hairline and the step number are the job-ticket
+ * language the design-system route already uses, and the number is what states
+ * position when motion is off.
+ *
+ * The page is full height (transparent upper region + text at the bottom) so a
+ * horizontal drag over the illustration pages. Art still renders behind the
+ * pager; this page does not host the illustration.
  *
  * All three pages stay mounted so the pager can scroll, and fading one out
  * does not take it out of the accessibility tree. Without the two hiding props
  * below, VoiceOver and TalkBack walk straight through headings and copy the
  * user cannot see.
  */
-function Slide({ active, index, step, title, body, scrollX, width }: SlideProps) {
+function Slide({
+  active,
+  index,
+  step,
+  title,
+  body,
+  scrollX,
+  width,
+  onTextBandLayout,
+}: SlideProps) {
   const reducedMotion = useReducedMotion();
 
   const style = useAnimatedStyle(() => {
@@ -244,9 +293,15 @@ function Slide({ active, index, step, title, body, scrollX, width }: SlideProps)
     <Animated.View
       accessibilityElementsHidden={!active}
       importantForAccessibility={active ? "auto" : "no-hide-descendants"}
-      style={[{ width }, style]}
+      // height 100% of the pager content container = full swipe surface.
+      style={[{ width, height: "100%" }, style]}
     >
-      <View className="gg-page gap-2">
+      {/* Transparent upper region — gestures land here over the art. */}
+      <View style={{ flex: 1 }} />
+      <View
+        className="gg-page gap-2"
+        onLayout={(event) => onTextBandLayout?.(event.nativeEvent.layout.height)}
+      >
         <View className="gg-divider" />
         <Text className="pt-2 text-overline text-text-muted">{step}</Text>
         <Text className="text-h1 text-text-primary" accessibilityRole="header">

@@ -6,14 +6,15 @@
  * screen names here keeps the layout and the regression test in lockstep so a
  * future refactor cannot silently drop the signed-in area guard.
  *
- * `order/[id]` and `design-system` sit outside `(tabs)` on the root stack —
- * a tabs-only guard would leave those screens open after sign-out.
+ * `order/[id]`, `design-system`, and `settings` sit outside `(tabs)` on the
+ * root stack — a tabs-only guard would leave those screens open after sign-out.
  */
 
 export const AUTHENTICATED_ROOT_SCREENS = [
   "(tabs)",
   "order/[id]",
   "design-system",
+  "settings",
 ] as const;
 
 /** Only reachable while signed out (mirror of the signed-in set). */
