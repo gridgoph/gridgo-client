@@ -1,6 +1,7 @@
 import { Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
+import type { AccountType } from "@/lib/api";
 import { useThemeColors } from "@/hooks/useTheme";
 
 /**
@@ -19,12 +20,56 @@ import { useThemeColors } from "@/hooks/useTheme";
 const CENTRES = [15, 50, 85] as const;
 const RADIUS = 13;
 
-type Props = {
+/** Mark → wordmark gap (`gap-2` = 8). Used to left-align the role under the wordmark. */
+const MARK_WORDMARK_GAP = 8;
+
+type MarkProps = {
   /** Rendered edge length in px. The grid scales with it. */
   size?: number;
 };
 
-export function GridgoMark({ size = 28 }: Props) {
+/**
+ * Role identity under the wordmark across the product family.
+ * Individual client has no role — plain GRIDGO. Typed so a free string
+ * cannot ship a wrong lockup label.
+ */
+export type GridgoLogoRole = "business" | "supplier" | "rider" | "admin";
+
+const ROLE_VISIBLE: Record<GridgoLogoRole, string> = {
+  business: "Business",
+  supplier: "Supplier",
+  rider: "RIDER",
+  admin: "Admin",
+};
+
+/** Spoken name for the whole lockup — screen reader says this once. */
+export function gridgoLogoAccessibilityLabel(role?: GridgoLogoRole): string {
+  switch (role) {
+    case "business":
+      return "GRIDGO Business";
+    case "supplier":
+      return "GRIDGO Supplier";
+    case "rider":
+      return "GRIDGO Rider";
+    case "admin":
+      return "GRIDGO Admin";
+    default:
+      return "GRIDGO";
+  }
+}
+
+/**
+ * Client binary only: Business lockup when `accountType` is explicitly
+ * `"business"`. Missing, individual, or anything else → plain GRIDGO.
+ * Do not call this with orgName.
+ */
+export function logoRoleForClientAccount(
+  accountType: AccountType | null | undefined,
+): GridgoLogoRole | undefined {
+  return accountType === "business" ? "business" : undefined;
+}
+
+export function GridgoMark({ size = 28 }: MarkProps) {
   const colors = useThemeColors();
 
   return (
@@ -52,27 +97,65 @@ export function GridgoMark({ size = 28 }: Props) {
   );
 }
 
+type LogoProps = {
+  /** Rendered mark edge length in px. */
+  size?: number;
+  /**
+   * Optional role lockup under the wordmark. Omit for plain GRIDGO
+   * (individual client, signed-out, or product-agnostic surfaces).
+   */
+  role?: GridgoLogoRole;
+};
+
 /**
- * Mark plus wordmark.
+ * Mark plus wordmark, with optional role lockup.
+ *
+ * Layout from the family reference: mark left, wordmark right, role label
+ * *below the wordmark and left-aligned with it* — not beside the wordmark,
+ * not centred under the whole lockup.
  *
  * `GO` uses `brand`, not `actionYellow`. `#FFDE58` on the light canvas is
- * illegible, and `brand` resolves to `#FFDE587` in Light and `#FFDE58` in
+ * illegible, and `brand` resolves to `#D4A017` in Light and `#FFDE58` in
  * Dark — yellow in both themes, without spending the screen's one CTA colour.
+ *
+ * Rider is the deliberate exception: uppercase `RIDER` in a filled yellow
+ * pill with dark text (always dark — it sits on yellow, not the canvas).
  */
-export function GridgoLogo({ size = 28 }: Props) {
+export function GridgoLogo({ size = 28, role }: LogoProps) {
+  const visibleRole = role ? ROLE_VISIBLE[role] : null;
+
   return (
     <View
-      className="flex-row items-center gap-2"
-      // Collapses the mark and both text runs into one node, so a screen
-      // reader says "GRIDGO" once rather than spelling out the pieces.
+      // Collapses the mark, wordmark, and role into one node, so a screen
+      // reader says "GRIDGO Supplier" once rather than spelling out pieces.
       accessible
       accessibilityRole="image"
-      accessibilityLabel="GRIDGO"
+      accessibilityLabel={gridgoLogoAccessibilityLabel(role)}
     >
-      <GridgoMark size={size} />
-      <Text className="font-brand text-h3 text-text-primary">
-        GRID<Text className="text-brand">GO</Text>
-      </Text>
+      <View className="flex-row items-center" style={{ gap: MARK_WORDMARK_GAP }}>
+        <GridgoMark size={size} />
+        <Text className="font-brand text-h3 text-text-primary">
+          GRID<Text className="text-brand">GO</Text>
+        </Text>
+      </View>
+      {visibleRole != null ? (
+        <View
+          // Sit under the wordmark only: mark width + the mark→wordmark gap.
+          style={{ marginLeft: size + MARK_WORDMARK_GAP, marginTop: 2 }}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          {role === "rider" ? (
+            <View className="self-start rounded-pill bg-action-yellow px-2 py-0.5">
+              <Text className="font-medium text-caption text-action-yellow-on">
+                {visibleRole}
+              </Text>
+            </View>
+          ) : (
+            <Text className="text-caption text-text-muted">{visibleRole}</Text>
+          )}
+        </View>
+      ) : null}
     </View>
   );
 }

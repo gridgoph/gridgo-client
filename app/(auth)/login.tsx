@@ -33,6 +33,12 @@ export default function LoginScreen() {
 
   return (
     <View className="flex-1 justify-center bg-canvas px-6">
+      {/*
+        Plain GRIDGO while signed out. Account type is unknown until login
+        resolves, and the product is one client binary — flashing Business
+        after sign-in on this screen would fight identity stability. Business
+        lockup appears on signed-in identity surfaces (home header) only.
+      */}
       <GridgoLogo />
       <Text className="mt-6 font-satoshi-bold text-2xl text-text-primary">Client sign in</Text>
       <Text className="mt-1 font-satoshi text-text-secondary">GRIDGO managed printing · Davao</Text>

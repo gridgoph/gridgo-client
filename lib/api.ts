@@ -10,11 +10,19 @@ import { Platform } from "react-native";
 
 export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin";
 
+/**
+ * Client account kind for branding. Authoritative from login /auth/me —
+ * never infer business from `orgName` (profile edits would flicker identity).
+ */
+export type AccountType = "individual" | "business";
+
 export type User = {
   id: string;
   email: string;
   name: string;
   role: Role;
+  /** Present for clients; missing/legacy consumers treat as individual. */
+  accountType?: AccountType;
   orgName?: string;
   supplierName?: string;
 };

@@ -19,7 +19,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { GridgoLogo } from "@/components/GridgoLogo";
+import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { PaginationDots } from "@/components/PaginationDots";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import {
@@ -30,6 +30,7 @@ import {
 import { onboardingSlides } from "@/data/onboarding";
 import { useThemeColors } from "@/hooks/useTheme";
 import { resolveOnboardingDismissTarget } from "@/lib/onboardingExit";
+import { useSession } from "@/store/session";
 
 /**
  * Client onboarding.
@@ -50,6 +51,7 @@ export default function OnboardingScreen() {
   const { width } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
+  const accountType = useSession((s) => s.user?.accountType);
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollX = useSharedValue(0);
@@ -95,7 +97,7 @@ export default function OnboardingScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
       {/* Header stays outside the pager so Skip is never swallowed. */}
       <View className="gg-page flex-row items-center justify-between py-3">
-        <GridgoLogo />
+        <GridgoLogo role={logoRoleForClientAccount(accountType)} />
         <Pressable
           onPress={dismiss}
           accessibilityRole="button"
