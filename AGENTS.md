@@ -82,6 +82,7 @@ Prefer these modules over burying rules in screens:
 - Onboarding pager is full-height over the content area (art behind, `pointerEvents="none"`) so swipes work over the illustration; parallax stays outside the pager.
 - Account holds identity + Sign out; theme and “View onboarding” live on `app/settings.tsx`.
 - `components/GridgoTabBar.tsx` — bottom pad is `insets.bottom + design` (never `Math.max`); labelled columns `min-h-20` (MD3 80dp), not rigid `h-13`
+- `components/GridgoLogo.tsx` — mark + wordmark + optional role lockup (`GridgoLogoRole`). Client uses `logoRoleForClientAccount(user.accountType)` only — never infer from `orgName`. Signed-out surfaces stay plain GRIDGO (no flash). Identity surfaces only: login, onboarding, home header.
 - `store/requestDraft.ts` — in-progress request (Zustand + AsyncStorage)
 - `store/theme.ts` — system/light/dark preference persistence
 

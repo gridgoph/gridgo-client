@@ -4,7 +4,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
-import { GridgoLogo } from "@/components/GridgoLogo";
+import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { OrderCard } from "@/components/OrderCard";
 import { ProductCard } from "@/components/ProductCard";
 import { StatusChip } from "@/components/StatusChip";
@@ -92,7 +92,7 @@ export default function HomeScreen() {
       <ScrollView className="gg-screen" keyboardShouldPersistTaps="handled">
         <View className="gg-page gap-6 pb-10 pt-4">
           <View>
-            <GridgoLogo />
+            <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
             <Text className="mt-4 text-h2 text-text-primary">
               {user?.orgName || user?.name || "GRIDGO"}
             </Text>
