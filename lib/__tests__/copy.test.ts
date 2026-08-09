@@ -3,7 +3,6 @@ import {
   formatPaymentSummary,
   paymentMethodLabel,
   userFacingError,
-  zoneLabel,
 } from "@/lib/copy";
 import { ApiError } from "@/lib/api";
 
@@ -27,12 +26,6 @@ describe("actorLabel", () => {
   });
 });
 
-describe("zoneLabel", () => {
-  it("shows place names, not codes", () => {
-    expect(zoneLabel("davao_central")).toBe("Davao Central");
-    expect(zoneLabel("unknown_zone")).toBe("Davao area");
-  });
-});
 
 describe("userFacingError", () => {
   it("maps API codes to recovery copy", () => {

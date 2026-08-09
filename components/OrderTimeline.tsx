@@ -2,7 +2,7 @@ import { Text, View } from "react-native";
 
 import { actorLabel } from "@/lib/copy";
 import { getOrderStateMeta } from "@/lib/orderState";
-import { formatRelativeTime } from "@/lib/relativeTime";
+import { formatRelativeTime, formatTimelineStamp } from "@/lib/relativeTime";
 
 export type TimelineEntry = {
   at: string;
@@ -18,20 +18,30 @@ type Props = {
 };
 
 /**
- * Order history from the API `timeline` array.
- * Current state is the single yellow step.
+ * The order's history: who acted, when, and what they said.
+ *
+ * A timeline is genuinely chronological and causal, so its ordering carries
+ * real meaning — and the accountability this product exists to provide is the
+ * actor and the clock time on every entry, not just a status word.
  */
 export function OrderTimeline({ timeline, currentState }: Props) {
   if (!timeline.length) {
-    return <Text className="text-body text-text-muted">No timeline events yet.</Text>;
+    return (
+      <Text className="text-body text-text-muted">
+        Nothing has happened on this job yet. Every step, and who took it, appears here.
+      </Text>
+    );
   }
+
+  // Newest first: what just happened is what a client came to read.
+  const entries = [...timeline].reverse();
 
   return (
     <View className="gap-0">
-      {timeline.map((entry, index) => {
+      {entries.map((entry, index) => {
         const meta = getOrderStateMeta(entry.state);
-        const isCurrent = entry.state === currentState && index === timeline.length - 1;
-        const isLast = index === timeline.length - 1;
+        const isCurrent = index === 0 && entry.state === currentState;
+        const isLast = index === entries.length - 1;
 
         return (
           <View key={`${entry.at}-${entry.state}-${index}`} className="flex-row gap-3">
@@ -45,22 +55,24 @@ export function OrderTimeline({ timeline, currentState }: Props) {
               />
               {!isLast ? <View className="w-px flex-1 bg-outline" /> : null}
             </View>
-            <View className={`flex-1 pb-4 ${isLast ? "pb-0" : ""}`}>
+            <View className={isLast ? "flex-1 pb-0" : "flex-1 pb-5"}>
               <Text
                 className={
                   isCurrent
-                    ? "text-body font-medium text-text-primary"
-                    : "text-body text-text-primary"
+                    ? "text-body-lg font-medium text-text-primary"
+                    : "text-body-lg text-text-primary"
                 }
               >
                 {meta.label}
               </Text>
               <Text className="mt-0.5 text-caption text-text-muted">
-                {formatRelativeTime(entry.at)}
-                {entry.by ? ` · ${actorLabel(entry.by)}` : ""}
+                {entry.by ? `${actorLabel(entry.by)} · ` : ""}
+                {formatTimelineStamp(entry.at)} · {formatRelativeTime(entry.at)}
               </Text>
               {entry.note ? (
-                <Text className="mt-1 text-body text-text-secondary">{entry.note}</Text>
+                <Text className="mt-1.5 text-body text-text-secondary" selectable>
+                  {entry.note}
+                </Text>
               ) : null}
             </View>
           </View>

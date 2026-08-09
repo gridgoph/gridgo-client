@@ -55,20 +55,6 @@ export function actorLabel(by: string | null | undefined): string {
   return "Team member";
 }
 
-/** Delivery zones the client may pick — labels, not codes. */
-export const ZONE_OPTIONS: { value: string; label: string }[] = [
-  { value: "davao_central", label: "Davao Central" },
-  { value: "davao_north", label: "Davao North" },
-  { value: "davao_south", label: "Davao South" },
-  { value: "davao_east", label: "Davao East" },
-  { value: "davao_west", label: "Davao West" },
-];
-
-export function zoneLabel(zone: string | null | undefined): string {
-  if (!zone) return "—";
-  return ZONE_OPTIONS.find((z) => z.value === zone)?.label ?? "Davao area";
-}
-
 /**
  * Map network / API failures to recovery-oriented plain language.
  * Never leak error codes like `transition_not_allowed` to the UI.
