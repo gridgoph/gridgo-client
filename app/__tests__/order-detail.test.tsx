@@ -22,6 +22,16 @@ jest.mock("expo-document-picker", () => ({
   getDocumentAsync: jest.fn(async () => ({ canceled: true, assets: null })),
 }));
 
+// The delivery map routes through OSRM. Tests must not touch the network, and
+// the route the card draws should be a fact of the test, not of the internet.
+jest.mock("@/lib/osrm", () => {
+  const actual = jest.requireActual("@/lib/osrm");
+  return { ...actual, fetchRoute: jest.fn() };
+});
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const osrm = require("@/lib/osrm");
+
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
   return {
@@ -120,6 +130,16 @@ describe("OrderDetailScreen", () => {
     api.listIssues.mockResolvedValue([]);
     api.getRiderLocation.mockResolvedValue(null);
     api.getFileDownloadUrl.mockRejectedValue(new Error("no file"));
+    osrm.fetchRoute.mockResolvedValue({
+      routed: true,
+      distanceMetres: 4200,
+      durationSeconds: 600,
+      coordinates: [
+        [125.6085, 7.064],
+        [125.6137, 7.0853],
+      ],
+      statusLabel: null,
+    });
   });
 
   it("opens with what is happening, in plain language", async () => {
@@ -181,6 +201,61 @@ describe("OrderDetailScreen", () => {
 
     expect(await screen.findByText(/has not shared a position/i)).toBeTruthy();
     expect(screen.getByText("No location shared")).toBeTruthy();
+  });
+
+  it("reports road distance from the rider, and never an ETA", async () => {
+    setOrder({
+      state: "out_for_delivery",
+      riderId: "user_rider",
+      dropoff: { lat: 7.0853, lng: 125.6137, label: "Bajada, Davao City" },
+      pickup: { lat: 7.064, lng: 125.6085, label: "PrintRight Davao" },
+    });
+    api.getRiderLocation.mockResolvedValue({
+      id: "ping_1",
+      orderId: "ord_demo_1",
+      riderId: "user_rider",
+      lat: 7.07,
+      lng: 125.611,
+      accuracy: null,
+      at: new Date().toISOString(),
+    });
+
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText(/4\.2 km from your drop-off by road/)).toBeTruthy();
+    // OSRM returns a travel time; presenting it would read as a promise.
+    expect(screen.queryByText(/10 min|arriv/i)).toBeNull();
+    expect(screen.getByText(/does not publish a live ETA/i)).toBeTruthy();
+  });
+
+  it("still draws the delivery when OSRM cannot be reached", async () => {
+    setOrder({
+      state: "out_for_delivery",
+      riderId: "user_rider",
+      dropoff: { lat: 7.0853, lng: 125.6137, label: "Bajada, Davao City" },
+      pickup: { lat: 7.064, lng: 125.6085, label: "PrintRight Davao" },
+    });
+    api.getRiderLocation.mockResolvedValue({
+      id: "ping_1",
+      orderId: "ord_demo_1",
+      riderId: "user_rider",
+      lat: 7.07,
+      lng: 125.611,
+      accuracy: null,
+      at: new Date().toISOString(),
+    });
+    osrm.fetchRoute.mockResolvedValue(
+      jest.requireActual("@/lib/osrm").fallbackRoute(
+        { lat: 7.07, lng: 125.611 },
+        { lat: 7.0853, lng: 125.6137 },
+      ),
+    );
+
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    // Falls back to the straight line, and says which one the client reads.
+    expect(await screen.findByText(/in a straight line/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Map showing the print shop/)).toBeTruthy();
   });
 
   it("offers a real issue report while the window is open", async () => {

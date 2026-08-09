@@ -79,7 +79,8 @@ Prefer these modules over burying rules in screens:
 - `lib/sizes.ts` — the one pick list the client owns (the platform has no size taxonomy). Custom is allowed only where the trade cuts to order, and is marked as custom.
 - `lib/deadline.ts` / `lib/quantity.ts` / `lib/address.ts` — bounds and wording for the date-time picker, the quantity stepper and the structured address
 - `lib/artworkUpload.ts` — upload phases and error copy. **Transfer progress is not success**: only a `201` carrying a `fileId` reaches `stored`.
-- `lib/tracking.ts` — staleness, real remaining distance, map region. GRIDGO publishes no ETA; do not invent one.
+- `lib/tracking.ts` — staleness, remaining distance, and the lat/lng ↔ GeoJSON `[lon, lat]` boundary. GRIDGO publishes no ETA; do not invent one.
+- `lib/mapHtml.ts` + `lib/osrm.ts` + `components/DeliveryMap.native.tsx` — the map stack, mirroring the same-named files in **gridgo-rider**. See "Maps" below.
 - `lib/issueWindow.ts` — the 24-hour window is decided by order state server-side, so show elapsed time, never a countdown
 - `lib/productPreview.ts` — template map; mockup label is fixed here
 - `lib/persistStorage.ts` — required Zustand persistence boundary: use AsyncStorage in native/real-browser runtimes and inert storage only when `typeof window === "undefined"` during SSR; never gate persistence on `Platform.OS`
@@ -101,6 +102,20 @@ Prefer these modules over burying rules in screens:
 - New request order: create the order as a **draft** → attach the file → transition to `submitted`. Operations must never open a job whose artwork has not landed.
 - The client sees **two** proof decisions at different points: `proof_approval` (Operations' artwork proof, before matching) and `supplier_proof_review` (the supplier's print proof, before payment). Both are `isAnyProofDecisionState`.
 - A QA rejection is `client_correction` → replace the file on the **same order** → `submitted`. Never create a second order; the quote, history and payment survive.
+
+### Maps
+
+Every GRIDGO app runs **one** map stack: **Leaflet over OpenStreetMap tiles inside `react-native-webview`, with OSRM for the route line.** Keep `react-native-webview` on the same version as gridgo-rider.
+
+**Do not reach for `react-native-maps` or `expo-maps`.** On Android `react-native-maps` *is* Google Maps: it needs a Google Maps API key and a billing account, and without one the client sees a blank grey rectangle on a physical phone. This has been decided; a PR that reintroduces it will be sent back.
+
+- `lib/mapHtml.ts` builds the whole Leaflet document. Model changes are pushed into the live page with `injectJavaScript`; only a theme flip rebuilds the HTML, so the tile set swaps cleanly.
+- Leaflet is loaded from unpkg with `integrity="sha384-…"`. Bump the version and you must recompute both hashes, or the map silently stops loading. The command is in the comment above the tags.
+- OSM tile attribution is a licence condition. Never hide it.
+- `lib/osrm.ts` uses the free, keyless, rate-limited public OSRM demo. **Treat failure as normal** — it falls back to a straight line and says so. Nothing on a tracking surface may block on it.
+- OSRM path order is `lon,lat`. Reversed, Davao lands in the ocean. `lib/tracking.ts` owns the conversion; convert only at the network/HTML boundary.
+- OSRM also returns a travel time. The client deliberately does **not** show it: GRIDGO publishes no ETA, and a routing engine's guess next to a delivery reads as a promise nobody made.
+- `components/DeliveryMap.tsx` is the web fallback. `react-native-webview` has no web build and renders its own red "does not support this platform" string — an internal message that must never reach a client.
 
 ### Honest-state rules that keep being re-broken
 

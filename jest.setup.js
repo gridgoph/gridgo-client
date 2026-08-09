@@ -7,21 +7,16 @@ jest.mock("@react-native-async-storage/async-storage", () =>
   require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
 );
 
-// react-native-maps has no JS-only implementation. The delivery card's own
-// contract — region, markers, staleness — is covered by lib/tracking tests, so
-// here the map is just a host view that must render without a native module.
-jest.mock("react-native-maps", () => {
+// The map is Leaflet inside a WebView, so there is no JS-only implementation.
+// What the map draws is decided by lib/mapHtml and lib/tracking, which are
+// unit-tested directly; here the WebView is a host view that must render.
+jest.mock("react-native-webview", () => {
   const React = require("react");
   const { View } = require("react-native");
-  const passthrough = (name) => {
-    const Component = (props) => React.createElement(View, props, props.children);
-    Component.displayName = name;
-    return Component;
-  };
-  return {
-    __esModule: true,
-    default: passthrough("MapView"),
-    Marker: passthrough("Marker"),
-    Polyline: passthrough("Polyline"),
-  };
+  const WebView = React.forwardRef((props, ref) => {
+    React.useImperativeHandle(ref, () => ({ injectJavaScript: jest.fn() }));
+    return React.createElement(View, props, props.children);
+  });
+  WebView.displayName = "WebView";
+  return { __esModule: true, WebView, default: WebView };
 });
