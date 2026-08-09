@@ -223,7 +223,10 @@ export default function NewRequestScreen() {
         createdOrderId.current = order.id;
       }
 
-      await artwork.attachTo(orderId);
+      // A retry that got past the attach must not bind the same file twice.
+      if (artwork.state.phase !== "attached") {
+        await artwork.attachTo(orderId);
+      }
       await api.transitionOrder(orderId, "submitted", {
         note: "Sent for artwork QA",
       });
@@ -564,7 +567,7 @@ function DetailsStep({
           />
         </FormField>
 
-        <FormField label="Barangay" helper={`Davao street names repeat across barangays.`}>
+        <FormField label="Barangay" helper="Davao street names repeat across barangays.">
           <TextField
             value={draft.barangay}
             onChangeText={(barangay) => draft.patch({ barangay })}
