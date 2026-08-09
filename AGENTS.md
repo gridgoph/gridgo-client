@@ -72,9 +72,15 @@ Product scope for this binary: **`PRD.md`**. Fleet blueprint: `gridgo-tinker`.
 
 Prefer these modules over burying rules in screens:
 
-- `lib/orderState.ts` — state labels/tones, grand total, phase predicates
+- `lib/orderState.ts` — state labels/tones, phase predicates, `orderNextAction` / `orderWaitingOn` (the one client action per state), `latestNoteForState` (how a rejection reason reaches the screen)
 - `lib/payment.ts` — COD ≤ ₱1,500 + one-active COD; credits shortfall copy
-- `lib/requestValidation.ts` — stepper validation + demo preflight checklist
+- `lib/requestValidation.ts` — stepper validation; artwork passes only on a server-issued `fileId`
+- `lib/taxonomy.ts` + `lib/zones.ts` — materials, finishes, delivery areas and **fees** come from `GET /taxonomy` and `GET /zones`. Never hardcode a material or a delivery fee; a picker, not free text, is what keeps two orders for the same tarpaulin matchable.
+- `lib/sizes.ts` — the one pick list the client owns (the platform has no size taxonomy). Custom is allowed only where the trade cuts to order, and is marked as custom.
+- `lib/deadline.ts` / `lib/quantity.ts` / `lib/address.ts` — bounds and wording for the date-time picker, the quantity stepper and the structured address
+- `lib/artworkUpload.ts` — upload phases and error copy. **Transfer progress is not success**: only a `201` carrying a `fileId` reaches `stored`.
+- `lib/tracking.ts` — staleness, real remaining distance, map region. GRIDGO publishes no ETA; do not invent one.
+- `lib/issueWindow.ts` — the 24-hour window is decided by order state server-side, so show elapsed time, never a countdown
 - `lib/productPreview.ts` — template map; mockup label is fixed here
 - `lib/persistStorage.ts` — required Zustand persistence boundary: use AsyncStorage in native/real-browser runtimes and inert storage only when `typeof window === "undefined"` during SSR; never gate persistence on `Platform.OS`
 - `lib/navigationHeaders.ts` — multi-origin stack pushes use `headerBackButtonDisplayMode: "minimal"` so iOS never shows the `(tabs)` route name as a back label
@@ -87,10 +93,20 @@ Prefer these modules over burying rules in screens:
 - `store/requestDraft.ts` — in-progress request (Zustand + AsyncStorage)
 - `store/theme.ts` — system/light/dark preference persistence
 
-### Known API gaps (do not fake)
+### Files and proofs
 
-- No client GET for rider location pings — tracking card must stay honest/watch-only.
-- No material-issue report endpoint — issue window may show countdown with action unavailable.
+`docs/STORAGE_API.md` in **gridgo-api** is the authoritative contract for uploads — read it before touching `POST /files`, `attach`, or `download-url`. Client-side consequences that are easy to get wrong:
+
+- Upload with `XMLHttpRequest` (`lib/api.ts` `uploadFile`), never by reading the URI into memory. A 200 MB artwork must stream, or mid-range Android runs out of memory. iOS reports unreliable MIME types — send what the picker gave and let the server decide from magic bytes.
+- New request order: create the order as a **draft** → attach the file → transition to `submitted`. Operations must never open a job whose artwork has not landed.
+- The client sees **two** proof decisions at different points: `proof_approval` (Operations' artwork proof, before matching) and `supplier_proof_review` (the supplier's print proof, before payment). Both are `isAnyProofDecisionState`.
+- A QA rejection is `client_correction` → replace the file on the **same order** → `submitted`. Never create a second order; the quote, history and payment survive.
+
+### Honest-state rules that keep being re-broken
+
+- Rider location comes from `GET /dispatch/:id/location` and is often `{ ping: null }`. Say so; never render an empty map as if it were current.
+- `POST /orders/:id/issues` is refused unless the order is in the issue window, and refuses a second open report with `issue_already_open`. Map both to plain language in `lib/copy.ts`.
+- The delivery fee is the zone's, from the API. A constant in the app will disagree with what the client is charged.
 
 ## Development Philosophy
 

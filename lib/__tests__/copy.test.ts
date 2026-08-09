@@ -34,6 +34,17 @@ describe("userFacingError", () => {
     expect(userFacingError(err, "fallback")).not.toMatch(/cod_one_active/);
   });
 
+  it.each([
+    ["issue_already_open", /already have a report open/i],
+    ["issue_window_closed", /signed off/i],
+    ["reason_required", /what needs to change/i],
+    ["proof_decision_not_allowed", /no proof waiting/i],
+  ])("turns %s into a next step", (code, expected) => {
+    const message = userFacingError(new ApiError(409, { error: code }), "fallback");
+    expect(message).toMatch(expected);
+    expect(message).not.toContain(code);
+  });
+
   it("explains credits shortfall from 402 body", () => {
     const err = new ApiError(402, {
       error: "insufficient_credits",

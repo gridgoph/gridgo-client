@@ -91,6 +91,16 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "Cash on Delivery only covers orders up to ₱1,500 including delivery. Pay with Pilot Credits instead.";
       case "cod_one_active":
         return "You already have an unpaid Cash on Delivery order. Finish or pay that one before starting another.";
+      case "issue_already_open":
+        return "You already have a report open on this job. Operations is reviewing it — add anything else to that one rather than opening a second.";
+      case "issue_window_closed":
+        return "This job has been signed off, so the issue window is closed. Message Operations if something is still wrong with it.";
+      case "invalid_issue":
+        return "Describe what is wrong before sending the report — Operations acts on your words alone.";
+      case "reason_required":
+        return "Say what needs to change. Your supplier reworks the proof from this reason.";
+      case "proof_decision_not_allowed":
+        return "There is no proof waiting on your decision right now. Pull this order again to see where it got to.";
       case "not_found":
         return "Nothing was found for that request. Go back and try again.";
       default:

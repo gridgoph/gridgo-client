@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -151,5 +151,53 @@ describe("NewRequestScreen", () => {
 
     expect(await screen.findByText("Choose artwork file")).toBeTruthy();
     expect(screen.queryByText("Continue")).toBeNull();
+  });
+
+  it("adopts an uploaded file that arrives when the draft rehydrates", async () => {
+    // The persisted draft comes back from storage after the first render, so a
+    // file uploaded before the app was killed has to be picked up when it lands.
+    useRequestDraft.setState({ stepIndex: 1 });
+    await renderInSafeArea(<NewRequestScreen />);
+    expect(await screen.findByText("Choose artwork file")).toBeTruthy();
+
+    await act(async () => {
+      useRequestDraft.setState({
+        artworkFileId: "file_abc123",
+        artworkName: "opening-banner.pdf",
+      });
+    });
+
+    // Named on the upload card, and again on the preview it now unlocks.
+    expect((await screen.findAllByText("opening-banner.pdf")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Continue")).toBeTruthy();
+    expect(screen.queryByText("Choose artwork file")).toBeNull();
+  });
+
+  it("reads the review step as a summary, not the raw stored strings", async () => {
+    useRequestDraft.setState({
+      stepIndex: 2,
+      size: "3x6 ft",
+      material: "13oz tarpaulin",
+      quantity: 4,
+      deadline: "2026-08-15T02:00:00.000Z",
+      addressLine1: "12 J.P. Laurel Ave",
+      barangay: "Bajada",
+      landmark: "beside the blue gate",
+      artworkFileId: "file_abc123",
+      artworkName: "opening-banner.pdf",
+    });
+    await renderInSafeArea(<NewRequestScreen />);
+
+    // Sizes, quantities, deadlines and addresses read back as facts.
+    expect(await screen.findByText("3 × 6 ft")).toBeTruthy();
+    expect(screen.getByText("4 sqm")).toBeTruthy();
+    // Formatted for a reader — the exact wording is the device locale's.
+    expect(screen.getByText(/Aug.*2026 · /)).toBeTruthy();
+    expect(
+      screen.getByText("12 J.P. Laurel Ave, Bajada, Davao City (beside the blue gate)"),
+    ).toBeTruthy();
+    expect(screen.getByText("Davao Central (Bajada / JP Laurel)")).toBeTruthy();
+    // Never the raw instant the order actually stores.
+    expect(screen.queryByText(/2026-08-15T/)).toBeNull();
   });
 });

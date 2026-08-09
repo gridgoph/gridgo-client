@@ -120,11 +120,8 @@ function TemplateFrame({
 
   if (template === "signage") {
     return (
-      <View className="h-44 w-48 items-center">
-        <View className="h-full w-full overflow-hidden rounded-field border border-outline">
-          {children}
-        </View>
-        <View className="mt-2 h-2 w-20 rounded-pill bg-outline" />
+      <View className="h-44 w-48 overflow-hidden rounded-field border border-outline">
+        {children}
       </View>
     );
   }

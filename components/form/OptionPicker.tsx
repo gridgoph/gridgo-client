@@ -60,6 +60,12 @@ export function OptionPicker({
 
   const selected = options.find((option) => option.value === value);
   const isCustom = Boolean(value) && !selected;
+  /**
+   * A draft outlives a taxonomy edit. When the stored value is not on the list
+   * and this field has no custom entry, it is a value the platform has since
+   * dropped — say so rather than dressing it up as a deliberate choice.
+   */
+  const staleValue = isCustom && !custom && options.length > 0;
 
   return (
     <>
@@ -77,10 +83,21 @@ export function OptionPicker({
         }
       >
         <Text
-          className={value ? "flex-1 text-body text-text-primary" : "flex-1 text-body text-text-muted"}
+          className={
+            value && !staleValue
+              ? "flex-1 text-body text-text-primary"
+              : staleValue
+                ? "flex-1 text-body text-warning"
+                : "flex-1 text-body text-text-muted"
+          }
           numberOfLines={1}
         >
-          {selected?.label ?? (isCustom ? `${value} (custom)` : placeholder)}
+          {selected?.label ??
+            (staleValue
+              ? `${value} — no longer offered`
+              : isCustom
+                ? `${value} (custom)`
+                : placeholder)}
         </Text>
         <ChevronDown size={18} color={colors.textMuted} strokeWidth={2} />
       </Pressable>

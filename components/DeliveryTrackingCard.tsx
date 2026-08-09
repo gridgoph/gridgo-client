@@ -7,7 +7,6 @@ import { StatusChip } from "@/components/StatusChip";
 import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
 import { formatDeadline } from "@/lib/deadline";
-import { formatRelativeTime } from "@/lib/relativeTime";
 import {
   isGeoPoint,
   regionForPoints,
@@ -34,7 +33,6 @@ const POLL_MS = 30_000;
 export function DeliveryTrackingCard({ order }: Props) {
   const [ping, setPing] = useState<RiderPing | null>(null);
   const [unavailable, setUnavailable] = useState(false);
-  const [checkedAt, setCheckedAt] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -44,8 +42,6 @@ export function DeliveryTrackingCard({ order }: Props) {
     } catch {
       // A failed poll must not silently look like "no rider yet".
       setUnavailable(true);
-    } finally {
-      setCheckedAt(Date.now());
     }
   }, [order.id]);
 
@@ -106,11 +102,6 @@ export function DeliveryTrackingCard({ order }: Props) {
           {order.promisedDate ? (
             <Text className="text-caption text-text-muted">
               Promised by {formatDeadline(order.promisedDate)}
-            </Text>
-          ) : null}
-          {checkedAt ? (
-            <Text className="text-caption text-text-muted">
-              Checked {formatRelativeTime(checkedAt)}
             </Text>
           ) : null}
         </View>

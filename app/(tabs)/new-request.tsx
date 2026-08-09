@@ -113,16 +113,36 @@ export default function NewRequestScreen() {
     }, [loadReference]),
   );
 
-  // Keep the persisted artwork id and the live upload in step. Uploading a
-  // replacement writes through, so an app kill mid-request keeps the file.
+  const patch = draft.patch;
+  const adoptArtwork = artwork.adopt;
+  const uploadedFileId = artwork.state.fileId;
+  const uploadedFileName = artwork.state.fileName;
+  const uploadPhase = artwork.state.phase;
+
+  // Keep the persisted draft and the live upload in step, both ways.
+  //
+  // A finished upload writes its id into the draft, so the file survives the
+  // app being killed. Coming back the other way matters just as much: the
+  // persisted draft rehydrates from AsyncStorage a frame or two after first
+  // render, so an already-uploaded file has to be adopted when it arrives, or
+  // the card would claim no artwork was ever chosen.
   useEffect(() => {
-    if (artwork.state.fileId && artwork.state.fileId !== draft.artworkFileId) {
-      draft.patch({
-        artworkFileId: artwork.state.fileId,
-        artworkName: artwork.state.fileName,
-      });
+    if (uploadedFileId && uploadedFileId !== draft.artworkFileId) {
+      patch({ artworkFileId: uploadedFileId, artworkName: uploadedFileName });
+      return;
     }
-  }, [artwork.state.fileId, artwork.state.fileName, draft]);
+    if (!uploadedFileId && uploadPhase === "empty" && draft.artworkFileId) {
+      adoptArtwork(draft.artworkFileId, draft.artworkName);
+    }
+  }, [
+    uploadedFileId,
+    uploadedFileName,
+    uploadPhase,
+    draft.artworkFileId,
+    draft.artworkName,
+    patch,
+    adoptArtwork,
+  ]);
 
   const materials = useMemo(
     () => materialOptions(taxonomy, draft.family),
@@ -146,8 +166,8 @@ export default function NewRequestScreen() {
   useEffect(() => {
     if (!zones.length) return;
     const resolved = resolveZoneCode(zones, draft.zone);
-    if (resolved !== draft.zone) draft.patch({ zone: resolved });
-  }, [zones, draft]);
+    if (resolved !== draft.zone) patch({ zone: resolved });
+  }, [zones, draft.zone, patch]);
 
   const deliveryFeeMinor = zoneDeliveryFeeMinor(zones, draft.zone);
   const estimatedPrintMinor =
@@ -255,62 +275,65 @@ export default function NewRequestScreen() {
 
           <RequestStepper currentIndex={draft.stepIndex} />
 
-          <Animated.View
-            key={stepId}
-            entering={reducedMotion ? undefined : FadeIn.duration(200)}
-            className="gap-8"
-          >
-            {stepId === "details" ? (
-              <DetailsStep
-                draft={draft}
-                materials={materials}
-                finishes={finishes}
-                sizeOptions={sizeOptions}
-                sizeCatalog={sizeCatalog}
-                zoneOptions={zoneOptions}
-                referenceError={referenceError}
-                onRetryReference={() => void loadReference()}
-                onBrowseCatalog={() => router.push("/(tabs)/home")}
-              />
-            ) : null}
-
-            {stepId === "artwork" ? (
-              <View className="gap-6">
-                <ArtworkUploadCard
-                  state={artwork.state}
-                  onPick={() => void artwork.pick()}
-                  onRetry={() => void artwork.retry()}
-                  onCancel={artwork.cancel}
+          {/*
+            The one orchestrated moment in this flow: a step landing. Animated
+            components take a style, not a class, so the layout stays on the
+            plain View inside.
+          */}
+          <Animated.View key={stepId} entering={reducedMotion ? undefined : FadeIn.duration(200)}>
+            <View className="gap-8">
+              {stepId === "details" ? (
+                <DetailsStep
+                  draft={draft}
+                  materials={materials}
+                  finishes={finishes}
+                  sizeOptions={sizeOptions}
+                  sizeCatalog={sizeCatalog}
+                  zoneOptions={zoneOptions}
+                  referenceError={referenceError}
+                  onRetryReference={() => void loadReference()}
+                  onBrowseCatalog={() => router.push("/(tabs)/home")}
                 />
-                {draft.artworkFileId ? (
-                  <ProductPreview
-                    family={draft.family}
-                    artworkName={draft.artworkName}
-                    productName={draft.productName}
-                    size={describeSize(draft.family, draft.size)}
-                    artworkFileId={draft.artworkFileId}
+              ) : null}
+
+              {stepId === "artwork" ? (
+                <View className="gap-6">
+                  <ArtworkUploadCard
+                    state={artwork.state}
+                    onPick={() => void artwork.pick()}
+                    onRetry={() => void artwork.retry()}
+                    onCancel={artwork.cancel}
                   />
-                ) : null}
-              </View>
-            ) : null}
+                  {draft.artworkFileId ? (
+                    <ProductPreview
+                      family={draft.family}
+                      artworkName={draft.artworkName}
+                      productName={draft.productName}
+                      size={describeSize(draft.family, draft.size)}
+                      artworkFileId={draft.artworkFileId}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
 
-            {stepId === "review" ? (
-              <ReviewStep
-                draft={draft}
-                zones={zones}
-                onEdit={() => draft.setStepIndex(0)}
-                onEditArtwork={() => draft.setStepIndex(1)}
-              />
-            ) : null}
+              {stepId === "review" ? (
+                <ReviewStep
+                  draft={draft}
+                  zones={zones}
+                  onEdit={() => draft.setStepIndex(0)}
+                  onEditArtwork={() => draft.setStepIndex(1)}
+                />
+              ) : null}
 
-            {stepId === "confirm" ? (
-              <SendStep
-                estimatedPrintMinor={estimatedPrintMinor}
-                deliveryFeeMinor={deliveryFeeMinor}
-                zoneLabel={zoneName(zones, draft.zone)}
-                deadline={draft.deadline}
-              />
-            ) : null}
+              {stepId === "confirm" ? (
+                <SendStep
+                  estimatedPrintMinor={estimatedPrintMinor}
+                  deliveryFeeMinor={deliveryFeeMinor}
+                  zoneLabel={zoneName(zones, draft.zone)}
+                  deadline={draft.deadline}
+                />
+              ) : null}
+            </View>
           </Animated.View>
 
           {blockReason ? (
