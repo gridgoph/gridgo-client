@@ -1,11 +1,11 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
 import {
   setThemePreference as applyThemePreference,
   type ThemePreference,
 } from "@/hooks/useTheme";
+import { createPersistStorage } from "@/lib/persistStorage";
 
 const STORAGE_KEY = "gridgo.client.theme.v1";
 
@@ -31,7 +31,7 @@ export const useThemeStore = create<ThemeStore>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createPersistStorage(),
       partialize: (state) => ({ preference: state.preference }),
       onRehydrateStorage: () => (state) => {
         if (state?.preference) {

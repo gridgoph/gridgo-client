@@ -1,7 +1,7 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
+import { createPersistStorage } from "@/lib/persistStorage";
 import type { RequestDraftFields, RequestStepId } from "@/lib/requestValidation";
 import { REQUEST_STEPS } from "@/lib/requestValidation";
 
@@ -122,7 +122,7 @@ export const useRequestDraft = create<RequestDraftState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createPersistStorage(),
       partialize: (state) => ({
         stepIndex: state.stepIndex,
         productId: state.productId,
