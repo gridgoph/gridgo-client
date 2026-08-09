@@ -76,6 +76,7 @@ Prefer these modules over burying rules in screens:
 - `lib/payment.ts` — COD ≤ ₱1,500 + one-active COD; credits shortfall copy
 - `lib/requestValidation.ts` — stepper validation + demo preflight checklist
 - `lib/productPreview.ts` — template map; mockup label is fixed here
+- `lib/persistStorage.ts` — required Zustand persistence boundary: use AsyncStorage in native/real-browser runtimes and inert storage only when `typeof window === "undefined"` during SSR; never gate persistence on `Platform.OS`
 - `lib/navigationHeaders.ts` — multi-origin stack pushes use `headerBackButtonDisplayMode: "minimal"` so iOS never shows the `(tabs)` route name as a back label
 - `lib/sessionGuard.ts` + root `app/_layout.tsx` — Expo Router `Stack.Protected` guards the signed-in root stack (`(tabs)`, `order/[id]`, `design-system`, `settings`). Session clear (logout / 401 / rejected role) alone returns to login; do not scatter `router.replace` at call sites. `app/index.tsx` is launch-only mapping.
 - `lib/onboardingExit.ts` — explicit onboarding dismiss targets (`returnTo=settings` vs first-launch). Do not rely on history alone for Settings replay.
