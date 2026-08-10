@@ -20,16 +20,13 @@ import { useThemeColors } from "@/hooks/useTheme";
 const CENTRES = [15, 50, 85] as const;
 const RADIUS = 13;
 
-/** Mark → wordmark gap (`gap-2` = 8). Used to left-align the role under the wordmark. */
-const MARK_WORDMARK_GAP = 8;
-
 type MarkProps = {
   /** Rendered edge length in px. The grid scales with it. */
   size?: number;
 };
 
 /**
- * Role identity under the wordmark across the product family.
+ * Role identity beside the wordmark across the product family.
  * Individual client has no role — plain GRIDGO. Typed so a free string
  * cannot ship a wrong lockup label.
  */
@@ -97,11 +94,88 @@ export function GridgoMark({ size = 28 }: MarkProps) {
   );
 }
 
+/* ---------------------------------------------------------------------------
+   Lockup proportions
+
+   All read off the family reference, and all derived from `size`, so one
+   number scales mark and type together. At the default (28) the wordmark
+   lands on the scale at 20 (text-h3) and the role at 16 (text-body-lg).
+   --------------------------------------------------------------------------- */
+
+/** Wordmark type against the plain mark. 28 → 20. */
+const WORDMARK_FONT_RATIO = 20 / 28;
+/** Tighter than h3's 26/20: the reference sets the two lines as one block. */
+const WORDMARK_LEADING = 1.15;
+/**
+ * Role type against the wordmark. 20 → 16.
+ *
+ * Measured off the reference against its **flat-topped** caps — R/I/D are 27px
+ * to Business's B at 21px. Comparing against the round `G` (29px, which
+ * overshoots the cap line at both ends) reads ~0.62 and makes the role word a
+ * footnote. It is not one: it is noticeably smaller than GRIDGO, in a lighter
+ * cut, and unmistakably part of the lockup.
+ */
+const ROLE_FONT_RATIO = 21 / 27;
+/** The design system's 12px floor. A small `size` shrinks the mark, not the word. */
+const ROLE_FONT_MIN = 12;
+/** Leading on the role line, matching the reference's baseline-to-baseline. */
+const ROLE_LEADING = 4 / 3;
+/** Mark → text gap. Reference: 18px against a 41px wordmark. */
+const MARK_TEXT_GAP_RATIO = 0.4;
+
+export type GridgoLockupMetrics = {
+  /** Mark edge length. Spans the whole text block, however many lines it has. */
+  markSize: number;
+  wordmarkFontSize: number;
+  wordmarkLineHeight: number;
+  roleFontSize: number;
+  /** Height of the role slot — the second line the mark has to cover. */
+  roleLineHeight: number;
+  /** Mark → text column gap. */
+  gap: number;
+};
+
+/**
+ * The one place the lockup's geometry is decided.
+ *
+ * The rule the layout exists to hold: **the mark spans the full height of the
+ * text block beside it**. With a role that block is two lines, so the mark is
+ * both line boxes tall — never a one-line mark with a caption hung underneath.
+ */
+export function gridgoLockupMetrics(size: number, hasRole: boolean): GridgoLockupMetrics {
+  const wordmarkFontSize = Math.round(size * WORDMARK_FONT_RATIO);
+  const roleFontSize = Math.max(
+    ROLE_FONT_MIN,
+    Math.round(wordmarkFontSize * ROLE_FONT_RATIO),
+  );
+  const roleLineHeight = Math.round(roleFontSize * ROLE_LEADING);
+
+  const wordmarkLineHeight = Math.round(wordmarkFontSize * WORDMARK_LEADING);
+
+  return {
+    // With a role: exactly the two-line block. Without: `size`, which keeps
+    // the single-line lockup at the height it has always had.
+    markSize: hasRole ? wordmarkLineHeight + roleLineHeight : size,
+    wordmarkFontSize,
+    wordmarkLineHeight,
+    roleFontSize,
+    roleLineHeight,
+    gap: Math.round(wordmarkFontSize * MARK_TEXT_GAP_RATIO),
+  };
+}
+
 type LogoProps = {
-  /** Rendered mark edge length in px. */
+  /**
+   * Mark edge length in px for the **plain** lockup, and the unit the whole
+   * lockup scales from — the wordmark and role type are derived from it.
+   *
+   * It is no longer the mark's height in every case: with a role the text
+   * block gains a line, so the mark grows by that line to keep spanning it.
+   * Use `gridgoLockupMetrics` if a caller needs the rendered height.
+   */
   size?: number;
   /**
-   * Optional role lockup under the wordmark. Omit for plain GRIDGO
+   * Optional role lockup beside the wordmark. Omit for plain GRIDGO
    * (individual client, signed-out, or product-agnostic surfaces).
    */
   role?: GridgoLogoRole;
@@ -110,9 +184,16 @@ type LogoProps = {
 /**
  * Mark plus wordmark, with optional role lockup.
  *
- * Layout from the family reference: mark left, wordmark right, role label
- * *below the wordmark and left-aligned with it* — not beside the wordmark,
- * not centred under the whole lockup.
+ * Layout from the family reference: the mark sits left and stands as tall as
+ * the whole text block; the wordmark and the role stack in a column to its
+ * right, sharing one left edge.
+ *
+ *   +------+  GRIDGO
+ *   | mark |  Business
+ *   +------+
+ *
+ * The mark is *not* a row-mate of the wordmark with the role hung underneath —
+ * that caps the mark at a single line, which is the shape this replaced.
  *
  * `GO` uses `brand`, not `actionYellow`. `#FFDE58` on the light canvas is
  * illegible, and `brand` resolves to `#D4A017` in Light and `#FFDE58` in
@@ -123,6 +204,7 @@ type LogoProps = {
  */
 export function GridgoLogo({ size = 28, role }: LogoProps) {
   const visibleRole = role ? ROLE_VISIBLE[role] : null;
+  const metrics = gridgoLockupMetrics(size, visibleRole != null);
 
   return (
     <View
@@ -131,31 +213,50 @@ export function GridgoLogo({ size = 28, role }: LogoProps) {
       accessible
       accessibilityRole="image"
       accessibilityLabel={gridgoLogoAccessibilityLabel(role)}
+      className="flex-row items-center self-start"
+      style={{ gap: metrics.gap }}
     >
-      <View className="flex-row items-center" style={{ gap: MARK_WORDMARK_GAP }}>
-        <GridgoMark size={size} />
-        <Text className="font-brand text-h3 text-text-primary">
+      <GridgoMark size={metrics.markSize} />
+      {/* The text block the mark is measured against: wordmark over role. */}
+      <View>
+        <Text
+          className="font-brand text-text-primary"
+          style={{ fontSize: metrics.wordmarkFontSize, lineHeight: metrics.wordmarkLineHeight }}
+        >
           GRID<Text className="text-brand">GO</Text>
         </Text>
-      </View>
-      {visibleRole != null ? (
-        <View
-          // Sit under the wordmark only: mark width + the mark→wordmark gap.
-          style={{ marginLeft: size + MARK_WORDMARK_GAP, marginTop: 2 }}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          {role === "rider" ? (
-            <View className="self-start rounded-pill bg-action-yellow px-2 py-0.5">
-              <Text className="font-medium text-caption text-action-yellow-on">
+        {visibleRole != null ? (
+          <View
+            // One fixed slot, so the mark's growth and the role's height are
+            // the same number whether the role is a word or the rider pill.
+            style={{ height: metrics.roleLineHeight }}
+            className="justify-center self-start"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            {role === "rider" ? (
+              <View
+                className="justify-center rounded-pill bg-action-yellow px-2"
+                style={{ height: metrics.roleLineHeight }}
+              >
+                <Text
+                  className="font-medium text-action-yellow-on"
+                  style={{ fontSize: metrics.roleFontSize }}
+                >
+                  {visibleRole}
+                </Text>
+              </View>
+            ) : (
+              <Text
+                className="font-normal text-text-primary"
+                style={{ fontSize: metrics.roleFontSize, lineHeight: metrics.roleLineHeight }}
+              >
                 {visibleRole}
               </Text>
-            </View>
-          ) : (
-            <Text className="text-caption text-text-muted">{visibleRole}</Text>
-          )}
-        </View>
-      ) : null}
+            )}
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }

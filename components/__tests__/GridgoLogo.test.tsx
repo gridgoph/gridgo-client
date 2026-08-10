@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react-native";
+import { render, screen, within } from "@testing-library/react-native";
 import { Appearance, processColor } from "react-native";
 
 import {
   GridgoLogo,
   GridgoMark,
+  gridgoLockupMetrics,
   gridgoLogoAccessibilityLabel,
   logoRoleForClientAccount,
   type GridgoLogoRole,
@@ -28,6 +29,17 @@ function circleFills(): unknown[] {
     }
     return fill;
   });
+}
+
+/** The mark's rendered edge length. `Svg` lands as a single `RNSVGSvgView`. */
+function renderedMarkSize(): number {
+  const [svg] = screen.root?.queryAll((node) => node.type === "RNSVGSvgView") ?? [];
+  return svg?.props.height as number;
+}
+
+/** The View holding the wordmark — in this layout, the whole text block. */
+function textColumn() {
+  return screen.getByText(/GRID/).parent!;
 }
 
 const hidden = { includeHiddenElements: true } as const;
@@ -169,5 +181,76 @@ describe("GridgoLogo", () => {
     expect(
       circleFills().filter((f) => f === processColor(colors.light.brandLogo)),
     ).toHaveLength(1);
+  });
+});
+
+/**
+ * The lockup's one structural rule, pinned in both the arithmetic and the
+ * rendered tree: **the mark stands as tall as the whole text block**. The
+ * shape this replaced put the mark in a row with the wordmark and hung the
+ * role underneath that row, which caps the mark at a single line.
+ */
+describe("lockup layout", () => {
+  beforeEach(() => Appearance.setColorScheme("light"));
+
+  it("lands on the type scale at the default size", () => {
+    expect(gridgoLockupMetrics(28, true)).toMatchObject({
+      // text-h3 over text-body-lg.
+      wordmarkFontSize: 20,
+      roleFontSize: 16,
+      roleLineHeight: 21,
+    });
+  });
+
+  it("sets the role type at the reference's cap ratio, not the round-G reading", () => {
+    // Reference flat caps: GRIDGO R/I/D 27px, Business B 21px.
+    const { wordmarkFontSize, roleFontSize } = gridgoLockupMetrics(28, true);
+
+    expect(roleFontSize / wordmarkFontSize).toBeCloseTo(21 / 27, 1);
+  });
+
+  it.each([24, 28, 32, 48])("keeps the mark on the single wordmark line at %ip", (size) => {
+    expect(gridgoLockupMetrics(size, false).markSize).toBe(size);
+  });
+
+  it.each([24, 28, 32, 48])("spans both text lines with the mark at %ip", (size) => {
+    const { markSize, wordmarkLineHeight, roleLineHeight } = gridgoLockupMetrics(size, true);
+
+    // The whole point: the mark's box *is* the two-line block's box.
+    expect(markSize).toBe(wordmarkLineHeight + roleLineHeight);
+  });
+
+  it.each([24, 28, 32, 48])("makes the role lockup's mark the taller one at %ip", (size) => {
+    expect(gridgoLockupMetrics(size, true).markSize).toBeGreaterThan(
+      gridgoLockupMetrics(size, false).markSize,
+    );
+  });
+
+  it("never sets the role word below the 12px floor", () => {
+    expect(gridgoLockupMetrics(12, true).roleFontSize).toBe(12);
+  });
+
+  it("renders the plain mark at the wordmark's own height", async () => {
+    await render(<GridgoLogo />);
+
+    expect(renderedMarkSize()).toBe(gridgoLockupMetrics(28, false).markSize);
+  });
+
+  it("renders the role mark tall enough to span the two-line block", async () => {
+    await render(<GridgoLogo role="business" />);
+    const { markSize, wordmarkLineHeight, roleLineHeight } = gridgoLockupMetrics(28, true);
+
+    expect(renderedMarkSize()).toBe(markSize);
+    expect(renderedMarkSize()).toBe(wordmarkLineHeight + roleLineHeight);
+  });
+
+  it("stacks the role under the wordmark, beside the mark — not under the mark's row", async () => {
+    await render(<GridgoLogo role="business" />);
+    const column = textColumn();
+
+    // Wordmark and role share one column…
+    expect(within(column).getByText("Business", hidden)).toBeTruthy();
+    // …and the mark is outside it, so the column's height is what the mark spans.
+    expect(column.queryAll((node) => node.type === "RNSVGSvgView")).toHaveLength(0);
   });
 });
