@@ -34,7 +34,7 @@ describe("validateDetailsStep", () => {
   it("returns an explicit reason when product is missing", () => {
     const result = validateDetailsStep({ ...completeDraft, productId: "" }, NOW);
     expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/product/i);
+    expect(result.reason).toMatch(/what you are printing/i);
   });
 
   it("rejects a quantity above what the unit allows", () => {

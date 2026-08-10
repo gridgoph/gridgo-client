@@ -1,109 +1,90 @@
+import { ChevronRight } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { OrderCard } from "@/components/OrderCard";
-import { ProductCard } from "@/components/ProductCard";
-import { StatusChip } from "@/components/StatusChip";
-import * as api from "@/lib/api";
-import { groupCatalogByFamily } from "@/lib/catalog";
-import { userFacingError } from "@/lib/copy";
+import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
+import { SkeletonList } from "@/components/Skeleton";
+import { useStartRequest } from "@/hooks/useStartRequest";
+import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { useThemeColors } from "@/hooks/useTheme";
+import * as api from "@/lib/api";
+import { userFacingError } from "@/lib/copy";
+import { orderNeedsClient } from "@/lib/orderState";
+import { type ProductCategory } from "@/lib/productCategories";
 import { useNotifications } from "@/store/notifications";
 import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
 
 /**
- * Home: Pilot Credits, recent orders with reorder, and product catalog.
- * Catalog is the entry point into a new print request.
+ * Home answers three questions, in this order: is anything waiting on me, what
+ * is my pilot balance, and how do I start something new.
+ *
+ * The flat product list this used to end with is gone. Five catalog rows was
+ * never the catalog — GRIDGO prints seventeen things across four categories,
+ * and browsing them is a considered screen of its own now, reached from here.
  */
 export default function HomeScreen() {
   const { user } = useSession();
   const router = useRouter();
   const colors = useThemeColors();
+  const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const seedFromOrder = useRequestDraft((s) => s.seedFromOrder);
-  const selectProduct = useRequestDraft((s) => s.selectProduct);
+  const draftTitle = useRequestDraft((s) => s.title || s.productName);
+  const hasDraft = useRequestDraft(draftHasContent);
   const refreshNotifications = useNotifications((s) => s.refresh);
-  /** Held until the client says the in-progress draft may be replaced. */
-  const [pendingStart, setPendingStart] = useState<{
-    label: string;
-    start: () => void;
-  } | null>(null);
+  const { start, pendingLabel, confirmReplace, cancelReplace } = useStartRequest();
 
   const [orders, setOrders] = useState<api.Order[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [list, credits, products] = await Promise.all([
+      const [list, credits, products, tree] = await Promise.all([
         api.listOrders(),
         api.creditBalance(),
         api.listCatalog(),
+        api.getProductCategories(),
       ]);
       setOrders(list);
       setBalance(credits.balanceMinor);
       setCatalog(products);
+      setCategories(tree);
       setError(null);
     } catch (e) {
       setOrders([]);
       setBalance(null);
       setCatalog([]);
-      setError(
-        userFacingError(e, "Could not load home. Check your connection and try again."),
-      );
+      setCategories([]);
+      setError(userFacingError(e, "Could not load home. Check your connection and try again."));
+    } finally {
+      setLoading(false);
     }
     void refreshNotifications();
   }, [refreshNotifications]);
 
   useFocusEffect(
     useCallback(() => {
-      let alive = true;
-      void (async () => {
-        if (!alive) return;
-        await load();
-      })();
-      return () => {
-        alive = false;
-      };
+      void load();
     }, [load]),
   );
 
-  const groups = groupCatalogByFamily(catalog);
   const productById = new Map(catalog.map((p) => [p.id, p]));
-
-  /**
-   * Starting a new request overwrites whatever draft is in progress, and that
-   * draft survives the app closing — so it is never silently thrown away.
-   */
-  const startRequest = (label: string, seed: () => void) => {
-    const draft = useRequestDraft.getState();
-    if (draftHasContent(draft)) {
-      setPendingStart({
-        label,
-        start: () => {
-          seed();
-          router.push("/(tabs)/new-request");
-        },
-      });
-      return;
-    }
-    seed();
-    router.push("/(tabs)/new-request");
-  };
-
-  const startWithProduct = (product: api.CatalogProduct) => {
-    startRequest(product.name, () => selectProduct(product));
-  };
+  const needsClient = orders.filter((o) => orderNeedsClient(o.state));
+  const recent = orders.filter((o) => !orderNeedsClient(o.state)).slice(0, 3);
 
   const reorder = (order: api.Order) => {
     const meta = productById.get(order.productId);
-    startRequest(order.title, () =>
+    start(order.title, () =>
       seedFromOrder(order, {
         name: meta?.name,
         basePriceMinor: meta?.basePriceMinor,
@@ -115,109 +96,153 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
-      <ScrollView className="gg-screen" keyboardShouldPersistTaps="handled">
-        <View className="gg-page gap-6 pb-10 pt-4">
-          <View>
-            <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
-            <Text className="mt-4 text-h2 text-text-primary">
-              {user?.orgName || user?.name || "GRIDGO"}
-            </Text>
-          </View>
-
-          {error ? (
-            <View className="gg-card gap-3">
-              <StatusChip tone="error" label="Could not load" icon="circle-x" />
-              <Text className="text-body text-error">{error}</Text>
-              <Pressable
-                onPress={() => void load()}
-                accessibilityRole="button"
-                className="gg-btn-secondary"
-              >
-                <Text className="text-button text-text-primary">Try again</Text>
-              </Pressable>
-            </View>
-          ) : null}
+      <ScrollView className="gg-screen">
+        <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
+          <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
+          <Text className="mt-5 text-h1 text-text-primary" numberOfLines={2}>
+            {user?.orgName || user?.name || "GRIDGO"}
+          </Text>
 
           {balance != null ? (
-            <View className="gg-card">
-              <Text className="text-caption text-text-muted">Pilot Credits</Text>
-              <Text className="mt-1 text-h2 text-text-primary">{api.formatPhp(balance)}</Text>
-              <Text className="mt-2 text-caption text-text-muted">
-                Non-cash and non-transferable. No top-up in this app.
+            <View className="mt-4 flex-row items-baseline gap-3">
+              <Text className="text-body text-text-secondary">Pilot Credits</Text>
+              <Text className="text-body-lg font-medium text-text-primary">
+                {api.formatPhp(balance)}
               </Text>
             </View>
           ) : null}
 
-          <View className="gap-3">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-h3 text-text-primary">Recent orders</Text>
-              <Pressable
-                onPress={() => router.push("/(tabs)/orders")}
-                accessibilityRole="button"
-                className="gg-touch items-center justify-center px-2"
-              >
-                <Text className="text-body font-medium text-brand">View all</Text>
-              </Pressable>
-            </View>
-            {orders.slice(0, 3).map((o) => (
-              <View key={o.id} className="gap-2">
-                <OrderCard order={o} onPress={() => router.push(`/order/${o.id}`)} />
-                <Pressable
-                  onPress={() => reorder(o)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Reorder ${o.title}`}
-                  className="gg-btn-secondary self-start"
-                >
-                  <Text className="text-button text-text-primary">Reorder</Text>
-                </Pressable>
-              </View>
-            ))}
-            {!orders.length && !error ? (
-              <EmptyState
-                title="Start your first print job"
-                body="Pick a product from the catalog below to open a new request."
-              />
-            ) : null}
-          </View>
+          {/*
+            No "start a request" button here. The tab bar's yellow "+" is that
+            control, it is on every screen, and Home was drawing a second one
+            directly above it — the same action, in the same colour, 60px apart.
 
-          <View className="gap-4">
-            <Text className="text-h3 text-text-primary">Catalog</Text>
-            {groups.map((group) => (
-              <View key={group.family} className="gap-3">
-                <Text className="text-overline text-text-muted">{group.label}</Text>
-                {group.products.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    onPress={() => startWithProduct(product)}
-                  />
-                ))}
-              </View>
-            ))}
-            {!catalog.length && !error ? (
-              <EmptyState
-                title="No products listed"
-                body="Ask Operations to check the catalog seed, then pull to refresh this screen."
-                actionLabel="Try again"
-                onAction={() => void load()}
-              />
-            ) : null}
-          </View>
+            A draft in progress is different: it is a fact the client cannot see
+            anywhere else, and it disappears the moment they start something new.
+            So Home surfaces it, quietly, as a way back into it.
+          */}
+          {hasDraft ? (
+            <Pressable
+              onPress={() => router.push("/(tabs)/new-request")}
+              accessibilityRole="button"
+              accessibilityLabel={`Continue your request for ${draftTitle || "an unnamed job"}`}
+              className="mt-6 gg-panel-high gg-touch flex-row items-center gap-3"
+            >
+              {({ pressed }) => (
+                <>
+                  <View className="flex-1">
+                    <Text className="text-caption text-text-muted">Request in progress</Text>
+                    <Text
+                      className="mt-1 text-body-lg font-medium text-text-primary"
+                      numberOfLines={1}
+                    >
+                      {draftTitle || "An unnamed request"}
+                    </Text>
+                  </View>
+                  <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+                  {pressed ? (
+                    <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-card" />
+                  ) : null}
+                </>
+              )}
+            </Pressable>
+          ) : null}
+
+          {error ? (
+            <View className="mt-8">
+              <ErrorState label="Could not load" body={error} onRetry={() => void load()} />
+            </View>
+          ) : null}
+
+          {loading ? (
+            <View className="mt-10 gap-3">
+              <Text className="text-overline text-text-muted">YOUR JOBS</Text>
+              <SkeletonList count={2} />
+            </View>
+          ) : null}
+
+          {!loading && needsClient.length ? (
+            <View className="mt-10 gap-3">
+              <Text className="text-overline text-text-muted">WAITING ON YOU</Text>
+              {needsClient.map((o) => (
+                <OrderCard key={o.id} order={o} onPress={() => router.push(`/order/${o.id}`)} />
+              ))}
+            </View>
+          ) : null}
+
+          {!loading && !error ? (
+            <View className="mt-10 gap-3">
+              {/* No "View all" link. Orders is a permanent tab one row below
+                  this, so the link navigated to a place already on screen —
+                  and in Dark its brand gold is the action yellow exactly, so
+                  it spent the screen's attention budget to do nothing. */}
+              <Text className="text-overline text-text-muted">RECENT JOBS</Text>
+
+              {recent.map((o) => (
+                <OrderCard
+                  key={o.id}
+                  order={o}
+                  onPress={() => router.push(`/order/${o.id}`)}
+                  onReorder={() => reorder(o)}
+                />
+              ))}
+
+              {!orders.length ? (
+                <EmptyState
+                  title="No print jobs yet"
+                  body="Start with what you are printing — flyers, tarpaulins, lanyards, apparel — and GRIDGO takes it from there."
+                  actionLabel="See what GRIDGO prints"
+                  onAction={() => router.push("/request/category")}
+                />
+              ) : null}
+
+              {orders.length && !recent.length ? (
+                <Text className="text-body text-text-muted">
+                  Everything you have sent is waiting on you above.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
+          {categories.length ? (
+            <View className="mt-10 gap-3">
+              <Text className="text-overline text-text-muted">BROWSE WHAT GRIDGO PRINTS</Text>
+              {categories.map((category) => (
+                <Pressable
+                  key={category.code}
+                  onPress={() => router.push(`/request/${category.code}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={category.name}
+                  accessibilityHint={`Best for ${category.bestFor}`}
+                  className="gg-card gg-touch flex-row items-center gap-3"
+                >
+                  {({ pressed }) => (
+                    <>
+                      <View className="flex-1">
+                        <Text className="text-body-lg font-medium text-text-primary">
+                          {category.name}
+                        </Text>
+                        <Text className="mt-1 text-caption text-text-muted" numberOfLines={2}>
+                          {category.subcategories.map((s) => s.name).join(" · ")}
+                        </Text>
+                      </View>
+                      <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+                      {pressed ? (
+                        <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-card" />
+                      ) : null}
+                    </>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </View>
       </ScrollView>
 
-      <ConfirmDialog
-        visible={pendingStart != null}
-        question={`Replace your draft request with "${pendingStart?.label ?? ""}"?`}
-        body="You have a request in progress. Starting this one replaces it, including any artwork you have already uploaded to the draft."
-        confirmLabel="Replace the draft"
-        cancelLabel="Keep my draft"
-        tone="destructive"
-        onConfirm={() => {
-          pendingStart?.start();
-          setPendingStart(null);
-        }}
-        onCancel={() => setPendingStart(null)}
+      <ReplaceDraftDialog
+        label={pendingLabel}
+        onConfirm={confirmReplace}
+        onCancel={cancelReplace}
       />
     </SafeAreaView>
   );

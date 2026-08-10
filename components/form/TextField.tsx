@@ -11,6 +11,11 @@ type Props = {
   autoCapitalize?: TextInputProps["autoCapitalize"];
   returnKeyType?: TextInputProps["returnKeyType"];
   maxLength?: number;
+  /** Lets the OS offer the right keyboard and the right autofill. */
+  keyboardType?: TextInputProps["keyboardType"];
+  textContentType?: TextInputProps["textContentType"];
+  secureTextEntry?: boolean;
+  onSubmitEditing?: TextInputProps["onSubmitEditing"];
 };
 
 /**
@@ -26,6 +31,10 @@ export function TextField({
   autoCapitalize = "sentences",
   returnKeyType,
   maxLength,
+  keyboardType,
+  textContentType,
+  secureTextEntry,
+  onSubmitEditing,
 }: Props) {
   const colors = useThemeColors();
   return (
@@ -40,6 +49,10 @@ export function TextField({
       autoCapitalize={autoCapitalize}
       returnKeyType={returnKeyType}
       maxLength={maxLength}
+      keyboardType={keyboardType}
+      textContentType={textContentType}
+      secureTextEntry={secureTextEntry}
+      onSubmitEditing={onSubmitEditing}
       accessibilityLabel={accessibilityLabel}
     />
   );

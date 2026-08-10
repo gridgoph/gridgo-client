@@ -7,6 +7,7 @@ import {
   isTrackingState,
   latestNoteForState,
   orderGrandTotalMinor,
+  orderNeedsClient,
   orderNextAction,
   orderWaitingOn,
 } from "@/lib/orderState";
@@ -106,5 +107,37 @@ describe("latestNoteForState", () => {
 describe("orderGrandTotalMinor", () => {
   it("sums print and delivery fees", () => {
     expect(orderGrandTotalMinor({ totalMinor: 120000, deliveryFeeMinor: 15000 })).toBe(135000);
+  });
+});
+
+describe("orderNeedsClient", () => {
+  it("is true exactly for the states that carry a client action", () => {
+    for (const state of [
+      "client_correction",
+      "proof_approval",
+      "supplier_proof_review",
+      "awaiting_payment",
+      "issue_window_open",
+    ]) {
+      expect(orderNeedsClient(state)).toBe(true);
+    }
+  });
+
+  it("is false while the job is with GRIDGO, a supplier or a rider", () => {
+    for (const state of [
+      "submitted",
+      "needs_qa",
+      "approved_for_matching",
+      "supplier_accepted",
+      "production",
+      "out_for_delivery",
+      "completed",
+    ]) {
+      expect(orderNeedsClient(state)).toBe(false);
+    }
+  });
+
+  it("is false for a state this app has never heard of", () => {
+    expect(orderNeedsClient("some_new_state")).toBe(false);
   });
 });

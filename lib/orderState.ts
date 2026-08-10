@@ -146,6 +146,17 @@ export function orderNextAction(state: string): OrderNextAction | null {
 }
 
 /**
+ * True when the job is waiting on the client rather than on GRIDGO.
+ *
+ * Home leads with these. A client who opens the app to find one job needing a
+ * proof decision should not have to read past four jobs that are simply on the
+ * press to find it.
+ */
+export function orderNeedsClient(state: string): boolean {
+  return orderNextAction(state) !== null;
+}
+
+/**
  * What the client is waiting on when there is nothing for them to do.
  * An order screen must never read as an empty shrug.
  */

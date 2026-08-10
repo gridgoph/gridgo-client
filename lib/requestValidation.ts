@@ -68,7 +68,7 @@ export function validateDetailsStep(
   now: Date | number = Date.now(),
 ): StepValidation {
   if (!nonEmpty(draft.productId)) {
-    return { ok: false, reason: "Choose a product from the catalog to continue." };
+    return { ok: false, reason: "Choose what you are printing to continue." };
   }
   if (!nonEmpty(draft.title)) {
     return { ok: false, reason: "Name this job so you can find it later — for example “Grand opening tarpaulin”." };

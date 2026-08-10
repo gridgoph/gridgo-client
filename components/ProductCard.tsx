@@ -26,7 +26,7 @@ export function ProductCard({ product, onPress }: Props) {
           <Text className="mt-2 text-body text-text-secondary">
             From {formatUnitPrice(product.basePriceMinor, product.unit)}
           </Text>
-          {pressed ? <View className="gg-pressed absolute inset-0 rounded-card" /> : null}
+          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-card" /> : null}
         </>
       )}
     </Pressable>

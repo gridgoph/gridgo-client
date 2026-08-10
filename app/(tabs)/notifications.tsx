@@ -1,9 +1,12 @@
 import { useCallback } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
+import { tabScreenContentPadding } from "@/components/GridgoTabBar";
+import { SkeletonList } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
 import { userFacingError } from "@/lib/copy";
 import { formatRelativeTime } from "@/lib/relativeTime";
@@ -16,6 +19,7 @@ import { useNotifications } from "@/store/notifications";
  */
 export default function NotificationsScreen() {
   const colors = useThemeColors();
+  const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const { items, loading, error, refresh, unreadCount } = useNotifications();
 
   useFocusEffect(
@@ -27,9 +31,9 @@ export default function NotificationsScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
       <ScrollView className="gg-screen">
-        <View className="gg-page gap-4 pb-12 pt-4">
+        <View className="gg-page gap-4 pt-4" style={{ paddingBottom: tabPad }}>
           <View className="flex-row items-center justify-between gap-3">
-            <Text className="text-h2 text-text-primary">Notifications</Text>
+            <Text className="text-h1 text-text-primary">Notifications</Text>
             {unreadCount > 0 ? (
               <StatusChip tone="info" label={`${unreadCount} unread`} icon="clock" />
             ) : null}
@@ -39,24 +43,17 @@ export default function NotificationsScreen() {
           </Text>
 
           {error ? (
-            <View className="gg-card gap-3">
-              <StatusChip tone="error" label="Could not load" icon="circle-x" />
-              <Text className="text-body text-error">
-                {userFacingError(new Error(error), "Could not load notifications. Try again.")}
-              </Text>
-              <Pressable
-                onPress={() => void refresh()}
-                accessibilityRole="button"
-                className="gg-btn-secondary"
-              >
-                <Text className="text-button text-text-primary">Try again</Text>
-              </Pressable>
-            </View>
+            <ErrorState
+              label="Could not load"
+              body={userFacingError(
+                new Error(error),
+                "Could not load your updates. Check your connection and try again.",
+              )}
+              onRetry={() => void refresh()}
+            />
           ) : null}
 
-          {loading && !items.length ? (
-            <Text className="text-body text-text-muted">Loading…</Text>
-          ) : null}
+          {loading && !items.length ? <SkeletonList count={3} /> : null}
 
           {items.map((n) => (
             <View

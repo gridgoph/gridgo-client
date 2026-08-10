@@ -1,11 +1,13 @@
+import { ChevronRight } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ErrorState } from "@/components/ErrorState";
 import { DateTimeField } from "@/components/form/DateTimeField";
 import { FormField, FormSection } from "@/components/form/FormField";
 import { OptionPicker, type PickerOption } from "@/components/form/OptionPicker";
@@ -19,6 +21,7 @@ import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import { useArtworkUpload } from "@/hooks/useArtworkUpload";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { formatPhp } from "@/lib/api";
@@ -71,6 +74,7 @@ import {
 export default function NewRequestScreen() {
   const router = useRouter();
   const colors = useThemeColors();
+  const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const reducedMotion = useReducedMotion();
   const draft = useRequestDraft();
   const artwork = useArtworkUpload({
@@ -268,9 +272,11 @@ export default function NewRequestScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
       <ScrollView className="gg-screen" keyboardShouldPersistTaps="handled">
-        <View className="gg-page gap-8 pb-16 pt-4">
-          <View className="gap-1">
-            <Text className="text-h1 text-text-primary">New request</Text>
+        <View className="gg-page gap-8 pt-4" style={{ paddingBottom: tabPad }}>
+          <View className="gap-2">
+            <Text className="text-h1 text-text-primary">
+              {draft.productName || "New request"}
+            </Text>
             <Text className="text-body text-text-secondary">
               Saved as you go. You can close the app and pick this up later.
             </Text>
@@ -295,7 +301,7 @@ export default function NewRequestScreen() {
                   zoneOptions={zoneOptions}
                   referenceError={referenceError}
                   onRetryReference={() => void loadReference()}
-                  onBrowseCatalog={() => router.push("/(tabs)/home")}
+                  onBrowseCatalog={() => router.push("/request/category")}
                 />
               ) : null}
 
@@ -346,12 +352,7 @@ export default function NewRequestScreen() {
             </View>
           ) : null}
 
-          {submitError ? (
-            <View className="gg-panel gap-2">
-              <StatusChip tone="error" label="Not sent" icon="circle-x" />
-              <Text className="text-body text-text-primary">{submitError}</Text>
-            </View>
-          ) : null}
+          {submitError ? <ErrorState label="Not sent" body={submitError} /> : null}
 
           <View className="gap-3">
             <PrimaryButton
@@ -422,48 +423,63 @@ function DetailsStep({
   onRetryReference: () => void;
   onBrowseCatalog: () => void;
 }) {
+  const colors = useThemeColors();
   const now = Date.now();
   const leadTime = describeLeadTime(draft.deadline, now);
 
   return (
     <View className="gap-8">
       <FormSection title="Product">
-        <View className="gg-card gap-3">
-          {draft.productId ? (
-            <>
-              <Text className="text-h3 text-text-primary">{draft.productName}</Text>
-              {draft.basePriceMinor > 0 ? (
+        {/*
+          Changing the product is a routine secondary control, so it stays
+          monochrome. In Dark the `brand` gold this used to be is the action
+          yellow exactly, which put a second CTA-coloured control on a screen
+          that already spends its budget on the current stepper step and the
+          one primary button.
+        */}
+        <View className="gg-card-flush">
+          <View className="gap-2 p-4">
+            {draft.productId ? (
+              <>
+                <Text className="text-h3 text-text-primary">{draft.productName}</Text>
+                {draft.basePriceMinor > 0 ? (
+                  <Text className="text-body text-text-secondary">
+                    From {formatUnitPrice(draft.basePriceMinor, draft.unit)}
+                  </Text>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Text className="text-h3 text-text-primary">Nothing chosen yet</Text>
                 <Text className="text-body text-text-secondary">
-                  From {formatUnitPrice(draft.basePriceMinor, draft.unit)}
+                  What you are printing decides which sizes and materials you can pick, so
+                  start there.
                 </Text>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Text className="text-h3 text-text-primary">No product chosen</Text>
-              <Text className="text-body text-text-secondary">
-                The product decides which sizes and materials you can pick, so start there.
-              </Text>
-            </>
-          )}
+              </>
+            )}
+          </View>
           <Pressable
             onPress={onBrowseCatalog}
             accessibilityRole="button"
-            className="gg-touch justify-center"
+            className="gg-touch flex-row items-center justify-between gap-3 border-t border-outline-subtle px-4 py-3"
           >
-            <Text className="text-body font-medium text-brand">
-              {draft.productId ? "Change product" : "Browse catalog"}
-            </Text>
+            {({ pressed }) => (
+              <>
+                <Text className="text-button text-text-secondary">
+                  {draft.productId ? "Change what you are printing" : "See what GRIDGO prints"}
+                </Text>
+                <ChevronRight size={16} color={colors.textMuted} strokeWidth={2} />
+                {pressed ? (
+                  <View pointerEvents="none" className="gg-pressed absolute inset-0" />
+                ) : null}
+              </>
+            )}
           </Pressable>
         </View>
       </FormSection>
 
       {referenceError ? (
-        <View className="gg-card gap-3">
-          <StatusChip tone="error" label="Options unavailable" icon="circle-x" />
-          <Text className="text-body text-error">{referenceError}</Text>
-          <SecondaryButton label="Try again" onPress={onRetryReference} />
-        </View>
+        <ErrorState label="Options unavailable" body={referenceError} onRetry={onRetryReference} />
       ) : null}
 
       <FormSection title="Specification">

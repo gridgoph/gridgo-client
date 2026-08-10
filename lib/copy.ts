@@ -39,6 +39,26 @@ export function formatPaymentSummary(
   return `${paymentMethodLabel(method)} · ${paymentStatusLabel(status)}`;
 }
 
+/** Platform roles, named as a person would name the app they belong to. */
+const ROLE_APP_LABELS: Record<string, string> = {
+  client: "GRIDGO Client",
+  supplier: "GRIDGO Supplier",
+  rider: "GRIDGO Rider",
+  ops_admin: "GRIDGO Operations",
+  super_admin: "GRIDGO Operations",
+};
+
+/**
+ * Which GRIDGO app an account belongs to.
+ *
+ * A rejected sign-in must never print the role as the platform stores it —
+ * "ops_admin" is an internal value, and a client reading it learns nothing.
+ */
+export function roleAppLabel(role: string | null | undefined): string {
+  if (!role) return "another GRIDGO app";
+  return ROLE_APP_LABELS[role] ?? "another GRIDGO app";
+}
+
 /**
  * Timeline actor: who did this, in roles the client understands.
  * Never surfaces raw user ids.
