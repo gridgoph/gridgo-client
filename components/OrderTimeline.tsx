@@ -46,10 +46,16 @@ export function OrderTimeline({ timeline, currentState }: Props) {
         return (
           <View key={`${entry.at}-${entry.state}-${index}`} className="flex-row gap-3">
             <View className="items-center">
+              {/* Ink, not yellow. The order screen already spends its one
+                  yellow on the action it is asking for — a proof decision, a
+                  payment — and a second yellow forty lines below it competes
+                  with that. "You are here" is carried by a filled disc against
+                  hollow ones and a heavier label, which also reads in
+                  greyscale. */}
               <View
                 className={
                   isCurrent
-                    ? "h-3 w-3 rounded-pill bg-action-yellow"
+                    ? "h-3 w-3 rounded-pill bg-accent"
                     : "h-3 w-3 rounded-pill border-2 border-outline bg-surface"
                 }
               />

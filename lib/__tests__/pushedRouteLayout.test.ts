@@ -60,9 +60,10 @@ describe("pushed route layout contract", () => {
     expect(untitled).toEqual([]);
   });
 
-  it("keeps a labelled way back on every pushed screen", () => {
-    // `pushedScreenOptions` is the only place the "Back" label is set, so
-    // routing every titled screen through it is what guarantees the label.
+  it("keeps a way back on every pushed screen", () => {
+    // `pushedScreenOptions` is the only place the back control is configured,
+    // so routing every titled screen through it is what guarantees the bare
+    // chevron — and, with it, that iOS never writes `(tabs)` on the control.
     const pushed = screens.filter((s) => !s.headerHidden);
     expect(pushed.length).toBeGreaterThan(0);
     for (const screen of pushed) {

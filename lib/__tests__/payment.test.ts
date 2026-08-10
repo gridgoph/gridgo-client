@@ -1,80 +1,181 @@
+import type { Order, PaymentInstallment } from "@/lib/api";
 import {
-  COD_LIMIT_MINOR,
-  creditsShortfallMinor,
-  evaluateCodEligibility,
-  formatCreditsShortfallMessage,
-  isActiveUnpaidCodOrder,
+  BALANCE_DUE_STATES,
+  BALANCE_PERCENT,
+  balanceDue,
+  checkPaymentReference,
+  DOWNPAYMENT_PERCENT,
+  downpaymentDue,
+  installmentUnderReview,
+  isInstallmentConfirmed,
+  payableInstallment,
+  payInstruction,
 } from "@/lib/payment";
 
-describe("COD eligibility", () => {
-  const baseOrder = {
-    id: "ord_1",
-    paymentMethod: null as string | null,
-    paymentStatus: "unpaid",
-    state: "awaiting_payment",
+function installment(status: string, amountMinor: number | null = 84375): PaymentInstallment {
+  return {
+    amountMinor,
+    method: "qr_manual",
+    status,
+    reference: status === "not_submitted" ? null : "GCASH-ABC123",
+    submittedAt: status === "not_submitted" ? null : "2026-08-10T10:00:00.000Z",
+    confirmedAt: status === "confirmed" ? "2026-08-10T11:00:00.000Z" : null,
   };
+}
 
-  it("rejects totals above ₱1,500", () => {
-    const result = evaluateCodEligibility(COD_LIMIT_MINOR + 1, []);
-    expect(result.eligible).toBe(false);
-    expect(result.reason).toMatch(/₱1,500/);
-  });
+function order(
+  state: string,
+  downpayment = "not_submitted",
+  balance = "not_submitted",
+): Order {
+  return {
+    id: "ord_1",
+    clientId: "user_client",
+    supplierId: "user_supplier",
+    riderId: null,
+    state,
+    productId: "prod_tarpaulin",
+    title: "Grand opening tarpaulin",
+    quantity: 1,
+    size: "3x6 ft",
+    material: "13oz tarpaulin",
+    deadline: null,
+    address: "JP Laurel Ave",
+    zone: "davao_central",
+    subtotalMinor: 110000,
+    deliveryFeeMinor: 2500,
+    totalMinor: 112500,
+    downpaymentMinor: 84375,
+    balanceMinor: 28125,
+    paymentMethod: "qr_manual",
+    paymentStatus: "unpaid",
+    payments: {
+      downpayment: installment(downpayment, 84375),
+      balance: installment(balance, 28125),
+    },
+    promisedDate: null,
+    artworkName: null,
+    createdAt: "2026-08-10T10:00:00.000Z",
+    updatedAt: "2026-08-10T10:00:00.000Z",
+    timeline: [],
+  };
+}
 
-  it("allows totals at the limit with no other COD", () => {
-    const result = evaluateCodEligibility(COD_LIMIT_MINOR, [baseOrder]);
-    expect(result.eligible).toBe(true);
-    expect(result.reason).toBeNull();
-  });
-
-  it("rejects when another unpaid COD is active", () => {
-    const result = evaluateCodEligibility(50_000, [
-      {
-        id: "ord_other",
-        paymentMethod: "cod",
-        paymentStatus: "authorized",
-        state: "production",
-      },
-    ]);
-    expect(result.eligible).toBe(false);
-    expect(result.reason).toMatch(/only one/i);
-  });
-
-  it("ignores collected or completed COD orders", () => {
-    const result = evaluateCodEligibility(50_000, [
-      {
-        id: "ord_done",
-        paymentMethod: "cod",
-        paymentStatus: "collected",
-        state: "issue_window_open",
-      },
-    ]);
-    expect(result.eligible).toBe(true);
-  });
-
-  it("detects active unpaid COD", () => {
-    expect(
-      isActiveUnpaidCodOrder({
-        id: "x",
-        paymentMethod: "cod",
-        paymentStatus: "authorized",
-        state: "production",
-      }),
-    ).toBe(true);
-    expect(
-      isActiveUnpaidCodOrder({
-        id: "x",
-        paymentMethod: "pilot_credit",
-        paymentStatus: "authorized",
-        state: "production",
-      }),
-    ).toBe(false);
+describe("the split", () => {
+  it("is 75 then 25, and they make a whole", () => {
+    expect(DOWNPAYMENT_PERCENT).toBe(75);
+    expect(BALANCE_PERCENT).toBe(25);
+    expect(DOWNPAYMENT_PERCENT + BALANCE_PERCENT).toBe(100);
   });
 });
 
-describe("credits shortfall", () => {
-  it("computes shortfall and recovery-oriented message", () => {
-    expect(creditsShortfallMinor(135000, 50000)).toBe(85000);
-    expect(formatCreditsShortfallMessage(135000, 50000)).toMatch(/short of this order/);
-    expect(formatCreditsShortfallMessage(135000, 50000)).toMatch(/Cash on Delivery|Operations/);
+describe("downpaymentDue", () => {
+  it("is due in the state the platform opens it in", () => {
+    expect(downpaymentDue(order("awaiting_downpayment"))).toBe(true);
+  });
+
+  it("is not due once it has been sent for checking or confirmed", () => {
+    expect(downpaymentDue(order("downpayment_review", "pending_confirmation"))).toBe(false);
+    expect(downpaymentDue(order("payment_authorized", "confirmed"))).toBe(false);
+  });
+
+  it("is not due before a supplier has accepted and priced the job", () => {
+    // The API refuses this with `assignment_notification_required`; the app
+    // must not ask for it in the first place.
+    for (const state of ["submitted", "needs_qa", "approved_for_matching", "supplier_assigned"]) {
+      expect(downpaymentDue(order(state))).toBe(false);
+    }
+  });
+});
+
+describe("balanceDue", () => {
+  it("waits until the job is packed, not until the downpayment clears", () => {
+    // Asking for both back to back would collect the whole price up front and
+    // make the split a fiction.
+    expect(balanceDue(order("payment_authorized", "confirmed"))).toBe(false);
+    expect(balanceDue(order("production", "confirmed"))).toBe(false);
+    expect(balanceDue(order("supplier_self_qc", "confirmed"))).toBe(false);
+    for (const state of BALANCE_DUE_STATES) {
+      expect(balanceDue(order(state, "confirmed"))).toBe(true);
+    }
+  });
+
+  it("never opens before the downpayment is confirmed", () => {
+    expect(balanceDue(order("ready_for_dispatch", "pending_confirmation"))).toBe(false);
+    expect(balanceDue(order("ready_for_dispatch", "not_submitted"))).toBe(false);
+  });
+
+  it("closes once it is submitted", () => {
+    expect(balanceDue(order("out_for_delivery", "confirmed", "pending_confirmation"))).toBe(false);
+    expect(balanceDue(order("out_for_delivery", "confirmed", "confirmed"))).toBe(false);
+  });
+
+  it("treats a migrated order's legacy confirmation as paid", () => {
+    // Orders that cleared under the old single authorization must not be
+    // asked to pay a second time.
+    expect(balanceDue(order("ready_for_dispatch", "legacy_confirmed", "legacy_confirmed"))).toBe(
+      false,
+    );
+    expect(isInstallmentConfirmed(installment("legacy_confirmed"))).toBe(true);
+  });
+});
+
+describe("installmentUnderReview", () => {
+  it("names the half that is with Operations", () => {
+    expect(installmentUnderReview(order("downpayment_review", "pending_confirmation"))).toBe(
+      "downpayment",
+    );
+    expect(
+      installmentUnderReview(order("out_for_delivery", "confirmed", "pending_confirmation")),
+    ).toBe("balance");
+    expect(installmentUnderReview(order("production", "confirmed"))).toBeNull();
+  });
+});
+
+describe("payableInstallment", () => {
+  it("never asks for two payments at once", () => {
+    const states = [
+      "awaiting_downpayment",
+      "downpayment_review",
+      "payment_authorized",
+      "production",
+      "ready_for_dispatch",
+      "out_for_delivery",
+      "completed",
+    ];
+    for (const state of states) {
+      const result = payableInstallment(order(state, "confirmed"));
+      expect(result === null || result === "downpayment" || result === "balance").toBe(true);
+    }
+  });
+});
+
+describe("payment copy", () => {
+  it("never offers cash or credits", () => {
+    for (const code of ["downpayment", "balance"] as const) {
+      const copy = payInstruction(code);
+      expect(copy).not.toMatch(/cash/i);
+      expect(copy).not.toMatch(/credit/i);
+      expect(copy).toMatch(/QR/);
+    }
+  });
+});
+
+describe("checkPaymentReference", () => {
+  it("accepts a real wallet reference", () => {
+    expect(checkPaymentReference("0047 5518 2290").ok).toBe(true);
+  });
+
+  it("says what to do rather than only that it is wrong", () => {
+    expect(checkPaymentReference("").reason).toMatch(/receipt/i);
+    expect(checkPaymentReference("  ").ok).toBe(false);
+    expect(checkPaymentReference("12").reason).toMatch(/13 characters/);
+    expect(checkPaymentReference("x".repeat(200)).reason).toMatch(/reference number/i);
+  });
+
+  it("never returns an error code", () => {
+    for (const value of ["", "12", "x".repeat(200)]) {
+      expect(checkPaymentReference(value).reason).not.toMatch(/^[a-z_]+$/);
+    }
   });
 });

@@ -5,12 +5,31 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
   GridgoTabBar,
-  TAB_BAR_DESIGN_BOTTOM_PAD,
+  TAB_BAR_METRICS,
+  TAB_BAR_MIN_BOTTOM_GAP,
+  tabBarMetrics,
   tabBarPaddingBottom,
   tabScreenContentPadding,
 } from "@/components/GridgoTabBar";
 import { ACTION_TAB, TABS } from "@/constants/tabs";
 import { useNotifications } from "@/store/notifications";
+
+/** Style props arrive as an object or an array of them. */
+function flatten(style: unknown): Record<string, number | undefined> {
+  return Array.isArray(style) ? Object.assign({}, ...style) : ((style ?? {}) as never);
+}
+
+/** Twelve unread updates, so the badge has to fall back to "9+". */
+function unreadNotifications(count: number) {
+  return Array.from({ length: count }, (_unused, index) => ({
+    id: `ntf_${index}`,
+    userId: "user_client",
+    title: "Update",
+    body: "Something changed on a job.",
+    read: false,
+    at: "2026-08-10T10:00:00.000Z",
+  }));
+}
 
 const navigate = jest.fn();
 const emit = jest.fn(() => ({ defaultPrevented: false }));
@@ -47,17 +66,58 @@ function renderInSafeArea(ui: ReactElement, bottomInset = 34) {
 }
 
 describe("tabBarPaddingBottom", () => {
-  it("adds design pad to the system inset instead of maxing them", () => {
-    // Math.max would drop the design pad whenever inset > 8 — the Android bug.
-    expect(tabBarPaddingBottom(0)).toBe(TAB_BAR_DESIGN_BOTTOM_PAD);
-    expect(tabBarPaddingBottom(8)).toBe(8 + TAB_BAR_DESIGN_BOTTOM_PAD);
-    expect(tabBarPaddingBottom(24)).toBe(24 + TAB_BAR_DESIGN_BOTTOM_PAD);
-    expect(tabBarPaddingBottom(48)).toBe(48 + TAB_BAR_DESIGN_BOTTOM_PAD);
-    expect(tabBarPaddingBottom(34)).toBe(34 + TAB_BAR_DESIGN_BOTTOM_PAD);
+  it("lets a platform inset be the whole breathing room", () => {
+    // The captain bug: 34pt of home indicator plus a design pad on top of it
+    // made an iOS bar 8pt taller than UIKit's own, on top of an already tall
+    // column. Where the platform reserves space, nothing is added to it.
+    expect(tabBarPaddingBottom(34)).toBe(34);
+    expect(tabBarPaddingBottom(24)).toBe(24);
+    expect(tabBarPaddingBottom(48)).toBe(48);
+  });
 
-    // Explicit guard against the old composition.
-    expect(tabBarPaddingBottom(24)).not.toBe(Math.max(24, TAB_BAR_DESIGN_BOTTOM_PAD));
-    expect(tabBarPaddingBottom(48)).not.toBe(Math.max(48, TAB_BAR_DESIGN_BOTTOM_PAD));
+  it("stands in with the design gap only where there is no inset", () => {
+    // The opposite Android report: labels flush against the physical edge.
+    expect(tabBarPaddingBottom(0)).toBe(TAB_BAR_MIN_BOTTOM_GAP);
+  });
+});
+
+describe("tabBarMetrics", () => {
+  it("gives iOS the Human Interface Guidelines 49pt row", () => {
+    const ios = tabBarMetrics("ios");
+    expect(ios.columnHeight).toBe(49);
+    // 4 + 24 icon + 2 + 16 label + 3 fills it exactly.
+    expect(
+      ios.itemPaddingTop + 24 + ios.itemGap + 16 + ios.itemPaddingBottom,
+    ).toBe(ios.columnHeight);
+    // A home-indicator iPhone therefore lands on UIKit's own 83pt.
+    expect(ios.columnHeight + tabBarPaddingBottom(34)).toBe(83);
+  });
+
+  it("gives Android the Material 3 80dp container", () => {
+    const android = tabBarMetrics("android");
+    expect(android.columnHeight).toBe(80);
+    expect(android.itemPaddingTop).toBe(12);
+    expect(android.itemPaddingBottom).toBe(16);
+    // The natural stack fits inside the container, slack above the glyph.
+    expect(
+      android.itemPaddingTop + 24 + android.itemGap + 16 + android.itemPaddingBottom,
+    ).toBeLessThanOrEqual(android.columnHeight);
+    expect(android.columnHeight + tabBarPaddingBottom(24)).toBe(104);
+    expect(android.columnHeight + tabBarPaddingBottom(48)).toBe(128);
+  });
+
+  it("keeps the action disc on the 44pt touch floor on both platforms", () => {
+    for (const os of ["ios", "android", "web"]) {
+      expect(tabBarMetrics(os).actionDiameter).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it("leaves the badge's overhang room above the glyph on both platforms", () => {
+    // The badge is drawn at -top-1 (4). Less top padding than that on iOS,
+    // where the column is pinned to 49, would clip it against the hairline.
+    for (const os of ["ios", "android"]) {
+      expect(tabBarMetrics(os).itemPaddingTop).toBeGreaterThanOrEqual(4);
+    }
   });
 });
 
@@ -65,7 +125,7 @@ describe("GridgoTabBar", () => {
   beforeEach(() => {
     navigate.mockClear();
     emit.mockClear();
-    useNotifications.setState({ unreadCount: 0 });
+    useNotifications.setState({ items: [], readIds: [] });
   });
 
   it("labels every destination, so none is an icon alone", async () => {
@@ -119,49 +179,42 @@ describe("GridgoTabBar", () => {
   it.each([
     ["zero inset", 0],
     ["gesture-sized inset", 24],
+    ["home-indicator inset", 34],
     ["three-button-sized inset", 48],
-  ] as const)(
-    "applies inset + design pad on the bar root (%s)",
-    async (_label, inset) => {
-      await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />, inset);
+  ] as const)("puts the platform's own space under the bar (%s)", async (_label, inset) => {
+    await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />, inset);
 
-      const root = screen.getByTestId("gridgo-tab-bar");
-      const style = Array.isArray(root.props.style)
-        ? Object.assign({}, ...root.props.style)
-        : root.props.style;
-      expect(style.paddingBottom).toBe(tabBarPaddingBottom(inset));
-      // Old Math.max composition would equal the inset alone when inset > 8.
-      if (inset > TAB_BAR_DESIGN_BOTTOM_PAD) {
-        expect(style.paddingBottom).not.toBe(inset);
-        expect(style.paddingBottom).not.toBe(
-          Math.max(inset, TAB_BAR_DESIGN_BOTTOM_PAD),
-        );
-      }
-    },
-  );
+    const root = screen.getByTestId("gridgo-tab-bar");
+    const style = flatten(root.props.style);
+    expect(style.paddingBottom).toBe(tabBarPaddingBottom(inset));
+    // The old composition stacked the design gap on top of a real inset.
+    if (inset > 0) {
+      expect(style.paddingBottom).toBe(inset);
+    }
+  });
 
-  it("keeps destination columns on a growing min-height, not a rigid h-13", async () => {
-    useNotifications.setState({ unreadCount: 12 });
+  it("keeps destination columns on a growing min-height, not a rigid height", async () => {
+    useNotifications.setState({ items: unreadNotifications(12), readIds: [] });
 
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
     expect(screen.getByText("9+")).toBeTruthy();
 
-    // Geometry regression guard: rigid h-13 left zero top slack for the
-    // badge's -top-1 overhang. min-h-20 is MD3's 80dp icon+label bar.
+    // Geometry regression guard: a rigid height left zero top slack for the
+    // badge's -top-1 overhang, and pinned the column against label scaling.
     const notificationsTab = screen.getByRole("tab", { name: "Notifications" });
-    const className = String(notificationsTab.props.className ?? "");
-    expect(className).toContain("min-h-20");
-    expect(className).toContain("pt-2");
-    expect(className).not.toContain("h-13");
+    const style = flatten(notificationsTab.props.style);
+    expect(style.minHeight).toBe(TAB_BAR_METRICS.columnHeight);
+    expect(style.height).toBeUndefined();
+    expect(style.paddingTop).toBe(TAB_BAR_METRICS.itemPaddingTop);
   });
 });
 
 describe("tabScreenContentPadding", () => {
   it("clears the whole bar, not just the design gap", () => {
-    // inset + design pad (8) + MD3 column (80) + breathing room (24)
-    expect(tabScreenContentPadding(0)).toBe(112);
-    expect(tabScreenContentPadding(34)).toBe(146);
+    const column = TAB_BAR_METRICS.columnHeight;
+    expect(tabScreenContentPadding(0)).toBe(TAB_BAR_MIN_BOTTOM_GAP + column + 24);
+    expect(tabScreenContentPadding(34)).toBe(34 + column + 24);
   });
 
   it("is always taller than the bar it has to clear", () => {

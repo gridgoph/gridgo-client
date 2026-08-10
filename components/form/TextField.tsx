@@ -15,7 +15,10 @@ type Props = {
   keyboardType?: TextInputProps["keyboardType"];
   textContentType?: TextInputProps["textContentType"];
   secureTextEntry?: boolean;
+  autoCorrect?: boolean;
   onSubmitEditing?: TextInputProps["onSubmitEditing"];
+  /** So a form can hold its reason back until the field is left. */
+  onBlur?: TextInputProps["onBlur"];
 };
 
 /**
@@ -34,7 +37,9 @@ export function TextField({
   keyboardType,
   textContentType,
   secureTextEntry,
+  autoCorrect,
   onSubmitEditing,
+  onBlur,
 }: Props) {
   const colors = useThemeColors();
   return (
@@ -52,7 +57,9 @@ export function TextField({
       keyboardType={keyboardType}
       textContentType={textContentType}
       secureTextEntry={secureTextEntry}
+      autoCorrect={autoCorrect}
       onSubmitEditing={onSubmitEditing}
+      onBlur={onBlur}
       accessibilityLabel={accessibilityLabel}
     />
   );

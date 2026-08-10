@@ -1,17 +1,28 @@
 /**
- * The 24-hour material-issue window.
+ * The material-issue window.
  *
- * The platform decides whether the window is open from the order's state, not
- * from a timer: `POST /orders/:id/issues` accepts a report while the order is
- * in the issue window and refuses it otherwise. So this module presents the
- * policy and the real elapsed time since delivery, and deliberately shows no
- * countdown — a ticking clock would imply an expiry the server does not run.
+ * Two things changed under operational model v2, and both are visible here.
+ * The window's length is one platform-wide setting Operations can change
+ * without a release, so it is read from `GET /settings` and never hard-coded.
+ * And it now really expires: the platform stamps `issueWindowExpiresAt` on the
+ * order and closes the window when it passes. A remaining time is therefore an
+ * honest thing to show, where under the old model it would have been a promise
+ * no server kept.
+ *
+ * The state still decides whether a report is accepted — `POST /orders/:id/issues`
+ * refuses one outside the window — so this module reads the order, not a timer.
  */
 
 const HOUR_MS = 60 * 60 * 1000;
 
-/** The policy Operations applies when reviewing a report. */
-export const ISSUE_WINDOW_HOURS = 24;
+/** Only used to word the policy before `GET /settings` answers. */
+export const DEFAULT_ISSUE_WINDOW_HOURS = 24;
+
+/** "24 hours", "2 days" — the window's length, as a person would say it. */
+export function issueWindowLengthLabel(hours: number): string {
+  if (hours >= 48 && hours % 24 === 0) return `${hours / 24} days`;
+  return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+}
 
 export type IssueKind = "material_quality" | "damage" | "wrong_item" | "delivery" | "other";
 
@@ -82,10 +93,13 @@ export type IssueWindowStatus = {
   canReport: boolean;
   headline: string;
   detail: string;
-  /** "Delivered 3 hours ago" — a real elapsed time, never a countdown. */
+  /** "Delivered 3 hours ago" — real elapsed time since the window opened. */
   elapsedLabel: string | null;
-  /** True once more than 24 hours have passed since delivery. */
-  pastPolicyWindow: boolean;
+  /**
+   * "Closes in about 21 hours" — real remaining time, from the expiry the
+   * platform stamped on the order. Null when the order carries no expiry.
+   */
+  remainingLabel: string | null;
 };
 
 /** When the order entered the issue window, from its own timeline. */
@@ -96,32 +110,48 @@ export function issueWindowOpenedAt(
   return entry?.at ?? null;
 }
 
-function elapsedWords(ms: number): string {
+function spanWords(ms: number): string {
   const hours = Math.floor(ms / HOUR_MS);
   if (hours < 1) {
     const minutes = Math.max(1, Math.round(ms / 60_000));
-    return `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
   }
-  if (hours < 48) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
-  return `${Math.floor(hours / 24)} days ago`;
+  if (hours < 48) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  return `${Math.floor(hours / 24)} days`;
+}
+
+function msFrom(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
 }
 
 export function summarizeIssueWindow({
   state,
   openedAt,
+  expiresAt,
+  windowHours = DEFAULT_ISSUE_WINDOW_HOURS,
   hasOpenIssue,
   now = Date.now(),
 }: {
   state: string;
   openedAt: string | null;
+  /** `issueWindowExpiresAt` from the order. The platform enforces it. */
+  expiresAt?: string | null;
+  /** `issueWindowHours` from `GET /settings`. */
+  windowHours?: number;
   hasOpenIssue: boolean;
   now?: Date | number;
 }): IssueWindowStatus {
   const nowMs = typeof now === "number" ? now : now.getTime();
-  const openedMs = openedAt ? new Date(openedAt).getTime() : NaN;
-  const elapsed = Number.isFinite(openedMs) ? nowMs - openedMs : null;
-  const elapsedLabel = elapsed != null ? `Delivered ${elapsedWords(elapsed)}` : null;
-  const pastPolicyWindow = elapsed != null && elapsed > ISSUE_WINDOW_HOURS * HOUR_MS;
+  const openedMs = msFrom(openedAt);
+  const expiresMs = msFrom(expiresAt);
+
+  const elapsed = openedMs == null ? null : nowMs - openedMs;
+  const elapsedLabel = elapsed == null ? null : `Delivered ${spanWords(elapsed)} ago`;
+  const remaining = expiresMs == null ? null : expiresMs - nowMs;
+  const remainingLabel =
+    remaining != null && remaining > 0 ? `Closes in about ${spanWords(remaining)}` : null;
 
   if (hasOpenIssue) {
     return {
@@ -130,7 +160,7 @@ export function summarizeIssueWindow({
       detail:
         "The supplier payout is held while they review it. You will get a notification when there is a decision.",
       elapsedLabel,
-      pastPolicyWindow,
+      remainingLabel,
     };
   }
 
@@ -141,27 +171,16 @@ export function summarizeIssueWindow({
       detail:
         "This job has been signed off. Message Operations if something is still wrong with it.",
       elapsedLabel,
-      pastPolicyWindow,
-    };
-  }
-
-  if (pastPolicyWindow) {
-    return {
-      canReport: true,
-      headline: "You are past the 24-hour policy window.",
-      detail:
-        "You can still send a report and Operations will read it, but a late report carries less weight than one filed on the day.",
-      elapsedLabel,
-      pastPolicyWindow,
+      remainingLabel: null,
     };
   }
 
   return {
     canReport: true,
-    headline: `Report a material issue within ${ISSUE_WINDOW_HOURS} hours of delivery.`,
+    headline: `Tell Operations within ${issueWindowLengthLabel(windowHours)} of delivery.`,
     detail:
-      "Reporting holds the supplier payout while Operations reviews it, so send it as soon as you see a problem.",
+      "Reporting holds the supplier payout while Operations reviews it, so send it as soon as you see a problem. The window closes on its own once it passes.",
     elapsedLabel,
-    pastPolicyWindow,
+    remainingLabel,
   };
 }

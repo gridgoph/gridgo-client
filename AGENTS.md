@@ -12,7 +12,7 @@ Think like a senior mobile developer.
 
 ## Project Overview
 
-This repo is **GRIDGO Client** — the business-client app for a Davao City managed-printing marketplace. It carries a print job from structured request through artwork QA and proof approval to tracked delivery and the 24-hour issue window.
+This repo is **GRIDGO Client** — the business-client app for a Davao City managed-printing marketplace. It carries a print job from self sign-up and a structured request, through artwork QA and proof approval, a 75/25 digital payment, and the supplier's fulfilment milestones, to tracked delivery and the issue window.
 
 GRIDGO ships one app per role. The Rider app, the Supplier app, and the Supplier Operations Admin / Super Admin web portals are separate codebases. Nothing belonging to another role goes in here: no rider dispatch or location sharing, no supplier production or self-QC, no Operations QA queue or matching. If a task asks for one of those, it is in the wrong repo.
 
@@ -20,11 +20,13 @@ The app includes:
 
 - Product catalog with frequently-reordered items and one-tap reorder.
 - Structured print request: a 4-step stepper (Details → Artwork → Review → Confirm) capturing product, size, material, quantity, deadline, and delivery address.
-- Artwork upload, QA correction loop, and proof approval (Approve & Continue / Request Changes) against a preflight checklist.
+- Artwork upload, QA correction loop, and one proof approval (Approve & Continue / Request Changes) against a preflight checklist — Operations' artwork proof, before matching.
+- Visibility of the supplier's fulfilment milestones, which replaced the retired supplier print-proof loop.
 - Product Preview: artwork composited into a Flyer, Tarpaulin, Signage, or T-shirt template, always labeled "Visual mockup — not print-ready proof."
-- Payment selection limited to Pilot Credits or eligible Cash on Delivery.
+- Digital payment in two halves: a 75% QR downpayment that waits on Operations to confirm it, then a 25% balance before delivery.
 - Active delivery tracking: map with route, ETA, rider card, and an honest last-updated/stale-location state. The client watches the delivery; it never controls it.
-- Order history and reporting a material issue inside the 24-hour issue window.
+- Order history and reporting a material issue inside the issue window, whose length is one platform-wide setting and which now really expires.
+- Self sign-up: a client declares whether they are personal, business or an organization, and that choice drives the lockup for the life of the account.
 
 **Cross-cutting**
 
@@ -60,9 +62,9 @@ For this MVP we **do not** integrate Clerk, Supabase, PayMongo, or other product
 Every screen that needs network uses **`lib/api.ts`** against the shared local **`gridgo-api`**:
 
 - **Custom auth** — email/password → bearer token; role enforced in Zustand session (`store/session.ts`). Mismatched role is rejected (no role switcher).
-- **Custom domain API** — orders/jobs, credits, COD, dispatch, proofs, notifications.
+- **Custom domain API** — orders, split payments, dispatch, milestones, notifications. Read `docs/OPERATIONAL_MODEL_V2_API.md` in **gridgo-api** for routes, states and money before touching any of it; it supersedes older prose everywhere they disagree.
 - **Zustand** — session and feature stores (not React Context for global session).
-- **Money** — PHP minor units only; Pilot Credits + COD ≤ ₱1,500.
+- **Money** — PHP minor units only. The client sees **subtotal, delivery and total**, and never GRIDGO's commission: the server withholds it by role projection, so a screen that expects it is a bug.
 - **Replace later** — keep the same `lib/api.ts` surface when Clerk/Supabase/PayMongo land.
 - **API base URL** — `getApiBase()` / `resolveApiBase()` in `lib/api.ts`. Precedence: `EXPO_PUBLIC_API_URL` → hostname from Expo dev-server `hostUri` (via `expo-constants`, port from `EXPO_PUBLIC_API_PORT` or `8787`) → Android emulator loopback remapped to `10.0.2.2` → `127.0.0.1`. Do not hardcode a LAN IP; physical Expo Go devices need the host derived from the packager.
 
@@ -73,19 +75,22 @@ Product scope for this binary: **`PRD.md`**. Fleet blueprint: `gridgo-tinker`.
 Prefer these modules over burying rules in screens:
 
 - `lib/orderState.ts` — state labels/tones, phase predicates, `orderNextAction` / `orderWaitingOn` (the one client action per state), `latestNoteForState` (how a rejection reason reaches the screen)
-- `lib/payment.ts` — COD ≤ ₱1,500 + one-active COD; credits shortfall copy
+- `lib/payment.ts` — the 75/25 split: which half is payable, which is with Operations, reference validation, and the copy that says GRIDGO takes QR only. **Cash on delivery and Pilot Credits are not payment methods** — both routes are `410`/`400` server-side, and offering either walks a client into an error. Balance is asked for from `ready_for_dispatch` onward, not the moment the downpayment clears, or the split is a fiction
+- `lib/fulfilment.ts` — the supplier's milestones as the client may read them: `printing`, `packaging_qc`, `delivered`. `retention` is a hold-back on someone else's payout and is deliberately not shown, and the server withholds milestone amounts
+- `lib/signup.ts` — client self sign-up; account type reaches `GridgoLogo` through the session and must not be re-derived
+- `lib/orderStages.ts` — the four coarse stages (Order, Printing, Dispatch, Delivered) the legacy app drew on every notification. Unknown state → `null` → no rail, never a guessed position
 - `lib/requestValidation.ts` — stepper validation; artwork passes only on a server-issued `fileId`
-- `lib/taxonomy.ts` + `lib/zones.ts` — materials, finishes, delivery areas and **fees** come from `GET /taxonomy` and `GET /zones`. Never hardcode a material or a delivery fee; a picker, not free text, is what keeps two orders for the same tarpaulin matchable.
+- `lib/taxonomy.ts` + `lib/zones.ts` — materials and finishes come from `GET /taxonomy`; a zone is a named part of Davao and **carries no fee**. Delivery is priced by distance bands in `GET /settings`, from the assigned supplier's shop, so it does not exist until a supplier does. Never hardcode a material or a delivery fee. An order can store a taxonomy *code* rather than a name (`hem_grommet` reached a client's screen that way) — render it through `taxonomyLabel`.
 - `lib/productCategories.ts` — the **customer-facing** product tree (four categories, seventeen subcategories, each with the audience and example text a client recognises themselves in). A different thing from `lib/taxonomy.ts`, which holds the *production* categories that gate materials and finishes. Read it through `api.getProductCategories()`; `adaptProductCategories` is a deliberately forgiving reader over `GET /taxonomy` because the API contract had not landed, and falls back to `data/productCategories.ts`. **Narrow the field-name aliases and delete the seed once the API publishes the tree.** A subcategory maps to catalog *families*, so it becomes orderable the moment Operations prices one — a subcategory with no family is shown as quoted by Operations, never as a button that leads nowhere.
 - `lib/sizes.ts` — the one pick list the client owns (the platform has no size taxonomy). Custom is allowed only where the trade cuts to order, and is marked as custom.
 - `lib/deadline.ts` / `lib/quantity.ts` / `lib/address.ts` — bounds and wording for the date-time picker, the quantity stepper and the structured address
 - `lib/artworkUpload.ts` — upload phases and error copy. **Transfer progress is not success**: only a `201` carrying a `fileId` reaches `stored`.
 - `lib/tracking.ts` — staleness, remaining distance, and the lat/lng ↔ GeoJSON `[lon, lat]` boundary. GRIDGO publishes no ETA; do not invent one.
 - `lib/mapHtml.ts` + `lib/osrm.ts` + `components/DeliveryMap.native.tsx` — the map stack, mirroring the same-named files in **gridgo-rider**. See "Maps" below.
-- `lib/issueWindow.ts` — the 24-hour window is decided by order state server-side, so show elapsed time, never a countdown
+- `lib/issueWindow.ts` — the window's length is `issueWindowHours` from `GET /settings`, never a constant, and under v2 it genuinely expires: the platform stamps `issueWindowExpiresAt` and closes it, so remaining time is honest to show
 - `lib/productPreview.ts` — template map; mockup label is fixed here
 - `lib/persistStorage.ts` — required Zustand persistence boundary: use AsyncStorage in native/real-browser runtimes and inert storage only when `typeof window === "undefined"` during SSR; never gate persistence on `Platform.OS`
-- `lib/navigationHeaders.ts` — **every pushed root-stack screen goes through `pushedScreenOptions("<title>")`**, which does two jobs. It labels the back control **"Back"** (`headerBackTitle`), the one word true from every origin, so iOS never writes `(tabs)` or a single origin's title there — a bare chevron (`minimal`) was also honest and was reported as "no Back". And it *requires* a title: the band is drawn at full height whether or not anything is in it, so `title: ""` spent a header's height on a chevron and nothing else (the reported "empty space above the heading"). Pick a title that does not repeat the screen's own heading; both request screens say "New request" because they are two screens of one flow. `lib/__tests__/pushedRouteLayout.test.ts` reads `app/_layout.tsx` and fails if a new route skips either half.
+- `lib/navigationHeaders.ts` — **every pushed root-stack screen goes through `pushedScreenOptions("<title>")`**, which does two jobs. It sets `headerBackButtonDisplayMode: "minimal"` — the bare chevron the captain asked for, and the thing that stops iOS writing the previous screen's title (`(tabs)`, or one origin's name) on the control. A screen whose header is hidden still needs a `title`, because that is what a pushed child's back control falls back to. And it *requires* a title: the band is drawn at full height whether or not anything is in it, so `title: ""` spent a header's height on a chevron and nothing else (the reported "empty space above the heading"). Pick a title that does not repeat the screen's own heading; both request screens say "New request" because they are two screens of one flow. `lib/__tests__/pushedRouteLayout.test.ts` reads `app/_layout.tsx` and fails if a new route skips either half.
 - **A screen under a visible header never sets `edges={["top"]}`.** The header has already cleared the status bar and the prop is *additive*, so a second inset is a notch's worth of blank canvas — invisible on Expo web, where insets are zero, and ~47pt on the phone. Pushed screens use `edges={["bottom"]}`; only the tab screens and full-bleed routes own their top edge. Same test pins it.
 - **Never `router.replace` onto a root-stack sibling from inside `(tabs)`.** The root stack's only entry is the tab shell, so `REPLACE` swaps it out: no tab bar, no back control, only OS gestures. Switch tab then `push` (see `sendRequest` in `app/(tabs)/new-request.tsx`). Any screen reachable by deep link also needs its own escape when `!router.canGoBack()` — `app/order/[id].tsx` sets a `headerLeft` for it.
 - `components/Skeleton.tsx` — placeholder shapes with a highlight **sweep** (~1.1s), the loading language the legacy app used. Ambient loading, not a transition: the 160–240ms budget governs transitions, and an opacity pulse inside it would strobe. Reduce motion drops the sweep and keeps the shapes. Shape the composition like the screen it becomes (`SkeletonOrderCard`) — a wrong-height placeholder is the "it jumps" bug. `components/LoadingOverlay.tsx` is the other case: work that blocks a screen already on display.
@@ -94,11 +99,12 @@ Prefer these modules over burying rules in screens:
 - `lib/onboardingExit.ts` — explicit onboarding dismiss targets (`returnTo=settings` vs first-launch). Do not rely on history alone for Settings replay.
 - Onboarding pager is full-height over the content area (art behind, `pointerEvents="none"`) so swipes work over the illustration; parallax stays outside the pager.
 - Account holds identity + Sign out; theme and “View onboarding” live on `app/settings.tsx`.
-- `components/GridgoTabBar.tsx` — bottom pad is `insets.bottom + design` (never `Math.max`); labelled columns `min-h-20` (MD3 80dp), not rigid `h-13`
+- `components/GridgoTabBar.tsx` — geometry is per platform and both halves were captain reports. iOS gets the HIG's **49pt** content row (83pt with the home indicator, exactly UIKit); Android gets Material 3's **80dp** container. Where the platform reserves a bottom inset, **that inset is the whole breathing room** — adding a design pad on top of 34pt is what "the tab bar sits too high" was. Where there is none, the design gap stands in. Columns keep a `minHeight`, never a rigid height, or the badge has no slack. Keep the three apps identical.
 - `components/GridgoLogo.tsx` — mark + wordmark + optional role lockup (`GridgoLogoRole`). Client uses `logoRoleForClientAccount(user.accountType)` only — never infer from `orgName`. Signed-out surfaces stay plain GRIDGO (no flash). Identity surfaces only: login, onboarding, home header. **Layout rule:** the mark sits left and stands as tall as the whole text block; the wordmark and role stack in a column beside it. Never a mark/wordmark row with the role hung underneath — that caps the mark at one line and has been rejected twice. All geometry is derived in `gridgoLockupMetrics`, and `size` means the plain lockup's mark edge, not the rendered height.
 - `app/request/category.tsx` + `app/request/[category].tsx` — choosing what to print. This sits **ahead of** the four-step stepper, not inside it: the stepper specifies a job already decided on, and a reorder skips the choice entirely. The tab bar's yellow "+" is the app's one start-a-request control and routes here when nothing is chosen (`app/(tabs)/_layout.tsx`) — do not add a second start button to a screen.
 - `store/requestDraft.ts` — in-progress request (Zustand + AsyncStorage)
 - `store/theme.ts` — system/light/dark preference persistence
+- `store/notifications.ts` — the API has **no mark-as-read route**, so dismissals are a persisted per-device `readIds` set. Without it a swipe would un-read itself on the next refresh. Delete it the day `POST /notifications/:id/read` lands.
 
 ### Files and proofs
 
@@ -137,8 +143,10 @@ Never hand-roll a `<Modal animationType="slide">` again — a fixed ramp that ig
 ### Honest-state rules that keep being re-broken
 
 - Rider location comes from `GET /dispatch/:id/location` and is often `{ ping: null }`. Say so; never render an empty map as if it were current.
+- **Submitting a payment reference is not paying.** `POST /orders/:id/payments/:installment/submit` returns `200` for "with Operations for checking". Nothing may read as paid until the status is `confirmed`, and "we are checking your payment" is a real state a person sits in — give it a card, not silence.
+- **A price is a range until a supplier accepts.** Before that, `priceRange` is all there is and delivery does not exist, because it is priced from a shop nobody has chosen. Never compute a total from the catalog to fill the gap.
 - `POST /orders/:id/issues` is refused unless the order is in the issue window, and refuses a second open report with `issue_already_open`. Map both to plain language in `lib/copy.ts`.
-- The delivery fee is the zone's, from the API. A constant in the app will disagree with what the client is charged.
+- The delivery fee is the distance band's, from the API, and only after a supplier is assigned. A constant in the app will disagree with what the client is charged.
 
 ## Running and testing
 
@@ -146,6 +154,7 @@ Never hand-roll a `<Modal animationType="slide">` again — a fixed ramp that ig
 - **Expo web boots only because `metro.config.js` resolves zustand through its CommonJS build.** zustand serves native the CJS build via the `react-native` export condition and everyone else an ESM build whose devtools middleware reads `import.meta.env`; Metro emits web as a classic script, so that is a syntax error that kills the *whole* bundle with one console line and a blank page. Session, theme and the request draft all import `zustand/middleware`, so this is not an edge case.
 - Metro's file watcher does not reliably pick up edits in a git worktree here. If a screen looks stale in the browser, restart the dev server rather than doubting the change.
 - `@testing-library/react-native` 14 on React 19 returns a promise from `render`. **`await` it**, or `screen` stays empty and every query fails with "render function has not been called".
+- Same combination, two more traps worth knowing before you spend an hour on them. A `fireEvent.changeText` does not land before the next synchronous `fireEvent.press`, so a form submitted in a test reads an empty form — `await waitFor` on the last field's value first. And once a press has driven an **async** update into a store outside React, every later `render` in that file yields an empty tree, even of a bare `<Text>`; put the submitting test last in its file and give a second one its own file (`app/__tests__/signup.test.tsx` and `signup-error.test.tsx`).
 
 ## Development Philosophy
 

@@ -58,8 +58,8 @@ export default function OrdersScreen() {
   );
 
   const productById = new Map(catalog.map((p) => [p.id, p]));
-  const needsClient = orders.filter((o) => orderNeedsClient(o.state));
-  const inProgress = orders.filter((o) => !orderNeedsClient(o.state));
+  const needsClient = orders.filter(orderNeedsClient);
+  const inProgress = orders.filter((o) => !orderNeedsClient(o));
 
   const reorder = (order: api.Order) => {
     const meta = productById.get(order.productId);
@@ -79,7 +79,7 @@ export default function OrdersScreen() {
         <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
           <Text className="text-h1 text-text-primary">Orders</Text>
           <Text className="mt-2 text-body text-text-secondary">
-            Open a job to approve a proof, pay, or follow the delivery.
+            Open a job to approve your artwork, pay, or follow the delivery.
           </Text>
 
           {error ? (

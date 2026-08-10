@@ -1,92 +1,137 @@
 /**
- * Pilot payment rules — enforce in UI before the user hits the API error.
+ * The digital payment split, as the client meets it.
  *
- * - Pilot Credits: authorize spend; never offer top-up/purchase/transfer.
- * - COD: total + delivery ≤ ₱1,500 and at most one active unpaid COD order.
+ * One order is paid in two halves: 75% before production, 25% before delivery.
+ * Both are QR transfers the client makes themselves — GCash, Maya or a bank
+ * e-wallet — and both are confirmed by hand by Operations. No money moves
+ * through this app, so nothing here may ever read as "paid" on submission.
+ *
+ * Cash on delivery and Pilot Credits are not payment methods. Both routes are
+ * retired server-side; offering either would walk a client into an error.
  */
 
-/** ₱1,500 in minor units (centavos). */
-export const COD_LIMIT_MINOR = 150_000;
+import type { InstallmentCode, Order, PaymentInstallment } from "@/lib/api";
 
-export type CodEligibility = {
-  eligible: boolean;
-  /** Why COD cannot be used, when not eligible. Empty when eligible. */
-  reason: string | null;
-  /** Always explain the pilot rules before the user submits. */
-  limitNotice: string;
-  oneActiveNotice: string;
-};
+export const DOWNPAYMENT_PERCENT = 75;
+export const BALANCE_PERCENT = 25;
 
-export const COD_LIMIT_NOTICE =
-  "Cash on Delivery is only available when the order total (including delivery) is ₱1,500 or less.";
+/** The only method the platform accepts. */
+export const PAYMENT_METHOD = "qr_manual";
 
-export const COD_ONE_ACTIVE_NOTICE =
-  "You may have only one unpaid COD order at a time. Finish or pay an open COD order before starting another.";
+/**
+ * Shortest reference Operations can match against the GRIDGO wallet.
+ * GCash references are 13 characters; a stray digit or two is not a reference.
+ */
+export const MIN_REFERENCE_LENGTH = 4;
+export const MAX_REFERENCE_LENGTH = 64;
 
-export const CREDITS_NON_CASH_NOTICE =
-  "Pilot Credits are non-cash and non-transferable. They cannot be topped up, purchased, withdrawn, or transferred in this app.";
+export function installmentLabel(code: InstallmentCode): string {
+  return code === "downpayment" ? "Downpayment" : "Remaining balance";
+}
 
-/** Unpaid / in-flight COD payment statuses that block a second COD order. */
-export function isActiveUnpaidCodOrder(order: {
-  id: string;
-  paymentMethod: string | null;
-  paymentStatus: string;
-  state: string;
-}): boolean {
-  if (order.paymentMethod !== "cod") return false;
-  if (order.paymentStatus === "collected" || order.paymentStatus === "reconciled") return false;
-  if (order.state === "completed" || order.state === "payout_released") return false;
-  return true;
+/** The share of the total each half carries, for guidance copy. */
+export function installmentSharePercent(code: InstallmentCode): number {
+  return code === "downpayment" ? DOWNPAYMENT_PERCENT : BALANCE_PERCENT;
+}
+
+export function isInstallmentConfirmed(installment: PaymentInstallment | undefined): boolean {
+  // `legacy_confirmed` is what migration left on orders paid under the old
+  // single-authorization model. It counts as paid, and nothing is owed on it.
+  return installment?.status === "confirmed" || installment?.status === "legacy_confirmed";
+}
+
+export function isInstallmentSubmitted(installment: PaymentInstallment | undefined): boolean {
+  return installment?.status === "pending_confirmation";
 }
 
 /**
- * Whether this client may pay `grandTotalMinor` by COD, given their other orders.
+ * States in which the remaining balance is asked for.
+ *
+ * Not the moment the downpayment clears — that would collect the whole price
+ * up front and make the split a fiction. The job is made first; the balance is
+ * asked for once it is packed, and delivery is blocked until it is confirmed.
  */
-export function evaluateCodEligibility(
-  grandTotalMinor: number,
-  otherOrders: {
-    id: string;
-    paymentMethod: string | null;
-    paymentStatus: string;
-    state: string;
-  }[],
-  currentOrderId?: string,
-): CodEligibility {
-  const base = {
-    limitNotice: COD_LIMIT_NOTICE,
-    oneActiveNotice: COD_ONE_ACTIVE_NOTICE,
-  };
+export const BALANCE_DUE_STATES = [
+  "ready_for_dispatch",
+  "rider_assigned",
+  "picked_up",
+  "out_for_delivery",
+] as const;
 
-  if (grandTotalMinor > COD_LIMIT_MINOR) {
-    return {
-      ...base,
-      eligible: false,
-      reason: `This order is above the ₱1,500 COD limit.`,
-    };
-  }
-
-  const openCod = otherOrders.some(
-    (o) => o.id !== currentOrderId && isActiveUnpaidCodOrder(o),
-  );
-  if (openCod) {
-    return {
-      ...base,
-      eligible: false,
-      reason: "You already have an unpaid COD order. Only one is allowed at a time.",
-    };
-  }
-
-  return { ...base, eligible: true, reason: null };
+export function downpaymentDue(order: Order): boolean {
+  if (order.state !== "awaiting_downpayment") return false;
+  const installment = order.payments?.downpayment;
+  return Boolean(installment) && !isInstallmentSubmitted(installment) && !isInstallmentConfirmed(installment);
 }
 
-/** Shortfall when authorize returns 402 insufficient_credits. */
-export function creditsShortfallMinor(needMinor: number, balanceMinor: number): number {
-  return Math.max(0, needMinor - balanceMinor);
+export function balanceDue(order: Order): boolean {
+  if (!(BALANCE_DUE_STATES as readonly string[]).includes(order.state)) return false;
+  if (!isInstallmentConfirmed(order.payments?.downpayment)) return false;
+  const installment = order.payments?.balance;
+  return Boolean(installment) && !isInstallmentSubmitted(installment) && !isInstallmentConfirmed(installment);
 }
 
-export function formatCreditsShortfallMessage(needMinor: number, balanceMinor: number): string {
-  const shortfall = creditsShortfallMinor(needMinor, balanceMinor);
-  const php = (n: number) =>
-    `₱${(n / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `Your Pilot Credits balance is ${php(shortfall)} short of this order (${php(balanceMinor)} available, ${php(needMinor)} needed). Choose Cash on Delivery if it is eligible, or ask Operations to top up the pilot grant.`;
+/** Which half — if either — the client is currently waiting on a check for. */
+export function installmentUnderReview(order: Order): InstallmentCode | null {
+  if (isInstallmentSubmitted(order.payments?.downpayment)) return "downpayment";
+  if (isInstallmentSubmitted(order.payments?.balance)) return "balance";
+  return null;
+}
+
+/** The half this order is asking the client to pay, if any. */
+export function payableInstallment(order: Order): InstallmentCode | null {
+  if (downpaymentDue(order)) return "downpayment";
+  if (balanceDue(order)) return "balance";
+  return null;
+}
+
+/**
+ * The constraint, said before the client hits it rather than after.
+ * Both halves are digital; there is no cash option and no credit option.
+ */
+export const DIGITAL_ONLY_NOTICE =
+  "GRIDGO takes payment by QR only — GCash, Maya or a bank e-wallet. There is no cash on delivery.";
+
+export const MANUAL_CONFIRMATION_NOTICE =
+  "Operations matches your reference against the GRIDGO wallet by hand, so it is checked in working hours rather than instantly.";
+
+export function payInstruction(code: InstallmentCode): string {
+  return code === "downpayment"
+    ? "Scan the GRIDGO QR code your Operations contact sent you and pay the downpayment, then enter the reference number printed on your receipt."
+    : "Scan the same GRIDGO QR code and pay the remaining balance, then enter the reference number printed on your receipt.";
+}
+
+export function afterPayCopy(code: InstallmentCode): string {
+  return code === "downpayment"
+    ? "Your supplier starts production once Operations confirms this."
+    : "Your order goes out for delivery once Operations confirms this.";
+}
+
+export type ReferenceCheck = { ok: boolean; reason: string | null };
+
+/**
+ * Enough of a reference for Operations to find the transfer.
+ * The API rejects an empty one; this says so before the round trip.
+ */
+export function checkPaymentReference(reference: string): ReferenceCheck {
+  const trimmed = reference.trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      reason: "Enter the reference number from your payment receipt. Operations finds your transfer by it.",
+    };
+  }
+  if (trimmed.length < MIN_REFERENCE_LENGTH) {
+    return {
+      ok: false,
+      reason: `That is too short to be a reference number. Copy the whole one from your receipt — GCash's is 13 characters.`,
+    };
+  }
+  if (trimmed.length > MAX_REFERENCE_LENGTH) {
+    return {
+      ok: false,
+      reason: "That is longer than any wallet reference. Enter just the reference number, not the whole receipt.",
+    };
+  }
+  return { ok: true, reason: null };
 }
