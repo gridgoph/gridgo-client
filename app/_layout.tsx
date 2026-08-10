@@ -85,7 +85,25 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
 
           <Stack.Protected guard={!isSignedIn}>
-            <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+            {/*
+              The header is hidden, but the title still matters: it is what a
+              pushed screen's back control falls back to. Without it the signup
+              screen's back link reads `(auth)/login` on web — the same class of
+              leak the `(tabs)` title below guards against.
+            */}
+            <Stack.Screen
+              name="(auth)/login"
+              options={{ headerShown: false, title: "Sign in" }}
+            />
+            {/*
+              Signing up is pushed above the sign-in screen, so it keeps a
+              labelled way back to it. The band names the flow rather than
+              repeating "Create your account" from the heading below it.
+            */}
+            <Stack.Screen
+              name="(auth)/signup"
+              options={pushedScreenOptions("New account")}
+            />
           </Stack.Protected>
 
           {/*

@@ -3,21 +3,21 @@
  *
  * Two rules live here, and both were bugs before they were rules.
  *
- * **1. The back control says "Back".**
+ * **1. The back control is the bare chevron.**
  * On iOS, the native stack labels the back control with the previous screen's
  * title. The tab group route is the filesystem name `(tabs)`, which must never
  * reach the user. Order (and similar) can also be opened from more than one
  * tab, so a single origin label would be a lie.
  *
- * The control therefore says the one word that is true from every origin:
- * **Back**. `headerBackButtonDisplayMode: "minimal"` — a bare chevron — was
- * also honest, but on a bright display, above a screen that carries its own
- * large heading, it reads as part of the artwork rather than as the way out.
- * "The user cannot tell how to get back" is the defect; a control that
- * technically exists does not fix it.
+ * `headerBackButtonDisplayMode: "minimal"` solves both: it renders the chevron
+ * alone, so no origin title — least of all `(tabs)` — can ever appear there.
+ * This file briefly set `headerBackTitle: "Back"` instead, after riders
+ * reported missing the bare chevron; the captain has since overruled that and
+ * asked for the chevron. Keep `minimal` — dropping it does not merely change
+ * the wording, it hands the label back to the previous screen's title.
  *
- * Android's native stack shows its own arrow and ignores the label, which is
- * that platform's convention and correct. The control keeps a system
+ * Android's native stack shows its own arrow and ignores both settings, which
+ * is that platform's convention and correct. The control keeps a system
  * accessibility name on both.
  *
  * **2. The band always carries a title.**
@@ -47,7 +47,6 @@ export function pushedScreenOptions<T extends string>(title: NonEmptyTitle<T>) {
 
   return {
     title,
-    headerBackButtonDisplayMode: "default" as const,
-    headerBackTitle: "Back",
+    headerBackButtonDisplayMode: "minimal" as const,
   };
 }

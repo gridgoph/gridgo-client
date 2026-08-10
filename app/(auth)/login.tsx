@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
-import { Redirect } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 
 import { ErrorState } from "@/components/ErrorState";
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { getApiBase, health } from "@/lib/api";
 import { useSession } from "@/store/session";
@@ -24,6 +25,7 @@ import { useSession } from "@/store/session";
  */
 export default function LoginScreen() {
   const { user, login, loading, error } = useSession();
+  const router = useRouter();
   const [email, setEmail] = useState("client@gridgo.local");
   const [password, setPassword] = useState("demo");
   const [apiBase] = useState(() => getApiBase());
@@ -112,11 +114,19 @@ export default function LoginScreen() {
             </View>
           ) : null}
 
-          <View className="mt-6">
+          <View className="mt-6 gap-3">
             <PrimaryButton
               label={loading ? "Signing in…" : "Sign in"}
               disabled={!canSubmit}
               onPress={() => void login(email.trim(), password)}
+            />
+            {/* Secondary, and monochrome: the screen's one yellow control is
+                the sign-in button, and a first-time client reads down to this
+                without it needing to shout. */}
+            <SecondaryButton
+              label="Create an account"
+              disabled={loading}
+              onPress={() => router.push("/(auth)/signup")}
             />
           </View>
 

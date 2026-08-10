@@ -3,7 +3,6 @@ import {
   DEFAULT_ZONE_CODE,
   findZone,
   resolveZoneCode,
-  zoneDeliveryFeeMinor,
   zoneName,
   type Zone,
 } from "@/lib/zones";
@@ -13,21 +12,18 @@ const zones: Zone[] = [
     id: "zone_central",
     code: "davao_central",
     name: "Davao Central (Bajada / JP Laurel)",
-    deliveryFeeMinor: 15100,
     active: true,
   },
   {
     id: "zone_west",
     code: "davao_west",
     name: "Davao West (Toril side)",
-    deliveryFeeMinor: 20000,
     active: true,
   },
   {
     id: "zone_paused",
     code: "davao_island",
     name: "Samal (paused)",
-    deliveryFeeMinor: 50000,
     active: false,
   },
 ];
@@ -38,15 +34,14 @@ describe("activeZones", () => {
   });
 });
 
-describe("zoneDeliveryFeeMinor", () => {
-  it("uses the fee the platform serves, not a constant", () => {
-    expect(zoneDeliveryFeeMinor(zones, "davao_west")).toBe(20000);
-    expect(zoneDeliveryFeeMinor(zones, "davao_central")).toBe(15100);
-  });
-
-  it("returns null rather than guessing when zones have not loaded", () => {
-    expect(zoneDeliveryFeeMinor([], "davao_west")).toBeNull();
-    expect(zoneDeliveryFeeMinor(zones, "unknown")).toBeNull();
+describe("a zone carries no money", () => {
+  it("has no fee field to read", () => {
+    // Delivery is priced by the distance from the assigned supplier's shop,
+    // in bands Operations can change without a release. A zone that still
+    // carried a fee would disagree with what the client is charged.
+    for (const zone of zones) {
+      expect(zone).not.toHaveProperty("deliveryFeeMinor");
+    }
   });
 });
 

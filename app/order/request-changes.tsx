@@ -13,7 +13,7 @@ import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 
 /**
- * "What needs to change?" — the reason that goes back with a rejected proof.
+ * "What needs to change?" — the reason that goes back with the artwork proof.
  *
  * A route rather than a hand-rolled overlay, presented as the platform's own
  * form sheet (see the root layout): drag-to-dismiss, the Android back gesture,
@@ -22,14 +22,12 @@ import { userFacingError } from "@/lib/copy";
  * the one thing the platform cannot know — that a half-written reason is work
  * worth asking about before it is thrown away.
  *
- * `proof` names which proof is being sent back, in the client's words. The
- * state the order moves to is decided here, never carried in the URL.
+ * There is one proof decision left in the product: Operations' artwork proof.
+ * The supplier print proof loop was removed from the platform, so this sheet
+ * has one destination and the state is decided here, never carried in the URL.
  */
 export default function RequestChangesSheet() {
-  const { orderId, proof } = useLocalSearchParams<{
-    orderId: string;
-    proof?: "print" | "artwork";
-  }>();
+  const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const router = useRouter();
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
@@ -39,7 +37,6 @@ export default function RequestChangesSheet() {
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
-  const isPrintProof = proof === "print";
   const trimmed = reason.trim();
   const tooShort = trimmed.length < MIN_REASON;
 
@@ -53,11 +50,10 @@ export default function RequestChangesSheet() {
     setBusy(true);
     setError(null);
     try {
-      await api.transitionOrder(
-        orderId,
-        isPrintProof ? "supplier_proof_changes_requested" : "client_correction",
-        { reason: trimmed, note: trimmed },
-      );
+      await api.transitionOrder(orderId, "client_correction", {
+        reason: trimmed,
+        note: trimmed,
+      });
       setReason("");
       router.back();
     } catch (e) {
@@ -69,7 +65,7 @@ export default function RequestChangesSheet() {
       );
       setBusy(false);
     }
-  }, [orderId, tooShort, isPrintProof, trimmed, router]);
+  }, [orderId, tooShort, trimmed, router]);
 
   return (
     <KeyboardAvoidingView
@@ -83,10 +79,8 @@ export default function RequestChangesSheet() {
         <View className="gap-2">
           <Text className="text-h2 text-text-primary">What needs to change?</Text>
           <Text className="text-body text-text-secondary">
-            {isPrintProof
-              ? "Your supplier reads this and reworks the proof before anything goes on the press."
-              : "Operations reads this and comes back to you with a corrected proof."}{" "}
-            Be specific about what is wrong and where.
+            Operations reads this and comes back to you with a corrected proof. Be specific
+            about what is wrong and where.
           </Text>
         </View>
 
@@ -134,7 +128,7 @@ export default function RequestChangesSheet() {
       <ConfirmDialog
         visible={confirmDiscard}
         question="Discard what you have written?"
-        body="Your supplier has not seen this yet. Closing now throws away the reason you typed; the job itself is unchanged."
+        body="Operations has not seen this yet. Closing now throws away the reason you typed; the job itself is unchanged."
         confirmLabel="Discard it"
         cancelLabel="Keep writing"
         tone="destructive"

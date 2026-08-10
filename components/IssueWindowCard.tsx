@@ -15,6 +15,7 @@ import { userFacingError } from "@/lib/copy";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import {
   checkIssueDescription,
+  DEFAULT_ISSUE_WINDOW_HOURS,
   issueKindLabel,
   issueWindowOpenedAt,
   ISSUE_KINDS,
@@ -27,14 +28,17 @@ type Props = {
 };
 
 /**
- * The 24-hour material-issue window.
+ * The material-issue window.
  *
- * The platform decides whether a report is accepted from the order's state, so
- * this card shows the policy and how long ago the job was delivered — never a
- * countdown, which would imply an expiry no server enforces.
+ * Its length is one platform-wide setting, so the card reads it from
+ * `GET /settings` rather than stating a number of its own. The window really
+ * expires under v2 — the platform stamps the expiry on the order and closes it
+ * when it passes — so the time left is a fact worth showing, next to how long
+ * ago the job arrived.
  */
 export function IssueWindowCard({ order }: Props) {
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [windowHours, setWindowHours] = useState(DEFAULT_ISSUE_WINDOW_HOURS);
   const [loadFailed, setLoadFailed] = useState(false);
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<IssueKind>("material_quality");
@@ -50,6 +54,13 @@ export function IssueWindowCard({ order }: Props) {
     } catch {
       setLoadFailed(true);
     }
+    // The window's length is Operations' to change. A failure here only costs
+    // the wording, so it falls back rather than blocking the report.
+    try {
+      setWindowHours((await api.getSettings()).issueWindowHours);
+    } catch {
+      // Keep the default wording.
+    }
   }, [order.id]);
 
   useEffect(() => {
@@ -59,7 +70,9 @@ export function IssueWindowCard({ order }: Props) {
   const openIssue = issues.find((issue) => issue.status === "open") ?? null;
   const status = summarizeIssueWindow({
     state: order.state,
-    openedAt: issueWindowOpenedAt(order.timeline),
+    openedAt: order.issueWindowOpenedAt ?? issueWindowOpenedAt(order.timeline),
+    expiresAt: order.issueWindowExpiresAt,
+    windowHours,
     hasOpenIssue: Boolean(openIssue),
   });
   const check = checkIssueDescription(description);
@@ -99,8 +112,10 @@ export function IssueWindowCard({ order }: Props) {
         ) : null}
         <Text className="text-h3 text-text-primary">{status.headline}</Text>
         <Text className="text-body text-text-secondary">{status.detail}</Text>
-        {status.elapsedLabel ? (
-          <Text className="text-caption text-text-muted">{status.elapsedLabel}</Text>
+        {status.elapsedLabel || status.remainingLabel ? (
+          <Text className="text-caption text-text-muted">
+            {[status.elapsedLabel, status.remainingLabel].filter(Boolean).join(" · ")}
+          </Text>
         ) : null}
       </View>
 

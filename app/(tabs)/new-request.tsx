@@ -25,7 +25,6 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { formatPhp } from "@/lib/api";
 import { composeAddress, DELIVERY_CITY } from "@/lib/address";
 import { isArtworkBusy } from "@/lib/artworkUpload";
 import { formatUnitPrice } from "@/lib/catalog";
@@ -53,13 +52,7 @@ import {
   materialOptions,
   type Taxonomy,
 } from "@/lib/taxonomy";
-import {
-  activeZones,
-  resolveZoneCode,
-  zoneDeliveryFeeMinor,
-  zoneName,
-  type Zone,
-} from "@/lib/zones";
+import { activeZones, resolveZoneCode, zoneName, type Zone } from "@/lib/zones";
 import {
   draftFieldsFromStore,
   draftHasContent,
@@ -71,9 +64,14 @@ import {
  * Four-step print request: Details → Artwork → Review → Send.
  *
  * Every value the platform already defines is chosen, never typed: materials
- * and finishes come from `GET /taxonomy`, the delivery area and its fee from
- * `GET /zones`, the deadline from a real date and time picker. The draft is
- * persisted, so this survives the app being killed mid-request.
+ * and finishes come from `GET /taxonomy`, the delivery area from `GET /zones`,
+ * the deadline from a real date and time picker. The draft is persisted, so
+ * this survives the app being killed mid-request.
+ *
+ * No price is stated here. Delivery is priced by the distance from a supplier
+ * who has not been chosen yet, and the job's own price is a range until one
+ * accepts, so the last step says that instead of showing a total it cannot
+ * stand behind.
  *
  * The screen carries exactly one yellow control, and it is always the thing to
  * do next — pick a file on the artwork step, continue everywhere else.
@@ -167,22 +165,18 @@ export default function NewRequestScreen() {
       activeZones(zones).map((zone) => ({
         value: zone.code,
         label: zone.name,
-        hint: `Delivery ${formatPhp(zone.deliveryFeeMinor)}`,
       })),
     [zones],
   );
 
   // A zone the client picked before the list loaded is honoured; otherwise the
-  // first real zone is chosen so a fee is never guessed.
+  // first real area is chosen so the address is never left unplaced.
   useEffect(() => {
     if (!zones.length) return;
     const resolved = resolveZoneCode(zones, draft.zone);
     if (resolved !== draft.zone) patch({ zone: resolved });
   }, [zones, draft.zone, patch]);
 
-  const deliveryFeeMinor = zoneDeliveryFeeMinor(zones, draft.zone);
-  const estimatedPrintMinor =
-    draft.basePriceMinor > 0 ? draft.basePriceMinor * Math.max(1, draft.quantity) : 0;
   const artworkBusy = isArtworkBusy(artwork.state);
   const needsFile = !draft.artworkFileId;
 
@@ -233,7 +227,6 @@ export default function NewRequestScreen() {
           }),
           zone: draft.zone,
           artworkName: draft.artworkName.trim() || null,
-          deliveryFeeMinor: deliveryFeeMinor ?? undefined,
         });
         orderId = order.id;
         createdOrderId.current = order.id;
@@ -362,9 +355,9 @@ export default function NewRequestScreen() {
 
               {stepId === "confirm" ? (
                 <SendStep
-                  estimatedPrintMinor={estimatedPrintMinor}
-                  deliveryFeeMinor={deliveryFeeMinor}
-                  zoneLabel={zoneName(zones, draft.zone)}
+                  unitPriceMinor={draft.basePriceMinor}
+                  unit={draft.unit}
+                  quantity={draft.quantity}
                   deadline={draft.deadline}
                 />
               ) : null}
@@ -644,7 +637,10 @@ function DetailsStep({
           />
         </FormField>
 
-        <FormField label="Delivery area" helper="Sets the delivery fee on this job.">
+        <FormField
+          label="Delivery area"
+          helper="Places your address on the map. Delivery is priced by how far your supplier is from it."
+        >
           <OptionPicker
             title="Choose a delivery area"
             accessibilityLabel="Delivery area"
@@ -716,41 +712,49 @@ function ReviewStep({
   );
 }
 
+/**
+ * The last step before sending, and the one place a price could be invented.
+ *
+ * It is not. No exact price exists until a supplier accepts, and no delivery
+ * fee exists until GRIDGO knows which shop the job is coming from — so this
+ * screen quotes the catalog rate it genuinely knows and says, plainly, that a
+ * price range lands on the job the moment it is sent.
+ */
 function SendStep({
-  estimatedPrintMinor,
-  deliveryFeeMinor,
-  zoneLabel,
+  unitPriceMinor,
+  unit,
+  quantity,
   deadline,
 }: {
-  estimatedPrintMinor: number;
-  deliveryFeeMinor: number | null;
-  zoneLabel: string;
+  unitPriceMinor: number;
+  unit: string;
+  quantity: number;
   deadline: string;
 }) {
-  const total = estimatedPrintMinor + (deliveryFeeMinor ?? 0);
-
   return (
     <View className="gap-6">
       <View className="gap-1">
         <Text className="text-h2 text-text-primary">Ready to send</Text>
         <Text className="text-body text-text-secondary">
-          Nothing is charged now. You choose how to pay after a supplier prices the job.
+          Nothing is charged now, and nothing is owed until a supplier accepts the job.
         </Text>
       </View>
 
       <View className="gg-card">
         <SpecRow
-          label="Estimated print"
-          value={estimatedPrintMinor > 0 ? formatPhp(estimatedPrintMinor) : "From catalog"}
+          label="Catalog rate"
+          value={unitPriceMinor > 0 ? formatUnitPrice(unitPriceMinor, unit) : "Priced on request"}
         />
-        <SpecRow
-          label={`Delivery · ${zoneLabel}`}
-          value={deliveryFeeMinor != null ? formatPhp(deliveryFeeMinor) : "Confirmed when matched"}
-        />
-        <View className="flex-row items-baseline justify-between gap-4 pt-3">
-          <Text className="text-body-lg text-text-secondary">Estimated total</Text>
-          <Text className="text-h3 text-text-primary">
-            {estimatedPrintMinor > 0 && deliveryFeeMinor != null ? formatPhp(total) : "—"}
+        <SpecRow label="Quantity" value={describeQuantity(quantity, unit)} />
+        <View className="gap-1 pt-3">
+          <View className="flex-row items-baseline justify-between gap-4">
+            <Text className="text-body-lg text-text-secondary">Price</Text>
+            <Text className="text-body-lg text-text-primary">A range, once you send</Text>
+          </View>
+          <Text className="text-caption text-text-muted">
+            GRIDGO shows the range its suppliers charge for this job as soon as it is sent.
+            The exact figure exists only when a supplier accepts, and delivery is priced by
+            the distance from their shop to you.
           </Text>
         </View>
       </View>
@@ -760,11 +764,12 @@ function SendStep({
         <Text className="text-body text-text-secondary">
           Operations checks your artwork against the print specification. If anything will
           not print cleanly they send it back with the reason, and you replace the file on
-          this same job. Once it passes, a supplier prices it and you choose how to pay.
+          this same job. Once it passes, GRIDGO matches it to a supplier.
         </Text>
         <Text className="text-caption text-text-muted">
-          Your supplier confirms the final price before any payment is taken. The deadline
-          you set — {formatDeadline(deadline)} — is what they commit to.
+          You are told the final price the moment a supplier accepts, and pay 75% by QR then
+          the last 25% before delivery. The deadline you set — {formatDeadline(deadline)} — is
+          what they commit to.
         </Text>
       </View>
     </View>

@@ -8,9 +8,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
+import { FulfilmentProgress } from "@/components/FulfilmentProgress";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { OrderTimeline } from "@/components/OrderTimeline";
-import { PaymentPanel } from "@/components/PaymentPanel";
+import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { ProductPreview } from "@/components/ProductPreview";
 import { ProofDecision } from "@/components/ProofDecision";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -21,20 +22,23 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { formatPhp } from "@/lib/api";
-import { formatPaymentSummary, userFacingError } from "@/lib/copy";
+import { installmentStatusLabel, userFacingError } from "@/lib/copy";
 import { formatDeadline } from "@/lib/deadline";
 import {
+  formatPriceRange,
   getOrderStateMeta,
-  isAnyProofDecisionState,
-  isAwaitingPaymentState,
   isClientCorrectionState,
   isIssueWindowState,
+  isProofApprovalState,
   isTrackingState,
-  orderGrandTotalMinor,
   orderNextAction,
+  orderTotalMinor,
   orderWaitingOn,
+  showsFulfilmentProgress,
 } from "@/lib/orderState";
+import { installmentUnderReview, payableInstallment } from "@/lib/payment";
 import { describeQuantity } from "@/lib/quantity";
+import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
 
 /**
@@ -43,7 +47,8 @@ import { zoneName, type Zone } from "@/lib/zones";
  * The screen opens with what is happening and what — if anything — the client
  * has to do about it. Exactly one action zone renders at a time, so the single
  * yellow control is always the real next step. Everything below it is the
- * record: the specification agreed, and who did what, when.
+ * record: the specification agreed, the money as the client is owed it, and
+ * who did what, when.
  */
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -52,27 +57,25 @@ export default function OrderDetailScreen() {
   const reducedMotion = useReducedMotion();
 
   const [order, setOrder] = useState<api.Order | null>(null);
-  const [otherOrders, setOtherOrders] = useState<api.Order[]>([]);
-  const [balance, setBalance] = useState(0);
   const [product, setProduct] = useState<api.CatalogProduct | null>(null);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [taxonomy, setTaxonomy] = useState<Taxonomy>(EMPTY_TAXONOMY);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [current, list, credits, catalog, zoneList] = await Promise.all([
+      const [current, catalog, zoneList, taxonomyResult] = await Promise.all([
         api.getOrder(id),
-        api.listOrders(),
-        api.creditBalance(),
         api.listCatalog(),
         api.listZones().catch(() => [] as Zone[]),
+        // Labels only. A failure costs a nicer material name, never the order.
+        api.getTaxonomy().catch(() => EMPTY_TAXONOMY),
       ]);
       setOrder(current);
-      setOtherOrders(list.filter((entry) => entry.id !== current.id));
-      setBalance(credits.balanceMinor);
       setProduct(catalog.find((entry) => entry.id === current.productId) ?? null);
       setZones(zoneList);
+      setTaxonomy(taxonomyResult);
       setError(null);
     } catch (e) {
       setError(
@@ -155,12 +158,33 @@ export default function OrderDetailScreen() {
   }
 
   const meta = getOrderStateMeta(order.state);
-  const nextAction = orderNextAction(order.state);
-  const waitingOn = orderWaitingOn(order.state);
+  const nextAction = orderNextAction(order);
+  const waitingOn = orderWaitingOn(order);
   const unit = product?.unit ?? "";
   const family = product?.family ?? null;
   const artworkFileId = order.artworkFileIds?.[order.artworkFileIds.length - 1] ?? null;
-  const showsOwnPreview = isAnyProofDecisionState(order.state);
+  const materialLabel = taxonomyLabel(taxonomy, order.material);
+  const finishLabel = order.finish ? taxonomyLabel(taxonomy, order.finish) : null;
+  const payable = payableInstallment(order);
+  const underReview = installmentUnderReview(order);
+  const showsOwnPreview = isProofApprovalState(order.state);
+  /*
+    Whether there is an action zone at all. The zone used to render as an empty
+    Animated.View on every state that has nothing to ask for — invisible, but
+    still taking a `gap-8` between the heading and whatever came next, which is
+    a stripe of dead canvas on the states a client sees most.
+  */
+  const actionZone = isProofApprovalState(order.state)
+    ? "proof"
+    : isClientCorrectionState(order.state)
+      ? "correction"
+      : payable
+        ? "pay"
+        : underReview
+          ? "review"
+          : isIssueWindowState(order.state)
+            ? "issue"
+            : null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
@@ -174,10 +198,11 @@ export default function OrderDetailScreen() {
               <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
             </View>
             <Text className="text-h1 text-text-primary">{order.title}</Text>
-            {/* Only when nothing is waiting on the client. When an action zone
-                renders below, it owns the instruction and the reason — saying
-                either of them up here as well is filler. */}
-            {!nextAction ? (
+            {/* Only when nothing below is already saying it. An action zone
+                owns its instruction and reason, and so does the card that
+                explains a payment being checked — repeating either up here is
+                filler. */}
+            {!nextAction && !underReview ? (
               <Text className="text-body-lg text-text-secondary">
                 {waitingOn ?? "This job is in progress."}
               </Text>
@@ -185,43 +210,48 @@ export default function OrderDetailScreen() {
           </View>
 
           {/* One action zone at a time — the single yellow control lives here. */}
-          <Animated.View
-            key={order.state}
-            entering={reducedMotion ? undefined : FadeIn.duration(200)}
-          >
-            {isAnyProofDecisionState(order.state) ? (
-              <ProofDecision
-                order={order}
-                family={family}
-                unit={unit}
-                onUpdated={setOrder}
-              />
-            ) : isClientCorrectionState(order.state) ? (
-              <CorrectionCard order={order} onUpdated={setOrder} />
-            ) : isAwaitingPaymentState(order.state) ? (
-              <PaymentPanel
-                order={order}
-                balanceMinor={balance}
-                otherOrders={otherOrders}
-                onPaid={(next) => {
-                  setOrder(next);
-                  void api.creditBalance().then((c) => setBalance(c.balanceMinor));
-                }}
-              />
-            ) : isIssueWindowState(order.state) ? (
-              <IssueWindowCard order={order} />
-            ) : null}
-          </Animated.View>
+          {actionZone ? (
+            <Animated.View
+              key={`${order.state}:${actionZone}`}
+              entering={reducedMotion ? undefined : FadeIn.duration(200)}
+            >
+              {actionZone === "proof" ? (
+                <ProofDecision
+                  order={order}
+                  family={family}
+                  unit={unit}
+                  materialLabel={materialLabel}
+                  finishLabel={finishLabel}
+                  onUpdated={setOrder}
+                />
+              ) : actionZone === "correction" ? (
+                <CorrectionCard order={order} onUpdated={setOrder} />
+              ) : actionZone === "pay" && payable ? (
+                <PaymentPanel order={order} installment={payable} onSubmitted={setOrder} />
+              ) : actionZone === "review" && underReview ? (
+                <PaymentUnderReviewCard order={order} installment={underReview} />
+              ) : (
+                <IssueWindowCard order={order} />
+              )}
+            </Animated.View>
+          ) : null}
 
           {isTrackingState(order.state) ? <DeliveryTrackingCard order={order} /> : null}
+
+          {showsFulfilmentProgress(order.state) ? (
+            <FulfilmentProgress milestones={order.payoutMilestones} />
+          ) : null}
 
           <View className="gap-4">
             <Text className="text-overline text-text-muted">SPECIFICATION</Text>
             <View className="gg-card">
               <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
               <SpecRow label="Size" value={order.size || "—"} />
-              <SpecRow label="Material" value={order.material || "—"} />
-              {order.finish ? <SpecRow label="Finish" value={order.finish} /> : null}
+              {/* Resolved through the taxonomy: an order can carry a code
+                  rather than a name, and `hem_grommet` is not a finish a
+                  client recognises. */}
+              <SpecRow label="Material" value={materialLabel} />
+              {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
               <SpecRow label="Deadline" value={formatDeadline(order.deadline)} />
               {order.promisedDate ? (
                 <SpecRow label="Supplier promised" value={formatDeadline(order.promisedDate)} />
@@ -231,20 +261,7 @@ export default function OrderDetailScreen() {
               <SpecRow label="Artwork" value={order.artworkName || "Not uploaded"} />
             </View>
 
-            <View className="gg-card">
-              <SpecRow label="Print" value={formatPhp(order.totalMinor)} />
-              <SpecRow label="Delivery" value={formatPhp(order.deliveryFeeMinor)} />
-              <SpecRow
-                label="Payment"
-                value={formatPaymentSummary(order.paymentMethod, order.paymentStatus)}
-              />
-              <View className="flex-row items-baseline justify-between gap-4 pt-3">
-                <Text className="text-body-lg text-text-secondary">Total</Text>
-                <Text className="text-h3 text-text-primary">
-                  {formatPhp(orderGrandTotalMinor(order))}
-                </Text>
-              </View>
-            </View>
+            <MoneyCard order={order} />
           </View>
 
           {!showsOwnPreview ? (
@@ -266,5 +283,68 @@ export default function OrderDetailScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/**
+ * What this job costs, and how much of it is settled.
+ *
+ * Two shapes, because there are two truths. Before a supplier accepts there is
+ * no exact price, so the card shows the platform's range and says why delivery
+ * is missing from it. After acceptance it shows subtotal, delivery and total —
+ * the three figures the client is owed and the only three the server sends.
+ */
+function MoneyCard({ order }: { order: api.Order }) {
+  const total = orderTotalMinor(order);
+  const range = order.priceRange;
+
+  if (total == null) {
+    return (
+      <View className="gg-card gap-3">
+        <View className="flex-row items-baseline justify-between gap-4">
+          <Text className="text-body-lg text-text-secondary">Estimated print</Text>
+          <Text className="text-h3 text-text-primary">
+            {range ? formatPriceRange(range.subtotalMinMinor, range.subtotalMaxMinor) : "—"}
+          </Text>
+        </View>
+        <Text className="text-caption text-text-muted">
+          An estimate from what GRIDGO suppliers charge for this job. Delivery is priced by
+          the distance from the shop that prints it, so it is added once a supplier is
+          assigned — and the exact price is set when they accept. Nothing is owed until then.
+        </Text>
+      </View>
+    );
+  }
+
+  const downpayment = order.payments?.downpayment;
+  const balance = order.payments?.balance;
+
+  return (
+    <View className="gg-card">
+      <SpecRow
+        label="Print"
+        value={order.subtotalMinor != null ? formatPhp(order.subtotalMinor) : "—"}
+      />
+      <SpecRow
+        label="Delivery"
+        value={order.deliveryFeeMinor != null ? formatPhp(order.deliveryFeeMinor) : "—"}
+      />
+      {downpayment ? (
+        <SpecRow
+          label={`Downpayment · ${installmentStatusLabel(downpayment.status)}`}
+          value={downpayment.amountMinor != null ? formatPhp(downpayment.amountMinor) : "—"}
+        />
+      ) : null}
+      {balance ? (
+        <SpecRow
+          label={`Balance · ${installmentStatusLabel(balance.status)}`}
+          value={balance.amountMinor != null ? formatPhp(balance.amountMinor) : "—"}
+        />
+      ) : null}
+      <View className="flex-row items-baseline justify-between gap-4 pt-3">
+        <Text className="text-body-lg text-text-secondary">Total</Text>
+        <Text className="text-h3 text-text-primary">{formatPhp(total)}</Text>
+      </View>
+    </View>
   );
 }

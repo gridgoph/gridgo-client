@@ -4,8 +4,13 @@ import { Pressable, Text, View } from "react-native";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp, type Order } from "@/lib/api";
-import { paymentMethodLabel } from "@/lib/copy";
-import { getOrderStateMeta, orderGrandTotalMinor, orderWaitingOn } from "@/lib/orderState";
+import { paymentStatusLabel } from "@/lib/copy";
+import {
+  formatPriceRange,
+  getOrderStateMeta,
+  orderTotalMinor,
+  orderWaitingOn,
+} from "@/lib/orderState";
 
 type Props = {
   order: Order;
@@ -28,7 +33,18 @@ type Props = {
 export function OrderCard({ order, onPress, onReorder }: Props) {
   const colors = useThemeColors();
   const meta = getOrderStateMeta(order.state);
-  const total = formatPhp(orderGrandTotalMinor(order));
+  // Before a supplier accepts there is no exact price, so the card carries the
+  // platform's range and marks it as one. It must never round an estimate into
+  // a figure the client could hold GRIDGO to.
+  const exactTotal = orderTotalMinor(order);
+  const range = order.priceRange;
+  const money =
+    exactTotal != null
+      ? formatPhp(exactTotal)
+      : range
+        ? formatPriceRange(range.subtotalMinMinor, range.subtotalMaxMinor)
+        : "Not priced yet";
+  const moneyNote = exactTotal != null ? paymentStatusLabel(order.paymentStatus) : "Estimate";
   const spec = [
     `Qty ${order.quantity}`,
     order.size || null,
@@ -42,8 +58,8 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${order.title}, ${meta.label}, ${total}`}
-        accessibilityHint={orderWaitingOn(order.state) ?? undefined}
+        accessibilityLabel={`${order.title}, ${meta.label}, ${money}`}
+        accessibilityHint={orderWaitingOn(order) ?? undefined}
         className="p-4"
       >
         {({ pressed }) => (
@@ -59,12 +75,8 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
               {spec}
             </Text>
             <View className="mt-3 flex-row items-baseline justify-between gap-3">
-              <Text className="text-body-lg font-medium text-text-primary">{total}</Text>
-              {order.paymentMethod ? (
-                <Text className="text-caption text-text-muted">
-                  {paymentMethodLabel(order.paymentMethod)}
-                </Text>
-              ) : null}
+              <Text className="shrink text-body-lg font-medium text-text-primary">{money}</Text>
+              <Text className="text-caption text-text-muted">{moneyNote}</Text>
             </View>
             {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
           </>

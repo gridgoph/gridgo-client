@@ -15,14 +15,16 @@ export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin"
 /**
  * Client account kind for branding. Authoritative from login /auth/me —
  * never infer business from `orgName` (profile edits would flicker identity).
+ * Signup accepts `personal` as an input alias; the API stores `individual`.
  */
-export type AccountType = "individual" | "business";
+export type AccountType = "individual" | "business" | "organization";
 
 export type User = {
   id: string;
   email: string;
   name: string;
   role: Role;
+  phone?: string;
   /** Present for clients; missing/legacy consumers treat as individual. */
   accountType?: AccountType;
   orgName?: string;
@@ -36,6 +38,55 @@ export type OrderPoint = {
   label?: string | null;
 };
 
+/** The two halves of the digital payment. */
+export type InstallmentCode = "downpayment" | "balance";
+
+export type PaymentInstallment = {
+  /** Null until a supplier accepts and the exact money exists. */
+  amountMinor: number | null;
+  method: string;
+  /** `not_submitted | pending_confirmation | confirmed | legacy_confirmed`. */
+  status: string;
+  reference: string | null;
+  submittedAt: string | null;
+  confirmedAt: string | null;
+};
+
+export type OrderPayments = Record<InstallmentCode, PaymentInstallment>;
+
+/**
+ * Supplier fulfilment milestone as the client is allowed to see it.
+ *
+ * The server's role projection withholds `amountMinor` — these are shares of
+ * the supplier's earnings, not of what the client pays.
+ */
+export type PayoutMilestone = {
+  /** `printing | packaging_qc | delivered | retention`. */
+  code: string;
+  sharePercent: number;
+  /** `pending_pof | pof_attached | released`. */
+  status: string;
+  pofFileIds: string[];
+};
+
+/**
+ * The estimate shown before a supplier is assigned. Commission-inclusive and
+ * client-safe; delivery is not in it, because no supplier location exists yet.
+ */
+export type PriceRange = {
+  subtotalMinMinor: number;
+  subtotalMaxMinor: number;
+  /** `pending_supplier_assignment | final`. */
+  deliveryFeeStatus: string;
+};
+
+/**
+ * One print job as the client is allowed to see it.
+ *
+ * Money is subtotal, delivery and total only. The supplier's price and
+ * GRIDGO's commission are withheld by the server's role projection — a field
+ * for either of them here would be a misreading of the contract.
+ */
 export type Order = {
   id: string;
   clientId: string;
@@ -52,18 +103,30 @@ export type Order = {
   deadline: string | null;
   address: string;
   zone: string;
-  totalMinor: number;
-  deliveryFeeMinor: number;
+  /** Product price plus GRIDGO's margin. Null until a supplier accepts. */
+  subtotalMinor: number | null;
+  /** Distance band fee. Null until the supplier's shop is known. */
+  deliveryFeeMinor: number | null;
+  /** Subtotal + delivery. Null until a supplier accepts. */
+  totalMinor: number | null;
+  downpaymentMinor: number | null;
+  balanceMinor: number | null;
+  /** Supplier shop → delivery address, once both are known. */
+  deliveryDistanceMeters?: number | null;
+  priceRange?: PriceRange | null;
+  payments?: OrderPayments;
+  payoutMilestones?: PayoutMilestone[];
   paymentMethod: string | null;
   paymentStatus: string;
-  codEligible: boolean;
+  /** When the client was told a supplier accepted. Payment is gated on it. */
+  assignmentNotifiedAt?: string | null;
+  issueWindowOpenedAt?: string | null;
+  issueWindowExpiresAt?: string | null;
   promisedDate: string | null;
   /** Display string only — never file identity. See docs/STORAGE_API.md. */
   artworkName: string | null;
   /** Stored artwork ids, newest last. Empty is valid. */
   artworkFileIds?: string[];
-  /** Supplier print proofs attached to this order. */
-  proofFileIds?: string[];
   /** Supplier shop, once a supplier is assigned. */
   pickup?: OrderPoint | null;
   /** Delivery destination. */
@@ -72,6 +135,12 @@ export type Order = {
   createdAt: string;
   updatedAt: string;
   timeline: { at: string; state: string; by: string; note: string; fileId?: string }[];
+};
+
+/** Platform-wide operational settings. The issue window is one of them. */
+export type PlatformSettings = {
+  issueWindowHours: number;
+  deliveryFeeBands: { maxDistanceMeters: number | null; feeMinor: number }[];
 };
 
 /** Platform-defined categories, materials and finishes. */
@@ -87,11 +156,14 @@ export type TaxonomyPayload = {
   finishes: { id: string; code: string; name: string; categoryCodes: string[]; active: boolean }[];
 };
 
+/**
+ * Legacy address zone — a named part of Davao, and nothing more.
+ * Delivery is priced by distance band now; a zone carries no fee.
+ */
 export type Zone = {
   id: string;
   code: string;
   name: string;
-  deliveryFeeMinor: number;
   active: boolean;
 };
 
@@ -137,11 +209,18 @@ export type Issue = {
 export type Notification = {
   id: string;
   userId: string;
+  /** e.g. `supplier_assignment_final_price`. Absent on older records. */
+  type?: string;
+  /** Present when the update is about one job, so the row can open it. */
+  orderId?: string;
   title: string;
   body: string;
   read: boolean;
   at: string;
 };
+
+/** The update that tells a client a supplier accepted, and what it will cost. */
+export const ASSIGNMENT_NOTIFICATION_TYPE = "supplier_assignment_final_price";
 
 export type CatalogProduct = {
   id: string;
@@ -162,23 +241,19 @@ export type CreateOrderInput = {
   address: string;
   zone?: string;
   artworkName?: string | null;
-  deliveryFeeMinor?: number;
   /** When true, order starts as `submitted` rather than `draft`. */
   submit?: boolean;
 };
 
-export type CreditBalance = {
-  clientId: string;
-  balanceMinor: number;
-  ledger: {
-    id: string;
-    type: string;
-    amountMinor: number;
-    balanceAfterMinor: number;
-    reason: string;
-    at: string;
-    actorId: string;
-  }[];
+/** Everything `POST /auth/signup` needs for a client account. */
+export type ClientSignupInput = {
+  email: string;
+  password: string;
+  name: string;
+  phone: string;
+  accountType: AccountType;
+  /** Required by the API for business and organization accounts. */
+  orgName?: string;
 };
 
 let tokenMemory: string | null = null;
@@ -397,6 +472,22 @@ export async function login(email: string, password: string): Promise<{ token: s
   return result;
 }
 
+/**
+ * Create a client account. Clients are the only role that signs up in this
+ * binary — supplier and rider accounts are created in their own apps and wait
+ * on Operations approval, so this never offers to make one.
+ */
+export async function signupClient(
+  input: ClientSignupInput,
+): Promise<{ token: string; user: User }> {
+  const result = await request<{ token: string; user: User }>("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({ role: "client", ...input }),
+  });
+  setToken(result.token);
+  return result;
+}
+
 export async function logout(): Promise<void> {
   try {
     await request("/auth/logout", { method: "POST" });
@@ -433,10 +524,16 @@ export async function getProductCategories(): Promise<ProductCategory[]> {
   return adaptProductCategories(await getTaxonomy());
 }
 
-/** Delivery zones with their authoritative delivery fees. */
+/** Named parts of Davao, used to locate an address. Fees are not zone-based. */
 export async function listZones(): Promise<Zone[]> {
   const result = await request<{ zones: Zone[] }>("/zones");
   return result.zones;
+}
+
+/** Platform-wide settings. The issue window's length lives here, not in code. */
+export async function getSettings(): Promise<PlatformSettings> {
+  const result = await request<{ settings: PlatformSettings }>("/settings");
+  return result.settings;
 }
 
 export async function listOrders(): Promise<Order[]> {
@@ -458,33 +555,26 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
 }
 
 /**
- * Authorize Pilot Credits for an order in `awaiting_payment`.
- * Throws ApiError 402 with `{ error, needMinor, balanceMinor }` when short.
+ * Send the reference for one half of the digital payment.
+ *
+ * The money does not move through GRIDGO: the client pays by QR and hands over
+ * the reference, and Operations confirms it by hand. So a `200` here means
+ * "submitted for checking", never "paid". Refused with
+ * `assignment_notification_required` until the client has been told the final
+ * price — payment can never be asked for before that.
  */
-export async function authorizeCredits(
+export async function submitPayment(
   orderId: string,
-): Promise<{ order: Order; balanceMinor: number }> {
-  return request("/credits/authorize", {
-    method: "POST",
-    body: JSON.stringify({ orderId }),
-  });
-}
-
-export async function listJobs(): Promise<Order[]> {
-  const result = await request<{ jobs: Order[] }>("/jobs");
-  return result.jobs;
-}
-
-export async function listOffers(): Promise<Order[]> {
-  const result = await request<{ offers: Order[] }>("/dispatch/offers");
-  return result.offers;
-}
-
-export async function acceptOffer(orderId: string): Promise<Order> {
-  const result = await request<{ order: Order }>(`/dispatch/${orderId}/accept`, {
-    method: "POST",
-    body: "{}",
-  });
+  installment: InstallmentCode,
+  reference: string,
+): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/orders/${orderId}/payments/${installment}/submit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ method: "qr_manual", reference }),
+    },
+  );
   return result.order;
 }
 
@@ -505,23 +595,8 @@ export async function listNotifications(): Promise<Notification[]> {
   return result.notifications;
 }
 
-export async function creditBalance(): Promise<CreditBalance> {
-  return request("/credits/balance");
-}
-
 export async function health(): Promise<{ ok: boolean }> {
   return request("/health");
-}
-
-export async function requestProof(
-  orderId: string,
-  kind: string,
-  extra: Record<string, unknown> = {},
-): Promise<{ order: Order }> {
-  return request(`/dispatch/${orderId}/proof`, {
-    method: "POST",
-    body: JSON.stringify({ kind, otp: "1234", photoName: "demo.jpg", ...extra }),
-  });
 }
 
 // ---------------------------------------------------------------------------

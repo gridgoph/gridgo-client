@@ -1,19 +1,50 @@
 import {
   actorLabel,
-  formatPaymentSummary,
-  paymentMethodLabel,
+  installmentStatusLabel,
+  paymentStatusLabel,
   roleAppLabel,
   userFacingError,
 } from "@/lib/copy";
 import { ApiError } from "@/lib/api";
 
 describe("payment copy", () => {
-  it("never shows raw method codes", () => {
-    expect(paymentMethodLabel("pilot_credit")).toBe("Pilot Credits");
-    expect(paymentMethodLabel("cod")).toBe("Cash on Delivery");
-    expect(formatPaymentSummary("pilot_credit", "authorized")).toBe(
-      "Pilot Credits · Authorized",
-    );
+  it("never shows raw status codes", () => {
+    for (const status of [
+      "unpaid",
+      "downpayment_pending",
+      "downpayment_confirmed",
+      "paid",
+      "authorized",
+      "something_new",
+    ]) {
+      expect(paymentStatusLabel(status)).not.toMatch(/_/);
+    }
+    for (const status of [
+      "not_submitted",
+      "pending_confirmation",
+      "confirmed",
+      "legacy_confirmed",
+    ]) {
+      expect(installmentStatusLabel(status)).not.toMatch(/_/);
+    }
+  });
+
+  it("says a submitted payment is being checked, never that it is paid", () => {
+    expect(installmentStatusLabel("pending_confirmation")).toBe("Being checked");
+    expect(paymentStatusLabel("downpayment_pending")).toMatch(/being checked/i);
+  });
+
+  it("offers no cash and no credits anywhere in the vocabulary", () => {
+    const everything = [
+      paymentStatusLabel("unpaid"),
+      paymentStatusLabel("downpayment_pending"),
+      paymentStatusLabel("downpayment_confirmed"),
+      paymentStatusLabel("paid"),
+      installmentStatusLabel("not_submitted"),
+      installmentStatusLabel("confirmed"),
+    ].join(" ");
+    expect(everything).not.toMatch(/cash on delivery/i);
+    expect(everything).not.toMatch(/pilot credit/i);
   });
 });
 
@@ -29,32 +60,32 @@ describe("actorLabel", () => {
 
 
 describe("userFacingError", () => {
-  it("maps API codes to recovery copy", () => {
-    const err = new ApiError(409, { error: "cod_one_active" });
-    expect(userFacingError(err, "fallback")).toMatch(/unpaid Cash on Delivery/i);
-    expect(userFacingError(err, "fallback")).not.toMatch(/cod_one_active/);
-  });
-
   it.each([
     ["issue_already_open", /already have a report open/i],
     ["issue_window_closed", /signed off/i],
     ["reason_required", /what needs to change/i],
     ["proof_decision_not_allowed", /no proof waiting/i],
+    ["payment_route_retired", /downpayment and balance/i],
+    ["payment_method_not_allowed", /QR only/i],
+    ["assignment_notification_required", /no final price yet/i],
+    ["payment_already_submitted", /already with Operations/i],
+    ["downpayment_not_confirmed", /balance opens once/i],
+    ["payment_reference_required", /reference number/i],
+    ["email_already_registered", /already has a GRIDGO account/i],
+    ["invalid_password", /at least 8 characters/i],
+    ["organization_name_required", /business or organization name/i],
   ])("turns %s into a next step", (code, expected) => {
     const message = userFacingError(new ApiError(409, { error: code }), "fallback");
     expect(message).toMatch(expected);
     expect(message).not.toContain(code);
   });
 
-  it("explains credits shortfall from 402 body", () => {
-    const err = new ApiError(402, {
-      error: "insufficient_credits",
-      needMinor: 135000,
-      balanceMinor: 50000,
-    });
-    const msg = userFacingError(err, "fallback");
-    expect(msg).toMatch(/short/);
-    expect(msg).not.toMatch(/insufficient_credits/);
+  it("tells a client refused cash on delivery what GRIDGO does take", () => {
+    const message = userFacingError(
+      new ApiError(400, { error: "payment_method_not_allowed" }),
+      "fallback",
+    );
+    expect(message).toMatch(/GCash|Maya|e-wallet/);
   });
 });
 

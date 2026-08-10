@@ -2,7 +2,8 @@ import { create } from "zustand";
 
 import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
-import { roleAppLabel } from "@/lib/copy";
+import { roleAppLabel, userFacingError } from "@/lib/copy";
+import { signupInput, type SignupFields } from "@/lib/signup";
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "client" as const;
@@ -13,6 +14,8 @@ type SessionState = {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
+  /** Create a client account and sign straight into it. */
+  signUp: (fields: SignupFields) => Promise<void>;
   logout: () => Promise<void>;
   /** Drop the in-memory user. Routing reacts via Stack.Protected — no router calls here. */
   clearSession: () => void;
@@ -54,6 +57,23 @@ export const useSession = create<SessionState>((set) => ({
         message = "Could not sign in. Check your connection and try again.";
       }
       set({ loading: false, error: message });
+    }
+  },
+  signUp: async (fields) => {
+    set({ loading: true, error: null });
+    try {
+      // The API returns a live token, so a new client lands inside the app
+      // rather than being asked to type the password they just chose. Role is
+      // always `client` here: this binary offers no other kind of account.
+      const { user } = await api.signupClient(signupInput(fields));
+      set({ user, loading: false });
+    } catch (e) {
+      set({
+        loading: false,
+        error: api.isNetworkFailure(e)
+          ? `Cannot reach the backend at ${api.getApiBase()}. Check your connection and try again.`
+          : userFacingError(e, "Could not create the account. Check your details and try again."),
+      });
     }
   },
   logout: async () => {

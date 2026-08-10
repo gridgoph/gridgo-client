@@ -102,6 +102,37 @@ export function finishOptions(
 }
 
 /**
+ * A stored material or finish, in words.
+ *
+ * The app writes display names onto an order, but an order can also arrive
+ * carrying a taxonomy *code* — seeded records and orders placed by Operations
+ * both do. `hem_grommet` reached a client's specification card that way. This
+ * resolves a code back to its name and leaves an already-readable value alone;
+ * an unrecognised code is de-slugged rather than shown raw.
+ */
+export function taxonomyLabel(
+  taxonomy: Taxonomy,
+  stored: string | null | undefined,
+): string {
+  const value = stored?.trim();
+  if (!value) return "—";
+
+  const match = [...taxonomy.materials, ...taxonomy.finishes].find(
+    (item) => item.code === value || item.name === value,
+  );
+  if (match) return match.name;
+
+  // No taxonomy loaded, or a code it no longer carries. Never a bare slug.
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(value)) {
+    return value
+      .split("_")
+      .map((word, index) => (index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+      .join(" ");
+  }
+  return value;
+}
+
+/**
  * True when a stored value is still one the platform offers.
  *
  * A draft kept across an app kill can outlive a taxonomy edit; the picker

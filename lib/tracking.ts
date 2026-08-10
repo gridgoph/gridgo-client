@@ -140,7 +140,10 @@ export function summarizeTracking({
       return {
         headline: "A rider is assigned and heading to the print shop.",
         detail: "They start sharing their position once they collect your order.",
-        chip: { tone: "info", label: "Rider assigned", icon: "clock" },
+        // Not "Rider assigned": the order header already carries that state,
+        // and this chip's job is to say what the *map* knows. What it knows
+        // here is nothing, and it should say so.
+        chip: { tone: "neutral", label: "No location yet", icon: "clock" },
         stale: false,
         remainingKm: null,
         remainingIsRoad: false,

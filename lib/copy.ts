@@ -5,38 +5,44 @@
  * Errors explain what happened and how to recover — never apologise alone.
  */
 
-import { ApiError, formatPhp } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 
-/** Payment method as the user chose it. */
-export function paymentMethodLabel(method: string | null | undefined): string {
-  if (!method) return "Not chosen yet";
-  if (method === "pilot_credit") return "Pilot Credits";
-  if (method === "cod") return "Cash on Delivery";
-  return "Payment";
-}
-
-/** Payment status in plain language. */
+/**
+ * Where an order stands on money, in plain language.
+ *
+ * There is no companion "payment method" label any more: the platform takes
+ * one method, so naming it on every order said nothing the client could act on.
+ */
 export function paymentStatusLabel(status: string | null | undefined): string {
   switch (status) {
     case "unpaid":
-      return "Unpaid";
+      return "Nothing paid yet";
+    case "downpayment_pending":
+      return "Downpayment being checked";
+    case "downpayment_confirmed":
+      return "Downpayment confirmed";
+    case "paid":
+      return "Paid in full";
+    // Migrated orders that cleared under the single-authorization model.
     case "authorized":
-      return "Authorized";
-    case "collected":
-      return "Collected";
-    case "reconciled":
-      return "Reconciled";
+      return "Downpayment confirmed";
     default:
-      return status ? "Payment update" : "Unpaid";
+      return status ? "Payment update" : "Nothing paid yet";
   }
 }
 
-export function formatPaymentSummary(
-  method: string | null | undefined,
-  status: string | null | undefined,
-): string {
-  if (!method) return paymentStatusLabel(status);
-  return `${paymentMethodLabel(method)} · ${paymentStatusLabel(status)}`;
+/** One installment's own state, for the row that names it. */
+export function installmentStatusLabel(status: string | null | undefined): string {
+  switch (status) {
+    case "pending_confirmation":
+      return "Being checked";
+    case "confirmed":
+      return "Confirmed";
+    case "legacy_confirmed":
+      return "Confirmed";
+    default:
+      return "Not paid yet";
+  }
 }
 
 /** Platform roles, named as a person would name the app they belong to. */
@@ -98,19 +104,23 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "transition_not_allowed":
       case "invalid_state":
         return "This order is not ready for that action yet. Pull to refresh, or check the timeline.";
-      case "insufficient_credits": {
-        const body = error.body as { needMinor?: number; balanceMinor?: number };
-        if (body.needMinor != null && body.balanceMinor != null) {
-          const short = body.needMinor - body.balanceMinor;
-          return `Your Pilot Credits balance is ${formatPhp(Math.max(0, short))} short of this order. Choose Cash on Delivery if it is eligible, or ask Operations to top up the pilot grant.`;
-        }
-        return "Not enough Pilot Credits for this order. Choose Cash on Delivery if it is eligible, or ask Operations to top up the pilot grant.";
-      }
-      case "cod_limit":
-      case "cod_not_eligible":
-        return "Cash on Delivery only covers orders up to ₱1,500 including delivery. Pay with Pilot Credits instead.";
-      case "cod_one_active":
-        return "You already have an unpaid Cash on Delivery order. Finish or pay that one before starting another.";
+      // ---- payment: 75% downpayment, then 25% balance, both by QR ----
+      case "payment_route_retired":
+        return "This order takes the QR downpayment and balance now. Pull it down to refresh, then pay the amount it asks for.";
+      case "payment_method_not_allowed":
+        return "GRIDGO takes payment by QR only — GCash, Maya or a bank e-wallet. There is no cash on delivery.";
+      case "assignment_notification_required":
+        return "This job has no final price yet, so there is nothing to pay. You get a notification the moment a supplier accepts it.";
+      case "payment_already_submitted":
+        return "A reference for this payment is already with Operations. Pull the order down to see whether it has been confirmed.";
+      case "payment_not_pending":
+        return "There is no payment waiting to be checked on this job. Pull the order down to see where it got to.";
+      case "payment_reference_required":
+        return "Enter the reference number from your payment receipt. Operations finds your transfer by it.";
+      case "downpayment_not_confirmed":
+        return "The balance opens once Operations confirms your downpayment. You get a notification when that happens.";
+      case "downpayment_not_available":
+        return "The downpayment is not open on this job yet. Pull it down to see what it is waiting on.";
       case "issue_already_open":
         return "You already have a report open on this job. Operations is reviewing it — add anything else to that one rather than opening a second.";
       case "issue_window_closed":
@@ -118,9 +128,26 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "invalid_issue":
         return "Describe what is wrong before sending the report — Operations acts on your words alone.";
       case "reason_required":
-        return "Say what needs to change. Your supplier reworks the proof from this reason.";
+        return "Say what needs to change. Operations reworks the artwork from this reason.";
       case "proof_decision_not_allowed":
         return "There is no proof waiting on your decision right now. Pull this order again to see where it got to.";
+
+      // ---- creating an account ----
+      case "email_already_registered":
+        return "This email already has a GRIDGO account. Sign in with it instead, or use another address.";
+      case "invalid_email":
+        return "Enter a complete email address, like ana@company.com.";
+      case "invalid_password":
+        return "Use a password with at least 8 characters.";
+      case "name_required":
+        return "Enter the name this account belongs to.";
+      case "phone_required":
+        return "Enter a number Operations can reach you on about a job.";
+      case "invalid_account_type":
+        return "Choose whether this account is personal, a business, or an organization.";
+      case "organization_name_required":
+        return "Enter the business or organization name this account trades under.";
+
       case "not_found":
         return "Nothing was found for that request. Go back and try again.";
       default:

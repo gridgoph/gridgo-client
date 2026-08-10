@@ -4,8 +4,16 @@
  * Pure helpers so list chips, detail timelines, and tests share one map of
  * label + tone + icon. Colour never carries meaning alone.
  *
+ * The states are the ones in `docs/OPERATIONAL_MODEL_V2_API.md`. The supplier
+ * proof loop was removed from the platform, so `supplier_proof_*` is gone; the
+ * single `awaiting_payment` step is now the two halves of the digital payment.
+ *
  * Tone/icon strings match `StatusChip` props without importing UI from lib.
  */
+
+import type { Order } from "@/lib/api";
+import { formatPhp } from "@/lib/api";
+import { balanceDue, downpaymentDue, installmentUnderReview } from "@/lib/payment";
 
 export type OrderStatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type OrderStatusIcon =
@@ -25,29 +33,22 @@ export type OrderStateMeta = {
 const STATE_META: Record<string, OrderStateMeta> = {
   draft: { label: "Draft", tone: "neutral", icon: "square-pen" },
   submitted: { label: "Submitted", tone: "info", icon: "clock" },
-  needs_qa: { label: "In QA", tone: "info", icon: "clock" },
+  needs_qa: { label: "In artwork check", tone: "info", icon: "clock" },
   client_correction: { label: "Needs correction", tone: "warning", icon: "triangle-alert" },
   proof_approval: { label: "Proof approval", tone: "warning", icon: "square-pen" },
-  approved_for_matching: { label: "Approved", tone: "success", icon: "circle-check" },
-  supplier_assigned: { label: "Supplier assigned", tone: "info", icon: "clock" },
-  supplier_accepted: { label: "Supplier accepted", tone: "info", icon: "circle-check" },
-  supplier_proof_review: { label: "Proof approval", tone: "warning", icon: "square-pen" },
-  supplier_proof_changes_requested: {
-    label: "Changes requested",
-    tone: "warning",
-    icon: "triangle-alert",
-  },
-  supplier_proof_approved: { label: "Proof approved", tone: "success", icon: "circle-check" },
-  awaiting_payment: { label: "Awaiting payment", tone: "warning", icon: "triangle-alert" },
-  payment_authorized: { label: "Payment authorized", tone: "success", icon: "circle-check" },
+  approved_for_matching: { label: "Finding a supplier", tone: "info", icon: "clock" },
+  supplier_assigned: { label: "Supplier reviewing", tone: "info", icon: "clock" },
+  awaiting_downpayment: { label: "Downpayment due", tone: "warning", icon: "triangle-alert" },
+  downpayment_review: { label: "Checking your payment", tone: "info", icon: "clock" },
+  payment_authorized: { label: "Downpayment confirmed", tone: "success", icon: "circle-check" },
   production: { label: "In production", tone: "info", icon: "clock" },
-  supplier_self_qc: { label: "Supplier QC", tone: "info", icon: "clock" },
+  supplier_self_qc: { label: "Supplier quality check", tone: "info", icon: "clock" },
   ready_for_dispatch: { label: "Ready for dispatch", tone: "info", icon: "clock" },
   rider_assigned: { label: "Rider assigned", tone: "info", icon: "clock" },
   picked_up: { label: "Picked up", tone: "info", icon: "clock" },
   out_for_delivery: { label: "Out for delivery", tone: "info", icon: "clock" },
   delivered: { label: "Delivered", tone: "success", icon: "circle-check" },
-  issue_window_open: { label: "Issue window open", tone: "warning", icon: "triangle-alert" },
+  issue_window_open: { label: "Check your delivery", tone: "warning", icon: "triangle-alert" },
   completed: { label: "Completed", tone: "success", icon: "circle-check" },
   payout_released: { label: "Completed", tone: "success", icon: "circle-check" },
 };
@@ -70,46 +71,49 @@ export function isTrackingState(state: string): boolean {
   return (TRACKING_STATES as readonly string[]).includes(state);
 }
 
+/**
+ * The one proof decision the client still owns: Operations' artwork proof,
+ * before the job goes out for matching. The supplier print proof loop was
+ * removed from the platform — what replaced it is milestone visibility.
+ */
 export function isProofApprovalState(state: string): boolean {
   return state === "proof_approval";
-}
-
-/**
- * Supplier print proof awaiting the client's decision.
- *
- * Separate from `proof_approval`, which is the artwork proof Operations
- * prepares before matching. Both ask the client to approve; they sit at
- * different points in the job.
- */
-export function isSupplierProofReviewState(state: string): boolean {
-  return state === "supplier_proof_review";
-}
-
-export function isSupplierProofChangesRequestedState(state: string): boolean {
-  return state === "supplier_proof_changes_requested";
-}
-
-/** Any state where the client owes a proof decision. */
-export function isAnyProofDecisionState(state: string): boolean {
-  return isProofApprovalState(state) || isSupplierProofReviewState(state);
 }
 
 export function isClientCorrectionState(state: string): boolean {
   return state === "client_correction";
 }
 
-export function isAwaitingPaymentState(state: string): boolean {
-  return state === "awaiting_payment";
-}
-
 export function isIssueWindowState(state: string): boolean {
   return state === "issue_window_open";
+}
+
+/** From here on the job is being made, so its milestones mean something. */
+const PRODUCTION_ONWARD = [
+  "payment_authorized",
+  "production",
+  "supplier_self_qc",
+  "ready_for_dispatch",
+  "rider_assigned",
+  "picked_up",
+  "out_for_delivery",
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
+];
+
+export function showsFulfilmentProgress(state: string): boolean {
+  return PRODUCTION_ONWARD.includes(state);
 }
 
 /**
  * The one thing the client should do next, or null when the job is with
  * someone else. Drives the single yellow action on the order screen, so a
  * screen never carries two competing calls to act.
+ *
+ * It reads the payment record as well as the state, because both halves of the
+ * payment are asked for from states that otherwise belong to someone else.
  */
 export type OrderNextAction = {
   /** Sentence-case verb phrase for the action itself. */
@@ -118,7 +122,7 @@ export type OrderNextAction = {
   body: string;
 };
 
-const NEXT_ACTIONS: Record<string, OrderNextAction> = {
+const STATE_ACTIONS: Record<string, OrderNextAction> = {
   client_correction: {
     title: "Replace the artwork",
     body: "Operations found something they cannot print from. Upload a corrected file and send this job back to them — the order, its quote and any payment stay as they are.",
@@ -127,22 +131,32 @@ const NEXT_ACTIONS: Record<string, OrderNextAction> = {
     title: "Approve your artwork proof",
     body: "Operations has checked your file against the print specification. Approving sends this job out for supplier matching.",
   },
-  supplier_proof_review: {
-    title: "Approve the print proof",
-    body: "Your supplier has sent the proof they intend to print. Approving commits you to this print run.",
-  },
-  awaiting_payment: {
-    title: "Choose how to pay",
-    body: "Your supplier has priced the job. Production starts once payment is authorized.",
-  },
   issue_window_open: {
     title: "Check your delivery",
-    body: "Tell Operations within 24 hours if anything is wrong with what arrived.",
+    body: "Tell Operations while the issue window is open if anything is wrong with what arrived.",
   },
 };
 
-export function orderNextAction(state: string): OrderNextAction | null {
-  return NEXT_ACTIONS[state] ?? null;
+export function orderNextAction(order: Order): OrderNextAction | null {
+  if (downpaymentDue(order)) {
+    const amount = order.payments?.downpayment.amountMinor;
+    return {
+      title: "Pay the 75% downpayment",
+      body: amount
+        ? `Your supplier accepted at ${formatPhp(order.totalMinor ?? 0)} in total. Pay ${formatPhp(amount)} now by QR; production starts once Operations confirms it.`
+        : "Your supplier has accepted and priced the job. Pay the downpayment by QR to start production.",
+    };
+  }
+  if (balanceDue(order)) {
+    const amount = order.payments?.balance.amountMinor;
+    return {
+      title: "Pay the remaining 25%",
+      body: amount
+        ? `Your job is finished and waiting to travel. GRIDGO delivers once the last ${formatPhp(amount)} is confirmed.`
+        : "Your job is finished and waiting to travel. GRIDGO delivers once the remaining balance is confirmed.",
+    };
+  }
+  return STATE_ACTIONS[order.state] ?? null;
 }
 
 /**
@@ -152,8 +166,8 @@ export function orderNextAction(state: string): OrderNextAction | null {
  * proof decision should not have to read past four jobs that are simply on the
  * press to find it.
  */
-export function orderNeedsClient(state: string): boolean {
-  return orderNextAction(state) !== null;
+export function orderNeedsClient(order: Order): boolean {
+  return orderNextAction(order) !== null;
 }
 
 /**
@@ -162,26 +176,32 @@ export function orderNeedsClient(state: string): boolean {
  */
 const WAITING_ON: Record<string, string> = {
   draft: "This request has not been sent yet.",
-  submitted: "Operations is picking this up for artwork QA.",
+  submitted: "Operations is picking this up for the artwork check.",
   needs_qa: "Operations is checking your artwork against the print specification.",
   approved_for_matching: "Operations is matching this job to a supplier who can print it.",
-  supplier_assigned: "The supplier is reviewing the job before they accept it.",
-  supplier_accepted: "Your supplier is preparing a print proof for you to approve.",
-  supplier_proof_changes_requested: "Your supplier is reworking the proof you sent back.",
-  supplier_proof_approved: "Your supplier is finalising the quote for this run.",
-  payment_authorized: "Payment is authorized. Your supplier starts production next.",
+  supplier_assigned: "The supplier is reviewing the job before they accept it and set the price.",
+  awaiting_downpayment: "Your supplier has accepted. The downpayment is next.",
+  payment_authorized: "Your downpayment is confirmed. Your supplier starts production next.",
   production: "Your job is on the press.",
   supplier_self_qc: "Your supplier is checking the finished job before it ships.",
   ready_for_dispatch: "The job is packed and waiting for a rider.",
   rider_assigned: "A rider has taken this delivery.",
   picked_up: "The rider has collected your order.",
   out_for_delivery: "Your order is out for delivery.",
+  delivered: "Delivered. Operations closes the job once the issue window passes.",
   completed: "This job is closed.",
   payout_released: "This job is closed.",
 };
 
-export function orderWaitingOn(state: string): string | null {
-  return WAITING_ON[state] ?? null;
+export function orderWaitingOn(order: Order): string | null {
+  const underReview = installmentUnderReview(order);
+  if (underReview === "downpayment") {
+    return "We are checking your downpayment. Operations matches the reference you sent against the GRIDGO wallet by hand, so this is not instant.";
+  }
+  if (underReview === "balance") {
+    return "We are checking your balance payment. Your order goes out for delivery once Operations confirms it.";
+  }
+  return WAITING_ON[order.state] ?? null;
 }
 
 /**
@@ -201,10 +221,22 @@ export function latestNoteForState(
   return null;
 }
 
-/** Order grand total in PHP minor units (product + delivery). */
-export function orderGrandTotalMinor(order: {
-  totalMinor: number;
-  deliveryFeeMinor: number;
-}): number {
-  return order.totalMinor + order.deliveryFeeMinor;
+/**
+ * What the client owes in total, in PHP minor units, or null before a supplier
+ * has accepted and the exact price exists. Subtotal + delivery — the server
+ * has already added its margin into the subtotal, and never sends the split.
+ */
+export function orderTotalMinor(order: Order): number | null {
+  if (order.totalMinor != null) return order.totalMinor;
+  if (order.subtotalMinor == null) return null;
+  return order.subtotalMinor + (order.deliveryFeeMinor ?? 0);
+}
+
+/**
+ * The estimate, before a supplier has accepted. A range reads as one figure
+ * when both ends agree — "₱1,485 – ₱1,485" is a range in name only.
+ */
+export function formatPriceRange(minMinor: number, maxMinor: number): string {
+  if (minMinor === maxMinor) return formatPhp(minMinor);
+  return `${formatPhp(minMinor)} – ${formatPhp(maxMinor)}`;
 }

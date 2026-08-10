@@ -48,13 +48,13 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     getOrder: jest.fn(),
-    listOrders: jest.fn(),
-    creditBalance: jest.fn(),
     listCatalog: jest.fn(),
     listZones: jest.fn(),
     listIssues: jest.fn(),
+    getSettings: jest.fn(),
     getRiderLocation: jest.fn(),
     getFileDownloadUrl: jest.fn(),
+    submitPayment: jest.fn(),
   };
 });
 
@@ -75,11 +75,40 @@ const baseOrder: Order = {
   deadline: "2026-08-15T10:00:00+08:00",
   address: "12 J.P. Laurel Ave, Bajada, Davao City",
   zone: "davao_central",
-  totalMinor: 90000,
-  deliveryFeeMinor: 15100,
-  paymentMethod: "pilot_credit",
-  paymentStatus: "authorized",
-  codEligible: true,
+  // The captain's worked example: a ₱1,000 supplier price reaches the client
+  // as ₱1,100 print + ₱25 delivery = ₱1,125. Commission is nowhere in it.
+  subtotalMinor: 110000,
+  deliveryFeeMinor: 2500,
+  totalMinor: 112500,
+  downpaymentMinor: 84375,
+  balanceMinor: 28125,
+  priceRange: { subtotalMinMinor: 110000, subtotalMaxMinor: 110000, deliveryFeeStatus: "final" },
+  payments: {
+    downpayment: {
+      amountMinor: 84375,
+      method: "qr_manual",
+      status: "confirmed",
+      reference: "GCASH-ABC123",
+      submittedAt: "2026-08-09T09:00:00+08:00",
+      confirmedAt: "2026-08-09T09:30:00+08:00",
+    },
+    balance: {
+      amountMinor: 28125,
+      method: "qr_manual",
+      status: "not_submitted",
+      reference: null,
+      submittedAt: null,
+      confirmedAt: null,
+    },
+  },
+  payoutMilestones: [
+    { code: "printing", sharePercent: 50, status: "pof_attached", pofFileIds: ["file_pof_1"] },
+    { code: "packaging_qc", sharePercent: 15, status: "pending_pof", pofFileIds: [] },
+    { code: "delivered", sharePercent: 25, status: "pending_pof", pofFileIds: [] },
+    { code: "retention", sharePercent: 10, status: "pending_pof", pofFileIds: [] },
+  ],
+  paymentMethod: "qr_manual",
+  paymentStatus: "downpayment_confirmed",
   promisedDate: null,
   artworkName: "opening-banner.pdf",
   artworkFileIds: [],
@@ -121,8 +150,6 @@ describe("OrderDetailScreen", () => {
     mockStackOptions.mockClear();
     mockCanGoBack.mockReturnValue(true);
     setOrder({});
-    api.listOrders.mockResolvedValue([]);
-    api.creditBalance.mockResolvedValue({ clientId: "user_client", balanceMinor: 500000, ledger: [] });
     api.listCatalog.mockResolvedValue([
       {
         id: "prod_tarpaulin",
@@ -137,11 +164,15 @@ describe("OrderDetailScreen", () => {
         id: "zone_central",
         code: "davao_central",
         name: "Davao Central (Bajada / JP Laurel)",
-        deliveryFeeMinor: 15100,
         active: true,
       },
     ]);
     api.listIssues.mockResolvedValue([]);
+    api.getSettings.mockResolvedValue({
+      issueWindowHours: 24,
+      deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+    });
+    api.submitPayment.mockImplementation(async () => ({ ...baseOrder, state: "downpayment_review" }));
     api.getRiderLocation.mockResolvedValue(null);
     api.getFileDownloadUrl.mockRejectedValue(new Error("no file"));
     osrm.fetchRoute.mockResolvedValue({
@@ -195,13 +226,110 @@ describe("OrderDetailScreen", () => {
     expect(screen.getByText(/history, price and any payment stay/i)).toBeTruthy();
   });
 
-  it("asks for a considered decision on a proof, not a row tap", async () => {
-    setOrder({ state: "supplier_proof_review", proofFileIds: ["file_proof_1"] });
+  it("asks for a considered decision on the artwork proof, not a row tap", async () => {
+    setOrder({ state: "proof_approval" });
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText("Approve the print proof")).toBeTruthy();
+    expect(await screen.findByText("Approve your artwork proof")).toBeTruthy();
     expect(screen.getByText("Approve & continue")).toBeTruthy();
     expect(screen.getByText("Request changes")).toBeTruthy();
+  });
+
+  it("shows the client's money as subtotal, delivery and total — never a commission", async () => {
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    await screen.findByText("Grand opening tarpaulin");
+    expect(screen.getByText("₱1,100.00")).toBeTruthy();
+    expect(screen.getByText("₱25.00")).toBeTruthy();
+    expect(screen.getByText("₱1,125.00")).toBeTruthy();
+    // The supplier's own price and GRIDGO's 10% are withheld by the server;
+    // a screen that renders either has misread the contract.
+    expect(screen.queryByText("₱1,000.00")).toBeNull();
+    expect(screen.queryByText("₱100.00")).toBeNull();
+    expect(screen.queryByText(/commission/i)).toBeNull();
+  });
+
+  it("asks for the downpayment by QR, and never for cash or credits", async () => {
+    setOrder({
+      state: "awaiting_downpayment",
+      paymentStatus: "unpaid",
+      payments: {
+        downpayment: {
+          amountMinor: 84375,
+          method: "qr_manual",
+          status: "not_submitted",
+          reference: null,
+          submittedAt: null,
+          confirmedAt: null,
+        },
+        balance: {
+          amountMinor: 28125,
+          method: "qr_manual",
+          status: "not_submitted",
+          reference: null,
+          submittedAt: null,
+          confirmedAt: null,
+        },
+      },
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Pay the 75% downpayment")).toBeTruthy();
+    // Once as the amount due, once on the money card's ledger below it.
+    expect(screen.getAllByText("₱843.75").length).toBeGreaterThan(0);
+    expect(screen.getByText("Send my payment reference")).toBeTruthy();
+    // Cash is named once, to say it is gone — an ex-pilot client would
+    // otherwise go looking for it. What must not exist is a way to choose it.
+    expect(screen.queryByText(/pay with cash/i)).toBeNull();
+    expect(screen.queryByText(/pilot credits/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /cash|credits/i })).toBeNull();
+  });
+
+  it("sits in the waiting state honestly while Operations checks a payment", async () => {
+    setOrder({
+      state: "downpayment_review",
+      paymentStatus: "downpayment_pending",
+      payments: {
+        downpayment: {
+          amountMinor: 84375,
+          method: "qr_manual",
+          status: "pending_confirmation",
+          reference: "GCASH-ABC123",
+          submittedAt: "2026-08-09T09:00:00+08:00",
+          confirmedAt: null,
+        },
+        balance: {
+          amountMinor: 28125,
+          method: "qr_manual",
+          status: "not_submitted",
+          reference: null,
+          submittedAt: null,
+          confirmedAt: null,
+        },
+      },
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    // Once as the card's heading, once as the line under the job title.
+    expect((await screen.findAllByText(/We are checking your downpayment/)).length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.getByText("GCASH-ABC123")).toBeTruthy();
+    // Submitting a reference is not paying. Nothing here may say it is.
+    expect(screen.queryByText(/paid in full/i)).toBeNull();
+  });
+
+  it("shows the supplier's milestones instead of a print proof to approve", async () => {
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    await screen.findByText("Grand opening tarpaulin");
+    expect(screen.getByText("Printing")).toBeTruthy();
+    expect(screen.getByText("Packaging and quality check")).toBeTruthy();
+    expect(screen.getByText("Delivered")).toBeTruthy();
+    // Retention is a hold-back on someone else's payout, and the shares are
+    // shares of the supplier's earnings. Neither is the client's business.
+    expect(screen.queryByText(/retention/i)).toBeNull();
+    expect(screen.queryByText(/50%|15%|10%/)).toBeNull();
   });
 
   it("says a delivery has no shared position rather than showing nothing", async () => {
@@ -275,6 +403,10 @@ describe("OrderDetailScreen", () => {
   it("offers a real issue report while the window is open", async () => {
     setOrder({
       state: "issue_window_open",
+      issueWindowOpenedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      // Rounded down deliberately, so the card never promises more time than
+      // the platform will actually allow: 23h and change reads as "about 23".
+      issueWindowExpiresAt: new Date(Date.now() + 23 * 60 * 60 * 1000 + 60_000).toISOString(),
       timeline: [
         ...baseOrder.timeline,
         {
@@ -288,9 +420,9 @@ describe("OrderDetailScreen", () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
     expect(await screen.findByText("Report a problem")).toBeTruthy();
-    expect(screen.getByText(/Delivered 1 hour ago/)).toBeTruthy();
-    // A countdown would imply an expiry no server enforces.
-    expect(screen.queryByText(/remaining|left to report/i)).toBeNull();
+    // The platform really expires the window under v2 and stamps the expiry on
+    // the order, so both halves of the clock are honest to show.
+    expect(screen.getByText(/Delivered 1 hour ago · Closes in about 23 hours/)).toBeTruthy();
   });
 
   it("recovers from a failed load with a retry rather than a blank screen", async () => {

@@ -22,12 +22,16 @@ import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
 
 /**
- * Home answers three questions, in this order: is anything waiting on me, what
- * is my pilot balance, and how do I start something new.
+ * Home answers two questions, in this order: is anything waiting on me, and
+ * how do I start something new.
  *
- * The flat product list this used to end with is gone. Five catalog rows was
- * never the catalog — GRIDGO prints seventeen things across four categories,
- * and browsing them is a considered screen of its own now, reached from here.
+ * It used to answer a third — the Pilot Credits balance — and that line is
+ * gone. Credits are no longer a way to pay for anything, so the number bought
+ * the client nothing and spent the top of the screen saying so.
+ *
+ * The flat product list this used to end with is gone too. Five catalog rows
+ * was never the catalog — GRIDGO prints seventeen things across four
+ * categories, and browsing them is a considered screen of its own now.
  */
 export default function HomeScreen() {
   const { user } = useSession();
@@ -43,26 +47,22 @@ export default function HomeScreen() {
   const [orders, setOrders] = useState<api.Order[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
-  const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [list, credits, products, tree] = await Promise.all([
+      const [list, products, tree] = await Promise.all([
         api.listOrders(),
-        api.creditBalance(),
         api.listCatalog(),
         api.getProductCategories(),
       ]);
       setOrders(list);
-      setBalance(credits.balanceMinor);
       setCatalog(products);
       setCategories(tree);
       setError(null);
     } catch (e) {
       setOrders([]);
-      setBalance(null);
       setCatalog([]);
       setCategories([]);
       setError(userFacingError(e, "Could not load home. Check your connection and try again."));
@@ -79,8 +79,8 @@ export default function HomeScreen() {
   );
 
   const productById = new Map(catalog.map((p) => [p.id, p]));
-  const needsClient = orders.filter((o) => orderNeedsClient(o.state));
-  const recent = orders.filter((o) => !orderNeedsClient(o.state)).slice(0, 3);
+  const needsClient = orders.filter(orderNeedsClient);
+  const recent = orders.filter((o) => !orderNeedsClient(o)).slice(0, 3);
 
   const reorder = (order: api.Order) => {
     const meta = productById.get(order.productId);
@@ -102,15 +102,6 @@ export default function HomeScreen() {
           <Text className="mt-5 text-h1 text-text-primary" numberOfLines={2}>
             {user?.orgName || user?.name || "GRIDGO"}
           </Text>
-
-          {balance != null ? (
-            <View className="mt-4 flex-row items-baseline gap-3">
-              <Text className="text-body text-text-secondary">Pilot Credits</Text>
-              <Text className="text-body-lg font-medium text-text-primary">
-                {api.formatPhp(balance)}
-              </Text>
-            </View>
-          ) : null}
 
           {/*
             No "start a request" button here. The tab bar's yellow "+" is that

@@ -1,17 +1,19 @@
 import { pushedScreenOptions } from "@/lib/navigationHeaders";
 
 describe("pushedScreenOptions", () => {
-  it("labels the back control 'Back' rather than the previous screen", () => {
-    // iOS would otherwise write the previous screen's title on the control,
-    // which is the filesystem name `(tabs)` from a tab, and a lie from any of
-    // the several tabs an order can be opened from.
-    expect(pushedScreenOptions("Order").headerBackTitle).toBe("Back");
+  it("shows the bare chevron the captain asked for", () => {
+    expect(pushedScreenOptions("Order").headerBackButtonDisplayMode).toBe("minimal");
   });
 
-  it("keeps the label visible", () => {
-    // "minimal" hides it. A bare chevron above a screen with its own large
-    // heading is what got reported as "not all have Back".
-    expect(pushedScreenOptions("Order").headerBackButtonDisplayMode).toBe("default");
+  it("never lets the previous screen's title reach the back control", () => {
+    // This is what "minimal" is protecting, not just a style choice: iOS
+    // otherwise writes the previous title there, which is the filesystem name
+    // `(tabs)` from a tab, and a lie from any of the several tabs an order can
+    // be opened from. Setting an explicit label would work too, and the
+    // captain has ruled against one — so the mode has to stay.
+    const options = pushedScreenOptions("Order");
+    expect(options.headerBackButtonDisplayMode).toBe("minimal");
+    expect(options).not.toHaveProperty("headerBackTitle");
   });
 
   it("never names a route group", () => {

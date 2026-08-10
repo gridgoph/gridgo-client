@@ -1,27 +1,22 @@
 /**
- * Delivery zones, as the platform defines them.
+ * Named parts of Davao, as the platform defines them.
  *
- * `GET /zones` is the source of the code, the name and the delivery fee. The
- * fallback below only exists so a zone name and a fee are never blank while
- * the list is still loading or the request failed — it is clearly marked as an
- * estimate wherever a real fee has not arrived.
+ * `GET /zones` is the source of the code and the name, and that is all a zone
+ * is now: delivery is priced by the distance between the supplier's shop and
+ * the delivery address, in bands Operations can change without a release. A
+ * zone carries no fee, and the app must never imply one.
  */
 
 export type Zone = {
   id: string;
   code: string;
   name: string;
-  deliveryFeeMinor: number;
   active: boolean;
 };
 
 export const DEFAULT_ZONE_CODE = "davao_central";
 
-/**
- * Last-known zone shape, used only for labels before `GET /zones` answers.
- * Fees are deliberately absent: a delivery fee is money and must come from
- * the API, never from a constant in the app.
- */
+/** Last-known names, used only for labels before `GET /zones` answers. */
 const FALLBACK_NAMES: Record<string, string> = {
   davao_central: "Davao Central",
   davao_north: "Davao North",
@@ -45,18 +40,6 @@ export function zoneName(zones: Zone[], code: string | null | undefined): string
   const zone = findZone(zones, code);
   if (zone) return zone.name;
   return FALLBACK_NAMES[code] ?? "Davao area";
-}
-
-/**
- * Delivery fee for a zone, or null when the API has not said.
- * A null fee must read as "confirmed when the job is matched", never as ₱0.00.
- */
-export function zoneDeliveryFeeMinor(
-  zones: Zone[],
-  code: string | null | undefined,
-): number | null {
-  const zone = findZone(zones, code);
-  return zone ? zone.deliveryFeeMinor : null;
 }
 
 /** Pick a starting zone: the one already chosen, else central, else the first. */

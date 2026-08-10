@@ -1,29 +1,102 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Bell, FileText, House, Plus, User, type LucideIcon } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ACTION_TAB, TABS, type TabName } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
-import { useNotifications } from "@/store/notifications";
+import { useUnreadCount } from "@/store/notifications";
+
+/* ---------------------------------------------------------------------------
+   Bar geometry
+
+   Two platforms with two different published answers, and one rule they agree
+   on. Getting either half wrong has been reported by the captain once each.
+
+   **iOS.** The Human Interface Guidelines tab bar is a 49pt content row, and on
+   a home-indicator iPhone the bar is 83pt overall — 49 of content plus the 34pt
+   bottom safe-area inset. UIKit does not put design padding under the labels on
+   top of that inset; the inset *is* the space. This bar did, and stacked an
+   80dp column on top of it as well: 80 + 34 + 8 = 122pt against the platform's
+   83. That is the "tab bar sits too high" report.
+
+   **Android.** Material 3's navigation bar container is 80dp with 12dp above
+   the item and 16dp below it, and the system navigation inset is added beneath
+   that container. A bar that had only its 8pt design gap under the labels was
+   the opposite report, which is why `Math.max(inset, pad)` alone was banned —
+   it silently discarded the design gap.
+
+   **The rule both follow.** Where the platform reserves a bottom inset, that
+   inset is the breathing room and nothing is added to it. Where it reserves
+   none — an iPhone SE, a phone with no gesture bar, Expo web — the design gap
+   stands in, so labels are never flush against the physical edge.
+
+   Resulting bar heights, content column plus whatever sits under it:
+     iOS, home indicator     49 + 34 = 83pt   (UIKit exactly)
+     iOS, no indicator       49 +  8 = 57pt
+     Android, gesture nav    80 + 24 = 104dp
+     Android, three-button   80 + 48 = 128dp
+     Android/web, no inset   80 +  8 = 88dp
+   --------------------------------------------------------------------------- */
+
+/** Used only where the platform reserves no bottom inset of its own. */
+export const TAB_BAR_MIN_BOTTOM_GAP = 8;
+
+export type TabBarMetrics = {
+  /** The content row, above whatever the platform reserves below it. */
+  columnHeight: number;
+  itemPaddingTop: number;
+  itemGap: number;
+  itemPaddingBottom: number;
+  /** The yellow disc that starts a request. Never below the 44pt touch floor. */
+  actionDiameter: number;
+  /** How far that disc rises through the bar's top hairline. */
+  actionRise: number;
+};
 
 /**
- * Design breathing room beneath the tab content, inside the bar surface.
- * Stacked on top of `insets.bottom` — never maxed with it. The inset is a
- * system keep-out zone; this is deliberate padding below the labels.
+ * Pure, so both platforms' geometry can be asserted in one test run rather
+ * than only whichever one the suite happens to be executing on.
  */
-export const TAB_BAR_DESIGN_BOTTOM_PAD = 8;
-
-/**
- * Compose the bar's bottom padding: system inset + design pad.
- * Pure so tests can lock the add (not max) composition without a full render tree.
- */
-export function tabBarPaddingBottom(insetBottom: number): number {
-  return insetBottom + TAB_BAR_DESIGN_BOTTOM_PAD;
+export function tabBarMetrics(platformOS: string): TabBarMetrics {
+  if (platformOS === "ios") {
+    // 4 + 24 icon + 2 + 16 label + 3 = 49, the HIG row exactly. The 4pt above
+    // the icon is also precisely the badge's -top-1 overhang.
+    return {
+      columnHeight: 49,
+      itemPaddingTop: 4,
+      itemGap: 2,
+      itemPaddingBottom: 3,
+      actionDiameter: 44,
+      actionRise: 10,
+    };
+  }
+  // Material 3: 80dp container, 12dp above the item, 16dp below it, 24dp icon.
+  return {
+    columnHeight: 80,
+    itemPaddingTop: 12,
+    itemGap: 4,
+    itemPaddingBottom: 16,
+    actionDiameter: 56,
+    actionRise: 16,
+  };
 }
 
-/** MD3 bottom navigation height for a labelled column. */
-export const TAB_BAR_COLUMN_HEIGHT = 80;
+export const TAB_BAR_METRICS = tabBarMetrics(Platform.OS);
+
+/**
+ * What sits below the content row: the platform's own inset where there is
+ * one, and the design gap only where there is not.
+ *
+ * Not `inset + gap`: on a home-indicator iPhone that added 8pt to a 34pt
+ * keep-out zone the platform had already sized as the bar's breathing room.
+ * Not a bare `Math.max` either — the intent is the reason, and a future reader
+ * needs to see that the design gap is a floor for insetless devices, not an
+ * alternative to the inset.
+ */
+export function tabBarPaddingBottom(insetBottom: number): number {
+  return insetBottom > 0 ? insetBottom : TAB_BAR_MIN_BOTTOM_GAP;
+}
 
 /**
  * Bottom padding a tab screen's scroll content needs so its last row clears
@@ -34,7 +107,7 @@ export const TAB_BAR_COLUMN_HEIGHT = 80;
  * cannot drift apart.
  */
 export function tabScreenContentPadding(insetBottom: number): number {
-  return tabBarPaddingBottom(insetBottom) + TAB_BAR_COLUMN_HEIGHT + 24;
+  return tabBarPaddingBottom(insetBottom) + TAB_BAR_METRICS.columnHeight + 24;
 }
 
 /**
@@ -52,25 +125,25 @@ const ICONS: Record<TabName, LucideIcon> = {
 /**
  * The GRIDGO tab bar.
  *
- * Four labelled destinations and one unlabelled action.
+ * Four labelled destinations and one unlabelled action. The column height and
+ * the item padding come from `tabBarMetrics` — the HIG's 49pt row on iOS, and
+ * Material 3's 80dp container on Android — with the note above this file's
+ * metrics explaining why the two differ and why neither adds a design gap on
+ * top of a platform inset.
  *
- * Material Design 3 sizes an icon-plus-label bottom navigation at 80dp. Each
- * labelled column is therefore `min-h-20` (80) so it meets the platform height
- * and the 44dp touch floor with room to spare. Stack inside a column:
- *   pt-2 (8) + icon (24) + gap-1 (4) + label box (16) + pb-2 (8) = 60 natural
- * The min height lifts that to 80; with `justify-end` the extra 20 sits above
- * the glyph and absorbs the badge's `-top-1` overhang. No fixed `h-13` — a
- * rigid 52 left zero top slack and put the badge above the bar border (the
- * supplier app already fixed this; the raised action disc only hid it here).
+ * Each column is laid out with `justify-end`, so any slack a platform leaves
+ * over its natural stack sits above the glyph and absorbs the badge's `-top-1`
+ * overhang. No fixed `h-13` — a rigid 52 left zero top slack and put the badge
+ * above the bar border.
  *
- * The action is a 56px disc in an 80-tall column — no label, because a filled
- * yellow plus in the middle of a tab bar needs no caption. The disc sits at
- * the top of that column while the bar surface starts 16px down (`top-4`), so
- * the disc rises through the hairline without drawing outside its parent.
+ * The action disc carries no label, because a filled yellow plus in the middle
+ * of a tab bar needs no caption. It sits at the top of its column while the
+ * bar surface starts `actionRise` below the row top, so the disc rises through
+ * the hairline without drawing outside its parent. It stays at or above the
+ * 44pt touch floor on both platforms.
  *
- * Bottom padding is `insets.bottom + TAB_BAR_DESIGN_BOTTOM_PAD`. The surface
- * and top border are absolute to the outer edges, so they still fill the inset
- * region down to the physical edge.
+ * The surface and top border are absolute to the outer edges, so they fill the
+ * inset region down to the physical edge whatever the padding is.
  *
  * The open tab is said twice over, in colour and in weight: its glyph goes
  * from muted to full-strength ink and its label from muted regular to medium.
@@ -79,7 +152,7 @@ const ICONS: Record<TabName, LucideIcon> = {
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const unreadCount = useNotifications((s) => s.unreadCount);
+  const unreadCount = useUnreadCount();
 
   return (
     <View
@@ -92,7 +165,10 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
         the hairline breaks around it with no cut-out to maintain. Spans the
         full outer height including the bottom inset region.
       */}
-      <View className="absolute inset-x-0 bottom-0 top-4 border-t border-outline bg-surface" />
+      <View
+        className="absolute inset-x-0 bottom-0 border-t border-outline bg-surface"
+        style={{ top: TAB_BAR_METRICS.actionRise }}
+      />
 
       <View className="flex-row items-end">
         {state.routes.map((route, index) => {
@@ -141,20 +217,25 @@ function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
   const colors = useThemeColors();
   const Icon = ICONS[name];
 
-  // 80 tall, matching the destinations' MD3 height. The 56 disc sits at the
-  // top of the column; the surface starts 16 below the row top, so the disc
+  // The disc sits at the top of a column the same height as its labelled
+  // neighbours; the surface starts `actionRise` below the row top, so the disc
   // breaks the hairline. Foot still lines up with the labelled row.
   if (name === ACTION_TAB) {
+    const { actionDiameter } = TAB_BAR_METRICS;
     return (
       <Pressable
         onPress={onPress}
         accessibilityRole="tab"
         accessibilityLabel={label}
         accessibilityState={{ selected: focused }}
-        className="h-20 flex-1 items-center"
+        className="flex-1 items-center"
+        style={{ height: TAB_BAR_METRICS.columnHeight }}
       >
         {({ pressed }) => (
-          <View className="h-14 w-14 items-center justify-center rounded-pill bg-action-yellow">
+          <View
+            className="items-center justify-center rounded-pill bg-action-yellow"
+            style={{ height: actionDiameter, width: actionDiameter }}
+          >
             <Icon size={26} color={colors.actionYellowOn} strokeWidth={2.5} />
             {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-pill" /> : null}
           </View>
@@ -169,9 +250,16 @@ function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
       accessibilityRole="tab"
       accessibilityLabel={label}
       accessibilityState={{ selected: focused }}
-      // min-h-20 = MD3 80dp icon+label bar. pt-2 clears the badge overhang.
-      // Grows with content if the label scales; never a rigid h-13.
-      className="min-h-20 flex-1 items-center justify-end gap-1 pb-2 pt-2"
+      // Height and padding are the platform's, from `tabBarMetrics`. A minimum
+      // rather than a fixed height, so the column still grows if the label
+      // scales; never a rigid h-13, which left no slack for the badge.
+      className="flex-1 items-center justify-end"
+      style={{
+        minHeight: TAB_BAR_METRICS.columnHeight,
+        paddingTop: TAB_BAR_METRICS.itemPaddingTop,
+        paddingBottom: TAB_BAR_METRICS.itemPaddingBottom,
+        rowGap: TAB_BAR_METRICS.itemGap,
+      }}
     >
       {({ pressed }) => (
         <>
