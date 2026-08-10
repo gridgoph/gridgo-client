@@ -7,6 +7,7 @@ import {
   GridgoTabBar,
   TAB_BAR_METRICS,
   TAB_BAR_MIN_BOTTOM_GAP,
+  tabBarHeight,
   tabBarMetrics,
   tabBarPaddingBottom,
   tabScreenContentPadding,
@@ -75,9 +76,58 @@ describe("tabBarPaddingBottom", () => {
     expect(tabBarPaddingBottom(48)).toBe(48);
   });
 
-  it("stands in with the design gap only where there is no inset", () => {
+  it("stands in with the design gap where there is no inset", () => {
     // The opposite Android report: labels flush against the physical edge.
     expect(tabBarPaddingBottom(0)).toBe(TAB_BAR_MIN_BOTTOM_GAP);
+  });
+
+  it("floors at the design gap, not at zero", () => {
+    // A `> 0` test reads like the rule but only floors at nothing, so an OEM
+    // reporting a couple of dp got less breathing room than a device reserving
+    // none at all. The gap is a floor under the inset, so anything below it is
+    // lifted to it.
+    for (const tiny of [1, 2, 4, 7]) {
+      expect(tabBarPaddingBottom(tiny)).toBe(TAB_BAR_MIN_BOTTOM_GAP);
+    }
+    expect(tabBarPaddingBottom(TAB_BAR_MIN_BOTTOM_GAP)).toBe(TAB_BAR_MIN_BOTTOM_GAP);
+  });
+
+  it("never shrinks as the platform reserves more", () => {
+    // The property the `> 0` floor broke: 2dp of inset produced a shorter bar
+    // than 0dp did. Padding must rise monotonically with the inset.
+    let previous = tabBarPaddingBottom(0);
+    for (let inset = 1; inset <= 60; inset += 1) {
+      const padding = tabBarPaddingBottom(inset);
+      expect(padding).toBeGreaterThanOrEqual(previous);
+      previous = padding;
+    }
+  });
+});
+
+describe("tabBarHeight", () => {
+  // The table in the component's own header comment, asserted rather than
+  // re-derived. These four rows are the devices the fix is reviewed against.
+  it.each([
+    ["Android, three-button", "android", 48, 128],
+    ["Android, gesture nav", "android", 24, 104],
+    ["iPhone, home indicator", "ios", 34, 83],
+    ["iPhone, no home indicator", "ios", 0, 57],
+    ["Android/web, no inset", "android", 0, 88],
+  ] as const)("%s", (_label, os, inset, expected) => {
+    expect(tabBarHeight(os, inset)).toBe(expected);
+  });
+
+  it("puts a home-indicator iPhone on UIKit's own 83pt", () => {
+    // 49pt content row + the 34pt inset, with nothing added on top of it.
+    expect(tabBarHeight("ios", 34)).toBe(tabBarMetrics("ios").columnHeight + 34);
+  });
+
+  it("keeps Material's 80dp container above the system inset, not inside it", () => {
+    // androidx `NavigationBar` pads *outside* its 80dp min-height, so the inset
+    // adds to the container rather than being absorbed by it.
+    for (const inset of [24, 48]) {
+      expect(tabBarHeight("android", inset)).toBe(80 + inset);
+    }
   });
 });
 
