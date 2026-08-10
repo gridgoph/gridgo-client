@@ -1,6 +1,7 @@
+import { ChevronLeft } from "lucide-react-native";
 import { useCallback, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -13,7 +14,7 @@ import { PaymentPanel } from "@/components/PaymentPanel";
 import { ProductPreview } from "@/components/ProductPreview";
 import { ProofDecision } from "@/components/ProofDecision";
 import { SecondaryButton } from "@/components/SecondaryButton";
-import { SkeletonList } from "@/components/Skeleton";
+import { SkeletonLine, SkeletonList, SkeletonPill } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -86,12 +87,44 @@ export default function OrderDetailScreen() {
     }, [load]),
   );
 
+  /*
+    An order can be opened with nothing behind it — a notification tap, a deep
+    link, a cold start on this route. The native stack hides its own back
+    control when there is no history, and this screen is not a tab, so without
+    this the client would be left with only OS gestures. `replace` rather than
+    `push`, because there is no stack to grow.
+  */
+  const exitToOrders = () => router.replace("/(tabs)/orders");
+  const stranded = !router.canGoBack();
+  const headerEscape = stranded ? (
+    <Stack.Screen
+      options={{
+        headerLeft: () => (
+          <Pressable
+            onPress={exitToOrders}
+            accessibilityRole="button"
+            accessibilityLabel="Back to orders"
+            hitSlop={12}
+            className="flex-row items-center gap-1 pr-3"
+          >
+            <ChevronLeft size={24} color={colors.textPrimary} strokeWidth={2} />
+            <Text className="text-body-lg text-text-primary">Orders</Text>
+          </Pressable>
+        ),
+      }}
+    />
+  ) : null;
+
   if (error && !order) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+        {headerEscape}
         <View className="gg-page gap-3 pt-6">
           <ErrorState label="Could not load order" body={error} onRetry={() => void load()} />
-          <SecondaryButton label="Back to orders" onPress={() => router.back()} />
+          <SecondaryButton
+            label="Back to orders"
+            onPress={stranded ? exitToOrders : () => router.back()}
+          />
         </View>
       </SafeAreaView>
     );
@@ -100,9 +133,22 @@ export default function OrderDetailScreen() {
   if (!order) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+        {headerEscape}
         <View className="gg-page gap-4 pt-6">
           <Text className="text-body text-text-muted">Loading this order…</Text>
-          <SkeletonList count={3} />
+          {/*
+            Shaped like the screen it becomes — the state line, the job title,
+            then the specification and money cards — so the page does not
+            resettle around the client the moment the order lands.
+          */}
+          <View className="gap-3">
+            <SkeletonPill width="w-32" />
+            <SkeletonLine width="w-3/4" height="h-7" />
+            <SkeletonLine width="w-1/2" height="h-5" />
+          </View>
+          <View className="mt-4">
+            <SkeletonList count={2} />
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -118,6 +164,7 @@ export default function OrderDetailScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      {headerEscape}
       <ScrollView className="gg-screen">
         <View className="gg-page gap-8 pb-16 pt-4">
           <View className="gap-3">

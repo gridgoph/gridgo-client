@@ -9,7 +9,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { OrderCard } from "@/components/OrderCard";
 import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
-import { SkeletonList } from "@/components/Skeleton";
+import { SkeletonList, SkeletonOrderList } from "@/components/Skeleton";
 import { useStartRequest } from "@/hooks/useStartRequest";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -154,11 +154,25 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
+          {/*
+            The placeholder is the shape of what replaces it — a jobs section
+            and a browse section, in order-card and category-card proportions —
+            so the page keeps its height and the list does not resettle under
+            the client's thumb when the data lands.
+          */}
           {loading ? (
-            <View className="mt-10 gap-3">
-              <Text className="text-overline text-text-muted">YOUR JOBS</Text>
-              <SkeletonList count={2} />
-            </View>
+            <>
+              <View className="mt-10 gap-3">
+                <Text className="text-overline text-text-muted">YOUR JOBS</Text>
+                <SkeletonOrderList count={2} />
+              </View>
+              <View className="mt-10 gap-3">
+                <Text className="text-overline text-text-muted">
+                  BROWSE WHAT GRIDGO PRINTS
+                </Text>
+                <SkeletonList count={2} />
+              </View>
+            </>
           ) : null}
 
           {!loading && needsClient.length ? (

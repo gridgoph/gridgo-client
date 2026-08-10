@@ -93,9 +93,15 @@ export default function ChooseCategoryScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
+    /*
+      A stack header already sits above this screen and has already cleared the
+      status bar, so `edges={["top"]}` would inset it a second time and push
+      the heading down a notch's worth. Bottom only, matching the sibling
+      category screen.
+    */
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
       <ScrollView className="gg-screen" keyboardShouldPersistTaps="handled">
-        <View className="gg-page pb-16 pt-6">
+        <View className="gg-page pb-16 pt-2">
           {/* The one bold moment on this screen. Everything below stays quiet. */}
           <Text className="text-display text-text-primary">What are you printing?</Text>
           <Text className="mt-3 text-body-lg text-text-secondary">

@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { OrderCard } from "@/components/OrderCard";
 import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
-import { SkeletonList } from "@/components/Skeleton";
+import { SkeletonOrderList } from "@/components/Skeleton";
 import { useStartRequest } from "@/hooks/useStartRequest";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -89,8 +89,9 @@ export default function OrdersScreen() {
           ) : null}
 
           {loading ? (
-            <View className="mt-8">
-              <SkeletonList count={3} />
+            <View className="mt-8 gap-3">
+              <Text className="text-body text-text-muted">Loading your jobs…</Text>
+              <SkeletonOrderList count={3} />
             </View>
           ) : null}
 

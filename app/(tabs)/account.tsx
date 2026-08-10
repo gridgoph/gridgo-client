@@ -1,8 +1,9 @@
 import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { getApiBase } from "@/lib/api";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -15,11 +16,15 @@ import { useSession } from "@/store/session";
 export default function AccountScreen() {
   const { user, logout } = useSession();
   const colors = useThemeColors();
+  // The bar floats over the scene. A flat `pb-12` left Sign out underneath it
+  // on every phone with a home indicator — the other four tabs already derive
+  // this from the bar's own metrics.
+  const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
       <ScrollView className="gg-screen">
-        <View className="gg-page gap-6 pb-12 pt-4">
+        <View className="gg-page gap-6 pt-4" style={{ paddingBottom: tabPad }}>
           <Text className="text-h2 text-text-primary">Account</Text>
 
           <View className="gg-card gap-1">

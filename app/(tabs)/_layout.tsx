@@ -29,6 +29,13 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.canvas },
+        /*
+          Tabs are places, not steps: opening one is an instant swap under
+          chrome that never moves. The library already defaults to this, but a
+          default is not a decision — stated here, a future upgrade or a stray
+          `shift` cannot quietly turn a destination into a transition.
+        */
+        animation: "none",
       }}
     >
       {TABS.map((tab) => (

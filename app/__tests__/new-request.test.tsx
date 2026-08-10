@@ -5,8 +5,16 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import NewRequestScreen from "@/app/(tabs)/new-request";
 import { useRequestDraft } from "@/store/requestDraft";
 
+const mockPush = jest.fn();
+const mockReplace = jest.fn();
+const mockNavigate = jest.fn();
+
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({
+    push: (...args: unknown[]) => mockPush(...args),
+    replace: (...args: unknown[]) => mockReplace(...args),
+    navigate: (...args: unknown[]) => mockNavigate(...args),
+  }),
   useFocusEffect: (effect: () => void) => {
     // Required inside the factory: jest.mock is hoisted above imports.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -67,6 +75,7 @@ jest.mock("@/lib/api", () => {
     listZones: jest.fn(),
     createOrder: jest.fn(),
     transitionOrder: jest.fn(),
+    attachFileToOrder: jest.fn(),
   };
 });
 
@@ -90,6 +99,13 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("NewRequestScreen", () => {
   beforeEach(() => {
+    mockPush.mockClear();
+    mockReplace.mockClear();
+    mockNavigate.mockClear();
+    // Reset, not clear: a `…Once` rejection queued by one test must not carry.
+    api.createOrder.mockReset();
+    api.attachFileToOrder.mockReset();
+    api.transitionOrder.mockReset();
     api.getTaxonomy.mockResolvedValue(taxonomy);
     api.listZones.mockResolvedValue(zones);
     useRequestDraft.setState({
@@ -199,5 +215,84 @@ describe("NewRequestScreen", () => {
     expect(screen.getByText("Davao Central (Bajada / JP Laurel)")).toBeTruthy();
     // Never the raw instant the order actually stores.
     expect(screen.queryByText(/2026-08-15T/)).toBeNull();
+  });
+
+  describe("sending the request", () => {
+    /** A complete draft sitting on the last step, ready to send. */
+    function readyToSend() {
+      useRequestDraft.setState({
+        stepIndex: 3,
+        size: "3x6 ft",
+        material: "13oz tarpaulin",
+        quantity: 2,
+        deadline: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+        addressLine1: "12 J.P. Laurel Ave",
+        barangay: "Bajada",
+        artworkFileId: "file_abc123",
+        artworkName: "opening-banner.pdf",
+      });
+      api.createOrder.mockResolvedValue({ id: "ord_new_1" });
+      api.attachFileToOrder.mockResolvedValue({
+        order: { id: "ord_new_1" },
+        file: { originalFilename: "opening-banner.pdf" },
+      });
+      api.transitionOrder.mockResolvedValue({ id: "ord_new_1", state: "submitted" });
+    }
+
+    it("leaves the tab shell under the job it just sent", async () => {
+      // `replace` targeted the root stack, whose only entry is the tab shell,
+      // so it swapped the tabs for the order: no tab bar, no back control.
+      readyToSend();
+      await renderInSafeArea(<NewRequestScreen />);
+
+      fireEvent.press(await screen.findByText("Send request"));
+
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/order/ord_new_1"));
+      expect(mockNavigate).toHaveBeenCalledWith("/(tabs)/orders");
+      expect(mockReplace).not.toHaveBeenCalled();
+    });
+
+    it("names the step it is on instead of one frozen 'Sending…'", async () => {
+      readyToSend();
+      // Hold the attach open so the middle phase is observable — it is the one
+      // that actually takes time on a mobile connection.
+      let releaseAttach = () => {};
+      api.attachFileToOrder.mockReturnValue(
+        new Promise((resolve) => {
+          releaseAttach = () =>
+            resolve({
+              order: { id: "ord_new_1" },
+              file: { originalFilename: "opening-banner.pdf" },
+            });
+        }),
+      );
+      await renderInSafeArea(<NewRequestScreen />);
+
+      fireEvent.press(await screen.findByText("Send request"));
+
+      expect(await screen.findByText("Attaching your artwork")).toBeTruthy();
+
+      await act(async () => {
+        releaseAttach();
+      });
+
+      await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    });
+
+    it("resumes a failed send on the same job rather than creating a second one", async () => {
+      readyToSend();
+      api.transitionOrder.mockRejectedValueOnce(new Error("Network request failed"));
+      await renderInSafeArea(<NewRequestScreen />);
+
+      fireEvent.press(await screen.findByText("Send request"));
+      expect(await screen.findByText("Not sent")).toBeTruthy();
+
+      api.transitionOrder.mockResolvedValue({ id: "ord_new_1", state: "submitted" });
+      fireEvent.press(screen.getByText("Send request"));
+
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/order/ord_new_1"));
+      expect(api.createOrder).toHaveBeenCalledTimes(1);
+      expect(api.attachFileToOrder).toHaveBeenCalledTimes(1);
+    });
   });
 });
