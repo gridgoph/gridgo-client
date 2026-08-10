@@ -53,7 +53,12 @@ export default function NotificationsScreen() {
             />
           ) : null}
 
-          {loading && !items.length ? <SkeletonList count={3} /> : null}
+          {loading && !items.length ? (
+            <>
+              <Text className="text-body text-text-muted">Loading your updates…</Text>
+              <SkeletonList count={3} />
+            </>
+          ) : null}
 
           {items.map((n) => (
             <View

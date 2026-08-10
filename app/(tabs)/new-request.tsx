@@ -9,6 +9,7 @@ import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ErrorState } from "@/components/ErrorState";
 import { DateTimeField } from "@/components/form/DateTimeField";
+import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { FormField, FormSection } from "@/components/form/FormField";
 import { OptionPicker, type PickerOption } from "@/components/form/OptionPicker";
 import { QuantityStepper } from "@/components/form/QuantityStepper";
@@ -40,6 +41,12 @@ import {
 import { describeQuantity } from "@/lib/quantity";
 import { REQUEST_STEPS, validateStep } from "@/lib/requestValidation";
 import { describeSize, sizeCatalogFor, type SizeCatalogEntry } from "@/lib/sizes";
+import {
+  resumeSubmitPhase,
+  submitPhaseBody,
+  submitPhaseLabel,
+  type SubmitPhase,
+} from "@/lib/submitRequest";
 import {
   EMPTY_TAXONOMY,
   finishOptions,
@@ -86,7 +93,7 @@ export default function NewRequestScreen() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [blockReason, setBlockReason] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitPhase, setSubmitPhase] = useState<SubmitPhase | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   /** Set once the order exists, so a retry never creates a second job. */
@@ -199,8 +206,13 @@ export default function NewRequestScreen() {
       setBlockReason(result.reason);
       return;
     }
-    setSubmitting(true);
     setSubmitError(null);
+    // Three calls, named one at a time. A retry resumes where it stopped, so
+    // the phase is derived from what already succeeded, never restarted at
+    // "creating" when the job exists.
+    setSubmitPhase(
+      resumeSubmitPhase(Boolean(createdOrderId.current), artwork.state.phase === "attached"),
+    );
     try {
       // The job is created as a draft, the artwork is bound to it, and only
       // then is it sent for QA — so Operations never opens a job with no file.
@@ -229,8 +241,10 @@ export default function NewRequestScreen() {
 
       // A retry that got past the attach must not bind the same file twice.
       if (artwork.state.phase !== "attached") {
+        setSubmitPhase("attaching");
         await artwork.attachTo(orderId);
       }
+      setSubmitPhase("sending");
       await api.transitionOrder(orderId, "submitted", {
         note: "Sent for artwork QA",
       });
@@ -238,7 +252,17 @@ export default function NewRequestScreen() {
       createdOrderId.current = null;
       draft.reset();
       artwork.reset();
-      router.replace(`/order/${orderId}`);
+
+      // Open the job with the tab shell still underneath it.
+      //
+      // `replace` here targeted the root stack, whose only entry is `(tabs)`,
+      // so it swapped the whole tab shell for the order screen: no tab bar, no
+      // header back control, nothing but OS gestures to escape with. Switching
+      // to Orders and pushing keeps `(tabs)` under the order, and puts the
+      // client back among their jobs — not on an emptied stepper — when they
+      // come back out.
+      router.navigate("/(tabs)/orders");
+      router.push(`/order/${orderId}`);
     } catch (e) {
       setSubmitError(
         createdOrderId.current
@@ -249,9 +273,11 @@ export default function NewRequestScreen() {
           : userFacingError(e, "Could not send this request. Check your connection and try again."),
       );
     } finally {
-      setSubmitting(false);
+      setSubmitPhase(null);
     }
   };
+
+  const submitting = submitPhase !== null;
 
   const primaryLabel = submitting
     ? "Sending…"
@@ -381,6 +407,17 @@ export default function NewRequestScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/*
+        Sending keeps this screen mounted, so the wait belongs on top of it
+        rather than on a new screen. The scrim also stops a second tap from
+        starting the same job twice while the first send is in flight.
+      */}
+      <LoadingOverlay
+        visible={submitPhase !== null}
+        label={submitPhase ? submitPhaseLabel(submitPhase) : ""}
+        body={submitPhase ? submitPhaseBody(submitPhase) : undefined}
+      />
 
       <ConfirmDialog
         visible={confirmClear}

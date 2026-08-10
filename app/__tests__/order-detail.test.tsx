@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -6,9 +6,20 @@ import OrderDetailScreen from "@/app/order/[id]";
 import type { Order } from "@/lib/api";
 
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
+const mockStackOptions = jest.fn((_options: unknown) => null);
 
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: mockBack }),
+  useRouter: () => ({
+    push: jest.fn(),
+    replace: (...args: unknown[]) => mockReplace(...args),
+    back: mockBack,
+    canGoBack: () => mockCanGoBack(),
+  }),
+  // The screen sets its own header options when there is no history behind it.
+  // Only the options matter here, so the element renders nothing.
+  Stack: { Screen: ({ options }: { options: unknown }) => mockStackOptions(options) ?? null },
   useLocalSearchParams: () => ({ id: "ord_demo_1" }),
   useFocusEffect: (effect: () => void) => {
     // Required inside the factory: jest.mock is hoisted above imports.
@@ -106,6 +117,9 @@ function setOrder(patch: Partial<Order>) {
 
 describe("OrderDetailScreen", () => {
   beforeEach(() => {
+    mockReplace.mockClear();
+    mockStackOptions.mockClear();
+    mockCanGoBack.mockReturnValue(true);
     setOrder({});
     api.listOrders.mockResolvedValue([]);
     api.creditBalance.mockResolvedValue({ clientId: "user_client", balanceMinor: 500000, ledger: [] });
@@ -285,5 +299,38 @@ describe("OrderDetailScreen", () => {
 
     expect(await screen.findByText(/Cannot reach the server/i)).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
+  });
+
+  describe("when there is nothing behind this screen", () => {
+    // A notification tap, a deep link, or a cold start on this route. The
+    // native stack hides its own back control with no history, and an order is
+    // not a tab — without a way out the client is left to OS gestures.
+    it("puts a way back in the header", async () => {
+      mockCanGoBack.mockReturnValue(false);
+      await renderInSafeArea(<OrderDetailScreen />);
+
+      await screen.findByText("Grand opening tarpaulin");
+      expect(mockStackOptions).toHaveBeenCalled();
+      const options = mockStackOptions.mock.calls.at(-1)?.[0] as { headerLeft?: unknown };
+      expect(typeof options.headerLeft).toBe("function");
+    });
+
+    it("leaves the header alone when the stack can go back on its own", async () => {
+      await renderInSafeArea(<OrderDetailScreen />);
+
+      await screen.findByText("Grand opening tarpaulin");
+      expect(mockStackOptions).not.toHaveBeenCalled();
+    });
+
+    it("sends the failed-load escape to Orders rather than into an empty stack", async () => {
+      mockCanGoBack.mockReturnValue(false);
+      api.getOrder.mockRejectedValue(new Error("Network request failed"));
+      await renderInSafeArea(<OrderDetailScreen />);
+
+      fireEvent.press(await screen.findByText("Back to orders"));
+
+      expect(mockReplace).toHaveBeenCalledWith("/(tabs)/orders");
+      expect(mockBack).not.toHaveBeenCalled();
+    });
   });
 });

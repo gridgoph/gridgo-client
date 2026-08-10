@@ -1,11 +1,20 @@
 import { multiOriginPushedScreenOptions } from "@/lib/navigationHeaders";
 
 describe("multiOriginPushedScreenOptions", () => {
-  it("uses minimal back display so iOS never shows the (tabs) route name", () => {
-    // React Navigation native-stack (Expo Router Stack): current non-deprecated
-    // option that hides the previous-screen title on the back control.
-    expect(multiOriginPushedScreenOptions.headerBackButtonDisplayMode).toBe(
-      "minimal",
-    );
+  it("labels the back control 'Back' rather than the previous screen", () => {
+    // iOS would otherwise write the previous screen's title on the control,
+    // which is the filesystem name `(tabs)` from a tab, and a lie from any of
+    // the several tabs an order can be opened from.
+    expect(multiOriginPushedScreenOptions.headerBackTitle).toBe("Back");
+  });
+
+  it("keeps the label visible", () => {
+    // "minimal" hides it. A bare chevron above a screen with its own large
+    // heading is what got reported as "not all have Back".
+    expect(multiOriginPushedScreenOptions.headerBackButtonDisplayMode).toBe("default");
+  });
+
+  it("never names a route group", () => {
+    expect(JSON.stringify(multiOriginPushedScreenOptions)).not.toContain("(tabs)");
   });
 });
