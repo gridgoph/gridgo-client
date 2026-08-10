@@ -35,6 +35,21 @@ export function formatRelativeTime(
   return d.toLocaleDateString("en-PH", { day: "numeric", month: "short" });
 }
 
+/**
+ * Exact stamp for the order timeline: "9 Aug, 4:12 PM".
+ *
+ * The timeline is the app's accountability record, so every entry carries the
+ * real clock time as well as how long ago it was.
+ */
+export function formatTimelineStamp(at: string | number | Date): string {
+  const ms = typeof at === "number" ? at : new Date(at).getTime();
+  if (!Number.isFinite(ms)) return "—";
+  const date = new Date(ms);
+  const day = date.toLocaleDateString("en-PH", { day: "numeric", month: "short" });
+  const time = date.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
+  return `${day}, ${time}`;
+}
+
 /** Location is stale when last ping is older than this (ms). */
 export const STALE_LOCATION_MS = 3 * MINUTE;
 

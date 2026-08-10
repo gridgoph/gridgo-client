@@ -27,6 +27,13 @@ export type User = {
   supplierName?: string;
 };
 
+/** A map point on an order. Absent until the platform knows one. */
+export type OrderPoint = {
+  lat: number;
+  lng: number;
+  label?: string | null;
+};
+
 export type Order = {
   id: string;
   clientId: string;
@@ -38,6 +45,8 @@ export type Order = {
   quantity: number;
   size: string;
   material: string;
+  /** Optional finish from the platform taxonomy. */
+  finish?: string | null;
   deadline: string | null;
   address: string;
   zone: string;
@@ -47,10 +56,80 @@ export type Order = {
   paymentStatus: string;
   codEligible: boolean;
   promisedDate: string | null;
+  /** Display string only — never file identity. See docs/STORAGE_API.md. */
   artworkName: string | null;
+  /** Stored artwork ids, newest last. Empty is valid. */
+  artworkFileIds?: string[];
+  /** Supplier print proofs attached to this order. */
+  proofFileIds?: string[];
+  /** Supplier shop, once a supplier is assigned. */
+  pickup?: OrderPoint | null;
+  /** Delivery destination. */
+  dropoff?: OrderPoint | null;
+  payoutHold?: boolean;
   createdAt: string;
   updatedAt: string;
-  timeline: { at: string; state: string; by: string; note: string }[];
+  timeline: { at: string; state: string; by: string; note: string; fileId?: string }[];
+};
+
+/** Platform-defined categories, materials and finishes. */
+export type TaxonomyPayload = {
+  categories: {
+    id: string;
+    code: string;
+    name: string;
+    productFamilyIds: string[];
+    active: boolean;
+  }[];
+  materials: { id: string; code: string; name: string; categoryCodes: string[]; active: boolean }[];
+  finishes: { id: string; code: string; name: string; categoryCodes: string[]; active: boolean }[];
+};
+
+export type Zone = {
+  id: string;
+  code: string;
+  name: string;
+  deliveryFeeMinor: number;
+  active: boolean;
+};
+
+/** Public file record from the storage API. `objectKey` is never returned. */
+export type StoredFile = {
+  fileId: string;
+  purpose: string;
+  originalFilename: string;
+  declaredContentType: string | null;
+  detectedContentType: string;
+  size: number;
+  ownerId: string;
+  state: string;
+  createdAt: string;
+  readyAt: string | null;
+  references: { type: string; id: string; field: string }[];
+};
+
+/** Newest rider position for an order, or null when none has been shared. */
+export type LocationPing = {
+  id: string;
+  orderId: string;
+  riderId: string;
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+  at: string;
+};
+
+export type Issue = {
+  id: string;
+  orderId: string;
+  clientId: string;
+  description: string;
+  kind: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  resolution: string | null;
 };
 
 export type Notification = {
@@ -76,6 +155,7 @@ export type CreateOrderInput = {
   quantity: number;
   size: string;
   material: string;
+  finish?: string;
   deadline: string | null;
   address: string;
   zone?: string;
@@ -333,6 +413,18 @@ export async function listCatalog(): Promise<CatalogProduct[]> {
   return result.catalog;
 }
 
+/** Categories, materials and finishes the platform defines. */
+export async function getTaxonomy(): Promise<TaxonomyPayload> {
+  const result = await request<{ taxonomy: TaxonomyPayload }>("/taxonomy");
+  return result.taxonomy;
+}
+
+/** Delivery zones with their authoritative delivery fees. */
+export async function listZones(): Promise<Zone[]> {
+  const result = await request<{ zones: Zone[] }>("/zones");
+  return result.zones;
+}
+
 export async function listOrders(): Promise<Order[]> {
   const result = await request<{ orders: Order[] }>("/orders");
   return result.orders;
@@ -416,6 +508,156 @@ export async function requestProof(
     method: "POST",
     body: JSON.stringify({ kind, otp: "1234", photoName: "demo.jpg", ...extra }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Files — see docs/STORAGE_API.md in gridgo-api for the authoritative contract
+// ---------------------------------------------------------------------------
+
+export type UploadAsset = {
+  /** Local file URI from the picker. Never read into memory. */
+  uri: string;
+  name: string;
+  /** Picker MIME. iOS often reports a generic type; the server decides. */
+  mimeType?: string | null;
+};
+
+export type UploadHandle = {
+  /** Resolves only when the server returns `201` with a ready file record. */
+  done: Promise<StoredFile>;
+  /** Abandon the transfer (client left the screen, or chose another file). */
+  cancel: () => void;
+};
+
+/**
+ * Stream one file to `POST /files`.
+ *
+ * XMLHttpRequest rather than fetch for two reasons: it reports upload
+ * progress, and React Native's implementation streams the multipart file part
+ * straight from the URI. Reading a 200 MB artwork into a JS string or base64
+ * would put a mid-range Android device out of memory.
+ *
+ * `onProgress` reaching 1 means the bytes left the phone — not that the file
+ * is stored. Only the resolved {@link StoredFile} proves that.
+ */
+export function uploadFile(
+  asset: UploadAsset,
+  purpose: string,
+  onProgress?: (fraction: number | null) => void,
+): UploadHandle {
+  const xhr = new XMLHttpRequest();
+
+  const done = new Promise<StoredFile>((resolve, reject) => {
+    const form = new FormData();
+    form.append("purpose", purpose);
+    // React Native's FormData takes this shape for a file part and streams it.
+    form.append("file", {
+      uri: asset.uri,
+      name: asset.name,
+      type: asset.mimeType || "application/octet-stream",
+    } as unknown as Blob);
+
+    xhr.open("POST", `${getApiBase()}/files`);
+    xhr.responseType = "text";
+    xhr.setRequestHeader("Accept", "application/json");
+    if (tokenMemory) xhr.setRequestHeader("Authorization", `Bearer ${tokenMemory}`);
+    // Content-Type is left unset on purpose: the platform supplies the
+    // multipart boundary, and overriding it corrupts the request body.
+
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (event: ProgressEvent) => {
+        onProgress(event.lengthComputable && event.total > 0 ? event.loaded / event.total : null);
+      };
+    }
+
+    xhr.onload = () => {
+      let data: unknown = null;
+      const text = typeof xhr.response === "string" ? xhr.response : "";
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+      }
+      if (xhr.status === 201) {
+        const file = (data as { file?: StoredFile } | null)?.file;
+        if (file?.fileId) {
+          resolve(file);
+          return;
+        }
+        // A 201 without an id is not success; never invent one.
+        reject(new ApiError(xhr.status, { error: "file_metadata_invalid" }));
+        return;
+      }
+      if (xhr.status === 401 && tokenMemory) {
+        setToken(null);
+        notifyUnauthorized();
+      }
+      reject(new ApiError(xhr.status, data));
+    };
+
+    xhr.onerror = () => reject(new Error("Network request failed"));
+    xhr.ontimeout = () => reject(new Error("Upload timeout"));
+    xhr.onabort = () => reject(new ApiError(0, { error: "upload_cancelled" }));
+
+    xhr.send(form);
+  });
+
+  return { done, cancel: () => xhr.abort() };
+}
+
+/** Bind a ready file to an order. Returns the file and the updated order. */
+export async function attachFileToOrder(
+  fileId: string,
+  orderId: string,
+): Promise<{ file: StoredFile; order: Order }> {
+  return request(`/files/${fileId}/attach`, {
+    method: "POST",
+    body: JSON.stringify({ orderId }),
+  });
+}
+
+/**
+ * Short-lived signed URL for reading a stored file.
+ * Never persist it — it is a capability, not identity. Ask again when it expires.
+ */
+export async function getFileDownloadUrl(
+  fileId: string,
+): Promise<{ fileId: string; url: string; expiresAt: string; expiresInSeconds: number }> {
+  return request(`/files/${fileId}/download-url`);
+}
+
+export async function getFile(fileId: string): Promise<StoredFile> {
+  const result = await request<{ file: StoredFile }>(`/files/${fileId}`);
+  return result.file;
+}
+
+// ---------------------------------------------------------------------------
+// Tracking and issues
+// ---------------------------------------------------------------------------
+
+/** Newest rider position for an order. `null` means none has been shared. */
+export async function getRiderLocation(orderId: string): Promise<LocationPing | null> {
+  const result = await request<{ ping: LocationPing | null }>(`/dispatch/${orderId}/location`);
+  return result.ping;
+}
+
+/** Report a material issue while the order's issue window is open. */
+export async function reportIssue(
+  orderId: string,
+  input: { kind: string; description: string },
+): Promise<{ issue: Issue }> {
+  return request(`/orders/${orderId}/issues`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function listIssues(orderId?: string): Promise<Issue[]> {
+  const suffix = orderId ? `?orderId=${encodeURIComponent(orderId)}` : "";
+  const result = await request<{ issues: Issue[] }>(`/issues${suffix}`);
+  return result.issues;
 }
 
 /** Format PHP minor units (centavos) for display. */

@@ -55,20 +55,6 @@ export function actorLabel(by: string | null | undefined): string {
   return "Team member";
 }
 
-/** Delivery zones the client may pick — labels, not codes. */
-export const ZONE_OPTIONS: { value: string; label: string }[] = [
-  { value: "davao_central", label: "Davao Central" },
-  { value: "davao_north", label: "Davao North" },
-  { value: "davao_south", label: "Davao South" },
-  { value: "davao_east", label: "Davao East" },
-  { value: "davao_west", label: "Davao West" },
-];
-
-export function zoneLabel(zone: string | null | undefined): string {
-  if (!zone) return "—";
-  return ZONE_OPTIONS.find((z) => z.value === zone)?.label ?? "Davao area";
-}
-
 /**
  * Map network / API failures to recovery-oriented plain language.
  * Never leak error codes like `transition_not_allowed` to the UI.
@@ -105,6 +91,16 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "Cash on Delivery only covers orders up to ₱1,500 including delivery. Pay with Pilot Credits instead.";
       case "cod_one_active":
         return "You already have an unpaid Cash on Delivery order. Finish or pay that one before starting another.";
+      case "issue_already_open":
+        return "You already have a report open on this job. Operations is reviewing it — add anything else to that one rather than opening a second.";
+      case "issue_window_closed":
+        return "This job has been signed off, so the issue window is closed. Message Operations if something is still wrong with it.";
+      case "invalid_issue":
+        return "Describe what is wrong before sending the report — Operations acts on your words alone.";
+      case "reason_required":
+        return "Say what needs to change. Your supplier reworks the proof from this reason.";
+      case "proof_decision_not_allowed":
+        return "There is no proof waiting on your decision right now. Pull this order again to see where it got to.";
       case "not_found":
         return "Nothing was found for that request. Go back and try again.";
       default:

@@ -1,5 +1,8 @@
+import { Image } from "expo-image";
+import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
+import { useArtworkImage } from "@/hooks/useArtworkImage";
 import {
   MOCKUP_LABEL,
   templateForFamily,
@@ -12,53 +15,96 @@ type Props = {
   artworkName?: string | null;
   productName?: string | null;
   size?: string | null;
+  /** Stored artwork. When it is an image, it is composited into the template. */
+  artworkFileId?: string | null;
 };
 
 /**
- * Visual product mockup: artwork name composited into a simple template.
- * Every render carries the exact label on the mockup itself.
+ * The artwork, seen as the product, before the client commits to printing it.
+ *
+ * Image artwork is fetched through the storage API and composited into the
+ * template for its family. A PDF cannot be rasterised on the phone, so the
+ * template names the file instead of pretending to show it. Every render
+ * carries the mockup label on the render itself.
  */
-export function ProductPreview({ family, artworkName, productName, size }: Props) {
+export function ProductPreview({
+  family,
+  artworkName,
+  productName,
+  size,
+  artworkFileId,
+}: Props) {
   const template = templateForFamily(family);
+  const { uri, unavailable, markUnrenderable } = useArtworkImage(artworkFileId);
   const name = artworkName?.trim() || "No artwork yet";
+
+  const artwork: ReactNode = uri ? (
+    <Image
+      source={{ uri }}
+      style={{ width: "100%", height: "100%" }}
+      contentFit="cover"
+      transition={0}
+      onError={markUnrenderable}
+      accessibilityLabel={`Mockup of ${name}`}
+    />
+  ) : (
+    <FileFace name={name} />
+  );
 
   return (
     <View className="gg-card-flush">
-      <View className="bg-surface-variant px-4 py-3">
+      <View className="border-b border-outline-subtle bg-surface-variant px-4 py-3">
         <Text className="text-caption text-text-muted">
           {templateLabel(template)} preview
           {productName ? ` · ${productName}` : ""}
           {size ? ` · ${size}` : ""}
         </Text>
       </View>
-      <View className="items-center bg-surface p-4">
-        <TemplateFrame template={template} artworkName={name} />
+      <View className="items-center gap-3 bg-surface px-4 py-5">
+        <TemplateFrame template={template}>{artwork}</TemplateFrame>
         {/* Required on the render itself, not only as a caption elsewhere. */}
-        <View className="mt-3 w-full rounded-field bg-surface-high px-3 py-2">
+        <View className="w-full rounded-field bg-surface-high px-3 py-2">
           <Text className="text-center text-caption font-medium text-text-primary">
             {MOCKUP_LABEL}
           </Text>
         </View>
+        {unavailable && artworkFileId ? (
+          <Text className="text-center text-caption text-text-muted">
+            This file cannot be shown on the phone — PDFs are opened by Operations. The
+            specification below is what will be printed.
+          </Text>
+        ) : null}
       </View>
+    </View>
+  );
+}
+
+/** Fallback face: the file's name, set inside the product's shape. */
+function FileFace({ name }: { name: string }) {
+  return (
+    <View className="h-full w-full items-center justify-center bg-canvas px-3">
+      <Text className="text-center text-caption text-text-primary" numberOfLines={4}>
+        {name}
+      </Text>
     </View>
   );
 }
 
 function TemplateFrame({
   template,
-  artworkName,
+  children,
 }: {
   template: PreviewTemplate;
-  artworkName: string;
+  children: ReactNode;
 }) {
   if (template === "tshirt") {
     return (
-      <View className="h-48 w-40 items-center justify-center rounded-card border border-outline bg-canvas">
-        <View className="h-6 w-28 rounded-t-field border border-b-0 border-outline bg-surface-variant" />
-        <View className="h-36 w-32 items-center justify-center rounded-b-card border border-outline bg-surface px-2">
-          <Text className="text-center text-caption text-text-primary" numberOfLines={3}>
-            {artworkName}
-          </Text>
+      <View className="h-52 w-44 items-center">
+        <View className="h-7 w-32 rounded-t-field border border-b-0 border-outline bg-surface-variant" />
+        <View className="w-40 flex-1 items-center justify-center rounded-b-card border border-outline bg-surface p-3">
+          <View className="h-full w-full overflow-hidden rounded-sm border border-outline-subtle">
+            {children}
+          </View>
         </View>
       </View>
     );
@@ -66,33 +112,24 @@ function TemplateFrame({
 
   if (template === "tarpaulin") {
     return (
-      <View className="h-36 w-full max-w-sm items-center justify-center rounded-sm border-2 border-outline bg-canvas px-3">
-        <Text className="text-center text-body font-medium text-text-primary" numberOfLines={2}>
-          {artworkName}
-        </Text>
-        <Text className="mt-2 text-caption text-text-muted">Banner / tarpaulin face</Text>
+      <View className="h-40 w-full max-w-sm overflow-hidden rounded-sm border-2 border-outline">
+        {children}
       </View>
     );
   }
 
   if (template === "signage") {
     return (
-      <View className="h-40 w-44 items-center justify-center rounded-field border border-outline bg-canvas px-3">
-        <View className="mb-2 h-2 w-16 rounded-pill bg-outline" />
-        <Text className="text-center text-caption text-text-primary" numberOfLines={3}>
-          {artworkName}
-        </Text>
+      <View className="h-44 w-48 overflow-hidden rounded-field border border-outline">
+        {children}
       </View>
     );
   }
 
-  // flyer / generic
+  // flyer / generic — portrait sheet
   return (
-    <View className="h-48 w-36 items-center justify-center rounded-sm border border-outline bg-canvas px-3">
-      <Text className="text-center text-caption text-text-primary" numberOfLines={4}>
-        {artworkName}
-      </Text>
-      <Text className="mt-3 text-caption text-text-muted">Fold / face A</Text>
+    <View className="h-52 w-40 overflow-hidden rounded-sm border border-outline">
+      {children}
     </View>
   );
 }

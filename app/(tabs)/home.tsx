@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { OrderCard } from "@/components/OrderCard";
@@ -13,7 +14,7 @@ import { groupCatalogByFamily } from "@/lib/catalog";
 import { userFacingError } from "@/lib/copy";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useNotifications } from "@/store/notifications";
-import { useRequestDraft } from "@/store/requestDraft";
+import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
 
 /**
@@ -27,6 +28,11 @@ export default function HomeScreen() {
   const seedFromOrder = useRequestDraft((s) => s.seedFromOrder);
   const selectProduct = useRequestDraft((s) => s.selectProduct);
   const refreshNotifications = useNotifications((s) => s.refresh);
+  /** Held until the client says the in-progress draft may be replaced. */
+  const [pendingStart, setPendingStart] = useState<{
+    label: string;
+    start: () => void;
+  } | null>(null);
 
   const [orders, setOrders] = useState<api.Order[]>([]);
   const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
@@ -71,20 +77,40 @@ export default function HomeScreen() {
   const groups = groupCatalogByFamily(catalog);
   const productById = new Map(catalog.map((p) => [p.id, p]));
 
-  const startWithProduct = (product: api.CatalogProduct) => {
-    selectProduct(product);
+  /**
+   * Starting a new request overwrites whatever draft is in progress, and that
+   * draft survives the app closing — so it is never silently thrown away.
+   */
+  const startRequest = (label: string, seed: () => void) => {
+    const draft = useRequestDraft.getState();
+    if (draftHasContent(draft)) {
+      setPendingStart({
+        label,
+        start: () => {
+          seed();
+          router.push("/(tabs)/new-request");
+        },
+      });
+      return;
+    }
+    seed();
     router.push("/(tabs)/new-request");
+  };
+
+  const startWithProduct = (product: api.CatalogProduct) => {
+    startRequest(product.name, () => selectProduct(product));
   };
 
   const reorder = (order: api.Order) => {
     const meta = productById.get(order.productId);
-    seedFromOrder(order, {
-      name: meta?.name,
-      basePriceMinor: meta?.basePriceMinor,
-      unit: meta?.unit,
-      family: meta?.family,
-    });
-    router.push("/(tabs)/new-request");
+    startRequest(order.title, () =>
+      seedFromOrder(order, {
+        name: meta?.name,
+        basePriceMinor: meta?.basePriceMinor,
+        unit: meta?.unit,
+        family: meta?.family,
+      }),
+    );
   };
 
   return (
@@ -179,6 +205,20 @@ export default function HomeScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <ConfirmDialog
+        visible={pendingStart != null}
+        question={`Replace your draft request with "${pendingStart?.label ?? ""}"?`}
+        body="You have a request in progress. Starting this one replaces it, including any artwork you have already uploaded to the draft."
+        confirmLabel="Replace the draft"
+        cancelLabel="Keep my draft"
+        tone="destructive"
+        onConfirm={() => {
+          pendingStart?.start();
+          setPendingStart(null);
+        }}
+        onCancel={() => setPendingStart(null)}
+      />
     </SafeAreaView>
   );
 }
