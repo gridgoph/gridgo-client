@@ -166,7 +166,13 @@ export default function DesignSystemScreen() {
   const colors = useThemeColors();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
+    /*
+      A stack header sits above this screen and has already cleared the status
+      bar. `edges={["top"]}` inset it a second time — a notch's worth of blank
+      canvas between the header and the masthead. Bottom only, matching every
+      other pushed screen.
+    */
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
       <ScrollView className="gg-screen" showsVerticalScrollIndicator={false}>
         <View className="gg-page gap-10 pb-16 pt-6">
           {/* Masthead — the job ticket for the system itself. */}

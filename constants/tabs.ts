@@ -23,7 +23,7 @@ export type TabDefinition = {
 export const TABS: readonly TabDefinition[] = [
   { name: "home", label: "Home" },
   { name: "orders", label: "Orders" },
-  { name: "new-request", label: "New Request" },
+  { name: "new-request", label: "New request" },
   { name: "notifications", label: "Notifications" },
   { name: "account", label: "Account" },
 ];

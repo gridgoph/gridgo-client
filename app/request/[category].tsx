@@ -118,6 +118,13 @@ export default function CategoryScreen() {
     category.subcategories,
     catalog,
   );
+  /*
+    A group label is only information against the group it is being told apart
+    from. Where a category is entirely priced, or entirely quoted, the overline
+    heads the only list on the screen and says nothing the list does not — and
+    in the quoted-only case the sentence underneath already says it in words.
+  */
+  const split = orderable.length > 0 && quotedByOperations.length > 0;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
@@ -138,7 +145,9 @@ export default function CategoryScreen() {
 
           {orderable.length ? (
             <View className="mt-8 gap-3">
-              <Text className="text-overline text-text-muted">ORDER IN THE APP</Text>
+              {split ? (
+                <Text className="text-overline text-text-muted">ORDER IN THE APP</Text>
+              ) : null}
               {orderable.map((subcategory) => (
                 <SubcategoryRow
                   key={subcategory.code}
@@ -154,10 +163,12 @@ export default function CategoryScreen() {
 
           {quotedByOperations.length ? (
             <View className="mt-8 gap-3">
-              <Text className="text-overline text-text-muted">QUOTED BY OPERATIONS</Text>
+              {split ? (
+                <Text className="text-overline text-text-muted">QUOTED BY OPERATIONS</Text>
+              ) : null}
               <Text className="text-body text-text-secondary">
-                GRIDGO prints {orderable.length ? "these too" : "these"}. They are not priced
-                in the app yet, so Operations quotes them with you directly.
+                GRIDGO prints {split ? "these too" : "these"}. They are not priced in the
+                app yet, so Operations quotes them with you directly.
               </Text>
               <View className="gg-panel gap-4">
                 {quotedByOperations.map((subcategory) => (

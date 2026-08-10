@@ -79,8 +79,8 @@ describe("GridgoTabBar", () => {
   it("names the action tab for screen readers even though it draws no label", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    expect(screen.queryByText("New Request")).toBeNull();
-    expect(screen.getByRole("tab", { name: "New Request" })).toBeTruthy();
+    expect(screen.queryByText("New request")).toBeNull();
+    expect(screen.getByRole("tab", { name: "New request" })).toBeTruthy();
   });
 
   it("marks only the open tab as selected", async () => {
@@ -111,7 +111,7 @@ describe("GridgoTabBar", () => {
 
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    fireEvent.press(screen.getByRole("tab", { name: "New Request" }));
+    fireEvent.press(screen.getByRole("tab", { name: "New request" }));
 
     expect(navigate).not.toHaveBeenCalled();
   });
