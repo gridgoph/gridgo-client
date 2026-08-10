@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   useThemeColors,
@@ -30,74 +31,77 @@ export default function SettingsScreen() {
   const setPreference = useThemeStore((s) => s.setPreference);
 
   return (
-    <ScrollView className="gg-screen">
-      <View className="gg-page gap-6 pb-12 pt-4">
-        <View className="gg-card gap-3">
-          <Text className="text-body-lg font-medium text-text-primary">Theme</Text>
-          <Text className="text-body text-text-secondary">
-            Showing {scheme === "dark" ? "Dark" : "Light"}
-            {preference === "system" ? " (matches your device)" : ""}.
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {THEME_OPTIONS.map((option) => {
-              const selected = option.value === preference;
-              return (
-                <Pressable
-                  key={option.value}
-                  onPress={() => setPreference(option.value)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  // Routine control — monochrome accent, never actionYellow.
-                  className={
-                    selected
-                      ? "gg-chip gg-touch border-accent bg-accent px-4"
-                      : "gg-chip gg-touch bg-surface px-4"
-                  }
-                  style={({ pressed }) => (pressed ? { opacity: 0.9 } : undefined)}
-                >
-                  <Text
+    /* Bottom only — the stack header above has already cleared the status bar. */
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <ScrollView className="gg-screen">
+        <View className="gg-page gap-6 pb-12 pt-4">
+          <View className="gg-card gap-3">
+            <Text className="text-body-lg font-medium text-text-primary">Theme</Text>
+            <Text className="text-body text-text-secondary">
+              Showing {scheme === "dark" ? "Dark" : "Light"}
+              {preference === "system" ? " (matches your device)" : ""}.
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {THEME_OPTIONS.map((option) => {
+                const selected = option.value === preference;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setPreference(option.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    // Routine control — monochrome accent, never actionYellow.
                     className={
                       selected
-                        ? "text-button text-accent-on"
-                        : "text-button text-text-secondary"
+                        ? "gg-chip gg-touch border-accent bg-accent px-4"
+                        : "gg-chip gg-touch bg-surface px-4"
                     }
+                    style={({ pressed }) => (pressed ? { opacity: 0.9 } : undefined)}
                   >
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                    <Text
+                      className={
+                        selected
+                          ? "text-button text-accent-on"
+                          : "text-button text-text-secondary"
+                      }
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View className="gg-card-flush">
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/onboarding",
+                  params: { returnTo: "settings" },
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel="View onboarding"
+              accessibilityHint="Opens the client introduction. Finish or skip returns here."
+              className="gg-touch min-h-11 flex-row items-center justify-between px-4 py-3"
+              style={({ pressed }) =>
+                pressed ? { backgroundColor: colors.surfaceVariant } : undefined
+              }
+            >
+              <Text className="mr-3 flex-1 text-body-lg font-medium text-text-primary">
+                View onboarding
+              </Text>
+              <ChevronRight
+                size={20}
+                color={colors.textMuted}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              />
+            </Pressable>
           </View>
         </View>
-
-        <View className="gg-card-flush">
-          <Pressable
-            onPress={() =>
-              router.push({
-                pathname: "/onboarding",
-                params: { returnTo: "settings" },
-              })
-            }
-            accessibilityRole="button"
-            accessibilityLabel="View onboarding"
-            accessibilityHint="Opens the client introduction. Finish or skip returns here."
-            className="gg-touch min-h-11 flex-row items-center justify-between px-4 py-3"
-            style={({ pressed }) =>
-              pressed ? { backgroundColor: colors.surfaceVariant } : undefined
-            }
-          >
-            <Text className="mr-3 flex-1 text-body-lg font-medium text-text-primary">
-              View onboarding
-            </Text>
-            <ChevronRight
-              size={20}
-              color={colors.textMuted}
-              accessibilityElementsHidden
-              importantForAccessibility="no"
-            />
-          </Pressable>
-        </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }

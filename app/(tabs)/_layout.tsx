@@ -10,7 +10,7 @@ import { useRequestDraft } from "@/store/requestDraft";
  *
  * The bar is drawn from the tokens on every platform — see `GridgoTabBar`.
  * Headers are off here because the tabs do not share one: Home carries a role
- * header, New Request carries the stepper.
+ * header, New request carries the stepper.
  *
  * The yellow "+" is the app's single "start a print request" control, so it has
  * to land where a request actually starts. With nothing chosen yet that is the

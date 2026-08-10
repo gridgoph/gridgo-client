@@ -9,6 +9,9 @@ import { useRequestDraft } from "@/store/requestDraft";
 
 const mockPush = jest.fn();
 
+/** Which category `[category].tsx` is rendering. Reset in beforeEach. */
+let mockOpenCategory = "event_merchandise";
+
 jest.mock("expo-router", () => ({
   useRouter: () => ({
     push: mockPush,
@@ -16,7 +19,7 @@ jest.mock("expo-router", () => ({
     back: jest.fn(),
     dismissTo: jest.fn(),
   }),
-  useLocalSearchParams: () => ({ category: "event_merchandise" }),
+  useLocalSearchParams: () => ({ category: mockOpenCategory }),
   useFocusEffect: (effect: () => void) => {
     // Required inside the factory: jest.mock is hoisted above imports.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -59,6 +62,7 @@ function renderInSafeArea(ui: ReactElement) {
 
 beforeEach(() => {
   mockPush.mockClear();
+  mockOpenCategory = "event_merchandise";
   api.getProductCategories.mockResolvedValue(PRODUCT_CATEGORY_SEED);
   api.listCatalog.mockResolvedValue(CATALOG);
   useRequestDraft.getState().reset();
@@ -122,6 +126,18 @@ describe("CategoryScreen", () => {
     expect(await screen.findByText("ORDER IN THE APP")).toBeTruthy();
     expect(screen.getByText("QUOTED BY OPERATIONS")).toBeTruthy();
     expect(screen.getByText(/not priced in the app yet/)).toBeTruthy();
+  });
+
+  it("drops the group labels when there is only one group to label", async () => {
+    // Nothing in this category is priced, so "QUOTED BY OPERATIONS" would head
+    // the only list on the screen and tell the client nothing the sentence
+    // under it does not already say in words.
+    mockOpenCategory = "specialized_prototyping";
+    await renderInSafeArea(<CategoryScreen />);
+
+    expect(await screen.findByText(/not priced in the app yet/)).toBeTruthy();
+    expect(screen.queryByText("QUOTED BY OPERATIONS")).toBeNull();
+    expect(screen.queryByText("ORDER IN THE APP")).toBeNull();
   });
 
   it("makes only the priced subcategory a control", async () => {

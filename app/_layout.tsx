@@ -16,7 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
-import { multiOriginPushedScreenOptions } from "@/lib/navigationHeaders";
+import { pushedScreenOptions } from "@/lib/navigationHeaders";
 import { hasActiveSession } from "@/lib/sessionGuard";
 import { useSession } from "@/store/session";
 // Side-effect: rehydrate persisted theme preference from AsyncStorage.
@@ -94,24 +94,38 @@ export default function RootLayout() {
             Covers root-stack pushes outside (tabs): order/[id], design-system.
           */}
           <Stack.Protected guard={isSignedIn}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             {/*
-              Choosing what to print. Both screens carry their own heading, so
-              the header is just the back affordance — a title here would say
-              the same thing twice.
+              The tab shell draws its own per-tab headers, so its header is
+              hidden — but it still carries a title. Every screen pushed above
+              it sets its own back label; this is the second line of defence,
+              so that if one ever forgets, iOS labels the back control "GRIDGO"
+              and never the filesystem name `(tabs)`.
+            */}
+            <Stack.Screen
+              name="(tabs)"
+              options={{ headerShown: false, title: "GRIDGO" }}
+            />
+            {/*
+              Choosing what to print: two screens of one flow, so the band
+              names the flow rather than the screen. Neither title repeats the
+              heading below it — "New request" says what picking a category
+              leads to, which is the thing a client browsing in from Home does
+              not otherwise know.
             */}
             <Stack.Screen
               name="request/category"
-              options={{ title: "", ...multiOriginPushedScreenOptions }}
+              options={pushedScreenOptions("New request")}
             />
+            {/*
+              Not the category name: "Marketing & promotional collateral" is
+              two lines of h1 on a 390pt phone and would be truncated to
+              nonsense in a header. The screen's own heading carries it.
+            */}
             <Stack.Screen
               name="request/[category]"
-              options={{ title: "", ...multiOriginPushedScreenOptions }}
+              options={pushedScreenOptions("New request")}
             />
-            <Stack.Screen
-              name="order/[id]"
-              options={{ title: "Order", ...multiOriginPushedScreenOptions }}
-            />
+            <Stack.Screen name="order/[id]" options={pushedScreenOptions("Order")} />
             {/*
               Asking for a change to a proof is a real destination with a
               keyboard in it, so it gets the platform's own sheet: drag to
@@ -122,7 +136,6 @@ export default function RootLayout() {
               name="order/request-changes"
               options={{
                 presentation: "formSheet",
-                title: "",
                 headerShown: false,
                 sheetAllowedDetents: "fitToContents",
                 sheetGrabberVisible: true,
@@ -132,18 +145,9 @@ export default function RootLayout() {
             />
             <Stack.Screen
               name="design-system"
-              options={{
-                title: "Design system",
-                ...multiOriginPushedScreenOptions,
-              }}
+              options={pushedScreenOptions("Design system")}
             />
-            <Stack.Screen
-              name="settings"
-              options={{
-                title: "Settings",
-                ...multiOriginPushedScreenOptions,
-              }}
-            />
+            <Stack.Screen name="settings" options={pushedScreenOptions("Settings")} />
           </Stack.Protected>
         </Stack>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
