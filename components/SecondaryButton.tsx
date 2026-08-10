@@ -23,7 +23,7 @@ export function SecondaryButton({ label, onPress, disabled }: Props) {
       {({ pressed }) => (
         <>
           <Text className="text-button text-text-primary">{label}</Text>
-          {pressed ? <View className="gg-pressed absolute inset-0 rounded-field" /> : null}
+          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-field" /> : null}
         </>
       )}
     </Pressable>

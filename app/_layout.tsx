@@ -13,7 +13,7 @@ import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { colors, type ThemeName, typography } from "@/constants/theme";
+import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { multiOriginPushedScreenOptions } from "@/lib/navigationHeaders";
@@ -95,9 +95,40 @@ export default function RootLayout() {
           */}
           <Stack.Protected guard={isSignedIn}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            {/*
+              Choosing what to print. Both screens carry their own heading, so
+              the header is just the back affordance — a title here would say
+              the same thing twice.
+            */}
+            <Stack.Screen
+              name="request/category"
+              options={{ title: "", ...multiOriginPushedScreenOptions }}
+            />
+            <Stack.Screen
+              name="request/[category]"
+              options={{ title: "", ...multiOriginPushedScreenOptions }}
+            />
             <Stack.Screen
               name="order/[id]"
               options={{ title: "Order", ...multiOriginPushedScreenOptions }}
+            />
+            {/*
+              Asking for a change to a proof is a real destination with a
+              keyboard in it, so it gets the platform's own sheet: drag to
+              dismiss, back gesture, keyboard avoidance and focus containment
+              for free. `fitToContents` keeps it the height of its content.
+            */}
+            <Stack.Screen
+              name="order/request-changes"
+              options={{
+                presentation: "formSheet",
+                title: "",
+                headerShown: false,
+                sheetAllowedDetents: "fitToContents",
+                sheetGrabberVisible: true,
+                sheetCornerRadius: radius.lg,
+                contentStyle: { backgroundColor: token.surface },
+              }}
             />
             <Stack.Screen
               name="design-system"

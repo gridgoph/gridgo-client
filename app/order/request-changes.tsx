@@ -1,0 +1,156 @@
+import { usePreventRemove } from "@react-navigation/native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import { KeyboardAvoidingView, Platform, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ErrorState } from "@/components/ErrorState";
+import { PrimaryButton } from "@/components/PrimaryButton";
+import { SecondaryButton } from "@/components/SecondaryButton";
+import { useThemeColors } from "@/hooks/useTheme";
+import * as api from "@/lib/api";
+import { userFacingError } from "@/lib/copy";
+
+/**
+ * "What needs to change?" — the reason that goes back with a rejected proof.
+ *
+ * A route rather than a hand-rolled overlay, presented as the platform's own
+ * form sheet (see the root layout): drag-to-dismiss, the Android back gesture,
+ * keyboard avoidance, focus containment and the scrim all come from the
+ * platform, with real physics that track the finger. What is added on top is
+ * the one thing the platform cannot know — that a half-written reason is work
+ * worth asking about before it is thrown away.
+ *
+ * `proof` names which proof is being sent back, in the client's words. The
+ * state the order moves to is decided here, never carried in the URL.
+ */
+export default function RequestChangesSheet() {
+  const { orderId, proof } = useLocalSearchParams<{
+    orderId: string;
+    proof?: "print" | "artwork";
+  }>();
+  const router = useRouter();
+  const colors = useThemeColors();
+  const insets = useSafeAreaInsets();
+
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+
+  const isPrintProof = proof === "print";
+  const trimmed = reason.trim();
+  const tooShort = trimmed.length < MIN_REASON;
+
+  // Drag-to-dismiss, the back gesture and Android's back button all route
+  // through here, so a typed reason is never lost to any of them silently.
+  const hasWork = trimmed.length > 0 && !busy;
+  usePreventRemove(hasWork, () => setConfirmDiscard(true));
+
+  const send = useCallback(async () => {
+    if (!orderId || tooShort) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.transitionOrder(
+        orderId,
+        isPrintProof ? "supplier_proof_changes_requested" : "client_correction",
+        { reason: trimmed, note: trimmed },
+      );
+      setReason("");
+      router.back();
+    } catch (e) {
+      setError(
+        userFacingError(
+          e,
+          "That did not reach them. Check your connection and send it again — nothing has changed on the job.",
+        ),
+      );
+      setBusy(false);
+    }
+  }, [orderId, tooShort, isPrintProof, trimmed, router]);
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ backgroundColor: colors.surface }}
+    >
+      <View
+        className="gap-5 px-4 pt-5"
+        style={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
+      >
+        <View className="gap-2">
+          <Text className="text-h2 text-text-primary">What needs to change?</Text>
+          <Text className="text-body text-text-secondary">
+            {isPrintProof
+              ? "Your supplier reads this and reworks the proof before anything goes on the press."
+              : "Operations reads this and comes back to you with a corrected proof."}{" "}
+            Be specific about what is wrong and where.
+          </Text>
+        </View>
+
+        <View className="gap-2">
+          <TextInput
+            className="gg-field h-auto min-h-28 py-3"
+            value={reason}
+            onChangeText={setReason}
+            placeholder="The logo is cropped on the right edge and the brand red has printed orange."
+            placeholderTextColor={colors.textMuted}
+            multiline
+            textAlignVertical="top"
+            maxLength={500}
+            autoFocus
+            editable={!busy}
+            accessibilityLabel="What needs to change"
+          />
+          {tooShort ? (
+            <Text className="text-caption text-text-muted">
+              At least {MIN_REASON} characters — name what is wrong and where.
+            </Text>
+          ) : (
+            <Text className="text-caption text-text-muted">
+              {500 - trimmed.length} characters left.
+            </Text>
+          )}
+        </View>
+
+        {error ? <ErrorState label="Not sent" body={error} /> : null}
+
+        <View className="gap-3">
+          <PrimaryButton
+            label={busy ? "Sending…" : "Send this back"}
+            disabled={tooShort || busy}
+            onPress={() => void send()}
+          />
+          <SecondaryButton
+            label="Cancel"
+            disabled={busy}
+            onPress={() => router.back()}
+          />
+        </View>
+      </View>
+
+      <ConfirmDialog
+        visible={confirmDiscard}
+        question="Discard what you have written?"
+        body="Your supplier has not seen this yet. Closing now throws away the reason you typed; the job itself is unchanged."
+        confirmLabel="Discard it"
+        cancelLabel="Keep writing"
+        tone="destructive"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          setReason("");
+          // The prevent-remove guard is keyed off the text, so clearing it and
+          // dismissing on the next tick lets the platform finish its own
+          // gesture instead of fighting it.
+          requestAnimationFrame(() => router.back());
+        }}
+        onCancel={() => setConfirmDiscard(false)}
+      />
+    </KeyboardAvoidingView>
+  );
+}
+
+/** Shortest reason that tells someone what to fix. */
+const MIN_REASON = 10;

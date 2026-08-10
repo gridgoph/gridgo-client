@@ -5,6 +5,7 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { CorrectionCard } from "@/components/CorrectionCard";
+import { ErrorState } from "@/components/ErrorState";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { OrderTimeline } from "@/components/OrderTimeline";
@@ -12,6 +13,7 @@ import { PaymentPanel } from "@/components/PaymentPanel";
 import { ProductPreview } from "@/components/ProductPreview";
 import { ProofDecision } from "@/components/ProofDecision";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { SkeletonList } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -86,11 +88,9 @@ export default function OrderDetailScreen() {
 
   if (error && !order) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
-        <View className="gg-page gap-4 pt-6">
-          <StatusChip tone="error" label="Could not load order" icon="circle-x" />
-          <Text className="text-body text-text-primary">{error}</Text>
-          <SecondaryButton label="Try again" onPress={() => void load()} />
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+        <View className="gg-page gap-3 pt-6">
+          <ErrorState label="Could not load order" body={error} onRetry={() => void load()} />
           <SecondaryButton label="Back to orders" onPress={() => router.back()} />
         </View>
       </SafeAreaView>
@@ -99,9 +99,10 @@ export default function OrderDetailScreen() {
 
   if (!order) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
-        <View className="gg-page pt-6">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+        <View className="gg-page gap-4 pt-6">
           <Text className="text-body text-text-muted">Loading this order…</Text>
+          <SkeletonList count={3} />
         </View>
       </SafeAreaView>
     );
@@ -120,11 +121,20 @@ export default function OrderDetailScreen() {
       <ScrollView className="gg-screen">
         <View className="gg-page gap-8 pb-16 pt-4">
           <View className="gap-3">
-            <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
+            {/* A chip hugs its label — stretched to the column width it reads
+                as a banner, and its border stops meaning "this one thing". */}
+            <View className="flex-row">
+              <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
+            </View>
             <Text className="text-h1 text-text-primary">{order.title}</Text>
-            <Text className="text-body-lg text-text-secondary">
-              {nextAction?.body ?? waitingOn ?? "This job is in progress."}
-            </Text>
+            {/* Only when nothing is waiting on the client. When an action zone
+                renders below, it owns the instruction and the reason — saying
+                either of them up here as well is filler. */}
+            {!nextAction ? (
+              <Text className="text-body-lg text-text-secondary">
+                {waitingOn ?? "This job is in progress."}
+              </Text>
+            ) : null}
           </View>
 
           {/* One action zone at a time — the single yellow control lives here. */}

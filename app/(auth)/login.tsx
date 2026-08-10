@@ -1,12 +1,27 @@
 import { useEffect, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 
+import { ErrorState } from "@/components/ErrorState";
+import { FormField } from "@/components/form/FormField";
+import { TextField } from "@/components/form/TextField";
 import { GridgoLogo } from "@/components/GridgoLogo";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { getApiBase, health } from "@/lib/api";
 import { useSession } from "@/store/session";
 
+/**
+ * The first screen a customer meets, so it is held to the same bar as the rest.
+ *
+ * It used to be written in raw utility classes — `text-2xl`, `font-satoshi`,
+ * `rounded-xl`, `py-3` — none of which exist here: `global.css` resets the
+ * default type, weight and radius scales on purpose so only GRIDGO tokens
+ * survive. Every one of those classes was silently a no-op, which is why the
+ * heading rendered in the system font at a size the type scale does not have,
+ * and why the fields and the button were never guaranteed a 44dp touch target.
+ * It is built from the same primitives as every other form in the app now.
+ */
 export default function LoginScreen() {
   const { user, login, loading, error } = useSession();
   const [email, setEmail] = useState("client@gridgo.local");
@@ -31,53 +46,102 @@ export default function LoginScreen() {
 
   if (user) return <Redirect href="/(tabs)/home" />;
 
-  return (
-    <View className="flex-1 justify-center bg-canvas px-6">
-      {/*
-        Plain GRIDGO while signed out. Account type is unknown until login
-        resolves, and the product is one client binary — flashing Business
-        after sign-in on this screen would fight identity stability. Business
-        lockup appears on signed-in identity surfaces (home header) only.
-      */}
-      <GridgoLogo />
-      <Text className="mt-6 font-satoshi-bold text-2xl text-text-primary">Client sign in</Text>
-      <Text className="mt-1 font-satoshi text-text-secondary">GRIDGO managed printing · Davao</Text>
-      <TextInput
-        className="mt-6 rounded-xl border border-outline bg-surface px-4 py-3 font-satoshi text-text-primary"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        className="mt-3 rounded-xl border border-outline bg-surface px-4 py-3 font-satoshi text-text-primary"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      {error ? <Text className="mt-3 font-satoshi text-error">{error}</Text> : null}
-      <Pressable
-        className="mt-5 items-center rounded-xl bg-action-yellow py-3.5"
-        disabled={loading}
-        onPress={() => void login(email.trim(), password)}
-      >
-        <Text className="font-satoshi-medium text-action-yellow-on">{loading ? "Signing in…" : "Sign in"}</Text>
-      </Pressable>
-      <Text className="mt-4 font-satoshi text-sm text-text-muted">client@gridgo.local / demo</Text>
+  const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
 
-      <View className="absolute bottom-8 left-6 right-6 flex-row items-center justify-center gap-2">
-        <Text className="shrink text-caption text-text-muted" numberOfLines={1}>
-          {apiBase}
-        </Text>
-        {reachable === null ? (
-          <Text className="text-caption text-text-muted">Checking…</Text>
-        ) : (
-          <StatusChip
-            tone={reachable ? "success" : "error"}
-            label={reachable ? "Reachable" : "Unreachable"}
-            icon={reachable ? "circle-check" : "circle-x"}
-          />
-        )}
-      </View>
-    </View>
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flex: 1 }}
+    >
+      <ScrollView
+        className="gg-screen"
+        contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View className="gg-page py-10">
+          {/*
+            Plain GRIDGO while signed out. Account type is unknown until login
+            resolves, and the product is one client binary — flashing Business
+            after sign-in on this screen would fight identity stability. Business
+            lockup appears on signed-in identity surfaces (home header) only.
+          */}
+          <GridgoLogo />
+
+          <Text className="mt-8 text-h1 text-text-primary" accessibilityRole="header">
+            Sign in
+          </Text>
+          <Text className="mt-2 text-body-lg text-text-secondary">
+            The client side of GRIDGO — request a print job, approve the proof, and follow
+            it to your door in Davao.
+          </Text>
+
+          <View className="mt-8 gap-4">
+            <FormField label="Email">
+              <TextField
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@company.com"
+                accessibilityLabel="Email"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                textContentType="username"
+                returnKeyType="next"
+              />
+            </FormField>
+
+            <FormField label="Password">
+              <TextField
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Your password"
+                accessibilityLabel="Password"
+                autoCapitalize="none"
+                secureTextEntry
+                textContentType="password"
+                returnKeyType="go"
+                onSubmitEditing={() => {
+                  if (canSubmit) void login(email.trim(), password);
+                }}
+              />
+            </FormField>
+          </View>
+
+          {error ? (
+            <View className="mt-4">
+              <ErrorState label="Could not sign in" body={error} />
+            </View>
+          ) : null}
+
+          <View className="mt-6">
+            <PrimaryButton
+              label={loading ? "Signing in…" : "Sign in"}
+              disabled={!canSubmit}
+              onPress={() => void login(email.trim(), password)}
+            />
+          </View>
+
+          <Text className="mt-6 text-caption text-text-muted">
+            GRIDGO ships one app per role. If this account is a supplier, a rider or
+            Operations, sign in on that app instead.
+          </Text>
+
+          {/* Build diagnostics, kept quiet and kept last. */}
+          <View className="mt-8 flex-row items-center gap-2">
+            <Text className="shrink text-caption text-text-muted" numberOfLines={1}>
+              {apiBase}
+            </Text>
+            {reachable === null ? (
+              <Text className="text-caption text-text-muted">Checking…</Text>
+            ) : (
+              <StatusChip
+                tone={reachable ? "success" : "error"}
+                label={reachable ? "Reachable" : "Unreachable"}
+                icon={reachable ? "circle-check" : "circle-x"}
+              />
+            )}
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

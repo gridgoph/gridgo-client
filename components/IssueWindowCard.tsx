@@ -7,6 +7,7 @@ import { OptionPicker } from "@/components/form/OptionPicker";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { ErrorState } from "@/components/ErrorState";
 import { StatusChip } from "@/components/StatusChip";
 import type { Issue, Order } from "@/lib/api";
 import * as api from "@/lib/api";
@@ -88,17 +89,14 @@ export function IssueWindowCard({ order }: Props) {
   return (
     <View className="gg-card gap-4">
       <View className="gap-2">
-        <StatusChip
-          tone={openIssue ? "info" : status.canReport ? "warning" : "neutral"}
-          label={
-            openIssue
-              ? "Issue under review"
-              : status.canReport
-                ? "Issue window open"
-                : "Issue window closed"
-          }
-          icon={openIssue ? "clock" : status.canReport ? "triangle-alert" : "circle-check"}
-        />
+        {/* Only when this says something the order's own state chip does not:
+            that a report is already under review, or that the window has
+            closed. "Issue window open" is already up in the header. */}
+        {openIssue ? (
+          <StatusChip tone="info" label="Issue under review" icon="clock" />
+        ) : !status.canReport ? (
+          <StatusChip tone="neutral" label="Issue window closed" icon="circle-check" />
+        ) : null}
         <Text className="text-h3 text-text-primary">{status.headline}</Text>
         <Text className="text-body text-text-secondary">{status.detail}</Text>
         {status.elapsedLabel ? (
@@ -116,22 +114,14 @@ export function IssueWindowCard({ order }: Props) {
       ) : null}
 
       {loadFailed ? (
-        <View className="gap-2">
-          <StatusChip tone="error" label="Could not check" icon="circle-x" />
-          <Text className="text-body text-text-primary">
-            GRIDGO could not check whether you already reported something on this job. Try
-            again before sending a new report, so Operations does not get it twice.
-          </Text>
-          <SecondaryButton label="Try again" onPress={() => void load()} />
-        </View>
+        <ErrorState
+          label="Could not check"
+          body="GRIDGO could not check whether you already reported something on this job. Try again before sending a new report, so Operations does not get it twice."
+          onRetry={() => void load()}
+        />
       ) : null}
 
-      {error ? (
-        <View className="gg-panel gap-2">
-          <StatusChip tone="error" label="Not sent" icon="circle-x" />
-          <Text className="text-body text-text-primary">{error}</Text>
-        </View>
-      ) : null}
+      {error ? <ErrorState label="Not sent" body={error} /> : null}
 
       {status.canReport && !open ? (
         <PrimaryButton label="Report a problem" onPress={() => setOpen(true)} />

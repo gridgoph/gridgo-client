@@ -26,7 +26,7 @@ export function PrimaryButton({ label, onPress, disabled }: Props) {
         <>
           <Text className="text-button text-action-yellow-on">{label}</Text>
           {/* 8% pressed overlay, per the interaction spec. */}
-          {pressed ? <View className="gg-pressed absolute inset-0 rounded-field" /> : null}
+          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-field" /> : null}
         </>
       )}
     </Pressable>

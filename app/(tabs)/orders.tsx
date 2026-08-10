@@ -1,86 +1,142 @@
 import { useCallback, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 import { OrderCard } from "@/components/OrderCard";
-import { StatusChip } from "@/components/StatusChip";
+import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
+import { SkeletonList } from "@/components/Skeleton";
+import { useStartRequest } from "@/hooks/useStartRequest";
+import { tabScreenContentPadding } from "@/components/GridgoTabBar";
+import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
-import { useThemeColors } from "@/hooks/useTheme";
+import { orderNeedsClient } from "@/lib/orderState";
+import { useRequestDraft } from "@/store/requestDraft";
 
 /**
- * Full client order list with icon+label state chips and money.
+ * Every job the client has sent, grouped by who it is waiting on.
+ *
+ * That grouping is the only structure here, and it earns its place: "waiting on
+ * you" is the difference between a list you skim and a list you act on.
  */
 export default function OrdersScreen() {
   const router = useRouter();
   const colors = useThemeColors();
+  const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
+  const seedFromOrder = useRequestDraft((s) => s.seedFromOrder);
+  const { start, pendingLabel, confirmReplace, cancelReplace } = useStartRequest();
+
   const [orders, setOrders] = useState<api.Order[]>([]);
+  const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    return api
-      .listOrders()
-      .then((list) => {
-        setOrders(list);
-        setError(null);
-      })
-      .catch((e) => {
-        setOrders([]);
-        setError(userFacingError(e, "Could not load orders. Check your connection and try again."));
-      });
+  const load = useCallback(async () => {
+    try {
+      const [list, products] = await Promise.all([
+        api.listOrders(),
+        api.listCatalog().catch(() => [] as api.CatalogProduct[]),
+      ]);
+      setOrders(list);
+      setCatalog(products);
+      setError(null);
+    } catch (e) {
+      setOrders([]);
+      setError(userFacingError(e, "Could not load orders. Check your connection and try again."));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let alive = true;
-      void load().then(() => {
-        if (!alive) return;
-      });
-      return () => {
-        alive = false;
-      };
+      void load();
     }, [load]),
   );
+
+  const productById = new Map(catalog.map((p) => [p.id, p]));
+  const needsClient = orders.filter((o) => orderNeedsClient(o.state));
+  const inProgress = orders.filter((o) => !orderNeedsClient(o.state));
+
+  const reorder = (order: api.Order) => {
+    const meta = productById.get(order.productId);
+    start(order.title, () =>
+      seedFromOrder(order, {
+        name: meta?.name,
+        basePriceMinor: meta?.basePriceMinor,
+        unit: meta?.unit,
+        family: meta?.family,
+      }),
+    );
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
       <ScrollView className="gg-screen">
-        <View className="gg-page gap-4 pb-12 pt-4">
-          <Text className="text-h2 text-text-primary">Orders</Text>
-          <Text className="text-body text-text-secondary">
-            Open a job to approve proofs, pay, or check delivery.
+        <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
+          <Text className="text-h1 text-text-primary">Orders</Text>
+          <Text className="mt-2 text-body text-text-secondary">
+            Open a job to approve a proof, pay, or follow the delivery.
           </Text>
 
           {error ? (
-            <View className="gg-card gap-3">
-              <StatusChip tone="error" label="Could not load" icon="circle-x" />
-              <Text className="text-body text-error">{error}</Text>
-              <Pressable
-                onPress={() => void load()}
-                accessibilityRole="button"
-                className="gg-btn-secondary"
-              >
-                <Text className="text-button text-text-primary">Try again</Text>
-              </Pressable>
+            <View className="mt-8">
+              <ErrorState label="Could not load" body={error} onRetry={() => void load()} />
             </View>
           ) : null}
 
-          {orders.map((o) => (
-            <OrderCard key={o.id} order={o} onPress={() => router.push(`/order/${o.id}`)} />
-          ))}
+          {loading ? (
+            <View className="mt-8">
+              <SkeletonList count={3} />
+            </View>
+          ) : null}
 
-          {!orders.length && !error ? (
-            <EmptyState
-              title="No print jobs yet"
-              body="Choose a product on Home to open a new request."
-              actionLabel="Browse catalog"
-              onAction={() => router.push("/(tabs)/home")}
-            />
+          {!loading && needsClient.length ? (
+            <View className="mt-8 gap-3">
+              <Text className="text-overline text-text-muted">WAITING ON YOU</Text>
+              {needsClient.map((o) => (
+                <OrderCard key={o.id} order={o} onPress={() => router.push(`/order/${o.id}`)} />
+              ))}
+            </View>
+          ) : null}
+
+          {!loading && inProgress.length ? (
+            <View className="mt-8 gap-3">
+              <Text className="text-overline text-text-muted">
+                {needsClient.length ? "EVERYTHING ELSE" : "YOUR JOBS"}
+              </Text>
+              {inProgress.map((o) => (
+                <OrderCard
+                  key={o.id}
+                  order={o}
+                  onPress={() => router.push(`/order/${o.id}`)}
+                  onReorder={() => reorder(o)}
+                />
+              ))}
+            </View>
+          ) : null}
+
+          {!loading && !orders.length && !error ? (
+            <View className="mt-8">
+              <EmptyState
+                title="No print jobs yet"
+                body="Start with what you are printing. GRIDGO handles the artwork check, the supplier and the delivery from there."
+                actionLabel="See what GRIDGO prints"
+                onAction={() => router.push("/request/category")}
+              />
+            </View>
           ) : null}
         </View>
       </ScrollView>
+
+      <ReplaceDraftDialog
+        label={pendingLabel}
+        onConfirm={confirmReplace}
+        onCancel={cancelReplace}
+      />
     </SafeAreaView>
   );
 }

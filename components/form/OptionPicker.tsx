@@ -1,9 +1,9 @@
-import { Check, ChevronDown, X } from "lucide-react-native";
+import { Check, ChevronDown } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
+import { Sheet } from "@/components/Sheet";
 import { useThemeColors } from "@/hooks/useTheme";
-import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 export type PickerOption = {
   /** The value stored on the order — a platform value, never typed prose. */
@@ -55,7 +55,6 @@ export function OptionPicker({
   accessibilityLabel,
 }: Props) {
   const colors = useThemeColors();
-  const reducedMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
 
   const selected = options.find((option) => option.value === value);
@@ -111,7 +110,6 @@ export function OptionPicker({
         onChange={onChange}
         custom={custom}
         emptyReason={emptyReason}
-        reducedMotion={reducedMotion}
       />
     </>
   );
@@ -126,7 +124,6 @@ function OptionSheet({
   onChange,
   custom,
   emptyReason,
-  reducedMotion,
 }: {
   title: string;
   open: boolean;
@@ -136,7 +133,6 @@ function OptionSheet({
   onChange: (value: string) => void;
   custom?: CustomEntry;
   emptyReason?: string;
-  reducedMotion: boolean;
 }) {
   const colors = useThemeColors();
   const isCustomValue = Boolean(value) && !options.some((option) => option.value === value);
@@ -160,31 +156,8 @@ function OptionSheet({
   };
 
   return (
-    <Modal
-      visible={open}
-      transparent
-      animationType={reducedMotion ? "none" : "slide"}
-      onRequestClose={onClose}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        onPress={onClose}
-        className="flex-1 bg-scrim"
-      />
-      <View className="max-h-[75%] rounded-t-card border-t border-outline bg-surface pb-8">
-        <View className="flex-row items-center justify-between gap-4 border-b border-outline-subtle px-4 py-3">
-          <Text className="flex-1 text-h3 text-text-primary">{title}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            onPress={onClose}
-            className="gg-touch items-center justify-center"
-          >
-            <X size={20} color={colors.textSecondary} strokeWidth={2} />
-          </Pressable>
-        </View>
-
+    <Sheet open={open} onClose={onClose} title={title}>
+      <>
         {customMode && custom ? (
           <View className="gap-4 p-4">
             <Text className="text-body text-text-secondary">{custom.hint}</Text>
@@ -275,7 +248,7 @@ function OptionSheet({
             ) : null}
           </ScrollView>
         )}
-      </View>
-    </Modal>
+      </>
+    </Sheet>
   );
 }

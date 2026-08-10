@@ -1,14 +1,14 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ErrorState } from "@/components/ErrorState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ProductPreview } from "@/components/ProductPreview";
 import { ProofSheet } from "@/components/ProofSheet";
-import { ReasonPrompt } from "@/components/ReasonPrompt";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SpecRow } from "@/components/SpecRow";
-import { StatusChip } from "@/components/StatusChip";
 import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
 import { formatPhp } from "@/lib/api";
@@ -36,10 +36,10 @@ type Props = {
  * changes leads to Changes requested.
  */
 export function ProofDecision({ order, family, unit, onUpdated }: Props) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmApprove, setConfirmApprove] = useState(false);
-  const [askReason, setAskReason] = useState(false);
 
   const isSupplierProof = isSupplierProofReviewState(order.state);
   const proofFileId = order.proofFileIds?.[order.proofFileIds.length - 1] ?? null;
@@ -47,7 +47,6 @@ export function ProofDecision({ order, family, unit, onUpdated }: Props) {
   const total = orderGrandTotalMinor(order);
 
   const approveState = isSupplierProof ? "supplier_proof_approved" : "approved_for_matching";
-  const changesState = isSupplierProof ? "supplier_proof_changes_requested" : "client_correction";
 
   const run = async (fn: () => Promise<Order>) => {
     setBusy(true);
@@ -55,7 +54,6 @@ export function ProofDecision({ order, family, unit, onUpdated }: Props) {
     try {
       onUpdated(await fn());
       setConfirmApprove(false);
-      setAskReason(false);
     } catch (e) {
       setError(
         userFacingError(
@@ -70,8 +68,9 @@ export function ProofDecision({ order, family, unit, onUpdated }: Props) {
 
   return (
     <View className="gap-5">
+      {/* No status chip here: the order header above already carries the
+          state once, and a screen that says it twice reads as a draft. */}
       <View className="gap-2">
-        <StatusChip tone="warning" label="Waiting on your decision" icon="triangle-alert" />
         <Text className="text-h2 text-text-primary">
           {isSupplierProof ? "Approve the print proof" : "Approve your artwork proof"}
         </Text>
@@ -108,12 +107,7 @@ export function ProofDecision({ order, family, unit, onUpdated }: Props) {
         </View>
       </View>
 
-      {error ? (
-        <View className="gg-panel gap-2">
-          <StatusChip tone="error" label="Not recorded" icon="circle-x" />
-          <Text className="text-body text-text-primary">{error}</Text>
-        </View>
-      ) : null}
+      {error ? <ErrorState label="Not recorded" body={error} /> : null}
 
       <View className="gap-3">
         <PrimaryButton
@@ -124,7 +118,12 @@ export function ProofDecision({ order, family, unit, onUpdated }: Props) {
         <SecondaryButton
           label="Request changes"
           disabled={busy}
-          onPress={() => setAskReason(true)}
+          onPress={() =>
+            router.push({
+              pathname: "/order/request-changes",
+              params: { orderId: order.id, proof: isSupplierProof ? "print" : "artwork" },
+            })
+          }
         />
       </View>
 
@@ -144,24 +143,6 @@ export function ProofDecision({ order, family, unit, onUpdated }: Props) {
           void run(() =>
             api.transitionOrder(order.id, approveState, { note: "Approved by client" }),
           )
-        }
-      />
-
-      <ReasonPrompt
-        visible={askReason}
-        title="What needs to change?"
-        body={
-          isSupplierProof
-            ? "Your supplier reads this and reworks the proof. Be specific about what is wrong and where."
-            : "Operations reads this and comes back to you with a corrected proof. Be specific about what is wrong and where."
-        }
-        label="Reason"
-        placeholder="The logo is cropped on the right edge and the brand red has printed orange."
-        submitLabel="Send this back"
-        busy={busy}
-        onCancel={() => setAskReason(false)}
-        onSubmit={(reason) =>
-          void run(() => api.transitionOrder(order.id, changesState, { reason, note: reason }))
         }
       />
     </View>

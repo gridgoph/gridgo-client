@@ -7,6 +7,7 @@ import {
   GridgoTabBar,
   TAB_BAR_DESIGN_BOTTOM_PAD,
   tabBarPaddingBottom,
+  tabScreenContentPadding,
 } from "@/components/GridgoTabBar";
 import { ACTION_TAB, TABS } from "@/constants/tabs";
 import { useNotifications } from "@/store/notifications";
@@ -153,5 +154,19 @@ describe("GridgoTabBar", () => {
     expect(className).toContain("min-h-20");
     expect(className).toContain("pt-2");
     expect(className).not.toContain("h-13");
+  });
+});
+
+describe("tabScreenContentPadding", () => {
+  it("clears the whole bar, not just the design gap", () => {
+    // inset + design pad (8) + MD3 column (80) + breathing room (24)
+    expect(tabScreenContentPadding(0)).toBe(112);
+    expect(tabScreenContentPadding(34)).toBe(146);
+  });
+
+  it("is always taller than the bar it has to clear", () => {
+    for (const inset of [0, 12, 34, 48]) {
+      expect(tabScreenContentPadding(inset)).toBeGreaterThan(tabBarPaddingBottom(inset));
+    }
   });
 });

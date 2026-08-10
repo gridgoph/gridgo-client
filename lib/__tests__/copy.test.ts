@@ -2,6 +2,7 @@ import {
   actorLabel,
   formatPaymentSummary,
   paymentMethodLabel,
+  roleAppLabel,
   userFacingError,
 } from "@/lib/copy";
 import { ApiError } from "@/lib/api";
@@ -54,5 +55,25 @@ describe("userFacingError", () => {
     const msg = userFacingError(err, "fallback");
     expect(msg).toMatch(/short/);
     expect(msg).not.toMatch(/insufficient_credits/);
+  });
+});
+
+describe("roleAppLabel", () => {
+  it("names the app, never the stored role value", () => {
+    expect(roleAppLabel("ops_admin")).toBe("GRIDGO Operations");
+    expect(roleAppLabel("super_admin")).toBe("GRIDGO Operations");
+    expect(roleAppLabel("supplier")).toBe("GRIDGO Supplier");
+    expect(roleAppLabel("rider")).toBe("GRIDGO Rider");
+  });
+
+  it("stays generic for a role this app has never heard of", () => {
+    expect(roleAppLabel("warehouse_lead")).toBe("another GRIDGO app");
+    expect(roleAppLabel(null)).toBe("another GRIDGO app");
+  });
+
+  it("never returns a snake_case value", () => {
+    for (const role of ["client", "supplier", "rider", "ops_admin", "super_admin", "nope"]) {
+      expect(roleAppLabel(role)).not.toMatch(/_/);
+    }
   });
 });

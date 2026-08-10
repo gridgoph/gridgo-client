@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
+import { roleAppLabel } from "@/lib/copy";
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "client" as const;
@@ -35,7 +36,8 @@ export const useSession = create<SessionState>((set) => ({
         set({
           user: null,
           loading: false,
-          error: `This account is role "${user.role}". Open the ${user.role} app instead.`,
+          // Never the raw role value: "ops_admin" tells a person nothing.
+          error: `This account belongs to ${roleAppLabel(user.role)}. Sign in there instead — GRIDGO ships one app per role.`,
         });
         return;
       }
@@ -49,7 +51,7 @@ export const useSession = create<SessionState>((set) => ({
       } else if (e instanceof Error) {
         message = e.message;
       } else {
-        message = "login_failed";
+        message = "Could not sign in. Check your connection and try again.";
       }
       set({ loading: false, error: message });
     }

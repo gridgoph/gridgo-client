@@ -22,6 +22,21 @@ export function tabBarPaddingBottom(insetBottom: number): number {
   return insetBottom + TAB_BAR_DESIGN_BOTTOM_PAD;
 }
 
+/** MD3 bottom navigation height for a labelled column. */
+export const TAB_BAR_COLUMN_HEIGHT = 80;
+
+/**
+ * Bottom padding a tab screen's scroll content needs so its last row clears
+ * the bar instead of ending underneath it.
+ *
+ * The bar floats over the scene, so a screen that only pads by its own design
+ * gap loses its final card. Derived from the bar's own metrics, so the two
+ * cannot drift apart.
+ */
+export function tabScreenContentPadding(insetBottom: number): number {
+  return tabBarPaddingBottom(insetBottom) + TAB_BAR_COLUMN_HEIGHT + 24;
+}
+
 /**
  * One Lucide glyph per tab, all outline, all the same optical weight, so the
  * row reads as one set.
@@ -141,7 +156,7 @@ function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
         {({ pressed }) => (
           <View className="h-14 w-14 items-center justify-center rounded-pill bg-action-yellow">
             <Icon size={26} color={colors.actionYellowOn} strokeWidth={2.5} />
-            {pressed ? <View className="gg-pressed absolute inset-0 rounded-pill" /> : null}
+            {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-pill" /> : null}
           </View>
         )}
       </Pressable>

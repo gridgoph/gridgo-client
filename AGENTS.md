@@ -76,6 +76,7 @@ Prefer these modules over burying rules in screens:
 - `lib/payment.ts` — COD ≤ ₱1,500 + one-active COD; credits shortfall copy
 - `lib/requestValidation.ts` — stepper validation; artwork passes only on a server-issued `fileId`
 - `lib/taxonomy.ts` + `lib/zones.ts` — materials, finishes, delivery areas and **fees** come from `GET /taxonomy` and `GET /zones`. Never hardcode a material or a delivery fee; a picker, not free text, is what keeps two orders for the same tarpaulin matchable.
+- `lib/productCategories.ts` — the **customer-facing** product tree (four categories, seventeen subcategories, each with the audience and example text a client recognises themselves in). A different thing from `lib/taxonomy.ts`, which holds the *production* categories that gate materials and finishes. Read it through `api.getProductCategories()`; `adaptProductCategories` is a deliberately forgiving reader over `GET /taxonomy` because the API contract had not landed, and falls back to `data/productCategories.ts`. **Narrow the field-name aliases and delete the seed once the API publishes the tree.** A subcategory maps to catalog *families*, so it becomes orderable the moment Operations prices one — a subcategory with no family is shown as quoted by Operations, never as a button that leads nowhere.
 - `lib/sizes.ts` — the one pick list the client owns (the platform has no size taxonomy). Custom is allowed only where the trade cuts to order, and is marked as custom.
 - `lib/deadline.ts` / `lib/quantity.ts` / `lib/address.ts` — bounds and wording for the date-time picker, the quantity stepper and the structured address
 - `lib/artworkUpload.ts` — upload phases and error copy. **Transfer progress is not success**: only a `201` carrying a `fileId` reaches `stored`.
@@ -91,6 +92,7 @@ Prefer these modules over burying rules in screens:
 - Account holds identity + Sign out; theme and “View onboarding” live on `app/settings.tsx`.
 - `components/GridgoTabBar.tsx` — bottom pad is `insets.bottom + design` (never `Math.max`); labelled columns `min-h-20` (MD3 80dp), not rigid `h-13`
 - `components/GridgoLogo.tsx` — mark + wordmark + optional role lockup (`GridgoLogoRole`). Client uses `logoRoleForClientAccount(user.accountType)` only — never infer from `orgName`. Signed-out surfaces stay plain GRIDGO (no flash). Identity surfaces only: login, onboarding, home header. **Layout rule:** the mark sits left and stands as tall as the whole text block; the wordmark and role stack in a column beside it. Never a mark/wordmark row with the role hung underneath — that caps the mark at one line and has been rejected twice. All geometry is derived in `gridgoLockupMetrics`, and `size` means the plain lockup's mark edge, not the rendered height.
+- `app/request/category.tsx` + `app/request/[category].tsx` — choosing what to print. This sits **ahead of** the four-step stepper, not inside it: the stepper specifies a job already decided on, and a reorder skips the choice entirely. The tab bar's yellow "+" is the app's one start-a-request control and routes here when nothing is chosen (`app/(tabs)/_layout.tsx`) — do not add a second start button to a screen.
 - `store/requestDraft.ts` — in-progress request (Zustand + AsyncStorage)
 - `store/theme.ts` — system/light/dark preference persistence
 
@@ -117,11 +119,29 @@ Every GRIDGO app runs **one** map stack: **Leaflet over OpenStreetMap tiles insi
 - OSRM also returns a travel time. The client deliberately does **not** show it: GRIDGO publishes no ETA, and a routing engine's guess next to a delivery reads as a promise nobody made.
 - `components/DeliveryMap.tsx` is the web fallback. `react-native-webview` has no web build and renders its own red "does not support this platform" string — an internal message that must never reach a client.
 
+### Sheets and modals
+
+Two mechanisms, chosen by what the content is:
+
+- **A route** presented as the platform's own form sheet — `presentation: "formSheet"` with `sheetAllowedDetents: "fitToContents"` in `app/_layout.tsx`, as `app/order/request-changes.tsx` does. Use this whenever the content is a real destination, especially one with an input: drag-dismiss, the back gesture, keyboard avoidance and focus containment all come from the platform. Guard unsaved work with `usePreventRemove`, which catches every in-app dismissal path.
+- **`components/Sheet.tsx`** for a reusable form control whose options are computed by its caller (`OptionPicker`, `DateTimeField`) — routing those would push option lists through URL params. Physics live in `lib/sheet.ts` and are unit-tested; the drag uses `PanResponder`, **not** react-native-gesture-handler, because RNGH resolves its root through the view tree and a React Native `Modal` renders outside it, so a `GestureDetector` in there silently never fires.
+
+Never hand-roll a `<Modal animationType="slide">` again — a fixed ramp that ignores the finger is what "the modal slide is not optimized" described. A centred `ConfirmDialog` is still correct for a one-question alert; its scrim dismisses a routine confirmation but never a destructive one.
+
+**Expo web cannot exercise any of this.** React Native Web's responder system does not reach inside a `Modal` portal, so no drag library receives events there. Sheet gestures are a device check, not a web check.
+
 ### Honest-state rules that keep being re-broken
 
 - Rider location comes from `GET /dispatch/:id/location` and is often `{ ping: null }`. Say so; never render an empty map as if it were current.
 - `POST /orders/:id/issues` is refused unless the order is in the issue window, and refuses a second open report with `issue_already_open`. Map both to plain language in `lib/copy.ts`.
 - The delivery fee is the zone's, from the API. A constant in the app will disagree with what the client is charged.
+
+## Running and testing
+
+- `npx tsc --noEmit`, `npx jest`, `npx expo lint` all have to be clean.
+- **Expo web boots only because `metro.config.js` resolves zustand through its CommonJS build.** zustand serves native the CJS build via the `react-native` export condition and everyone else an ESM build whose devtools middleware reads `import.meta.env`; Metro emits web as a classic script, so that is a syntax error that kills the *whole* bundle with one console line and a blank page. Session, theme and the request draft all import `zustand/middleware`, so this is not an edge case.
+- Metro's file watcher does not reliably pick up edits in a git worktree here. If a screen looks stale in the browser, restart the dev server rather than doubting the change.
+- `@testing-library/react-native` 14 on React 19 returns a promise from `render`. **`await` it**, or `screen` stays empty and every query fails with "render function has not been called".
 
 ## Development Philosophy
 
@@ -260,6 +280,10 @@ Use NativeWind classes. Do not use StyleSheet unless it is not possible to style
 Use the NativeWind version installed in this project. Check package.json. Do not upgrade without approval.
 
 Reuse class patterns through utilities in global.css.
+
+### Classes that do not exist
+
+`global.css` resets Tailwind's default colour, type, weight and radius scales on purpose (`--text-*: initial`, `--font-weight-*: initial`, `--radius-*: initial`). So `text-2xl`, `text-base`, `font-satoshi`, `font-bold` as a weight, `rounded-xl` and `bg-blue-500` are **silently no-ops** — they compile, render nothing, and leave the element at browser defaults. The login screen shipped like that for months. Use the token utilities: `text-h1`/`text-body`/`text-caption`, `font-medium`/`font-bold`, `rounded-field`/`rounded-card`/`rounded-pill`, and the `gg-*` patterns.
 
 ### Style Exception List
 

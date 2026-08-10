@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { StatusChip } from "@/components/StatusChip";
+import { ErrorState } from "@/components/ErrorState";
 import { useArtworkUpload } from "@/hooks/useArtworkUpload";
 import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
@@ -60,7 +60,6 @@ export function CorrectionCard({ order, onUpdated }: Props) {
   return (
     <View className="gap-5">
       <View className="gap-2">
-        <StatusChip tone="warning" label="Needs a corrected file" icon="triangle-alert" />
         <Text className="text-h2 text-text-primary">Replace the artwork</Text>
         <Text className="text-body text-text-secondary">
           This is the same job — its history, price and any payment stay exactly as they are.
@@ -88,12 +87,7 @@ export function CorrectionCard({ order, onUpdated }: Props) {
         onCancel={artwork.cancel}
       />
 
-      {error ? (
-        <View className="gg-panel gap-2">
-          <StatusChip tone="error" label="Not sent" icon="circle-x" />
-          <Text className="text-body text-text-primary">{error}</Text>
-        </View>
-      ) : null}
+      {error ? <ErrorState label="Not sent" body={error} /> : null}
 
       <PrimaryButton
         label={

@@ -1,6 +1,8 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
+import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
+
 /**
  * GRIDGO demo API client.
  *
@@ -417,6 +419,18 @@ export async function listCatalog(): Promise<CatalogProduct[]> {
 export async function getTaxonomy(): Promise<TaxonomyPayload> {
   const result = await request<{ taxonomy: TaxonomyPayload }>("/taxonomy");
   return result.taxonomy;
+}
+
+/**
+ * The browsable product tree — the four customer-facing categories and their
+ * subcategories, normalised.
+ *
+ * Falls back to the bundled transcription of the captain's chart when this
+ * deployment's `/taxonomy` does not publish the tree yet. See
+ * `lib/productCategories.ts`.
+ */
+export async function getProductCategories(): Promise<ProductCategory[]> {
+  return adaptProductCategories(await getTaxonomy());
 }
 
 /** Delivery zones with their authoritative delivery fees. */
