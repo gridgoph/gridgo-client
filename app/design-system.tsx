@@ -171,8 +171,10 @@ export default function DesignSystemScreen() {
         <View className="gg-page gap-10 pb-16 pt-6">
           {/* Masthead — the job ticket for the system itself. */}
           <View>
+            {/* Default size: `size` now scales the type too, so the masthead
+                shows the lockup at the size every screen actually ships. */}
             <View className="pb-1">
-              <GridgoLogo size={32} />
+              <GridgoLogo />
             </View>
             <Text className="pb-5 text-body text-text-secondary">
               Design system · Davao City pilot
@@ -187,6 +189,29 @@ export default function DesignSystemScreen() {
             </View>
 
             <ThemeSwitch />
+          </View>
+
+          {/* Lockup — both shapes this binary ships, at the size it ships them. */}
+          <View className="gap-4">
+            <SectionHead
+              title="LOCKUP"
+              rule="The mark stands as tall as the whole text block beside it."
+            />
+            <View className="gg-card gap-5">
+              <View className="gap-2">
+                <GridgoLogo />
+                <Text className="text-caption text-text-muted">
+                  Individual client, and every signed-out surface
+                </Text>
+              </View>
+              <View className="gg-divider" />
+              <View className="gap-2">
+                <GridgoLogo role="business" />
+                <Text className="text-caption text-text-muted">
+                  Business client, on signed-in identity surfaces
+                </Text>
+              </View>
+            </View>
           </View>
 
           {/* Ink */}
