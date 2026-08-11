@@ -10,6 +10,8 @@ import {
   tabBarHeight,
   tabBarMetrics,
   tabBarPaddingBottom,
+  tabBarPaintedHeight,
+  tabBarTopGap,
   tabScreenContentPadding,
 } from "@/components/GridgoTabBar";
 import { ACTION_TAB, TABS } from "@/constants/tabs";
@@ -104,9 +106,9 @@ describe("tabBarPaddingBottom", () => {
   });
 });
 
-describe("tabBarHeight", () => {
+describe("tabBarPaintedHeight", () => {
   // The table in the component's own header comment, asserted rather than
-  // re-derived. These four rows are the devices the fix is reviewed against.
+  // re-derived. These five rows are the devices the fix is reviewed against.
   it.each([
     ["Android, three-button", "android", 48, 128],
     ["Android, gesture nav", "android", 24, 104],
@@ -114,20 +116,78 @@ describe("tabBarHeight", () => {
     ["iPhone, no home indicator", "ios", 0, 57],
     ["Android/web, no inset", "android", 0, 88],
   ] as const)("%s", (_label, os, inset, expected) => {
-    expect(tabBarHeight(os, inset)).toBe(expected);
+    expect(tabBarPaintedHeight(os, inset)).toBe(expected);
   });
 
   it("puts a home-indicator iPhone on UIKit's own 83pt", () => {
     // 49pt content row + the 34pt inset, with nothing added on top of it.
-    expect(tabBarHeight("ios", 34)).toBe(tabBarMetrics("ios").columnHeight + 34);
+    expect(tabBarPaintedHeight("ios", 34)).toBe(tabBarMetrics("ios").columnHeight + 34);
   });
 
   it("keeps Material's 80dp container above the system inset, not inside it", () => {
     // androidx `NavigationBar` pads *outside* its 80dp min-height, so the inset
     // adds to the container rather than being absorbed by it.
     for (const inset of [24, 48]) {
-      expect(tabBarHeight("android", inset)).toBe(80 + inset);
+      expect(tabBarPaintedHeight("android", inset)).toBe(80 + inset);
     }
+  });
+});
+
+describe("tabBarHeight", () => {
+  it("is the painted bar plus the disc's overhang strip", () => {
+    for (const os of ["ios", "android"]) {
+      for (const inset of [0, 24, 34, 48]) {
+        expect(tabBarHeight(os, inset)).toBe(
+          tabBarPaintedHeight(os, inset) + tabBarMetrics(os).actionRise,
+        );
+      }
+    }
+  });
+
+  it("does not move the painted row itself", () => {
+    // The strip is transparent. Growing the layout box must not have been done
+    // by growing the content row, which is UIKit's and Material's number.
+    expect(tabBarMetrics("ios").columnHeight).toBe(49);
+    expect(tabBarMetrics("android").columnHeight).toBe(80);
+  });
+});
+
+describe("tabBarTopGap", () => {
+  /**
+   * The captain report: items sitting closer to the top edge here and in
+   * gridgo-rider than in gridgo-supplier, from the same padding numbers.
+   *
+   * gridgo-supplier paints its surface over the whole column, so its top gap is
+   * the declared padding plus whatever slack the platform leaves. This app
+   * paints `actionRise` lower so the action disc can overhang the hairline, and
+   * the gap a person sees was that much smaller — on iOS the glyph sat above
+   * the paint entirely. These are gridgo-supplier's numbers, and they are what
+   * the bar must now draw.
+   */
+  it("matches gridgo-supplier from the painted edge", () => {
+    expect(tabBarTopGap("ios")).toBe(4);
+    expect(tabBarTopGap("android")).toBe(20);
+  });
+
+  it("hands the platform's leftover room to the space above the glyph", () => {
+    // Android: 80dp container over a 72dp stack, so 8dp joins the 12dp padding.
+    const android = tabBarMetrics("android");
+    expect(tabBarTopGap("android")).toBe(android.itemPaddingTop + 8);
+    // iOS: the 49pt stack fills the row exactly, so there is nothing to hand up.
+    expect(tabBarTopGap("ios")).toBe(tabBarMetrics("ios").itemPaddingTop);
+  });
+
+  it("is never eaten by the overhang strip", () => {
+    // The defect, stated as the property that failed: measuring from the layout
+    // top rather than the paint cost `actionRise` on both platforms, and on iOS
+    // that is more than the whole gap.
+    for (const os of ["ios", "android"]) {
+      expect(tabBarTopGap(os)).toBeGreaterThan(0);
+      expect(tabBarTopGap(os) - tabBarMetrics(os).actionRise).toBeLessThan(
+        tabBarTopGap(os),
+      );
+    }
+    expect(tabBarTopGap("ios") - tabBarMetrics("ios").actionRise).toBeLessThan(0);
   });
 });
 
@@ -258,13 +318,29 @@ describe("GridgoTabBar", () => {
     expect(style.height).toBeUndefined();
     expect(style.paddingTop).toBe(TAB_BAR_METRICS.itemPaddingTop);
   });
+
+  it("lets only the action column reach above the painted edge", async () => {
+    await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+
+    // The row is bottom-aligned, so this column being `actionRise` taller is
+    // what holds the disc over the hairline and drops every labelled column
+    // onto the paint. Shrinking it back to `columnHeight` is the regression:
+    // the items climb into the strip again and the gap a person sees closes.
+    const action = screen.getByRole("tab", { name: "New request" });
+    expect(flatten(action.props.style).height).toBe(
+      TAB_BAR_METRICS.columnHeight + TAB_BAR_METRICS.actionRise,
+    );
+
+    const labelled = screen.getByRole("tab", { name: "Home" });
+    expect(flatten(labelled.props.style).minHeight).toBe(TAB_BAR_METRICS.columnHeight);
+  });
 });
 
 describe("tabScreenContentPadding", () => {
   it("clears the whole bar, not just the design gap", () => {
-    const column = TAB_BAR_METRICS.columnHeight;
-    expect(tabScreenContentPadding(0)).toBe(TAB_BAR_MIN_BOTTOM_GAP + column + 24);
-    expect(tabScreenContentPadding(34)).toBe(34 + column + 24);
+    const bar = TAB_BAR_METRICS.columnHeight + TAB_BAR_METRICS.actionRise;
+    expect(tabScreenContentPadding(0)).toBe(TAB_BAR_MIN_BOTTOM_GAP + bar + 24);
+    expect(tabScreenContentPadding(34)).toBe(34 + bar + 24);
   });
 
   it("is always taller than the bar it has to clear", () => {
