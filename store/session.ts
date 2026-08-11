@@ -7,7 +7,6 @@ import { signupInput, type SignupFields } from "@/lib/signup";
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "client" as const;
-export const DEMO_EMAIL = "client@gridgo.local";
 
 type SessionState = {
   user: User | null;

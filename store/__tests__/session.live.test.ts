@@ -1,11 +1,23 @@
 /**
  * Optional live walk against gridgo-api.
- * Skips when the API is not reachable so CI without the backend still passes.
+ *
+ * Skips when the API is not reachable, so a checkout with no backend still
+ * passes — and skips just as quietly when no account is supplied, because it
+ * no longer carries one. The password this used to hardcode was the same demo
+ * credential the sign-in screen used to pre-fill, and the pilot moved those to
+ * deployment configuration precisely so nothing published is a way in. A
+ * password in a test file is published too.
+ *
+ * To run it, hand it an account:
+ *
+ *   GRIDGO_LIVE_EMAIL=client@gridgo.local GRIDGO_LIVE_PASSWORD=… npx jest session.live
  */
 import * as api from "@/lib/api";
 import { useSession } from "@/store/session";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "http://127.0.0.1:8787";
+const LIVE_EMAIL = process.env.GRIDGO_LIVE_EMAIL ?? "";
+const LIVE_PASSWORD = process.env.GRIDGO_LIVE_PASSWORD ?? "";
 
 async function apiReachable(): Promise<boolean> {
   try {
@@ -19,10 +31,10 @@ async function apiReachable(): Promise<boolean> {
 }
 
 describe("session live against gridgo-api", () => {
-  let reachable = false;
+  let runnable = false;
 
   beforeAll(async () => {
-    reachable = await apiReachable();
+    runnable = Boolean(LIVE_EMAIL && LIVE_PASSWORD) && (await apiReachable());
   });
 
   beforeEach(() => {
@@ -30,20 +42,20 @@ describe("session live against gridgo-api", () => {
     api.setToken(null);
   });
 
-  it("signs in as client@gridgo.local, then logout clears session", async () => {
-    if (!reachable) {
-      console.warn("skip live session test: API not reachable at", API_BASE);
+  it("signs in with the supplied account, then logout clears session", async () => {
+    if (!runnable) {
+      console.warn(skipReason("live session test"));
       return;
     }
 
     // Point the client at the live origin for this process.
     process.env.EXPO_PUBLIC_API_URL = API_BASE;
 
-    await useSession.getState().login("client@gridgo.local", "demo");
+    await useSession.getState().login(LIVE_EMAIL, LIVE_PASSWORD);
 
     const afterLogin = useSession.getState();
     expect(afterLogin.error).toBeNull();
-    expect(afterLogin.user?.email).toBe("client@gridgo.local");
+    expect(afterLogin.user?.email).toBe(LIVE_EMAIL);
     expect(afterLogin.user?.role).toBe("client");
     expect(api.getToken()).toBeTruthy();
 
@@ -54,14 +66,14 @@ describe("session live against gridgo-api", () => {
   });
 
   it("expired token 401 clears the session the same way as logout", async () => {
-    if (!reachable) {
-      console.warn("skip live 401 test: API not reachable at", API_BASE);
+    if (!runnable) {
+      console.warn(skipReason("live 401 test"));
       return;
     }
 
     process.env.EXPO_PUBLIC_API_URL = API_BASE;
 
-    await useSession.getState().login("client@gridgo.local", "demo");
+    await useSession.getState().login(LIVE_EMAIL, LIVE_PASSWORD);
     expect(useSession.getState().user).not.toBeNull();
 
     // Force a dead token while keeping the user in the store (simulates expiry).
@@ -73,3 +85,10 @@ describe("session live against gridgo-api", () => {
     expect(useSession.getState().user).toBeNull();
   });
 });
+
+/** Says which of the two preconditions is missing, rather than just "skipped". */
+function skipReason(what: string): string {
+  return LIVE_EMAIL && LIVE_PASSWORD
+    ? `skip ${what}: API not reachable at ${API_BASE}`
+    : `skip ${what}: set GRIDGO_LIVE_EMAIL and GRIDGO_LIVE_PASSWORD to run it`;
+}
