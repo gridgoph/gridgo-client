@@ -49,14 +49,40 @@ import { useUnreadCount } from "@/store/notifications";
    banned once because it was reached for as a way of *replacing* the inset.
    `tabBarPaddingBottom` spells the floor out longhand so the intent survives.
 
-   Resulting bar heights, content column plus whatever sits under it:
+   Resulting *painted* bar heights, content column plus whatever sits under it:
      iOS, home indicator     49 + 34 = 83pt   (UIKit exactly)
      iOS, no indicator       49 +  8 = 57pt
      Android, gesture nav    80 + 24 = 104dp
      Android, three-button   80 + 48 = 128dp
      Android/web, no inset   80 +  8 = 88dp
-   `tabBarHeight` is that table as code, so the tests assert the totals rather
-   than re-deriving them.
+   `tabBarPaintedHeight` is that table as code, so the tests assert the totals
+   rather than re-deriving them.
+
+   **The strip above the paint, and the gap it used to eat.** This app has a
+   raised action disc; gridgo-supplier does not. The disc overhangs the bar's
+   top hairline, so the surface is painted `actionRise` below the top of the
+   bar's own layout box and the disc breaks the hairline without drawing outside
+   its parent. gridgo-supplier paints edge to edge, because it has nothing to
+   overhang with.
+
+   That strip is why the captain reported the items sitting too close to the top
+   edge here and in gridgo-rider but not in gridgo-supplier. The item padding is
+   the same number in all three, but it was measured from the *layout* top while
+   the edge a person actually sees is the *painted* top, `actionRise` lower. The
+   same 12dp therefore bought 16dp less room here. On iOS it was worse than
+   tight: the 49pt stack fills its column exactly, so the icon sat 6pt *above*
+   the paint.
+
+   The fix is to hang the labelled columns off the painted edge and let only the
+   action column reach up into the strip — not to shrink `actionRise`, which is
+   the overhang itself. `tabBarTopGap` is the space above the icon measured from
+   the painted edge, and it is now what gridgo-supplier draws:
+
+     iOS      4pt   (itemPaddingTop 4, and a 49pt stack leaves no slack)
+     Android 20dp   (itemPaddingTop 12, plus the 8dp M3 leaves over the stack)
+
+   All three apps run this file. Android item padding is 12 above and 16 below
+   in every one of them.
    --------------------------------------------------------------------------- */
 
 /**
@@ -66,7 +92,7 @@ import { useUnreadCount } from "@/store/notifications";
 export const TAB_BAR_MIN_BOTTOM_GAP = 8;
 
 export type TabBarMetrics = {
-  /** The content row, above whatever the platform reserves below it. */
+  /** The painted content row, above whatever the platform reserves below it. */
   columnHeight: number;
   itemPaddingTop: number;
   itemGap: number;
@@ -76,6 +102,12 @@ export type TabBarMetrics = {
   /** How far that disc rises through the bar's top hairline. */
   actionRise: number;
 };
+
+/** The glyph in a tab column. One size in both states, on both platforms. */
+const TAB_ICON_SIZE = 24;
+
+/** The label's line box — `h-4` on the Text, and the caption scale's 16px. */
+const TAB_LABEL_HEIGHT = 16;
 
 /**
  * Pure, so both platforms' geometry can be asserted in one test run rather
@@ -128,12 +160,50 @@ export function tabBarPaddingBottom(insetBottom: number): number {
 }
 
 /**
- * The bar's whole height: the platform's content row plus whatever sits under
+ * The bar a person sees: the platform's content row plus whatever sits under
  * it. Pure arithmetic over a platform and an inset, so every device case in the
  * table above is one assertion rather than a re-derivation in the test.
+ *
+ * This is the number UIKit and Material 3 publish, and it is the same in all
+ * three GRIDGO apps. The transparent strip the action disc overhangs into is
+ * not part of it.
+ */
+export function tabBarPaintedHeight(platformOS: string, insetBottom: number): number {
+  return tabBarMetrics(platformOS).columnHeight + tabBarPaddingBottom(insetBottom);
+}
+
+/**
+ * The bar's layout box: the painted bar with the disc's overhang strip on top.
+ *
+ * gridgo-supplier has no disc, so there its strip is zero and this equals
+ * {@link tabBarPaintedHeight}. Here it is `actionRise` taller, and that
+ * difference is transparent — a scene scrolls under it.
  */
 export function tabBarHeight(platformOS: string, insetBottom: number): number {
-  return tabBarMetrics(platformOS).columnHeight + tabBarPaddingBottom(insetBottom);
+  return tabBarMetrics(platformOS).actionRise + tabBarPaintedHeight(platformOS, insetBottom);
+}
+
+/**
+ * The space above a tab's glyph, measured from the edge a person can see.
+ *
+ * The column is laid out `justify-end` against a `columnHeight` minimum, so
+ * whatever the platform leaves over the natural stack sits above the glyph and
+ * adds to the declared top padding. Android's 80dp container holds a 72dp stack
+ * and hands the other 8dp up; iOS's 49pt row is the stack exactly.
+ *
+ * This is the number that has to match gridgo-supplier, and the one the strip
+ * above the paint was quietly taking `actionRise` out of.
+ */
+export function tabBarTopGap(platformOS: string): number {
+  const metrics = tabBarMetrics(platformOS);
+  const stack =
+    metrics.itemPaddingTop +
+    TAB_ICON_SIZE +
+    metrics.itemGap +
+    TAB_LABEL_HEIGHT +
+    metrics.itemPaddingBottom;
+  const slack = Math.max(0, metrics.columnHeight - stack);
+  return metrics.itemPaddingTop + slack;
 }
 
 /**
@@ -175,10 +245,13 @@ const ICONS: Record<TabName, LucideIcon> = {
  * above the bar border.
  *
  * The action disc carries no label, because a filled yellow plus in the middle
- * of a tab bar needs no caption. It sits at the top of its column while the
- * bar surface starts `actionRise` below the row top, so the disc rises through
- * the hairline without drawing outside its parent. It stays at or above the
- * 44pt touch floor on both platforms.
+ * of a tab bar needs no caption. Its column is the only one that reaches up
+ * into the `actionRise` strip above the paint, and the disc sits at the top of
+ * it, so the disc rises through the hairline without drawing outside its
+ * parent. The row is bottom-aligned, so every labelled column hangs off the
+ * painted edge instead — which is what makes the space above their glyphs read
+ * the same here as in gridgo-supplier, where there is no strip at all. It stays
+ * at or above the 44pt touch floor on both platforms.
  *
  * The surface and top border are absolute to the outer edges, so they fill the
  * inset region down to the physical edge whatever the padding is.
@@ -255,9 +328,11 @@ function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
   const colors = useThemeColors();
   const Icon = ICONS[name];
 
-  // The disc sits at the top of a column the same height as its labelled
-  // neighbours; the surface starts `actionRise` below the row top, so the disc
-  // breaks the hairline. Foot still lines up with the labelled row.
+  // The one column that owns the strip above the paint: `actionRise` taller
+  // than its labelled neighbours, with the disc at the top of it. The row is
+  // bottom-aligned, so this column's extra height is what lifts the row's top
+  // above the painted edge and lets the disc break the hairline — and what
+  // leaves the labelled columns hanging off the paint, where they belong.
   if (name === ACTION_TAB) {
     const { actionDiameter } = TAB_BAR_METRICS;
     return (
@@ -267,7 +342,7 @@ function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
         accessibilityLabel={label}
         accessibilityState={{ selected: focused }}
         className="flex-1 items-center"
-        style={{ height: TAB_BAR_METRICS.columnHeight }}
+        style={{ height: TAB_BAR_METRICS.columnHeight + TAB_BAR_METRICS.actionRise }}
       >
         {({ pressed }) => (
           <View

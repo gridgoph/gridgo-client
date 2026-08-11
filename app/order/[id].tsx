@@ -1,6 +1,6 @@
 import { ChevronLeft } from "lucide-react-native";
 import { useCallback, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
+import { FormScreen } from "@/components/FormScreen";
 import { FulfilmentProgress } from "@/components/FulfilmentProgress";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { OrderTimeline } from "@/components/OrderTimeline";
@@ -187,102 +188,105 @@ export default function OrderDetailScreen() {
             : null;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
-      {headerEscape}
-      <ScrollView className="gg-screen">
-        <View className="gg-page gap-8 pb-16 pt-4">
-          <View className="gap-3">
-            {/* A chip hugs its label — stretched to the column width it reads
-                as a banner, and its border stops meaning "this one thing". */}
-            <View className="flex-row">
-              <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
-            </View>
-            <Text className="text-h1 text-text-primary">{order.title}</Text>
-            {/* Only when nothing below is already saying it. An action zone
-                owns its instruction and reason, and so does the card that
-                explains a payment being checked — repeating either up here is
-                filler. */}
-            {!nextAction && !underReview ? (
-              <Text className="text-body-lg text-text-secondary">
-                {waitingOn ?? "This job is in progress."}
-              </Text>
+    /*
+      Two text inputs live inside this scroll and both sit near the bottom of
+      it: the payment reference on the money card, and the description on an
+      issue report. Neither had any keyboard handling, so on a job far enough
+      along to show them, typing happened underneath the keyboard.
+    */
+    <FormScreen overlay={headerEscape}>
+      <View className="gg-page gap-8 pb-16 pt-4">
+        <View className="gap-3">
+          {/* A chip hugs its label — stretched to the column width it reads
+              as a banner, and its border stops meaning "this one thing". */}
+          <View className="flex-row">
+            <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
+          </View>
+          <Text className="text-h1 text-text-primary">{order.title}</Text>
+          {/* Only when nothing below is already saying it. An action zone
+              owns its instruction and reason, and so does the card that
+              explains a payment being checked — repeating either up here is
+              filler. */}
+          {!nextAction && !underReview ? (
+            <Text className="text-body-lg text-text-secondary">
+              {waitingOn ?? "This job is in progress."}
+            </Text>
+          ) : null}
+        </View>
+
+        {/* One action zone at a time — the single yellow control lives here. */}
+        {actionZone ? (
+          <Animated.View
+            key={`${order.state}:${actionZone}`}
+            entering={reducedMotion ? undefined : FadeIn.duration(200)}
+          >
+            {actionZone === "proof" ? (
+              <ProofDecision
+                order={order}
+                family={family}
+                unit={unit}
+                materialLabel={materialLabel}
+                finishLabel={finishLabel}
+                onUpdated={setOrder}
+              />
+            ) : actionZone === "correction" ? (
+              <CorrectionCard order={order} onUpdated={setOrder} />
+            ) : actionZone === "pay" && payable ? (
+              <PaymentPanel order={order} installment={payable} onSubmitted={setOrder} />
+            ) : actionZone === "review" && underReview ? (
+              <PaymentUnderReviewCard order={order} installment={underReview} />
+            ) : (
+              <IssueWindowCard order={order} />
+            )}
+          </Animated.View>
+        ) : null}
+
+        {isTrackingState(order.state) ? <DeliveryTrackingCard order={order} /> : null}
+
+        {showsFulfilmentProgress(order.state) ? (
+          <FulfilmentProgress milestones={order.payoutMilestones} />
+        ) : null}
+
+        <View className="gap-4">
+          <Text className="text-overline text-text-muted">SPECIFICATION</Text>
+          <View className="gg-card">
+            <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
+            <SpecRow label="Size" value={order.size || "—"} />
+            {/* Resolved through the taxonomy: an order can carry a code
+                rather than a name, and `hem_grommet` is not a finish a
+                client recognises. */}
+            <SpecRow label="Material" value={materialLabel} />
+            {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
+            <SpecRow label="Deadline" value={formatDeadline(order.deadline)} />
+            {order.promisedDate ? (
+              <SpecRow label="Supplier promised" value={formatDeadline(order.promisedDate)} />
             ) : null}
+            <SpecRow label="Deliver to" value={order.address || "—"} />
+            <SpecRow label="Area" value={zoneName(zones, order.zone)} />
+            <SpecRow label="Artwork" value={order.artworkName || "Not uploaded"} />
           </View>
 
-          {/* One action zone at a time — the single yellow control lives here. */}
-          {actionZone ? (
-            <Animated.View
-              key={`${order.state}:${actionZone}`}
-              entering={reducedMotion ? undefined : FadeIn.duration(200)}
-            >
-              {actionZone === "proof" ? (
-                <ProofDecision
-                  order={order}
-                  family={family}
-                  unit={unit}
-                  materialLabel={materialLabel}
-                  finishLabel={finishLabel}
-                  onUpdated={setOrder}
-                />
-              ) : actionZone === "correction" ? (
-                <CorrectionCard order={order} onUpdated={setOrder} />
-              ) : actionZone === "pay" && payable ? (
-                <PaymentPanel order={order} installment={payable} onSubmitted={setOrder} />
-              ) : actionZone === "review" && underReview ? (
-                <PaymentUnderReviewCard order={order} installment={underReview} />
-              ) : (
-                <IssueWindowCard order={order} />
-              )}
-            </Animated.View>
-          ) : null}
+          <MoneyCard order={order} />
+        </View>
 
-          {isTrackingState(order.state) ? <DeliveryTrackingCard order={order} /> : null}
+        {!showsOwnPreview ? (
+          <ProductPreview
+            family={family}
+            artworkName={order.artworkName}
+            productName={order.title}
+            size={order.size}
+            artworkFileId={artworkFileId}
+          />
+        ) : null}
 
-          {showsFulfilmentProgress(order.state) ? (
-            <FulfilmentProgress milestones={order.payoutMilestones} />
-          ) : null}
-
-          <View className="gap-4">
-            <Text className="text-overline text-text-muted">SPECIFICATION</Text>
-            <View className="gg-card">
-              <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
-              <SpecRow label="Size" value={order.size || "—"} />
-              {/* Resolved through the taxonomy: an order can carry a code
-                  rather than a name, and `hem_grommet` is not a finish a
-                  client recognises. */}
-              <SpecRow label="Material" value={materialLabel} />
-              {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
-              <SpecRow label="Deadline" value={formatDeadline(order.deadline)} />
-              {order.promisedDate ? (
-                <SpecRow label="Supplier promised" value={formatDeadline(order.promisedDate)} />
-              ) : null}
-              <SpecRow label="Deliver to" value={order.address || "—"} />
-              <SpecRow label="Area" value={zoneName(zones, order.zone)} />
-              <SpecRow label="Artwork" value={order.artworkName || "Not uploaded"} />
-            </View>
-
-            <MoneyCard order={order} />
-          </View>
-
-          {!showsOwnPreview ? (
-            <ProductPreview
-              family={family}
-              artworkName={order.artworkName}
-              productName={order.title}
-              size={order.size}
-              artworkFileId={artworkFileId}
-            />
-          ) : null}
-
-          <View className="gap-4">
-            <Text className="text-overline text-text-muted">HISTORY</Text>
-            <View className="gg-card">
-              <OrderTimeline timeline={order.timeline} currentState={order.state} />
-            </View>
+        <View className="gap-4">
+          <Text className="text-overline text-text-muted">HISTORY</Text>
+          <View className="gg-card">
+            <OrderTimeline timeline={order.timeline} currentState={order.state} />
           </View>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </FormScreen>
   );
 }
 

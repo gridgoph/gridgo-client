@@ -1,10 +1,10 @@
 import { Search, X } from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View, type TextStyle } from "react-native";
+import { Pressable, Text, TextInput, View, type TextStyle } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ErrorState } from "@/components/ErrorState";
+import { FormScreen } from "@/components/FormScreen";
 import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
 import { SkeletonList } from "@/components/Skeleton";
 import { useStartRequest } from "@/hooks/useStartRequest";
@@ -94,104 +94,108 @@ export default function ChooseCategoryScreen() {
 
   return (
     /*
-      A stack header already sits above this screen and has already cleared the
-      status bar, so `edges={["top"]}` would inset it a second time and push
-      the heading down a notch's worth. Bottom only, matching the sibling
+      A stack header already sits above this screen and has already cleared
+      the status bar, so `edges={["top"]}` would inset it a second time and
+      push the heading down a notch's worth. Bottom only, matching the sibling
       category screen.
+
+      Through `FormScreen` for the search field: results grow under it, and
+      once the list is longer than the screen the field has to be scrolled
+      clear of the keyboard rather than left underneath it.
     */
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
-      <ScrollView className="gg-screen" keyboardShouldPersistTaps="handled">
-        <View className="gg-page pb-16 pt-2">
-          {/* The one bold moment on this screen. Everything below stays quiet. */}
-          <Text className="text-display text-text-primary">What are you printing?</Text>
-          <Text className="mt-3 text-body-lg text-text-secondary">
-            Pick the closest match. You set the exact size, material and quantity next.
-          </Text>
+    <FormScreen
+      overlay={
+        <ReplaceDraftDialog
+          label={pendingLabel}
+          onConfirm={confirmReplace}
+          onCancel={cancelReplace}
+        />
+      }
+    >
+      <View className="gg-page pb-16 pt-2">
+        {/* The one bold moment on this screen. Everything below stays quiet. */}
+        <Text className="text-display text-text-primary">What are you printing?</Text>
+        <Text className="mt-3 text-body-lg text-text-secondary">
+          Pick the closest match. You set the exact size, material and quantity next.
+        </Text>
 
-          {/* Focus is shown on the whole field, not on the bare input inside
-              it — a ring drawn inside the rounded box reads as a broken
-              control. Never suppressed, just moved to the right element. */}
-          <View
-            className={
-              focused
-                ? "mt-6 flex-row items-center gap-3 rounded-field border-2 border-accent bg-surface px-3"
-                : "mt-6 flex-row items-center gap-3 rounded-field border border-outline bg-surface px-3"
-            }
-          >
-            <Search size={18} color={colors.textMuted} strokeWidth={2} />
-            <TextInput
-              className="h-12 flex-1 text-body text-text-primary"
-              style={NO_NATIVE_OUTLINE}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search — tarpaulin, tote bag, lanyard"
-              placeholderTextColor={colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              accessibilityLabel="Search what GRIDGO prints"
-            />
-            {query ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-                onPress={() => setQuery("")}
-                className="gg-touch items-center justify-center"
-              >
-                <X size={18} color={colors.textSecondary} strokeWidth={2} />
-              </Pressable>
-            ) : null}
-          </View>
-
-          {error ? (
-            <View className="mt-8">
-              <ErrorState
-                label="Could not load"
-                body={error}
-                onRetry={() => void load()}
-              />
-            </View>
-          ) : null}
-
-          {!categories && !error ? (
-            <View className="mt-8 gap-4">
-              <Text className="text-body text-text-muted">Loading what GRIDGO prints…</Text>
-              <SkeletonList count={4} />
-            </View>
-          ) : null}
-
-          {categories && searching ? (
-            <SearchResults
-              hits={hits}
-              query={query.trim()}
-              catalog={catalog}
-              onPick={openSubcategory}
-              onBrowse={() => setQuery("")}
-            />
-          ) : null}
-
-          {categories && !searching ? (
-            <View className="mt-8 gap-3">
-              {categories.map((category) => (
-                <CategoryCard
-                  key={category.code}
-                  category={category}
-                  onPress={() => router.push(`/request/${category.code}`)}
-                />
-              ))}
-            </View>
+        {/* Focus is shown on the whole field, not on the bare input inside
+            it — a ring drawn inside the rounded box reads as a broken
+            control. Never suppressed, just moved to the right element. */}
+        <View
+          className={
+            focused
+              ? "mt-6 flex-row items-center gap-3 rounded-field border-2 border-accent bg-surface px-3"
+              : "mt-6 flex-row items-center gap-3 rounded-field border border-outline bg-surface px-3"
+          }
+        >
+          <Search size={18} color={colors.textMuted} strokeWidth={2} />
+          <TextInput
+            className="h-12 flex-1 text-body text-text-primary"
+            style={NO_NATIVE_OUTLINE}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search — tarpaulin, tote bag, lanyard"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search what GRIDGO prints"
+          />
+          {query ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+              onPress={() => setQuery("")}
+              className="gg-touch items-center justify-center"
+            >
+              <X size={18} color={colors.textSecondary} strokeWidth={2} />
+            </Pressable>
           ) : null}
         </View>
-      </ScrollView>
 
-      <ReplaceDraftDialog
-        label={pendingLabel}
-        onConfirm={confirmReplace}
-        onCancel={cancelReplace}
-      />
-    </SafeAreaView>
+        {error ? (
+          <View className="mt-8">
+            <ErrorState
+              label="Could not load"
+              body={error}
+              onRetry={() => void load()}
+            />
+          </View>
+        ) : null}
+
+        {!categories && !error ? (
+          <View className="mt-8 gap-4">
+            <Text className="text-body text-text-muted">Loading what GRIDGO prints…</Text>
+            <SkeletonList count={4} />
+          </View>
+        ) : null}
+
+        {categories && searching ? (
+          <SearchResults
+            hits={hits}
+            query={query.trim()}
+            catalog={catalog}
+            onPick={openSubcategory}
+            onBrowse={() => setQuery("")}
+          />
+        ) : null}
+
+        {categories && !searching ? (
+          <View className="mt-8 gap-3">
+            {categories.map((category) => (
+              <CategoryCard
+                key={category.code}
+                category={category}
+                onPress={() => router.push(`/request/${category.code}`)}
+              />
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </FormScreen>
   );
 }
 

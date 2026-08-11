@@ -1,7 +1,8 @@
 import { usePreventRemove } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { KeyboardAvoidingView, Platform, Text, TextInput, View } from "react-native";
+import { Platform, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -68,6 +69,21 @@ export default function RequestChangesSheet() {
   }, [orderId, tooShort, trimmed, router]);
 
   return (
+    /*
+      Keyboard avoidance is split by platform here, and deliberately so.
+
+      On Android the sheet lifts itself: react-native-screens watches the IME
+      inset on a form sheet and re-runs the bottom-sheet behaviour to clear it
+      (`SheetDelegate.onApplyWindowInsets`). Adding padding on top of that would
+      lift the content twice and push the heading off the top of the sheet, so
+      nothing is added — `behavior` is left off there.
+
+      On iOS nothing lifts it. UIKit does not move a sheet with custom detents
+      for the keyboard, and react-native-screens does not either. `padding` is
+      what moves this one: the detent is `fitToContents`, so growing the content
+      by the keyboard's height re-measures the sheet and raises its top edge by
+      the same amount, which carries the field up with it.
+    */
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={{ backgroundColor: colors.surface }}

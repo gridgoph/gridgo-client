@@ -1,13 +1,14 @@
 import { ChevronRight } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ErrorState } from "@/components/ErrorState";
+import { FormScreen } from "@/components/FormScreen";
 import { DateTimeField } from "@/components/form/DateTimeField";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { FormField, FormSection } from "@/components/form/FormField";
@@ -78,7 +79,6 @@ import {
  */
 export default function NewRequestScreen() {
   const router = useRouter();
-  const colors = useThemeColors();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const reducedMotion = useReducedMotion();
   const draft = useRequestDraft();
@@ -289,146 +289,156 @@ export default function NewRequestScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
-      <ScrollView className="gg-screen" keyboardShouldPersistTaps="handled">
-        <View className="gg-page gap-8 pt-4" style={{ paddingBottom: tabPad }}>
-          <View className="gap-2">
-            <Text className="text-h1 text-text-primary">
-              {draft.productName || "New request"}
-            </Text>
-            <Text className="text-body text-text-secondary">
-              Saved as you go. You can close the app and pick this up later.
-            </Text>
-          </View>
-
-          <RequestStepper currentIndex={draft.stepIndex} />
-
+    /*
+      A tab screen, so it owns its top edge — there is no header above it.
+      The four free-text fields on the Details step (job title, street,
+      barangay, landmark) are why this goes through `FormScreen`: the address
+      sits at the bottom of a long scroll under a tab bar that floats over the
+      scene, and nothing here avoided the keyboard at all before.
+    */
+    <FormScreen
+      edges={["top"]}
+      overlay={
+        <>
           {/*
-            The one orchestrated moment in this flow: a step landing. Animated
-            components take a style, not a class, so the layout stays on the
-            plain View inside.
+            Sending keeps this screen mounted, so the wait belongs on top of it
+            rather than on a new screen. The scrim also stops a second tap from
+            starting the same job twice while the first send is in flight.
           */}
-          <Animated.View key={stepId} entering={reducedMotion ? undefined : FadeIn.duration(200)}>
-            <View className="gap-8">
-              {stepId === "details" ? (
-                <DetailsStep
-                  draft={draft}
-                  materials={materials}
-                  finishes={finishes}
-                  sizeOptions={sizeOptions}
-                  sizeCatalog={sizeCatalog}
-                  zoneOptions={zoneOptions}
-                  referenceError={referenceError}
-                  onRetryReference={() => void loadReference()}
-                  onBrowseCatalog={() => router.push("/request/category")}
-                />
-              ) : null}
+          <LoadingOverlay
+            visible={submitPhase !== null}
+            label={submitPhase ? submitPhaseLabel(submitPhase) : ""}
+            body={submitPhase ? submitPhaseBody(submitPhase) : undefined}
+          />
 
-              {stepId === "artwork" ? (
-                <View className="gap-6">
-                  <ArtworkUploadCard
-                    state={artwork.state}
-                    onPick={() => void artwork.pick()}
-                    onRetry={() => void artwork.retry()}
-                    onCancel={artwork.cancel}
-                  />
-                  {draft.artworkFileId ? (
-                    <ProductPreview
-                      family={draft.family}
-                      artworkName={draft.artworkName}
-                      productName={draft.productName}
-                      size={describeSize(draft.family, draft.size)}
-                      artworkFileId={draft.artworkFileId}
-                    />
-                  ) : null}
-                </View>
-              ) : null}
+          <ConfirmDialog
+            visible={confirmClear}
+            question={`Discard the draft for "${draft.title || draft.productName || "this request"}"?`}
+            body="The specification you have entered and the artwork attached to this draft are removed from your phone. Jobs you have already sent are not affected."
+            confirmLabel="Discard draft"
+            tone="destructive"
+            onConfirm={() => {
+              draft.reset();
+              artwork.reset();
+              createdOrderId.current = null;
+              setBlockReason(null);
+              setSubmitError(null);
+              setConfirmClear(false);
+            }}
+            onCancel={() => setConfirmClear(false)}
+          />
+        </>
+      }
+    >
+      <View className="gg-page gap-8 pt-4" style={{ paddingBottom: tabPad }}>
+        <View className="gap-2">
+          <Text className="text-h1 text-text-primary">
+            {draft.productName || "New request"}
+          </Text>
+          <Text className="text-body text-text-secondary">
+            Saved as you go. You can close the app and pick this up later.
+          </Text>
+        </View>
 
-              {stepId === "review" ? (
-                <ReviewStep
-                  draft={draft}
-                  zones={zones}
-                  onEdit={() => draft.setStepIndex(0)}
-                  onEditArtwork={() => draft.setStepIndex(1)}
-                />
-              ) : null}
+        <RequestStepper currentIndex={draft.stepIndex} />
 
-              {stepId === "confirm" ? (
-                <SendStep
-                  unitPriceMinor={draft.basePriceMinor}
-                  unit={draft.unit}
-                  quantity={draft.quantity}
-                  deadline={draft.deadline}
-                />
-              ) : null}
-            </View>
-          </Animated.View>
-
-          {blockReason ? (
-            <View className="gg-panel gap-2">
-              <StatusChip tone="warning" label="Not ready to continue" icon="triangle-alert" />
-              <Text className="text-body text-text-primary">{blockReason}</Text>
-            </View>
-          ) : null}
-
-          {submitError ? <ErrorState label="Not sent" body={submitError} /> : null}
-
-          <View className="gap-3">
-            <PrimaryButton
-              label={primaryLabel}
-              disabled={submitting || artworkBusy}
-              onPress={onPrimaryPress}
-            />
-            {draft.stepIndex > 0 ? (
-              <SecondaryButton
-                label="Back"
-                disabled={submitting || artworkBusy}
-                onPress={() => {
-                  setBlockReason(null);
-                  setSubmitError(null);
-                  draft.goBack();
-                }}
+        {/*
+          The one orchestrated moment in this flow: a step landing. Animated
+          components take a style, not a class, so the layout stays on the
+          plain View inside.
+        */}
+        <Animated.View key={stepId} entering={reducedMotion ? undefined : FadeIn.duration(200)}>
+          <View className="gap-8">
+            {stepId === "details" ? (
+              <DetailsStep
+                draft={draft}
+                materials={materials}
+                finishes={finishes}
+                sizeOptions={sizeOptions}
+                sizeCatalog={sizeCatalog}
+                zoneOptions={zoneOptions}
+                referenceError={referenceError}
+                onRetryReference={() => void loadReference()}
+                onBrowseCatalog={() => router.push("/request/category")}
               />
             ) : null}
-            {draft.stepIndex === 0 && draftHasContent(draft) ? (
-              <SecondaryButton
-                label="Discard this draft"
-                disabled={submitting || artworkBusy}
-                onPress={() => setConfirmClear(true)}
+
+            {stepId === "artwork" ? (
+              <View className="gap-6">
+                <ArtworkUploadCard
+                  state={artwork.state}
+                  onPick={() => void artwork.pick()}
+                  onRetry={() => void artwork.retry()}
+                  onCancel={artwork.cancel}
+                />
+                {draft.artworkFileId ? (
+                  <ProductPreview
+                    family={draft.family}
+                    artworkName={draft.artworkName}
+                    productName={draft.productName}
+                    size={describeSize(draft.family, draft.size)}
+                    artworkFileId={draft.artworkFileId}
+                  />
+                ) : null}
+              </View>
+            ) : null}
+
+            {stepId === "review" ? (
+              <ReviewStep
+                draft={draft}
+                zones={zones}
+                onEdit={() => draft.setStepIndex(0)}
+                onEditArtwork={() => draft.setStepIndex(1)}
+              />
+            ) : null}
+
+            {stepId === "confirm" ? (
+              <SendStep
+                unitPriceMinor={draft.basePriceMinor}
+                unit={draft.unit}
+                quantity={draft.quantity}
+                deadline={draft.deadline}
               />
             ) : null}
           </View>
+        </Animated.View>
+
+        {blockReason ? (
+          <View className="gg-panel gap-2">
+            <StatusChip tone="warning" label="Not ready to continue" icon="triangle-alert" />
+            <Text className="text-body text-text-primary">{blockReason}</Text>
+          </View>
+        ) : null}
+
+        {submitError ? <ErrorState label="Not sent" body={submitError} /> : null}
+
+        <View className="gap-3">
+          <PrimaryButton
+            label={primaryLabel}
+            disabled={submitting || artworkBusy}
+            onPress={onPrimaryPress}
+          />
+          {draft.stepIndex > 0 ? (
+            <SecondaryButton
+              label="Back"
+              disabled={submitting || artworkBusy}
+              onPress={() => {
+                setBlockReason(null);
+                setSubmitError(null);
+                draft.goBack();
+              }}
+            />
+          ) : null}
+          {draft.stepIndex === 0 && draftHasContent(draft) ? (
+            <SecondaryButton
+              label="Discard this draft"
+              disabled={submitting || artworkBusy}
+              onPress={() => setConfirmClear(true)}
+            />
+          ) : null}
         </View>
-      </ScrollView>
-
-      {/*
-        Sending keeps this screen mounted, so the wait belongs on top of it
-        rather than on a new screen. The scrim also stops a second tap from
-        starting the same job twice while the first send is in flight.
-      */}
-      <LoadingOverlay
-        visible={submitPhase !== null}
-        label={submitPhase ? submitPhaseLabel(submitPhase) : ""}
-        body={submitPhase ? submitPhaseBody(submitPhase) : undefined}
-      />
-
-      <ConfirmDialog
-        visible={confirmClear}
-        question={`Discard the draft for "${draft.title || draft.productName || "this request"}"?`}
-        body="The specification you have entered and the artwork attached to this draft are removed from your phone. Jobs you have already sent are not affected."
-        confirmLabel="Discard draft"
-        tone="destructive"
-        onConfirm={() => {
-          draft.reset();
-          artwork.reset();
-          createdOrderId.current = null;
-          setBlockReason(null);
-          setSubmitError(null);
-          setConfirmClear(false);
-        }}
-        onCancel={() => setConfirmClear(false)}
-      />
-    </SafeAreaView>
+      </View>
+    </FormScreen>
   );
 }
 
