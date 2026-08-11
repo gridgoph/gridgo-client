@@ -20,3 +20,12 @@ jest.mock("react-native-webview", () => {
   WebView.displayName = "WebView";
   return { __esModule: true, WebView, default: WebView };
 });
+
+// The keyboard is a native surface, so the library ships its own Jest double:
+// a plain ScrollView for the aware scroll view, a View for the avoiding view,
+// and zeroed keyboard values. What the shell actually decides — which edges it
+// owns, and that every screen with an input goes through it — is asserted in
+// components/__tests__/keyboardCoverage.test.ts by reading the sources.
+jest.mock("react-native-keyboard-controller", () =>
+  require("react-native-keyboard-controller/jest"),
+);

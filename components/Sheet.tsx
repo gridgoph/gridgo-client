@@ -1,15 +1,7 @@
 import { X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import {
-  Dimensions,
-  KeyboardAvoidingView,
-  Modal,
-  PanResponder,
-  Platform,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { Dimensions, Modal, PanResponder, Pressable, Text, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, {
   interpolate,
   runOnJS,
@@ -156,8 +148,25 @@ export function Sheet({
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={close}>
+      {/*
+        The sheet is anchored to the bottom of the screen, so an input inside it
+        — the custom size entry on `OptionPicker` is the one that exists — is
+        exactly where the keyboard lands. `padding` grows the space beneath the
+        panel by the keyboard's height, which lifts a bottom-anchored sheet by
+        the same amount.
+
+        This is `react-native-keyboard-controller`'s `KeyboardAvoidingView`, not
+        React Native's, and the difference is Android: React Native's takes no
+        usable `behavior` there, and under Expo's mandatory edge-to-edge the
+        window is no longer resized for the IME either, so the sheet did not
+        move at all and the field was simply covered. The library reads the
+        keyboard frame directly and has worked inside a React Native `Modal`
+        since 1.13 — which matters here, because a `Modal` renders outside the
+        app's view tree and that is already why this sheet drags with
+        `PanResponder` rather than gesture-handler.
+      */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={{ flex: 1, justifyContent: "flex-end" }}
       >
         {/* The scrim dims what is behind and dismisses on tap. Safe here: a
