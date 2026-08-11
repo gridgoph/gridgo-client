@@ -8,7 +8,7 @@ name: Android release APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, fm/gridgo-client-apk]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -190,7 +190,7 @@ jobs:
       # Only the default branch names a release. A build from anywhere else is
       # downloadable as a run artifact and nothing more.
       - name: Publish the GitHub Release
-        if: github.ref == 'refs/heads/main' || github.event.inputs.publish_release == 'true'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fm/gridgo-client-apk' || github.event.inputs.publish_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.config.outputs.version }}
@@ -217,7 +217,7 @@ jobs:
       # arrives as SSH_ORIGINAL_COMMAND. The server validates the bytes are a
       # real APK, stores it as gridgo-client.apk and writes a sha256 sidecar.
       - name: Publish the APK to the captain's server
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fm/gridgo-client-apk')
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
