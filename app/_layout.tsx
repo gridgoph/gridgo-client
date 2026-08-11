@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { pushedScreenOptions } from "@/lib/navigationHeaders";
 import { hasActiveSession } from "@/lib/sessionGuard";
@@ -53,6 +54,12 @@ export default function RootLayout() {
   // the signed-in area from anywhere (tabs + root stack siblings), not only at launch.
   const user = useSession((s) => s.user);
   const isSignedIn = hasActiveSession(user);
+
+  // Registration, token rotation, and opening the right screen from a tapped
+  // notification. Mounted once, above every route, so a tap that launched the
+  // app is picked up before any screen has decided anything. It never asks for
+  // permission — only `PushEnableCard` does that, and only from a tap.
+  usePushNotifications();
 
   // Keeps the window behind the navigator on canvas, so theme changes and
   // screen transitions never flash the wrong background.

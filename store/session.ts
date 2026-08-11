@@ -4,6 +4,7 @@ import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
 import { roleAppLabel, userFacingError } from "@/lib/copy";
 import { signupInput, type SignupFields } from "@/lib/signup";
+import { usePush } from "@/store/push";
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "client" as const;
@@ -76,7 +77,15 @@ export const useSession = create<SessionState>((set) => ({
     }
   },
   logout: async () => {
-    await api.logout();
+    // The device token rides along with the sign-out rather than being
+    // unregistered separately: afterwards the bearer token is dead, so a phone
+    // that signed out first could no longer authenticate the unregister and
+    // would keep waking up for the previous person's orders. The server accepts
+    // a sign-out with no token exactly as before, so a phone that never got one
+    // is unaffected.
+    const deviceToken = usePush.getState().token;
+    await api.logout(deviceToken);
+    usePush.getState().clear();
     set({ user: null });
   },
 }));

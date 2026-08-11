@@ -15,6 +15,7 @@ import { OrderTimeline } from "@/components/OrderTimeline";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { ProductPreview } from "@/components/ProductPreview";
 import { ProofDecision } from "@/components/ProofDecision";
+import { PushEnableCard } from "@/components/PushEnableCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonLine, SkeletonList, SkeletonPill } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
@@ -240,6 +241,15 @@ export default function OrderDetailScreen() {
             )}
           </Animated.View>
         ) : null}
+
+        {/*
+          The other place the ask earns itself: a job that is waiting on
+          Operations, a supplier or a rider, with nothing for the client to do
+          but wonder when they will hear. "We will tell your phone" is the
+          answer to the question the screen has just raised. When there *is* an
+          action here the screen belongs to it, so nothing is offered.
+        */}
+        {!nextAction ? <PushEnableCard /> : null}
 
         {isTrackingState(order.state) ? <DeliveryTrackingCard order={order} /> : null}
 
