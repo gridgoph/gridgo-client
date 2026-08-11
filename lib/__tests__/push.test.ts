@@ -1,0 +1,194 @@
+import {
+  devicePlatform,
+  parsePushData,
+  PUSH_CHANNEL_ID,
+  PUSH_FOREGROUND_BEHAVIOR,
+  pushOffer,
+  pushOfferCopy,
+  pushTargetRoute,
+  readPushPermission,
+} from "@/lib/push";
+
+describe("the channel the server names", () => {
+  it("is the server's own identifier", () => {
+    // Not this app's to choose: the server sets `channel_id` on every message
+    // and Android 8+ drops or downgrades one naming a channel that does not
+    // exist. All three GRIDGO apps must use this exact string.
+    expect(PUSH_CHANNEL_ID).toBe("gridgo_default");
+  });
+});
+
+describe("devicePlatform", () => {
+  it("passes through the three the contract accepts", () => {
+    expect(devicePlatform("android")).toBe("android");
+    expect(devicePlatform("ios")).toBe("ios");
+    expect(devicePlatform("web")).toBe("web");
+  });
+
+  it("refuses anything else rather than earning a 400", () => {
+    expect(devicePlatform("windows")).toBeNull();
+    expect(devicePlatform("macos")).toBeNull();
+  });
+});
+
+describe("parsePushData", () => {
+  it("reads the four contractual keys", () => {
+    expect(
+      parsePushData({
+        notificationId: "ntf_9c1f3a",
+        type: "supplier_assignment_final_price",
+        orderId: "ord_demo_1",
+        at: "2026-08-11T02:00:00.000Z",
+      }),
+    ).toEqual({
+      notificationId: "ntf_9c1f3a",
+      type: "supplier_assignment_final_price",
+      orderId: "ord_demo_1",
+      at: "2026-08-11T02:00:00.000Z",
+    });
+  });
+
+  it("leaves an absent key null — a notification with no order carries no orderId", () => {
+    expect(parsePushData({ notificationId: "ntf_1", type: "account_update" })).toEqual({
+      notificationId: "ntf_1",
+      type: "account_update",
+      orderId: null,
+      at: null,
+    });
+  });
+
+  it("never throws on a payload that has drifted", () => {
+    // A tap must always land somewhere. Whatever arrives, this returns a shape.
+    for (const raw of [null, undefined, "", 7, [], { orderId: { id: 1 } }]) {
+      expect(() => parsePushData(raw)).not.toThrow();
+    }
+    expect(parsePushData(null).orderId).toBeNull();
+    expect(parsePushData({ orderId: { id: 1 } }).orderId).toBeNull();
+  });
+
+  it("treats a blank string as absent, not as an id", () => {
+    expect(parsePushData({ orderId: "   " }).orderId).toBeNull();
+  });
+});
+
+describe("pushTargetRoute", () => {
+  it("opens the job an update is about", () => {
+    expect(pushTargetRoute(parsePushData({ orderId: "ord_demo_1" }))).toBe("/order/ord_demo_1");
+  });
+
+  it("opens the list when there is no job behind the update", () => {
+    expect(pushTargetRoute(parsePushData({ type: "account_update" }))).toBe(
+      "/(tabs)/notifications",
+    );
+  });
+
+  it("opens the list for a type this build has never heard of", () => {
+    // The contract's own instruction: treat an unknown type as "open the list".
+    // Guessing a screen from a string added after this build shipped is how a
+    // tap lands somewhere that cannot explain itself.
+    expect(pushTargetRoute(parsePushData({ type: "invented_in_2027" }))).toBe(
+      "/(tabs)/notifications",
+    );
+  });
+});
+
+describe("readPushPermission", () => {
+  it("reads a grant", () => {
+    expect(readPushPermission({ granted: true, status: "granted", canAskAgain: false })).toBe(
+      "granted",
+    );
+  });
+
+  it("reads a phone that has not been asked", () => {
+    expect(readPushPermission({ granted: false, status: "undetermined", canAskAgain: true })).toBe(
+      "undetermined",
+    );
+  });
+
+  it("separates a refusal the app may re-ask from one it may not", () => {
+    // The whole reason the state exists. On Android 13+ a refusal stops the OS
+    // offering the dialog, so an app that keeps calling request() shows the
+    // person nothing at all and looks broken.
+    expect(readPushPermission({ granted: false, status: "denied", canAskAgain: true })).toBe(
+      "undetermined",
+    );
+    expect(readPushPermission({ granted: false, status: "denied", canAskAgain: false })).toBe(
+      "blocked",
+    );
+  });
+
+  it("counts iOS provisional authorisation as granted", () => {
+    expect(readPushPermission({ granted: true, status: "provisional" })).toBe("granted");
+  });
+});
+
+describe("pushOffer", () => {
+  const base = { supported: true, signedIn: true, permission: "undetermined" as const };
+
+  it("offers the ask to a signed-in phone that has not been asked", () => {
+    expect(pushOffer(base)).toBe("ask");
+  });
+
+  it("offers nothing once permission is granted", () => {
+    expect(pushOffer({ ...base, permission: "granted" })).toBe("hidden");
+  });
+
+  it("sends a blocked phone to its own settings, which is the only thing that works", () => {
+    expect(pushOffer({ ...base, permission: "blocked" })).toBe("settings");
+  });
+
+  it("offers nothing where push cannot work or nobody is signed in", () => {
+    // Web has no service worker in this MVP; a card leading nowhere is worse
+    // than no card. Signed out there is no account to register against.
+    expect(pushOffer({ ...base, supported: false })).toBe("hidden");
+    expect(pushOffer({ ...base, signedIn: false })).toBe("hidden");
+  });
+
+  it("keeps saying so when a granted phone failed to register", () => {
+    // The worst state: it looks exactly like a working phone and simply never
+    // rings. Nothing else in the app would ever mention it.
+    expect(pushOffer({ ...base, permission: "granted", failed: true })).toBe("retry");
+  });
+
+  it("still sends a blocked phone to settings even when something failed", () => {
+    expect(pushOffer({ ...base, permission: "blocked", failed: true })).toBe("settings");
+  });
+
+  it("offers nothing before the permission has been read", () => {
+    // Expo Go and web never resolve one. Drawing an ask that cannot be
+    // answered would be the app promising something it cannot do.
+    expect(pushOffer({ ...base, permission: "unknown" })).toBe("hidden");
+  });
+});
+
+describe("pushOfferCopy", () => {
+  it("says in one line what will arrive, and never says it is marketing", () => {
+    const copy = pushOfferCopy("ask");
+    expect(copy.body).toMatch(/artwork|price|payment|delivery/i);
+    expect(copy.action).toMatch(/turn on/i);
+  });
+
+  it("asks a blocked phone to open settings rather than promising a dialog", () => {
+    expect(pushOfferCopy("settings").action).toMatch(/settings/i);
+  });
+
+  it("tells a phone that failed to register that the in-app list still works", () => {
+    // Refusal and failure must both leave the app readable as working, because
+    // it is: the list is the source of truth and push only supplements it.
+    expect(pushOfferCopy("retry").body).toMatch(/still arrive in the app/i);
+    expect(pushOfferCopy("settings").body).toMatch(/while the app is open/i);
+  });
+});
+
+describe("the foreground behaviour", () => {
+  it("shows nothing — the in-app list is already showing it", () => {
+    // "Do not double-announce": a push is the same record the open list and its
+    // unread badge already carry, so a banner over it announces it twice.
+    expect(PUSH_FOREGROUND_BEHAVIOR).toEqual({
+      shouldShowBanner: false,
+      shouldShowList: false,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    });
+  });
+});

@@ -2,6 +2,7 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
+import type { DevicePlatform } from "@/lib/push";
 
 /**
  * GRIDGO demo API client.
@@ -221,6 +222,22 @@ export type Notification = {
 
 /** The update that tells a client a supplier accepted, and what it will cost. */
 export const ASSIGNMENT_NOTIFICATION_TYPE = "supplier_assignment_final_price";
+
+/**
+ * A phone registered to receive push.
+ *
+ * The raw token is never returned by any route: `tokenTail` is its last eight
+ * characters, which is enough to recognise a registration in a support
+ * conversation and not enough to send to it.
+ */
+export type Device = {
+  id: string;
+  userId: string;
+  platform: DevicePlatform;
+  tokenTail: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type CatalogProduct = {
   id: string;
@@ -488,12 +505,70 @@ export async function signupClient(
   return result;
 }
 
-export async function logout(): Promise<void> {
+/**
+ * Sign out, and stop this phone receiving the account's push in the same call.
+ *
+ * The device token goes with the sign-out rather than through
+ * `POST /devices/unregister` for a sequencing reason the contract is explicit
+ * about: after logout the bearer token is invalid, so a phone that signs out
+ * first can no longer authenticate an unregister and would keep showing the
+ * previous person's orders on its lock screen. Sending no token stays valid and
+ * behaves exactly as it did before push existed.
+ *
+ * `deviceUnregistered` is `false` — with a `200` and a completed sign-out — when
+ * no token was sent, the session had already expired, or the token now belongs
+ * to somebody else. None of those is a failure worth showing anyone.
+ */
+export async function logout(deviceToken?: string | null): Promise<void> {
   try {
-    await request("/auth/logout", { method: "POST" });
+    await request("/auth/logout", {
+      method: "POST",
+      body: JSON.stringify(deviceToken ? { deviceToken } : {}),
+    });
   } finally {
     setToken(null);
   }
+}
+
+/**
+ * Register this installation's FCM token against the signed-in account.
+ *
+ * Idempotent and cheap by design, so it is called on every launch and on every
+ * token refresh: re-registering the same token under the same account updates
+ * the one record, and registering a token held by another account **moves** it,
+ * which is what a shared handset or a sign-out/sign-in on one phone produces.
+ * `201` means the token was new, `200` that it was updated or moved — both are
+ * success, so only the body is read.
+ */
+export async function registerDevice(
+  token: string,
+  platform: DevicePlatform,
+): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
+  return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
+    method: "POST",
+    body: JSON.stringify({ token, platform }),
+  });
+}
+
+/** The caller's own registrations, always — there is no route to anyone else's. */
+export async function listDevices(): Promise<Device[]> {
+  const result = await request<{ devices: Device[] }>("/devices");
+  return result.devices;
+}
+
+/**
+ * Drop one registration.
+ *
+ * Prefer passing the token to {@link logout}. This exists for the case where
+ * the session is still valid and only push is being turned off. A token
+ * registered to a different account returns `404`, exactly as an unregistered
+ * one does, so that asking cannot answer "is this token someone else's?".
+ */
+export async function unregisterDevice(token: string): Promise<void> {
+  await request("/devices/unregister", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
 }
 
 export async function me(): Promise<User> {

@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { NotificationCard } from "@/components/NotificationCard";
+import { PushEnableCard } from "@/components/PushEnableCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
@@ -69,6 +70,14 @@ export default function NotificationsScreen() {
               ? "Tap an update to open the job, or swipe it left to mark it read."
               : "Deadlines and status changes for your print jobs."}
           </Text>
+
+          {/*
+            The screen about being told things is where asking to be told them
+            needs no explaining, and it is reachable at any time — so a client
+            who dismissed the ask elsewhere, or refused it months ago, always
+            has a way back. It draws nothing once permission is granted.
+          */}
+          <PushEnableCard />
 
           {error ? (
             <ErrorState
