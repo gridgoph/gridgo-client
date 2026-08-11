@@ -39,10 +39,17 @@ export function usePushNotifications(): void {
   /**
    * A tap that arrived before there was anywhere to send it.
    *
-   * A notification tapped from a cold start opens the app on the login screen
-   * when the session has not been restored yet. Routing to the order then would
-   * either bounce off the route guard or land behind the login screen, so the
-   * target waits here and is spent the moment there is a session.
+   * A notification tapped from a cold start opens the app on the login screen,
+   * because the session lives in memory and a killed process has none. Routing
+   * to the order then would bounce off the route guard, so the target waits
+   * here and is spent when a session appears.
+   *
+   * **Known gap, seen on a device:** in the one cold-start run observed, this
+   * deferred push did not land — signing in went to Home. The likely cause is
+   * that `Stack.Protected` swaps the root stack's children in the same commit
+   * that flips the guard, so a `push` issued then is discarded. Taps route
+   * correctly whenever the process is still alive. Persisting the session
+   * would remove the situation; re-test on a device before trusting this path.
    */
   const pending = useRef<string | null>(null);
   /** Response identifiers already routed, so a tap opens its screen once. */
