@@ -24,12 +24,18 @@ import {
  * a client concept; the app-specific parts of push are the routes in
  * `pushTargetRoute` and where the enable card is drawn.
  *
- * Two things that look like bugs and are not:
+ * Three things that look like bugs and are not:
  *
  * - Registration happens only once permission is **granted**. A token from a
  *   phone that will not display a notification is a registration the server
  *   would send to and nothing would come of, and it would make sign-out's
  *   unregister asymmetric.
+ * - Registration does **not** wait for a session. A customer that installs
+ *   GRIDGO and never signs in is still a phone that has to hear "there is a new
+ *   version, update your app", so a granted phone registers at launch with no
+ *   bearer and the registration is *unclaimed*; signing in claims it. See
+ *   `api.registerDeviceUnclaimed` — that route is provisional, so a deployment
+ *   without it is a third outcome and not a failure anyone is shown.
  * - Every native call is wrapped. `getDevicePushTokenAsync` **throws** in Expo
  *   Go on Android — Expo removed remote push from Expo Go in SDK 53 — and this
  *   store is constructed at launch there too. A throw must cost push, never the
@@ -54,6 +60,14 @@ type PushState = {
   permission: PushPermission;
   /** The FCM registration token this installation currently holds. */
   token: string | null;
+  /**
+   * Whether the last registration named the signed-in customer.
+   *
+   * False after an unclaimed launch registration, and again after sign-out. It
+   * is what makes signing in re-register rather than trust a token that is on
+   * the server under nobody's name.
+   */
+  claimed: boolean;
   /** A permission ask or a registration call is in flight. */
   busy: boolean;
   error: string | null;
@@ -65,9 +79,28 @@ type PushState = {
   registerIfGranted: () => Promise<void>;
   /** Firebase reissued the token while the app was running. */
   adoptToken: (token: string) => Promise<void>;
-  /** Sign-out has already unregistered the token; forget it locally. */
-  clear: () => void;
+  /**
+   * Sign-out has already unregistered the token with the sign-out call. Forget
+   * the claim, then put this phone back on the unclaimed list so GRIDGO can
+   * still announce a new version to it.
+   */
+  release: () => Promise<void>;
 };
+
+/**
+ * A deployment that has not opened unauthenticated registration yet.
+ *
+ * `401`/`403` is the answer today — `POST /devices` requires a bearer — and
+ * `404`/`405` would be the answer if the route moves. None of them is something
+ * a customer did, or can do anything about, so none reaches a screen: the phone
+ * simply registers for real the moment somebody signs in.
+ */
+function isUnclaimedRouteAbsent(error: unknown): boolean {
+  return (
+    error instanceof api.ApiError &&
+    (error.status === 401 || error.status === 403 || error.status === 404 || error.status === 405)
+  );
+}
 
 /**
  * Create the channel the server's messages name.
@@ -98,6 +131,7 @@ export const usePush = create<PushState>((set, get) => ({
   supported: pushSupported(),
   permission: "unknown",
   token: null,
+  claimed: false,
   busy: false,
   error: null,
 
@@ -141,7 +175,7 @@ export const usePush = create<PushState>((set, get) => ({
 
   registerIfGranted: async () => {
     const state = get();
-    if (!state.supported || !api.getToken()) return;
+    if (!state.supported) return;
 
     const platform = devicePlatform();
     if (!platform) return;
@@ -149,6 +183,11 @@ export const usePush = create<PushState>((set, get) => ({
     const permission =
       state.permission === "unknown" ? await get().syncPermission() : state.permission;
     if (permission !== "granted") return;
+
+    // A bearer means the customer is signed in and this registration names them.
+    // Without one the phone is registered unclaimed, so an announcement can
+    // still reach a handset nobody has signed in on.
+    const signedIn = Boolean(api.getToken());
 
     set({ busy: true, error: null });
     try {
@@ -159,9 +198,16 @@ export const usePush = create<PushState>((set, get) => ({
       }
       // Idempotent by contract, so no comparison against the stored token is
       // worth the risk of skipping a call the server never actually received.
-      await api.registerDevice(token, platform);
-      set({ token, busy: false, error: null });
+      if (signedIn) await api.registerDevice(token, platform);
+      else await api.registerDeviceUnclaimed(token, platform);
+      set({ token, claimed: signedIn, busy: false, error: null });
     } catch (e) {
+      if (!signedIn && isUnclaimedRouteAbsent(e)) {
+        // The provisional route is not deployed here. Nothing is wrong and
+        // nobody is told: the phone registers for real at the next sign-in.
+        set({ busy: false, error: null });
+        return;
+      }
       // A failed registration costs push until the next launch; it must never
       // interrupt the sign-in or the screen that triggered it.
       set({ busy: false, error: errorText(e) });
@@ -174,7 +220,14 @@ export const usePush = create<PushState>((set, get) => ({
     await get().registerIfGranted();
   },
 
-  clear: () => set({ token: null, busy: false, error: null }),
+  release: async () => {
+    set({ token: null, claimed: false, busy: false, error: null });
+    // The bearer is already gone, so this re-registers the phone unclaimed —
+    // it stops receiving the previous person's order updates and stays
+    // reachable for an announcement. Silent either way; nobody signing out is
+    // waiting on it.
+    await get().registerIfGranted();
+  },
 }));
 
 /**

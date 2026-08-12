@@ -83,10 +83,14 @@ export const useSession = create<SessionState>((set) => ({
     // would keep waking up for the previous person's orders. The server accepts
     // a sign-out with no token exactly as before, so a phone that never got one
     // is unaffected.
+    //
+    // Afterwards the phone goes back on the unclaimed list rather than off it
+    // entirely: a customer that signs out has not uninstalled GRIDGO, and
+    // "there is a new version" still has to reach it.
     const deviceToken = usePush.getState().token;
     await api.logout(deviceToken);
-    usePush.getState().clear();
     set({ user: null });
+    void usePush.getState().release();
   },
 }));
 

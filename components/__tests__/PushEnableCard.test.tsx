@@ -49,9 +49,15 @@ it("draws nothing at all once permission is granted", async () => {
   expect(screen.queryByText("Get these on your phone")).toBeNull();
 });
 
-it("draws nothing when nobody is signed in", async () => {
+it("asks at the door, promising only what an unclaimed phone actually gets", async () => {
+  // A customer that installs and never signs in is still a phone GRIDGO has
+  // to reach with "there is a new version". The door is the only surface that
+  // customer will ever see, so the ask lives here — and it must not promise
+  // job updates GRIDGO cannot address until somebody signs in.
   await render(<PushEnableCard />);
-  expect(screen.queryByText("Get these on your phone")).toBeNull();
+  expect(screen.getByText("Get GRIDGO news on this phone")).toBeTruthy();
+  expect(screen.getByText(/new version/i)).toBeTruthy();
+  expect(screen.queryByText(/artwork is checked/i)).toBeNull();
 });
 
 it("points a refused phone at its own settings instead of a dialog it cannot raise", async () => {

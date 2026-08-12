@@ -145,13 +145,21 @@ export type PushOffer = "hidden" | "ask" | "settings" | "retry";
  * drawn, and the OS dialog is raised from that card's button. A refusal on
  * Android 13+ cannot be taken back by the app, so once blocked the only honest
  * offer is a link to the phone's own settings — and it is still only an offer.
- * Granted, unsupported, or signed out: nothing is shown, because there is
- * nothing to gain by showing it.
+ * Granted or unsupported: nothing is shown, because there is nothing to gain
+ * by showing it.
  *
  * `retry` is the exception to that silence. A phone that granted permission and
  * then failed to register is the worst state of the lot: it looks exactly like
  * a working one, and simply never rings. Nothing else in the app would ever say
  * so, so the card stays on screen and says it.
+ *
+ * **Signed out is an offer, not a silence.** A customer that installs GRIDGO
+ * and does not sign in for a week still has to hear "there is a new version,
+ * update your app", and on Android 13+ that is impossible unless the permission
+ * has been asked for by then. So the door may ask. It may ask *only*: a
+ * signed-out phone is never told it is blocked or that a registration failed,
+ * because neither is something a person standing at a sign-in screen can act
+ * on, and neither is about them yet.
  */
 export function pushOffer(input: {
   supported: boolean;
@@ -160,7 +168,8 @@ export function pushOffer(input: {
   /** A permission ask or a registration call failed. */
   failed?: boolean;
 }): PushOffer {
-  if (!input.supported || !input.signedIn) return "hidden";
+  if (!input.supported) return "hidden";
+  if (!input.signedIn) return input.permission === "undetermined" ? "ask" : "hidden";
   if (input.failed) return input.permission === "blocked" ? "settings" : "retry";
   if (input.permission === "granted" || input.permission === "unknown") return "hidden";
   return input.permission === "blocked" ? "settings" : "ask";
@@ -173,11 +182,24 @@ export function pushOffer(input: {
  * they can only answer once deserves to know it is their own jobs and not
  * marketing. **App-specific**: the supplier and rider apps name their own work.
  */
-export function pushOfferCopy(offer: Exclude<PushOffer, "hidden">): {
+export function pushOfferCopy(
+  offer: Exclude<PushOffer, "hidden">,
+  signedIn: boolean = true,
+): {
   title: string;
   body: string;
   action: string;
 } {
+  if (offer === "ask" && !signedIn) {
+    // The door. Promising job updates here would be a lie — GRIDGO has no idea
+    // whose phone this is yet — so it promises only what an unclaimed phone
+    // actually gets, and says the rest follows sign-in.
+    return {
+      title: "Get GRIDGO news on this phone",
+      body: "Turn this on now and GRIDGO can tell this phone when there is a new version to install. Once you sign in, updates about your jobs come the same way.",
+      action: "Turn on notifications",
+    };
+  }
   if (offer === "retry") {
     return {
       title: "This phone is not registered for notifications",

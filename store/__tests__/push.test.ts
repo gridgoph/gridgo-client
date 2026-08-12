@@ -38,6 +38,7 @@ beforeEach(() => {
     supported: true,
     permission: "unknown",
     token: null,
+    claimed: false,
     busy: false,
     error: null,
   });
@@ -85,6 +86,7 @@ describe("registerIfGranted", () => {
 
     expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
+    expect(usePush.getState().claimed).toBe(true);
     expect(usePush.getState().error).toBeNull();
     register.mockRestore();
   });
@@ -97,13 +99,56 @@ describe("registerIfGranted", () => {
     register.mockRestore();
   });
 
-  it("does not register when nobody is signed in", async () => {
+  it("registers unclaimed when nobody is signed in", async () => {
+    // A customer that installs GRIDGO and never signs in still has to hear
+    // "there is a new version". No bearer exists, so the phone goes on the
+    // unclaimed list and signing in claims the same token.
     api.setToken(null);
     mocked.getPermissionsAsync.mockResolvedValue(granted as never);
-    const register = jest.spyOn(api, "registerDevice");
+    const claimed = jest.spyOn(api, "registerDevice");
+    const unclaimed = jest.spyOn(api, "registerDeviceUnclaimed").mockResolvedValue(undefined);
+
     await usePush.getState().registerIfGranted();
-    expect(register).not.toHaveBeenCalled();
-    register.mockRestore();
+
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(claimed).not.toHaveBeenCalled();
+    expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
+    expect(usePush.getState().claimed).toBe(false);
+    claimed.mockRestore();
+    unclaimed.mockRestore();
+  });
+
+  it("claims the same token the moment a customer signs in", async () => {
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    usePush.setState({ permission: "granted", token: "fcm-token-a7c8d3f1", claimed: false });
+    const claimed = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+
+    await usePush.getState().registerIfGranted();
+
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(usePush.getState().claimed).toBe(true);
+    claimed.mockRestore();
+  });
+
+  it("says nothing when unauthenticated registration is not deployed yet", async () => {
+    // The route is provisional. A deployment without it answers 401, and that
+    // is GRIDGO's schedule, not something a customer did — so no error is set
+    // and nothing is shown. The phone registers for real at the next sign-in.
+    api.setToken(null);
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    for (const status of [401, 403, 404, 405]) {
+      usePush.setState({ token: null, claimed: false, error: null });
+      const unclaimed = jest
+        .spyOn(api, "registerDeviceUnclaimed")
+        .mockRejectedValue(new api.ApiError(status, { error: "unauthorized" }));
+
+      await expect(usePush.getState().registerIfGranted()).resolves.toBeUndefined();
+
+      expect(usePush.getState().error).toBeNull();
+      expect(usePush.getState().token).toBeNull();
+      expect(usePush.getState().busy).toBe(false);
+      unclaimed.mockRestore();
+    }
   });
 
   it("creates the channel before reading permission", async () => {
@@ -206,18 +251,20 @@ describe("signing out", () => {
     // It has to ride along with logout: afterwards the bearer token is dead,
     // so POST /devices/unregister could no longer authenticate and this phone
     // would keep waking up for the previous person's orders.
-    usePush.setState({ token: "fcm-token-a7c8d3f1" });
+    usePush.setState({ token: "fcm-token-a7c8d3f1", claimed: true, permission: "granted" });
     useSession.setState({
       user: { id: "u1", email: "c@gridgo.local", name: "Client", role: "client" },
     });
     const logout = jest.spyOn(api, "logout").mockResolvedValue(undefined);
+    const unclaimed = jest.spyOn(api, "registerDeviceUnclaimed").mockResolvedValue(undefined);
 
     await useSession.getState().logout();
 
     expect(logout).toHaveBeenCalledWith("fcm-token-a7c8d3f1");
-    expect(usePush.getState().token).toBeNull();
     expect(useSession.getState().user).toBeNull();
+    expect(usePush.getState().claimed).toBe(false);
     logout.mockRestore();
+    unclaimed.mockRestore();
   });
 
   it("signs out normally on a phone that never had a token", async () => {
@@ -230,5 +277,20 @@ describe("signing out", () => {
 
     expect(logout).toHaveBeenCalledWith(null);
     logout.mockRestore();
+  });
+
+  it("puts the phone back on the unclaimed list rather than off it entirely", async () => {
+    // Signing out is not uninstalling. The phone must stop receiving the
+    // previous person's orders and stay reachable for "there is a new
+    // version" — which is one unclaimed registration, not none.
+    api.setToken(null);
+    usePush.setState({ permission: "granted", token: "fcm-token-a7c8d3f1", claimed: true });
+    const unclaimed = jest.spyOn(api, "registerDeviceUnclaimed").mockResolvedValue(undefined);
+
+    await usePush.getState().release();
+
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(usePush.getState().claimed).toBe(false);
+    unclaimed.mockRestore();
   });
 });
