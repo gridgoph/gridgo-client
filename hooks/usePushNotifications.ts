@@ -56,11 +56,16 @@ export function usePushNotifications(): void {
   const routed = useRef(new Set<string>());
 
   useEffect(() => {
-    // Register on every launch with a session, and again whenever the account
-    // changes. The contract calls this idempotent and cheap and asks apps to do
-    // exactly that — a token Firebase has quietly reissued is the common way
-    // push stops arriving with nothing visibly wrong.
-    if (signedIn) void usePush.getState().registerIfGranted();
+    // Register on **every launch**, signed in or not, and again whenever the
+    // account changes. The contract calls this idempotent and cheap and asks
+    // apps to do exactly that — a token Firebase has quietly reissued is the
+    // common way push stops arriving with nothing visibly wrong.
+    //
+    // Not gated on a session: a phone with permission granted and nobody
+    // signed in registers unclaimed, which is what lets GRIDGO tell a customer
+    // that installed the app and stopped there to update it. Signing in
+    // re-runs this with a bearer and claims the same token — see `store/push.ts`.
+    void usePush.getState().registerIfGranted();
   }, [signedIn, user?.id]);
 
   useEffect(() => {

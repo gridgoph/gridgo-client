@@ -137,11 +137,27 @@ describe("pushOffer", () => {
     expect(pushOffer({ ...base, permission: "blocked" })).toBe("settings");
   });
 
-  it("offers nothing where push cannot work or nobody is signed in", () => {
+  it("offers nothing where push cannot work at all", () => {
     // Web has no service worker in this MVP; a card leading nowhere is worse
-    // than no card. Signed out there is no account to register against.
+    // than no card.
     expect(pushOffer({ ...base, supported: false })).toBe("hidden");
-    expect(pushOffer({ ...base, signedIn: false })).toBe("hidden");
+    expect(pushOffer({ ...base, supported: false, signedIn: false })).toBe("hidden");
+  });
+
+  it("still asks at the door, because a customer that never signs in must be reachable", () => {
+    // On Android 13+ the permission can only be asked while the app is open,
+    // so a door that never asks is a phone GRIDGO can never tell to update.
+    expect(pushOffer({ ...base, signedIn: false })).toBe("ask");
+  });
+
+  it("tells a signed-out phone nothing it cannot act on", () => {
+    // "Notifications are blocked" and "registration failed" are both about an
+    // account that does not exist yet, to somebody standing at a sign-in
+    // screen. Neither earns space on the door.
+    expect(pushOffer({ ...base, signedIn: false, permission: "blocked" })).toBe("hidden");
+    expect(pushOffer({ ...base, signedIn: false, permission: "granted" })).toBe("hidden");
+    expect(pushOffer({ ...base, signedIn: false, permission: "unknown" })).toBe("hidden");
+    expect(pushOffer({ ...base, signedIn: false, failed: true })).toBe("ask");
   });
 
   it("keeps saying so when a granted phone failed to register", () => {
@@ -166,6 +182,16 @@ describe("pushOfferCopy", () => {
     const copy = pushOfferCopy("ask");
     expect(copy.body).toMatch(/artwork|price|payment|delivery/i);
     expect(copy.action).toMatch(/turn on/i);
+  });
+
+  it("promises a signed-out phone only what an unclaimed phone actually gets", () => {
+    // GRIDGO has no idea whose phone this is at the door, so promising job
+    // updates there would be a lie. It promises the announcement, and says the
+    // rest follows sign-in.
+    const copy = pushOfferCopy("ask", false);
+    expect(copy.body).toMatch(/new version/i);
+    expect(copy.body).toMatch(/once you sign in/i);
+    expect(copy.body).not.toMatch(/artwork is checked/i);
   });
 
   it("asks a blocked phone to open settings rather than promising a dialog", () => {

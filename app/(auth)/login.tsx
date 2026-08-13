@@ -8,6 +8,7 @@ import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { PushEnableCard } from "@/components/PushEnableCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { getApiBase, health } from "@/lib/api";
@@ -147,6 +148,17 @@ export default function LoginScreen() {
           GRIDGO ships one app per role. If this account is a supplier, a rider or
           Operations, sign in on that app instead.
         </Text>
+
+        {/*
+          The door asks too, and it is the only surface that can. A customer
+          that installs GRIDGO and does not sign in for a week never reaches a
+          screen behind the guard, and on Android 13+ the permission can only
+          be asked while the app is open — so a door that never asks is a phone
+          GRIDGO can never tell to update. It draws only the ask, never a
+          failure or a settings link (see `pushOffer`), and its copy promises
+          only what an unclaimed phone actually receives.
+        */}
+        <PushEnableCard spacing="above" />
 
         {/* Build diagnostics, kept quiet and kept last. */}
         <View className="mt-8 flex-row items-center gap-2">

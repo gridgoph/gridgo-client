@@ -550,6 +550,55 @@ export async function registerDevice(
   });
 }
 
+/**
+ * Provisional. Register this phone **before anyone has signed in**.
+ *
+ * A customer that installs GRIDGO and does not sign in for a week is still a
+ * phone GRIDGO needs to reach — "there is a new version, update your app" is
+ * exactly the announcement that must land on a handset with no session.
+ * `POST /devices` requires a bearer today; the platform is opening it to an
+ * unauthenticated caller in parallel with this app, registering the token
+ * **unclaimed**. Signing in then claims it through the ordinary
+ * {@link registerDevice}, because the contract already moves a token from one
+ * owner to another on registration.
+ *
+ * Two deliberate differences from every other call in this module:
+ *
+ * - It never sends a bearer, even when one exists. A claimed registration is
+ *   {@link registerDevice}'s job, and mixing the two would make which one ran
+ *   depend on timing.
+ * - It does not go through `request()`, so its `401` cannot clear the session.
+ *   A deployment without this route answers `401`, and routing that through the
+ *   unauthorized handler would sign a customer out because a *provisional*
+ *   route is not live yet. `store/push.ts` reads the status and treats `401`,
+ *   `403`, `404` and `405` as "not open yet" rather than a failure.
+ *
+ * Throws {@link ApiError} exactly as `request()` would, so callers read one
+ * shape.
+ */
+export async function registerDeviceUnclaimed(
+  token: string,
+  platform: DevicePlatform,
+): Promise<void> {
+  const res = await fetch(`${getApiBase()}/devices`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ token, platform }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+    throw new ApiError(res.status, data);
+  }
+}
+
 /** The caller's own registrations, always — there is no route to anyone else's. */
 export async function listDevices(): Promise<Device[]> {
   const result = await request<{ devices: Device[] }>("/devices");
