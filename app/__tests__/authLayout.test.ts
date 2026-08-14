@@ -33,4 +33,19 @@ describe("public Clerk auth layout", () => {
     expect(login).toContain("__DEV__");
     expect(login).toContain("Use local API instead");
   });
+
+  it("gives login and signup a wider gutter than gg-page", () => {
+    // 16px (`gg-page` / `px-4`) leaves field shells flush to the phone
+    // edge. Auth forms own a 32px gutter; Home and Orders stay on `gg-page`.
+    expect(login).toContain("gg-auth-page");
+    expect(signup).toContain("gg-auth-page");
+    expect(login).not.toContain("gg-page");
+    expect(signup).not.toContain("gg-page");
+    expect(welcome).toContain("gg-page");
+    expect(welcome).not.toContain("gg-auth-page");
+
+    const styles = readFileSync(join(__dirname, "../../global.css"), "utf8");
+    expect(styles).toMatch(/@utility gg-page \{\s*@apply px-4;/);
+    expect(styles).toMatch(/@utility gg-auth-page \{\s*@apply px-8;/);
+  });
 });

@@ -284,6 +284,15 @@
   @apply px-4;
 }
 
+/**
+ * Auth form gutter. 32px so field shells sit off the phone edge.
+ * Login and signup only — do not replace `gg-page` on Home, Orders, or
+ * any other signed-in screen.
+ */
+@utility gg-auth-page {
+  @apply px-8;
+}
+
 /* Containers ---------------------------------------------------------------- */
 
 /** Standard card: surface, hairline border, 16px radius, 16px padding. */
