@@ -128,5 +128,8 @@ export async function bridgeClerkToGridgo(deps: ClerkBridgeDeps): Promise<ClerkB
 }
 
 export function wrongRoleMessage(role: string): string {
+  if (!role) {
+    return "This account has no Client profile. If you use GRIDGO Supplier, Rider, or Operations, sign in there instead.";
+  }
   return `This account belongs to ${roleAppLabel(role)}. Sign in there instead — GRIDGO ships one app per role.`;
 }

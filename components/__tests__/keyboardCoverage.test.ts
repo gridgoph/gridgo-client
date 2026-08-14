@@ -89,8 +89,8 @@ describe("keyboard coverage contract", () => {
   it("keeps a screen under a header off the top edge", () => {
     // `FormScreen` passes `edges` straight to SafeAreaView, so the existing
     // pushed-route rule still has to hold through it. Only screens that own
-    // their top edge — the tab shell, welcome, and full-bleed routes — may
-    // claim it. Login and signup sit under the native stack header.
+    // their top edge — the tab shell, welcome, callback, and full-bleed routes
+    // — may claim it. Login and signup sit under the native stack header.
     const claiming = routes
       .filter((file) => /edges=\{\[[^\]]*"top"/.test(withoutComments(readFileSync(file, "utf8"))))
       .map((file) => relative(root, file));
@@ -104,6 +104,7 @@ describe("keyboard coverage contract", () => {
       "app/(tabs)/orders.tsx",
       "app/complete-profile.tsx",
       "app/onboarding.tsx",
+      "app/sso-callback.tsx",
     ]);
   });
 });
