@@ -38,6 +38,21 @@ export const PUSH_CHANNEL = {
     "Artwork checks, prices, payment confirmations and delivery progress for your print jobs.",
 } as const;
 
+/**
+ * Whether this runtime is Expo Go.
+ *
+ * Expo Go Android SDK 53 throws when `expo-notifications` is first imported,
+ * not when a native method is called. A throw must cost push, never the app,
+ * so callers skip the import entirely here and only load the module in a
+ * development or release build.
+ */
+export function isExpoGoRuntime(input: {
+  appOwnership?: string | null;
+  executionEnvironment?: string | null;
+}): boolean {
+  return input.appOwnership === "expo" || input.executionEnvironment === "storeClient";
+}
+
 /** The `platform` value `POST /devices` accepts. */
 export type DevicePlatform = "android" | "ios" | "web";
 

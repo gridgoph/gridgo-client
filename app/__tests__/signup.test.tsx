@@ -29,6 +29,10 @@ jest.mock("expo-router", () => ({
   }),
 }));
 
+jest.mock("@react-navigation/native", () => ({
+  usePreventRemove: jest.fn(),
+}));
+
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
     wrapper: ({ children }) => (

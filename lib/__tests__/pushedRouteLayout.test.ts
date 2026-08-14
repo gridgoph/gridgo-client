@@ -38,6 +38,9 @@ describe("pushed route layout contract", () => {
     expect(screens.map((s) => s.name)).toEqual(
       expect.arrayContaining([
         "(tabs)",
+        "(auth)/welcome",
+        "(auth)/login",
+        "(auth)/signup",
         "request/category",
         "request/[category]",
         "order/[id]",
@@ -49,6 +52,16 @@ describe("pushed route layout contract", () => {
 
   it("never declares an empty title", () => {
     expect(layout).not.toContain('title: ""');
+  });
+
+  it("shows the platform back on login and signup, and keeps welcome headerless", () => {
+    const byName = Object.fromEntries(screens.map((s) => [s.name, s]));
+    expect(byName["(auth)/welcome"]?.headerHidden).toBe(true);
+    expect(byName["(auth)/login"]?.headerHidden).toBe(false);
+    expect(byName["(auth)/signup"]?.headerHidden).toBe(false);
+    expect(byName["(auth)/login"]?.body).toContain('pushedScreenOptions("Sign in")');
+    expect(byName["(auth)/signup"]?.body).toContain('pushedScreenOptions("Sign up")');
+    expect(layout).not.toMatch(/mockup's own round back/);
   });
 
   it("gives every screen with a visible header a real title", () => {

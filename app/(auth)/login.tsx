@@ -1,10 +1,10 @@
 import { useSignIn } from "@clerk/expo";
 import { useSSO } from "@clerk/expo/experimental";
-import { Redirect, useRouter, type Href } from "expo-router";
+import { usePreventRemove } from "@react-navigation/native";
+import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { AuthBackButton } from "@/components/auth/AuthBackButton";
 import { AuthDivider } from "@/components/auth/AuthDivider";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 import { ErrorState } from "@/components/ErrorState";
@@ -13,7 +13,6 @@ import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { PushEnableCard } from "@/components/PushEnableCard";
 import { clerkErrorMessage, passwordConfirmationError } from "@/lib/clerkAuth";
 import { useSession } from "@/store/session";
 
@@ -34,20 +33,17 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
 
+  // Recovery steps stay on this screen; the platform back (header + Android)
+  // would otherwise pop to welcome and lose the in-progress reset.
+  usePreventRemove(step !== "credentials", () => {
+    setStep("credentials");
+    setError(null);
+  });
+
   if (user) return <Redirect href="/(tabs)/home" />;
 
   const clerkLoading = fetchStatus === "fetching";
   const busy = clerkLoading || socialLoading || localLoading;
-
-  const goBack = () => {
-    if (step !== "credentials") {
-      setStep("credentials");
-      setError(null);
-      return;
-    }
-    if (router.canGoBack()) router.back();
-    else router.replace("/(auth)/welcome" as Href);
-  };
 
   const signInWithPassword = async () => {
     if (!signIn || !email.trim() || !password) return;
@@ -145,12 +141,10 @@ export default function LoginScreen() {
 
   return (
     <FormScreen
-      edges={["top", "bottom"]}
+      edges={["bottom"]}
       contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
     >
       <View className="gg-page gap-7 py-8">
-        <AuthBackButton onPress={goBack} />
-
         <View className="gap-2">
           <Text className="text-display font-black text-text-primary" accessibilityRole="header">
             {heading}
@@ -233,8 +227,6 @@ export default function LoginScreen() {
                 <Text className="text-caption text-text-muted">Use local API instead</Text>
               </Pressable>
             ) : null}
-
-            <PushEnableCard />
           </>
         ) : step === "recoveryCode" ? (
           <>
