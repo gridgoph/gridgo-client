@@ -129,6 +129,10 @@ function AppNavigation() {
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="onboarding" options={{ headerShown: false }} />
               <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="sso-callback"
+                options={{ headerShown: false, title: "Signing in" }}
+              />
 
               <Stack.Protected guard={!isSignedIn}>
                 {/*

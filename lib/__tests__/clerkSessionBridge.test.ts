@@ -1,5 +1,5 @@
 import { ApiError, type User } from "@/lib/api";
-import { bridgeClerkToGridgo } from "@/lib/clerkSessionBridge";
+import { bridgeClerkToGridgo, wrongRoleMessage } from "@/lib/clerkSessionBridge";
 
 const client: User = {
   id: "u1",
@@ -76,6 +76,29 @@ describe("bridgeClerkToGridgo", () => {
       role: "supplier",
     });
     expect(activate).not.toHaveBeenCalled();
+  });
+
+  it("maps a role-mismatch response from /auth/me to a signed-out message", async () => {
+    const me = jest.fn().mockRejectedValue(
+      new ApiError(403, { error: "forbidden", role: "rider" }),
+    );
+
+    const result = await bridgeClerkToGridgo({ me, activate: jest.fn() });
+
+    expect(result).toEqual({ kind: "wrong_role", role: "rider" });
+    expect(wrongRoleMessage("rider")).toMatch(/GRIDGO Rider/);
+  });
+
+  it("maps invitation_required to an obvious missing-client message", async () => {
+    const me = jest.fn().mockRejectedValue(new ApiError(401, { error: "unauthorized" }));
+    const activate = jest.fn().mockRejectedValue(
+      new ApiError(403, { error: "invitation_required" }),
+    );
+
+    const result = await bridgeClerkToGridgo({ me, activate });
+
+    expect(result).toEqual({ kind: "wrong_role", role: "" });
+    expect(wrongRoleMessage("")).toMatch(/no Client profile/i);
   });
 
   it("does not invent a client when the API has no activate route", async () => {
