@@ -1,8 +1,9 @@
 import { Check, ChevronDown } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { Sheet } from "@/components/Sheet";
+import { TextField } from "@/components/form/TextField";
 import { useThemeColors } from "@/hooks/useTheme";
 
 export type PickerOption = {
@@ -77,8 +78,8 @@ export function OptionPicker({
         onPress={() => setOpen(true)}
         className={
           disabled
-            ? "gg-field gg-disabled flex-row items-center justify-between"
-            : "gg-field flex-row items-center justify-between"
+            ? "gg-field gg-disabled flex-row items-center justify-between px-6"
+            : "gg-field flex-row items-center justify-between px-6"
         }
       >
         <Text
@@ -161,12 +162,10 @@ function OptionSheet({
         {customMode && custom ? (
           <View className="gap-4 p-4">
             <Text className="text-body text-text-secondary">{custom.hint}</Text>
-            <TextInput
-              className="gg-field"
+            <TextField
               value={customText}
               onChangeText={setCustomText}
               placeholder={custom.placeholder}
-              placeholderTextColor={colors.textMuted}
               autoFocus
               accessibilityLabel={custom.label}
               onSubmitEditing={commitCustom}

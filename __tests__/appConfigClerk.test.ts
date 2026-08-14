@@ -24,7 +24,10 @@ describe("Clerk Expo configuration", () => {
 
   it("accepts only a public Clerk key", () => {
     expect(clerkPublishableKey(" pk_test_public ")).toBe("pk_test_public");
+    expect(clerkPublishableKey("pk_live_public")).toBe("pk_live_public");
     expect(() => clerkPublishableKey("sk_test_secret")).toThrow(/publishable/i);
+    expect(clerkPublishableKey(undefined)).toBeUndefined();
+    expect(clerkPublishableKey("")).toBeUndefined();
   });
 
   it("puts the build-time publishable key in Expo extra", () => {
@@ -35,5 +38,12 @@ describe("Clerk Expo configuration", () => {
     expect(resolved.plugins).toEqual(
       expect.arrayContaining(["@clerk/expo", "expo-secure-store"]),
     );
+  });
+
+  it("omits extra.clerkPublishableKey when local development has no key", () => {
+    delete process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    const resolved = appConfig(context(appJson.expo));
+
+    expect(resolved.extra?.clerkPublishableKey).toBeUndefined();
   });
 });

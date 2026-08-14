@@ -31,7 +31,13 @@ export function PasswordField({
   return (
     <View className="relative justify-center">
       <TextInput
-        className="gg-field pr-16"
+        className="gg-field"
+        style={{
+          paddingStart: 28,
+          paddingEnd: 64,
+          includeFontPadding: false,
+          textAlignVertical: "center",
+        }}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
