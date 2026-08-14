@@ -5,7 +5,7 @@ import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 
 describe("native text field insets", () => {
-  it("passes a generous Android-safe inset to the native TextInput", async () => {
+  it("passes a 16pt Android-safe inset to the native TextInput", async () => {
     const view = await render(
       <TextField
         value=""
@@ -18,8 +18,8 @@ describe("native text field insets", () => {
     const style = StyleSheet.flatten(view.getByLabelText("Job title").props.style);
     expect(style).toEqual(
       expect.objectContaining({
-        paddingStart: 28,
-        paddingEnd: 28,
+        paddingStart: 16,
+        paddingEnd: 16,
         includeFontPadding: false,
         textAlignVertical: "center",
       }),
@@ -39,7 +39,7 @@ describe("native text field insets", () => {
     const style = StyleSheet.flatten(view.getByLabelText("Password").props.style);
     expect(style).toEqual(
       expect.objectContaining({
-        paddingStart: 28,
+        paddingStart: 16,
         paddingEnd: 64,
         includeFontPadding: false,
         textAlignVertical: "center",
@@ -61,8 +61,8 @@ describe("native text field insets", () => {
     const style = StyleSheet.flatten(view.getByLabelText("Describe the change").props.style);
     expect(style).toEqual(
       expect.objectContaining({
-        paddingStart: 28,
-        paddingEnd: 28,
+        paddingStart: 16,
+        paddingEnd: 16,
         includeFontPadding: false,
         textAlignVertical: "top",
       }),

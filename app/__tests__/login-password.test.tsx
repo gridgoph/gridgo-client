@@ -5,28 +5,32 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import LoginScreen from "@/app/(auth)/login";
 import { useSession } from "@/store/session";
 
-const mockStartSSOFlow = jest.fn();
-const mockSetActive = jest.fn();
+const mockPassword = jest.fn();
+const mockFinalize = jest.fn();
 const mockGetToken = jest.fn(
   async (_options?: { skipCache?: boolean }): Promise<string | null> => "clerk-jwt",
 );
+const mockSetActive = jest.fn(async () => undefined);
 const mockSignOut = jest.fn(async () => undefined);
 
 let mockIsSignedIn = false;
 let mockSessionId: string | null = "sess_leftover";
+let mockSignInStatus = "complete";
 
 jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
     signIn: {
-      password: jest.fn(),
-      finalize: jest.fn(),
+      password: (...args: unknown[]) => mockPassword(...args),
+      finalize: (...args: unknown[]) => mockFinalize(...args),
       create: jest.fn(),
       resetPasswordEmailCode: {
         sendCode: jest.fn(),
         verifyCode: jest.fn(),
         submitPassword: jest.fn(),
       },
-      status: "needs_first_factor",
+      get status() {
+        return mockSignInStatus;
+      },
     },
     fetchStatus: "idle",
   }),
@@ -40,11 +44,10 @@ jest.mock("@clerk/expo", () => ({
 }));
 
 jest.mock("@clerk/expo/experimental", () => ({
-  useSSO: () => ({ startSSOFlow: mockStartSSOFlow }),
+  useSSO: () => ({ startSSOFlow: jest.fn() }),
 }));
 
 jest.mock("@/components/auth/GoogleButton", () => {
-  // Jest mock factories cannot use ESM imports; this is the same pattern as jest.setup.js.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pressable, Text } = require("react-native");
   return {
@@ -96,14 +99,16 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen Google SSO", () => {
+describe("LoginScreen leftover password session", () => {
   beforeEach(() => {
-    mockIsSignedIn = false;
+    mockIsSignedIn = true;
     mockSessionId = "sess_leftover";
-    mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
-    mockSignOut.mockReset().mockResolvedValue(undefined);
-    mockStartSSOFlow.mockReset();
+    mockSignInStatus = "complete";
+    mockPassword.mockReset().mockResolvedValue({ error: null });
+    mockFinalize.mockReset().mockResolvedValue({ error: null });
+    mockGetToken.mockReset().mockResolvedValue(null);
     mockSetActive.mockReset().mockResolvedValue(undefined);
+    mockSignOut.mockReset().mockResolvedValue(undefined);
     useSession.setState({
       user: null,
       loading: false,
@@ -115,52 +120,25 @@ describe("LoginScreen Google SSO", () => {
     });
   });
 
-  it("does not start SSO or throw when Clerk is already signed in", async () => {
-    mockIsSignedIn = true;
+  it("clears an expired leftover session then submits the password", async () => {
     await renderInSafeArea(<LoginScreen />);
+    fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
+    fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Password").props.value).toBe("fixture-password"),
+    );
 
-    fireEvent.press(screen.getByLabelText("Continue with Google"));
-
-    await waitFor(() => expect(useSession.getState().clerkSyncNonce).toBe(1));
-    expect(mockStartSSOFlow).not.toHaveBeenCalled();
-    expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_leftover" });
-    expect(screen.queryByText("Could not sign in")).toBeNull();
-    expect(screen.queryByText("You're already signed in.")).toBeNull();
-  });
-
-  it("clears an expired leftover session then starts Google", async () => {
-    mockIsSignedIn = true;
-    mockGetToken.mockResolvedValue(null);
-    mockStartSSOFlow.mockResolvedValue({
-      createdSessionId: "sess_google",
-      setActive: undefined,
-    });
-    await renderInSafeArea(<LoginScreen />);
-
-    fireEvent.press(screen.getByLabelText("Continue with Google"));
+    fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_google" }),
-    );
-    expect(mockStartSSOFlow).toHaveBeenCalled();
+    await waitFor(() => expect(mockPassword).toHaveBeenCalled());
+    expect(mockPassword).toHaveBeenCalledWith({
+      emailAddress: "client@gridgo.ph",
+      password: "fixture-password",
+    });
+    expect(mockFinalize).toHaveBeenCalled();
     expect(useSession.getState().clerkSyncNonce).toBe(0);
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
-  });
-
-  it("calls setActive when Google SSO creates a session", async () => {
-    mockStartSSOFlow.mockResolvedValue({
-      createdSessionId: "sess_google",
-      setActive: undefined,
-    });
-    await renderInSafeArea(<LoginScreen />);
-
-    fireEvent.press(screen.getByLabelText("Continue with Google"));
-
-    await waitFor(() =>
-      expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_google" }),
-    );
-    expect(screen.queryByText("Could not sign in")).toBeNull();
   });
 });

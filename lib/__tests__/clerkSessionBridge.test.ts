@@ -27,6 +27,23 @@ describe("bridgeClerkToGridgo", () => {
     expect(me).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes the Clerk JWT after activate so /auth/me can carry gridgo_role", async () => {
+    const me = jest
+      .fn()
+      .mockRejectedValueOnce(new ApiError(401, { error: "unauthorized" }))
+      .mockResolvedValueOnce(client);
+    const activate = jest.fn().mockResolvedValue(client);
+    const refreshToken = jest.fn().mockResolvedValue("fresh-clerk-jwt");
+
+    await expect(bridgeClerkToGridgo({ me, activate, refreshToken })).resolves.toEqual({
+      kind: "adopt",
+      user: client,
+      provisioned: true,
+    });
+    expect(refreshToken).toHaveBeenCalledTimes(1);
+    expect(me.mock.invocationCallOrder[1]).toBeGreaterThan(refreshToken.mock.invocationCallOrder[0]);
+  });
+
   it("adopts an already-mapped client without activating", async () => {
     const me = jest.fn().mockResolvedValue(client);
     const activate = jest.fn();

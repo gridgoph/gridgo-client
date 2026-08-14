@@ -53,8 +53,8 @@ export function TextField({
     <TextInput
       className={multiline ? "gg-field h-auto py-3" : "gg-field"}
       style={{
-        paddingStart: 28,
-        paddingEnd: 28,
+        paddingStart: 16,
+        paddingEnd: 16,
         includeFontPadding: false,
         textAlignVertical: multiline ? "top" : "center",
         ...(multiline ? { minHeight: multilineMinHeight } : {}),

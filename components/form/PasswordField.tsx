@@ -33,7 +33,7 @@ export function PasswordField({
       <TextInput
         className="gg-field"
         style={{
-          paddingStart: 28,
+          paddingStart: 16,
           paddingEnd: 64,
           includeFontPadding: false,
           textAlignVertical: "center",

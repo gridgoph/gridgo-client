@@ -24,6 +24,8 @@ export type ClerkBridgeResult =
 export type ClerkBridgeDeps = {
   me: () => Promise<User>;
   activate: (input?: ClerkActivateInput) => Promise<User>;
+  /** After activate writes gridgoRole, /auth/me needs a new JWT with that claim. */
+  refreshToken?: () => Promise<string | null>;
   profile?: ClerkActivateInput;
 };
 
@@ -106,6 +108,7 @@ export async function bridgeClerkToGridgo(deps: ClerkBridgeDeps): Promise<ClerkB
     try {
       const created = await deps.activate(deps.profile ?? {});
       provisioned = true;
+      if (deps.refreshToken) await deps.refreshToken();
       try {
         user = await deps.me();
       } catch {
