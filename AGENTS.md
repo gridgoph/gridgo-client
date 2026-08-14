@@ -30,7 +30,7 @@ The app includes:
 
 **Cross-cutting**
 
-- Auth (**custom MVP** via gridgo-api). A signed-in user whose role is not `client` is told which app to use and deep-linked to it, rather than being shown a different role's navigation. There is no role switcher.
+- Auth (**Clerk identity + gridgo-api projection**). Clerk owns the identity session; `gridgo-api` remains authoritative for the signed-in user's client projection. A user whose role is not `client` is told which app to use rather than being shown a different role's navigation. There is no role switcher.
 - Light and Dark themes with identical labels, states, and workflows.
 - Push/in-app notifications for SLA deadlines and state changes.
 
@@ -48,7 +48,7 @@ Keep the implementation simple and readable.
 - Zustand
 - AsyncStorage
 - Zustand for client session state
-- Local **custom auth + domain API** via `gridgo-api` (MVP — not Clerk/Supabase/PayMongo; replaceable later)
+- Clerk Expo identity with the domain API behind `lib/api.ts`; the development-only local API credential path remains available while local deployments still issue `tok_*` sessions.
 
 Do not introduce new major libraries unless there is a strong reason. Ask before installing anything new.
 
@@ -57,15 +57,15 @@ Do not introduce new major libraries unless there is a strong reason. Ask before
 
 ## MVP stack (current phase)
 
-For this MVP we **do not** integrate Clerk, Supabase, PayMongo, or other production SaaS.
+Clerk is the identity provider. Supabase, PayMongo, and other production SaaS remain outside this client.
 
 Every screen that needs network uses **`lib/api.ts`** against the shared local **`gridgo-api`**:
 
-- **Custom auth** — email/password → bearer token; role enforced in Zustand session (`store/session.ts`). Mismatched role is rejected (no role switcher).
+- **Auth** — `@clerk/expo` uses SecureStore for the identity session; `hooks/useClerkApiSession.ts` supplies a fresh Clerk Bearer token to `lib/api.ts`, loads `/auth/me`, and adopts only a `client` projection into Zustand (`store/session.ts`). The `__DEV__` sign-in fallback may still use a legacy `tok_*` token.
 - **Custom domain API** — orders, split payments, dispatch, milestones, notifications. Read `docs/OPERATIONAL_MODEL_V2_API.md` in **gridgo-api** for routes, states and money before touching any of it; it supersedes older prose everywhere they disagree.
 - **Zustand** — session and feature stores (not React Context for global session).
 - **Money** — PHP minor units only. The client sees **subtotal, delivery and total**, and never GRIDGO's commission: the server withholds it by role projection, so a screen that expects it is a bug.
-- **Replace later** — keep the same `lib/api.ts` surface when Clerk/Supabase/PayMongo land.
+- **Identity boundary** — keep domain screens behind the same `lib/api.ts` surface; they do not call Clerk directly.
 - **API base URL** — `getApiBase()` / `resolveApiBase()` in `lib/api.ts`. Precedence: `EXPO_PUBLIC_API_URL` → hostname from Expo dev-server `hostUri` (via `expo-constants`, port from `EXPO_PUBLIC_API_PORT` or `8787`) → Android emulator loopback remapped to `10.0.2.2` → `127.0.0.1`. Do not hardcode a LAN IP or a deployed domain; physical Expo Go devices need the host derived from the packager, and a hosted build needs the variable.
 - **Pointing a build at a deployed API** is configuration, never a code change. Set `EXPO_PUBLIC_API_URL` in the build's environment and the origin is inlined at build time by `babel-preset-expo`:
 

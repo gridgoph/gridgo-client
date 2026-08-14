@@ -3,8 +3,46 @@ import { useSession } from "@/store/session";
 
 describe("session store", () => {
   beforeEach(() => {
-    useSession.setState({ user: null, loading: false, error: null });
+    useSession.setState({ user: null, loading: false, error: null, source: null });
+    useSession.getState().registerIdentityLogout(null);
     api.setToken(null);
+  });
+
+  it("adopts a Clerk-authenticated client without storing its token", () => {
+    useSession.getState().adoptClerkUser({
+      id: "u1",
+      email: "client@gridgo.local",
+      name: "Client",
+      role: "client",
+    });
+
+    expect(useSession.getState()).toMatchObject({
+      user: { id: "u1", role: "client" },
+      source: "clerk",
+      loading: false,
+    });
+    expect(api.getToken()).toBeNull();
+  });
+
+  it("signs out both the domain and Clerk session", async () => {
+    const identityLogout = jest.fn(async () => undefined);
+    useSession.getState().registerIdentityLogout(identityLogout);
+    useSession.setState({
+      user: {
+        id: "u1",
+        email: "client@gridgo.local",
+        name: "Client",
+        role: "client",
+      },
+      source: "clerk",
+    });
+    const logoutSpy = jest.spyOn(api, "logout").mockResolvedValue(undefined);
+
+    await useSession.getState().logout();
+
+    expect(logoutSpy).toHaveBeenCalled();
+    expect(identityLogout).toHaveBeenCalled();
+    expect(useSession.getState()).toMatchObject({ user: null, source: null });
   });
 
   it("logout clears the user so the route guard can leave the signed-in area", async () => {

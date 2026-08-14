@@ -1,199 +1,216 @@
+import { useSignUp } from "@clerk/expo";
+import { Redirect, useRouter, type Href } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 
+import { AuthBackButton } from "@/components/auth/AuthBackButton";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
-import { FormField, FormSection } from "@/components/form/FormField";
-import { OptionPicker } from "@/components/form/OptionPicker";
+import { FormField } from "@/components/form/FormField";
+import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import {
-  ACCOUNT_TYPES,
-  accountTypeOption,
-  canSubmitSignup,
-  checkSignupField,
-  EMPTY_SIGNUP,
-  firstSignupProblem,
-  MIN_PASSWORD_LENGTH,
-  needsOrgName,
-  type SignupFields,
-} from "@/lib/signup";
-import type { AccountType } from "@/lib/api";
+  clerkErrorMessage,
+  passwordConfirmationError,
+  splitFullName,
+} from "@/lib/clerkAuth";
 import { useSession } from "@/store/session";
 
-/**
- * Creating a client account.
- *
- * The one declaration that outlives this screen is what kind of client this
- * is. It reaches the API, comes back on every session, and decides whether the
- * app wears the GRIDGO Business lockup — so it is asked first, in the words
- * someone would use about themselves, and never as an afterthought.
- *
- * Reasons appear under the field they belong to, and only once the client has
- * left it. The button stays live and says what is missing rather than sitting
- * greyed out with no explanation.
- */
 export default function SignupScreen() {
-  const { signUp, loading, error } = useSession();
+  const router = useRouter();
+  const { signUp, fetchStatus } = useSignUp();
+  const user = useSession((state) => state.user);
 
-  const [fields, setFields] = useState<SignupFields>(EMPTY_SIGNUP);
-  const [touched, setTouched] = useState<Partial<Record<keyof SignupFields, boolean>>>({});
-  const [attempted, setAttempted] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const patch = (next: Partial<SignupFields>) =>
-    setFields((current) => ({ ...current, ...next }));
+  if (user) return <Redirect href="/(tabs)/home" />;
 
-  const reasonFor = (field: keyof SignupFields): string | null => {
-    if (!touched[field] && !attempted) return null;
-    return checkSignupField(field, fields).reason;
+  const busy = fetchStatus === "fetching";
+
+  const goBack = () => {
+    if (verifying) {
+      setVerifying(false);
+      setError(null);
+      return;
+    }
+    if (router.canGoBack()) router.back();
+    else router.replace("/(auth)/welcome" as Href);
   };
 
-  const submit = () => {
-    setAttempted(true);
-    if (!canSubmitSignup(fields)) return;
-    void signUp(fields);
+  const createAccount = async () => {
+    if (!signUp || !fullName.trim() || !email.trim() || !password) return;
+    const mismatch = passwordConfirmationError(password, confirmPassword);
+    if (mismatch) {
+      setError(mismatch);
+      return;
+    }
+
+    setError(null);
+    try {
+      const name = splitFullName(fullName);
+      const result = await signUp.password({
+        emailAddress: email.trim().toLowerCase(),
+        password,
+        ...name,
+      });
+      if (result.error) throw result.error;
+
+      if (signUp.status === "complete") {
+        const finalized = await signUp.finalize();
+        if (finalized.error) throw finalized.error;
+        return;
+      }
+
+      const sent = await signUp.verifications.sendEmailCode();
+      if (sent.error) throw sent.error;
+      setVerifying(true);
+    } catch (caught) {
+      setError(
+        clerkErrorMessage(caught, "Could not create your account. Check your details and try again."),
+      );
+    }
   };
 
-  const blocking = firstSignupProblem(fields);
-  const orgRequired = needsOrgName(fields.accountType);
+  const verifyEmail = async () => {
+    if (!signUp || code.trim().length < 6) return;
+    setError(null);
+    try {
+      const result = await signUp.verifications.verifyEmailCode({ code: code.trim() });
+      if (result.error) throw result.error;
+      if (signUp.status !== "complete") {
+        throw new Error("Your email is verified, but the account still needs attention.");
+      }
+      const finalized = await signUp.finalize();
+      if (finalized.error) throw finalized.error;
+    } catch (caught) {
+      setError(clerkErrorMessage(caught, "That code could not be verified."));
+    }
+  };
 
   return (
-    <FormScreen>
-      <View className="gg-page gap-8 pb-16 pt-4">
+    <FormScreen
+      edges={["top", "bottom"]}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
+    >
+      <View className="gg-page gap-7 py-8">
+        <AuthBackButton onPress={goBack} />
+
         <View className="gap-2">
-          <Text className="text-h1 text-text-primary" accessibilityRole="header">
-            Create your account
+          <Text className="text-display font-black text-text-primary" accessibilityRole="header">
+            {verifying ? "Verify your email" : "Create Account"}
           </Text>
           <Text className="text-body-lg text-text-secondary">
-            One account requests print jobs, approves the artwork and follows the delivery.
+            {verifying
+              ? `Enter the six-digit code sent to ${email.trim()}.`
+              : "Your GRIDGO client account starts here."}
           </Text>
         </View>
 
-        <FormSection title="Who this account is for">
-          <FormField
-            label="Account type"
-            helper={accountTypeOption(fields.accountType).hint}
-          >
-            <OptionPicker
-              title="Who is this account for?"
-              accessibilityLabel="Account type"
-              value={fields.accountType}
-              options={ACCOUNT_TYPES.map((option) => ({
-                value: option.value,
-                label: option.label,
-                hint: option.hint,
-              }))}
-              onChange={(value) => patch({ accountType: value as AccountType })}
-              placeholder="Choose one"
-            />
-          </FormField>
-
-          <FormField label="Your name" error={reasonFor("name")}>
-            <TextField
-              value={fields.name}
-              onChangeText={(name) => patch({ name })}
-              onBlur={() => setTouched((t) => ({ ...t, name: true }))}
-              placeholder="Ana Santos"
-              accessibilityLabel="Your name"
-              autoCapitalize="words"
-              textContentType="name"
-              maxLength={80}
-            />
-          </FormField>
-
-          {orgRequired ? (
-            <FormField
-              label={fields.accountType === "business" ? "Business name" : "Organization name"}
-              helper="Suppliers see this on every job you send."
-              error={reasonFor("orgName")}
-            >
+        {verifying ? (
+          <>
+            <FormField label="Verification code">
               <TextField
-                value={fields.orgName}
-                onChangeText={(orgName) => patch({ orgName })}
-                onBlur={() => setTouched((t) => ({ ...t, orgName: true }))}
-                placeholder="Davao Events Co."
-                accessibilityLabel="Organization name"
-                autoCapitalize="words"
-                maxLength={80}
+                value={code}
+                onChangeText={setCode}
+                placeholder="123456"
+                accessibilityLabel="Verification code"
+                keyboardType="number-pad"
+                textContentType="oneTimeCode"
+                maxLength={6}
+                returnKeyType="go"
+                onSubmitEditing={() => void verifyEmail()}
               />
             </FormField>
-          ) : null}
-        </FormSection>
-
-        <FormSection title="How to reach you">
-          <FormField label="Email" error={reasonFor("email")}>
-            <TextField
-              value={fields.email}
-              onChangeText={(email) => patch({ email })}
-              onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-              placeholder="you@company.com"
-              accessibilityLabel="Email"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              textContentType="emailAddress"
-              maxLength={120}
+            {error ? <ErrorState label="Could not verify email" body={error} /> : null}
+            <PrimaryButton
+              label={busy ? "Checking…" : "Verify email"}
+              disabled={code.trim().length < 6 || busy}
+              onPress={() => void verifyEmail()}
             />
-          </FormField>
+          </>
+        ) : (
+          <>
+            <View className="gap-4">
+              <FormField label="Full name">
+                <TextField
+                  value={fullName}
+                  onChangeText={setFullName}
+                  placeholder="Ana Santos"
+                  accessibilityLabel="Full name"
+                  autoCapitalize="words"
+                  textContentType="name"
+                  returnKeyType="next"
+                  maxLength={80}
+                />
+              </FormField>
 
-          <FormField
-            label="Mobile number"
-            helper="Operations calls this number if a job needs a decision quickly."
-            error={reasonFor("phone")}
-          >
-            <TextField
-              value={fields.phone}
-              onChangeText={(phone) => patch({ phone })}
-              onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
-              placeholder="0917 123 4567"
-              accessibilityLabel="Mobile number"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="phone-pad"
-              textContentType="telephoneNumber"
-              maxLength={24}
+              <FormField label="Email">
+                <TextField
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@company.com"
+                  accessibilityLabel="Email"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  returnKeyType="next"
+                  maxLength={120}
+                />
+              </FormField>
+
+              <FormField label="Password" helper="Use at least 15 characters.">
+                <PasswordField
+                  value={password}
+                  onChangeText={setPassword}
+                  accessibilityLabel="Password"
+                  textContentType="newPassword"
+                  returnKeyType="next"
+                />
+              </FormField>
+
+              <FormField label="Confirm password">
+                <PasswordField
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  accessibilityLabel="Confirm password"
+                  textContentType="newPassword"
+                  returnKeyType="go"
+                  onSubmitEditing={() => void createAccount()}
+                />
+              </FormField>
+            </View>
+
+            {/* Clerk's smart bot protection mounts its challenge here only when needed. */}
+            <View nativeID="clerk-captcha" />
+
+            {error ? <ErrorState label="Could not create account" body={error} /> : null}
+
+            <PrimaryButton
+              label={busy ? "Creating account…" : "Sign Up"}
+              disabled={
+                !fullName.trim() ||
+                !email.trim() ||
+                !password ||
+                !confirmPassword ||
+                busy
+              }
+              onPress={() => void createAccount()}
             />
-          </FormField>
 
-          <FormField
-            label="Password"
-            helper={`At least ${MIN_PASSWORD_LENGTH} characters.`}
-            error={reasonFor("password")}
-          >
-            <TextField
-              value={fields.password}
-              onChangeText={(password) => patch({ password })}
-              onBlur={() => setTouched((t) => ({ ...t, password: true }))}
-              // No placeholder: the helper below already states the only
-              // rule, and a field that says it twice reads as a draft.
-              accessibilityLabel="Password"
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-              textContentType="newPassword"
-              returnKeyType="go"
-              onSubmitEditing={submit}
-            />
-          </FormField>
-        </FormSection>
-
-        {error ? <ErrorState label="Could not create the account" body={error} /> : null}
-
-        <View className="gap-3">
-          <PrimaryButton
-            label={loading ? "Creating your account…" : "Create account"}
-            disabled={loading}
-            onPress={submit}
-          />
-          {attempted && blocking ? (
-            <Text className="text-caption text-error">{blocking}</Text>
-          ) : null}
-        </View>
-
-        <Text className="text-caption text-text-muted">
-          GRIDGO ships one app per role. Suppliers and riders sign up in their own app and
-          wait on Operations to approve them.
-        </Text>
+            <Text className="text-center text-caption text-text-muted">
+              Client accounts sign up here. Suppliers, riders, and Operations use their own
+              GRIDGO app.
+            </Text>
+          </>
+        )}
       </View>
     </FormScreen>
   );
