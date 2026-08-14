@@ -4,13 +4,17 @@ import { useClerkApiSession } from "@/hooks/useClerkApiSession";
 import { ApiError, type User } from "@/lib/api";
 import { useSession } from "@/store/session";
 
+const mockGetToken = jest.fn(
+  async (_options?: { skipCache?: boolean }): Promise<string | null> => "clerk-jwt",
+);
 const mockSignOut = jest.fn(async () => undefined);
 const mockMe = jest.fn();
 const mockActivate = jest.fn();
+const mockSetTokenProvider = jest.fn();
 
 jest.mock("@clerk/expo", () => ({
   useAuth: () => ({
-    getToken: async () => "clerk-jwt",
+    getToken: mockGetToken,
     isLoaded: true,
     isSignedIn: true,
     sessionId: "sess_1",
@@ -24,7 +28,7 @@ jest.mock("@/lib/api", () => {
     ...actual,
     me: (...args: unknown[]) => mockMe(...args),
     activateClerkClient: (...args: unknown[]) => mockActivate(...args),
-    setTokenProvider: jest.fn(),
+    setTokenProvider: (...args: unknown[]) => mockSetTokenProvider(...args),
   };
 });
 
@@ -37,7 +41,9 @@ const supplier: User = {
 
 describe("useClerkApiSession", () => {
   beforeEach(() => {
+    mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSignOut.mockClear();
+    mockSetTokenProvider.mockClear();
     mockMe.mockReset();
     mockActivate.mockReset();
     useSession.setState({
@@ -81,5 +87,37 @@ describe("useClerkApiSession", () => {
     expect(mockActivate).toHaveBeenCalled();
     expect(mockSignOut).not.toHaveBeenCalled();
     expect(useSession.getState().justProvisioned).toBe(true);
+    expect(mockGetToken).toHaveBeenCalledWith({ skipCache: true });
+  });
+
+  it("signs out a leftover session that cannot mint a JWT instead of failing login", async () => {
+    mockGetToken.mockResolvedValue(null);
+
+    renderHook(() => useClerkApiSession());
+
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
+    expect(mockMe).not.toHaveBeenCalled();
+    expect(mockActivate).not.toHaveBeenCalled();
+    expect(useSession.getState().user).toBeNull();
+    expect(useSession.getState().error).toBeNull();
+    expect(useSession.getState().loading).toBe(false);
+  });
+
+  it("installs a token provider that always asks Clerk for a fresh JWT", async () => {
+    mockMe.mockResolvedValue({
+      id: "u1",
+      email: "ana@company.com",
+      name: "Ana",
+      role: "client",
+      accountType: "individual",
+    });
+
+    renderHook(() => useClerkApiSession());
+
+    await waitFor(() => expect(mockSetTokenProvider).toHaveBeenCalled());
+    const provider = mockSetTokenProvider.mock.calls.at(-1)?.[0] as () => Promise<string | null>;
+    mockGetToken.mockClear();
+    await provider();
+    expect(mockGetToken).toHaveBeenCalledWith({ skipCache: true });
   });
 });

@@ -14,6 +14,7 @@ import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
+import { adoptOrClearClerkSession } from "@/lib/clerkSignIn";
 import { completeGoogleSso } from "@/lib/googleSso";
 import { needsClientProfile } from "@/lib/signup";
 import { useSession } from "@/store/session";
@@ -24,8 +25,8 @@ export default function LoginScreen() {
   const router = useRouter();
   const { signIn, fetchStatus } = useSignIn();
   const { startSSOFlow } = useSSO();
-  const { isSignedIn } = useAuth();
-  const { setActive } = useClerk();
+  const { isSignedIn, getToken, sessionId } = useAuth();
+  const { setActive, signOut } = useClerk();
   const {
     user,
     login,
@@ -61,21 +62,56 @@ export default function LoginScreen() {
   const clerkLoading = fetchStatus === "fetching";
   const busy = clerkLoading || socialLoading || localLoading;
 
+  const settleExistingClerkSession = (alreadySignedIn = Boolean(isSignedIn)) =>
+    adoptOrClearClerkSession({
+      isSignedIn: alreadySignedIn,
+      sessionId,
+      getToken,
+      setActive: (args) => setActive(args),
+      signOut,
+    });
+
+  const completePasswordSignIn = async () => {
+    if (!signIn) return;
+    const result = await signIn.password({
+      emailAddress: email.trim().toLowerCase(),
+      password,
+    });
+    if (result.error) throw result.error;
+    if (signIn.status !== "complete") {
+      throw new Error("This account needs another verification step. Please try again.");
+    }
+    const finalized = await signIn.finalize();
+    if (finalized.error) throw finalized.error;
+  };
+
   const signInWithPassword = async () => {
     if (!signIn || !email.trim() || !password) return;
     setError(null);
     try {
-      const result = await signIn.password({
-        emailAddress: email.trim().toLowerCase(),
-        password,
-      });
-      if (result.error) throw result.error;
-      if (signIn.status !== "complete") {
-        throw new Error("This account needs another verification step. Please try again.");
+      const existing = await settleExistingClerkSession();
+      if (existing.status === "adopt") {
+        useSession.getState().requestClerkSync();
+        return;
       }
-      const finalized = await signIn.finalize();
-      if (finalized.error) throw finalized.error;
+      await completePasswordSignIn();
     } catch (caught) {
+      if (isAlreadySignedInError(caught)) {
+        try {
+          const existing = await settleExistingClerkSession(true);
+          if (existing.status === "adopt") {
+            useSession.getState().requestClerkSync();
+            return;
+          }
+          await completePasswordSignIn();
+          return;
+        } catch (retryCaught) {
+          setError(
+            clerkErrorMessage(retryCaught, "Could not sign in. Check your details and try again."),
+          );
+          return;
+        }
+      }
       setError(clerkErrorMessage(caught, "Could not sign in. Check your details and try again."));
     }
   };
@@ -130,15 +166,23 @@ export default function LoginScreen() {
     }
   };
 
+  const runGoogleSso = () =>
+    completeGoogleSso({
+      alreadySignedIn: false,
+      startSSOFlow: () => startSSOFlow({ strategy: "oauth_google" }),
+      setActive: (args) => setActive(args),
+    });
+
   const signInWithGoogle = async () => {
     setSocialLoading(true);
     setError(null);
     try {
-      const outcome = await completeGoogleSso({
-        alreadySignedIn: Boolean(isSignedIn),
-        startSSOFlow: () => startSSOFlow({ strategy: "oauth_google" }),
-        setActive: (args) => setActive(args),
-      });
+      const existing = await settleExistingClerkSession();
+      if (existing.status === "adopt") {
+        useSession.getState().requestClerkSync();
+        return;
+      }
+      const outcome = await runGoogleSso();
       if (outcome.status === "already_signed_in") {
         useSession.getState().requestClerkSync();
         return;
@@ -148,8 +192,21 @@ export default function LoginScreen() {
       }
     } catch (caught) {
       if (isAlreadySignedInError(caught)) {
-        useSession.getState().requestClerkSync();
-        return;
+        try {
+          const existing = await settleExistingClerkSession(true);
+          if (existing.status === "adopt") {
+            useSession.getState().requestClerkSync();
+            return;
+          }
+          const outcome = await runGoogleSso();
+          if (outcome.status === "incomplete") {
+            setError("Google sign-in did not finish. Try again.");
+          }
+          return;
+        } catch (retryCaught) {
+          setError(clerkErrorMessage(retryCaught, "Google sign-in did not finish. Try again."));
+          return;
+        }
       }
       setError(clerkErrorMessage(caught, "Google sign-in did not finish. Try again."));
     } finally {
