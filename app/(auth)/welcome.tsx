@@ -29,8 +29,8 @@ export default function WelcomeScreen() {
             <Image
               source={require("@/assets/illustrations/greeting.svg")}
               contentFit="contain"
-              style={{ width: "100%", aspectRatio: 634 / 835.5, maxHeight: 390 }}
-              accessibilityLabel="A person waving hello from a bright GRIDGO welcome scene"
+              style={{ width: "100%", maxWidth: 480, aspectRatio: 943 / 796, alignSelf: "center" }}
+              accessibilityLabel="A person at a desk waving hello from a bright GRIDGO welcome scene"
             />
           </View>
 

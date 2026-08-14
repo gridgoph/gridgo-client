@@ -89,14 +89,13 @@ describe("keyboard coverage contract", () => {
   it("keeps a screen under a header off the top edge", () => {
     // `FormScreen` passes `edges` straight to SafeAreaView, so the existing
     // pushed-route rule still has to hold through it. Only screens that own
-    // their top edge — the tab shell and the headerless auth flow — may claim it.
+    // their top edge — the tab shell, welcome, and full-bleed routes — may
+    // claim it. Login and signup sit under the native stack header.
     const claiming = routes
       .filter((file) => /edges=\{\[[^\]]*"top"/.test(withoutComments(readFileSync(file, "utf8"))))
       .map((file) => relative(root, file));
 
     expect(claiming.sort()).toEqual([
-      "app/(auth)/login.tsx",
-      "app/(auth)/signup.tsx",
       "app/(auth)/welcome.tsx",
       "app/(tabs)/account.tsx",
       "app/(tabs)/home.tsx",

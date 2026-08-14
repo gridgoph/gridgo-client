@@ -18,17 +18,16 @@ import { useSession } from "@/store/session";
  * drawn where the value is already obvious and states in one line what will
  * arrive; the dialog follows a deliberate tap and nothing else.
  *
- * Where it is drawn is this app's decision, and it is three places:
+ * Where it is drawn is this app's decision, and it is two signed-in places:
  *
  * - **The Notifications tab**, where a customer is already reading the things
  *   push would deliver.
  * - **An order waiting on somebody else**, where "we will tell you" is worth
  *   something rather than an interruption.
- * - **The sign-in screen**, which is the only surface a customer that installs
- *   GRIDGO and does not sign in will ever see. On Android 13+ the permission
- *   can only be asked once and only while the app is open, so a door that never
- *   asks is a phone GRIDGO can never tell to update. Its copy promises only
- *   what an unclaimed phone actually gets — see `pushOfferCopy`.
+ *
+ * The public login screen must not import this card. Expo Go Android SDK 53
+ * throws when `expo-notifications` is first imported, and this card pulls in
+ * the push store. Alerts belong on signed-in surfaces.
  *
  * Refusal is a first-class outcome. Nothing is blocked, no screen changes, and
  * the in-app list keeps every update: the card simply becomes a pointer to the

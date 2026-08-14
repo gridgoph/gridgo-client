@@ -1,9 +1,9 @@
 import { useSignUp } from "@clerk/expo";
-import { Redirect, useRouter, type Href } from "expo-router";
+import { usePreventRemove } from "@react-navigation/native";
+import { Redirect } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 
-import { AuthBackButton } from "@/components/auth/AuthBackButton";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { FormField } from "@/components/form/FormField";
@@ -18,7 +18,6 @@ import {
 import { useSession } from "@/store/session";
 
 export default function SignupScreen() {
-  const router = useRouter();
   const { signUp, fetchStatus } = useSignUp();
   const user = useSession((state) => state.user);
 
@@ -30,19 +29,16 @@ export default function SignupScreen() {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Verification stays on this screen; the platform back would otherwise
+  // pop to welcome and lose the in-progress sign-up.
+  usePreventRemove(verifying, () => {
+    setVerifying(false);
+    setError(null);
+  });
+
   if (user) return <Redirect href="/(tabs)/home" />;
 
   const busy = fetchStatus === "fetching";
-
-  const goBack = () => {
-    if (verifying) {
-      setVerifying(false);
-      setError(null);
-      return;
-    }
-    if (router.canGoBack()) router.back();
-    else router.replace("/(auth)/welcome" as Href);
-  };
 
   const createAccount = async () => {
     if (!signUp || !fullName.trim() || !email.trim() || !password) return;
@@ -96,12 +92,10 @@ export default function SignupScreen() {
 
   return (
     <FormScreen
-      edges={["top", "bottom"]}
+      edges={["bottom"]}
       contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
     >
       <View className="gg-page gap-7 py-8">
-        <AuthBackButton onPress={goBack} />
-
         <View className="gap-2">
           <Text className="text-display font-black text-text-primary" accessibilityRole="header">
             {verifying ? "Verify your email" : "Create Account"}
@@ -206,8 +200,7 @@ export default function SignupScreen() {
             />
 
             <Text className="text-center text-caption text-text-muted">
-              Client accounts sign up here. Suppliers, riders, and Operations use their own
-              GRIDGO app.
+              Suppliers, riders, and Operations use their own GRIDGO app.
             </Text>
           </>
         )}

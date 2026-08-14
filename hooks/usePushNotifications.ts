@@ -1,11 +1,10 @@
-import * as Notifications from "expo-notifications";
 import { useRouter, type Href } from "expo-router";
 import { useEffect, useRef } from "react";
 
 import { parsePushData, PUSH_FOREGROUND_BEHAVIOR, pushTargetRoute } from "@/lib/push";
 import { hasActiveSession } from "@/lib/sessionGuard";
 import { useNotifications } from "@/store/notifications";
-import { usePush } from "@/store/push";
+import { getNotificationsNative, pushSupported, usePush } from "@/store/push";
 import { useSession } from "@/store/session";
 
 /**
@@ -16,20 +15,11 @@ import { useSession } from "@/store/session";
  * `lib/push.ts`; everything it stores goes through `store/push.ts`. The
  * supplier and rider apps can take this file wholesale — the only app-specific
  * thing it touches is `pushTargetRoute`.
- */
-
-/**
- * What a push does while the app is open and in front of the person.
  *
- * Nothing visible — see `PUSH_FOREGROUND_BEHAVIOR`. Set at module scope
- * deliberately: this must be in place before the first notification can arrive,
- * and a handler installed inside an effect races the notification that woke the
- * app. It runs only in the foreground, so a closed or backgrounded app is
- * untouched and Android draws the server's own title and body.
+ * Do not statically import `expo-notifications`. Expo Go Android SDK 53 throws
+ * at import time; `getNotificationsNative` skips that runtime or swallows a
+ * failed load so a throw costs push, never the app.
  */
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({ ...PUSH_FOREGROUND_BEHAVIOR }),
-});
 
 export function usePushNotifications(): void {
   const router = useRouter();
@@ -69,6 +59,17 @@ export function usePushNotifications(): void {
   }, [signedIn, user?.id]);
 
   useEffect(() => {
+    // Web has no FCM surface in this MVP; Expo Go throws on the import. A
+    // throw from any of these calls must cost push, never the screen.
+    if (!pushSupported()) return;
+    let Notifications: ReturnType<typeof getNotificationsNative>;
+    try {
+      Notifications = getNotificationsNative();
+    } catch {
+      return;
+    }
+    if (!Notifications) return;
+
     const route = (identifier: string, data: unknown) => {
       if (routed.current.has(identifier)) return;
       routed.current.add(identifier);
@@ -86,42 +87,62 @@ export function usePushNotifications(): void {
       router.push(target as Href);
     };
 
-    // A tap while the app is running or backgrounded.
-    const tap = Notifications.addNotificationResponseReceivedListener((response) => {
-      route(
-        response.notification.request.identifier,
-        response.notification.request.content.data,
-      );
-    });
+    try {
+      /**
+       * What a push does while the app is open and in front of the person.
+       *
+       * Nothing visible — see `PUSH_FOREGROUND_BEHAVIOR`. Installed as soon as
+       * the native module is known to exist, before the listeners below. It
+       * runs only in the foreground, so a closed or backgrounded app is
+       * untouched and Android draws the server's own title and body.
+       */
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({ ...PUSH_FOREGROUND_BEHAVIOR }),
+      });
 
-    // A tap that launched the app. The listener above does not replay it.
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (!response) return;
-      route(
-        response.notification.request.identifier,
-        response.notification.request.content.data,
-      );
-    });
+      // A tap while the app is running or backgrounded.
+      const tap = Notifications.addNotificationResponseReceivedListener((response) => {
+        route(
+          response.notification.request.identifier,
+          response.notification.request.content.data,
+        );
+      });
 
-    // A push landing in the foreground shows nothing (see the handler above);
-    // its whole effect is that the in-app list and its badge catch up.
-    const received = Notifications.addNotificationReceivedListener(() => {
-      void useNotifications.getState().refresh();
-    });
+      // A tap that launched the app. The listener above does not replay it.
+      void Notifications.getLastNotificationResponseAsync()
+        .then((response) => {
+          if (!response) return;
+          route(
+            response.notification.request.identifier,
+            response.notification.request.content.data,
+          );
+        })
+        .catch(() => {
+          // Expo Go / web: the method is missing. Push stays off.
+        });
 
-    // Firebase can reissue a token while the app is running. A stale one stops
-    // delivering silently, which is the failure nobody reports.
-    const rotated = Notifications.addPushTokenListener((token) => {
-      if (typeof token.data === "string" && token.data) {
-        void usePush.getState().adoptToken(token.data);
-      }
-    });
+      // A push landing in the foreground shows nothing (see the handler above);
+      // its whole effect is that the in-app list and its badge catch up.
+      const received = Notifications.addNotificationReceivedListener(() => {
+        void useNotifications.getState().refresh();
+      });
 
-    return () => {
-      tap.remove();
-      received.remove();
-      rotated.remove();
-    };
+      // Firebase can reissue a token while the app is running. A stale one stops
+      // delivering silently, which is the failure nobody reports.
+      const rotated = Notifications.addPushTokenListener((token) => {
+        if (typeof token.data === "string" && token.data) {
+          void usePush.getState().adoptToken(token.data);
+        }
+      });
+
+      return () => {
+        tap.remove();
+        received.remove();
+        rotated.remove();
+      };
+    } catch {
+      return;
+    }
   }, [router]);
 
   useEffect(() => {

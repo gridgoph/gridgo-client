@@ -1,5 +1,6 @@
 import {
   devicePlatform,
+  isExpoGoRuntime,
   parsePushData,
   PUSH_CHANNEL_ID,
   PUSH_FOREGROUND_BEHAVIOR,
@@ -15,6 +16,19 @@ describe("the channel the server names", () => {
     // and Android 8+ drops or downgrades one naming a channel that does not
     // exist. All three GRIDGO apps must use this exact string.
     expect(PUSH_CHANNEL_ID).toBe("gridgo_default");
+  });
+});
+
+describe("isExpoGoRuntime", () => {
+  it("treats Expo Go as a place that must never load the native module", () => {
+    expect(isExpoGoRuntime({ appOwnership: "expo" })).toBe(true);
+    expect(isExpoGoRuntime({ executionEnvironment: "storeClient" })).toBe(true);
+  });
+
+  it("leaves a real build free to talk to the module", () => {
+    expect(isExpoGoRuntime({ appOwnership: null, executionEnvironment: "bare" })).toBe(false);
+    expect(isExpoGoRuntime({ executionEnvironment: "standalone" })).toBe(false);
+    expect(isExpoGoRuntime({})).toBe(false);
   });
 });
 

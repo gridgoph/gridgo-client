@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
@@ -53,6 +56,25 @@ beforeEach(() => {
 
 afterEach(() => {
   api.setToken(null);
+});
+
+describe("native module isolation", () => {
+  it("does not statically import expo-notifications", () => {
+    // Expo Go Android SDK 53 throws at import time, not at getDevicePushTokenAsync.
+    // A static import on this file would crash login (and launch) before any
+    // try/wrap around a native call could run.
+    const source = readFileSync(join(__dirname, "../push.ts"), "utf8");
+    expect(source).not.toMatch(/import\s+[^;]*from\s+["']expo-notifications["']/);
+  });
+
+  it("constructing the store does not touch the native module", () => {
+    // The store is imported at the top of this file. If that evaluation required
+    // expo-notifications to succeed, a throwing module would kill the suite.
+    expect(usePush.getState().permission).toBe("unknown");
+    expect(mocked.setNotificationChannelAsync).not.toHaveBeenCalled();
+    expect(mocked.getPermissionsAsync).not.toHaveBeenCalled();
+    expect(mocked.getDevicePushTokenAsync).not.toHaveBeenCalled();
+  });
 });
 
 describe("pushSupported", () => {

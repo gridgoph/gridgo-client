@@ -1,4 +1,4 @@
-import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { create } from "zustand";
 
@@ -6,11 +6,44 @@ import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
   devicePlatform,
+  isExpoGoRuntime,
   PUSH_CHANNEL,
   PUSH_CHANNEL_ID,
   readPushPermission,
   type PushPermission,
 } from "@/lib/push";
+
+type NotificationsNative = typeof import("expo-notifications");
+
+let notificationsNative: NotificationsNative | null | undefined;
+
+/**
+ * The native module, or null when it must not be loaded.
+ *
+ * Expo Go Android SDK 53 throws at **import time**. Never statically import
+ * `expo-notifications` from a module that loads at launch or on public auth.
+ * Skip Expo Go entirely; if a require still throws, push is simply off.
+ */
+export function getNotificationsNative(): NotificationsNative | null {
+  if (notificationsNative !== undefined) return notificationsNative;
+  if (
+    isExpoGoRuntime({
+      appOwnership: Constants.appOwnership,
+      executionEnvironment: Constants.executionEnvironment,
+    })
+  ) {
+    notificationsNative = null;
+    return null;
+  }
+  try {
+    // Metro evaluates this only when called. A throw costs push, never the app.
+    notificationsNative = require("expo-notifications") as NotificationsNative;
+    return notificationsNative;
+  } catch {
+    notificationsNative = null;
+    return null;
+  }
+}
 
 /**
  * The one place `expo-notifications` is spoken to.
@@ -36,10 +69,11 @@ import {
  *   bearer and the registration is *unclaimed*; signing in claims it. See
  *   `api.registerDeviceUnclaimed` — that route is provisional, so a deployment
  *   without it is a third outcome and not a failure anyone is shown.
- * - Every native call is wrapped. `getDevicePushTokenAsync` **throws** in Expo
- *   Go on Android — Expo removed remote push from Expo Go in SDK 53 — and this
- *   store is constructed at launch there too. A throw must cost push, never the
- *   app.
+ * - The native module is never statically imported. Expo Go Android SDK 53
+ *   throws at **import time**, so a `try` around `getDevicePushTokenAsync`
+ *   never runs if the file itself imported the module. `getNotificationsNative`
+ *   skips Expo Go and treats a failed require as "push is off". A throw must
+ *   cost push, never the app.
  */
 
 /**
@@ -112,6 +146,8 @@ function isUnclaimedRouteAbsent(error: unknown): boolean {
  */
 async function ensureChannel(): Promise<void> {
   if (Platform.OS !== "android") return;
+  const Notifications = getNotificationsNative();
+  if (!Notifications) return;
   await Notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
     name: PUSH_CHANNEL.name,
     description: PUSH_CHANNEL.description,
@@ -123,6 +159,8 @@ async function ensureChannel(): Promise<void> {
 
 /** The raw FCM token for this installation, or null if it cannot be had. */
 async function fetchToken(): Promise<string | null> {
+  const Notifications = getNotificationsNative();
+  if (!Notifications) return null;
   const { data } = await Notifications.getDevicePushTokenAsync();
   return typeof data === "string" && data ? data : null;
 }
@@ -137,6 +175,11 @@ export const usePush = create<PushState>((set, get) => ({
 
   syncPermission: async () => {
     if (!get().supported) return "unknown";
+    const Notifications = getNotificationsNative();
+    if (!Notifications) {
+      set({ permission: "unknown" });
+      return "unknown";
+    }
     try {
       await ensureChannel();
       const permission = readPushPermission(await Notifications.getPermissionsAsync());
@@ -152,6 +195,8 @@ export const usePush = create<PushState>((set, get) => ({
 
   enable: async () => {
     if (!get().supported || get().busy) return false;
+    const Notifications = getNotificationsNative();
+    if (!Notifications) return false;
     set({ busy: true, error: null });
     try {
       await ensureChannel();
