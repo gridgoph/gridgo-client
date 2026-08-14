@@ -148,7 +148,7 @@ export default function LoginScreen() {
       edges={["top", "bottom"]}
       contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
     >
-      <View className="gg-auth-page gap-7 py-8">
+      <View className="gg-page gap-7 py-8">
         <AuthBackButton onPress={goBack} />
 
         <View className="gap-2">

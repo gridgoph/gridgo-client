@@ -31,7 +31,7 @@ export function PasswordField({
   return (
     <View className="relative justify-center">
       <TextInput
-        className="gg-field pr-14"
+        className="gg-field pr-16"
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}

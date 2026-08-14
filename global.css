@@ -284,15 +284,6 @@
   @apply px-4;
 }
 
-/**
- * Auth form gutter. 32px so field shells sit off the phone edge.
- * Login and signup only — do not replace `gg-page` on Home, Orders, or
- * any other signed-in screen.
- */
-@utility gg-auth-page {
-  @apply px-8;
-}
-
 /* Containers ---------------------------------------------------------------- */
 
 /** Standard card: surface, hairline border, 16px radius, 16px padding. */
@@ -327,9 +318,9 @@
   @apply min-h-11 min-w-11;
 }
 
-/** Text field / select shell. */
+/** Text field / select shell. 20px inner inset so placeholder and value sit off the stroke. */
 @utility gg-field {
-  @apply h-12 rounded-field border border-outline bg-surface px-3 text-body text-text-primary;
+  @apply h-12 rounded-field border border-outline bg-surface px-5 text-body text-text-primary;
 }
 
 /** Shared button box. Compose with a fill below. */
