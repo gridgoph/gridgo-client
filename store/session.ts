@@ -11,23 +11,44 @@ export const APP_ROLE = "client" as const;
 
 type SessionState = {
   user: User | null;
+  source: "legacy" | "clerk" | null;
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   /** Create a client account and sign straight into it. */
   signUp: (fields: SignupFields) => Promise<void>;
   logout: () => Promise<void>;
+  /** Domain identity projected after Clerk has issued a session token. */
+  adoptClerkUser: (user: User) => void;
+  beginClerkSync: () => void;
+  failClerkSync: (message: string) => void;
+  registerIdentityLogout: (logout: (() => Promise<void>) | null) => void;
   /** Drop the in-memory user. Routing reacts via Stack.Protected — no router calls here. */
   clearSession: () => void;
   clearError: () => void;
 };
 
+let identityLogout: (() => Promise<void>) | null = null;
+
 export const useSession = create<SessionState>((set) => ({
   user: null,
+  source: null,
   loading: false,
   error: null,
   clearError: () => set({ error: null }),
-  clearSession: () => set({ user: null, loading: false }),
+  clearSession: () =>
+    set((state) => {
+      if (state.source === "clerk") void identityLogout?.();
+      return { user: null, source: null, loading: false };
+    }),
+  adoptClerkUser: (user) =>
+    set({ user, source: "clerk", loading: false, error: null }),
+  beginClerkSync: () => set({ loading: true, error: null }),
+  failClerkSync: (message) =>
+    set({ user: null, source: null, loading: false, error: message }),
+  registerIdentityLogout: (logout) => {
+    identityLogout = logout;
+  },
   login: async (email, password) => {
     set({ loading: true, error: null });
     try {
@@ -44,7 +65,7 @@ export const useSession = create<SessionState>((set) => ({
         });
         return;
       }
-      set({ user, loading: false });
+      set({ user, source: "legacy", loading: false });
     } catch (e) {
       let message: string;
       if (e instanceof api.ApiError && e.status === 401) {
@@ -66,7 +87,7 @@ export const useSession = create<SessionState>((set) => ({
       // rather than being asked to type the password they just chose. Role is
       // always `client` here: this binary offers no other kind of account.
       const { user } = await api.signupClient(signupInput(fields));
-      set({ user, loading: false });
+      set({ user, source: "legacy", loading: false });
     } catch (e) {
       set({
         loading: false,
@@ -88,9 +109,13 @@ export const useSession = create<SessionState>((set) => ({
     // entirely: a customer that signs out has not uninstalled GRIDGO, and
     // "there is a new version" still has to reach it.
     const deviceToken = usePush.getState().token;
-    await api.logout(deviceToken);
-    set({ user: null });
-    void usePush.getState().release();
+    try {
+      await api.logout(deviceToken);
+    } finally {
+      await identityLogout?.();
+      set({ user: null, source: null, loading: false });
+      void usePush.getState().release();
+    }
   },
 }));
 

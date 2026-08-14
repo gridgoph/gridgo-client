@@ -1,180 +1,293 @@
-import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
-import { Redirect, useRouter } from "expo-router";
+import { useSignIn } from "@clerk/expo";
+import { useSSO } from "@clerk/expo/experimental";
+import { Redirect, useRouter, type Href } from "expo-router";
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
 
+import { AuthBackButton } from "@/components/auth/AuthBackButton";
+import { AuthDivider } from "@/components/auth/AuthDivider";
+import { GoogleButton } from "@/components/auth/GoogleButton";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { FormField } from "@/components/form/FormField";
+import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
-import { GridgoLogo } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PushEnableCard } from "@/components/PushEnableCard";
-import { SecondaryButton } from "@/components/SecondaryButton";
-import { StatusChip } from "@/components/StatusChip";
-import { getApiBase, health } from "@/lib/api";
+import { clerkErrorMessage, passwordConfirmationError } from "@/lib/clerkAuth";
 import { useSession } from "@/store/session";
 
-/**
- * The first screen a customer meets, so it is held to the same bar as the rest.
- *
- * It used to be written in raw utility classes — `text-2xl`, `font-satoshi`,
- * `rounded-xl`, `py-3` — none of which exist here: `global.css` resets the
- * default type, weight and radius scales on purpose so only GRIDGO tokens
- * survive. Every one of those classes was silently a no-op, which is why the
- * heading rendered in the system font at a size the type scale does not have,
- * and why the fields and the button were never guaranteed a 44dp touch target.
- * It is built from the same primitives as every other form in the app now.
- */
-export default function LoginScreen() {
-  const { user, login, loading, error } = useSession();
-  const router = useRouter();
-  /*
-    Empty, both of them.
+type Step = "credentials" | "recoveryCode" | "newPassword";
 
-    These fields used to open pre-filled with a demo account and its password.
-    That is a convenience on a laptop and a way in on a hosted pilot: the app is
-    served over a public domain, so anyone who opens it is handed working
-    credentials before they have typed anything. It is wrong even against the
-    accounts it named — the pilot's demo passwords come from deployment
-    configuration now, so a password written into this repository is a
-    published secret that no longer opens anything, which is the worst of both.
-    What actually helps someone sign in is below: what this app is for, which
-    roles belong elsewhere, and whether the API is reachable.
-  */
+export default function LoginScreen() {
+  const router = useRouter();
+  const { signIn, fetchStatus } = useSignIn();
+  const { startSSOFlow } = useSSO();
+  const { user, login, loading: localLoading, error: sessionError } = useSession();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [apiBase] = useState(() => getApiBase());
-  const [reachable, setReachable] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const result = await health();
-        if (!cancelled) setReachable(result.ok === true);
-      } catch {
-        if (!cancelled) setReachable(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [step, setStep] = useState<Step>("credentials");
+  const [error, setError] = useState<string | null>(null);
+  const [socialLoading, setSocialLoading] = useState(false);
 
   if (user) return <Redirect href="/(tabs)/home" />;
 
-  const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
+  const clerkLoading = fetchStatus === "fetching";
+  const busy = clerkLoading || socialLoading || localLoading;
+
+  const goBack = () => {
+    if (step !== "credentials") {
+      setStep("credentials");
+      setError(null);
+      return;
+    }
+    if (router.canGoBack()) router.back();
+    else router.replace("/(auth)/welcome" as Href);
+  };
+
+  const signInWithPassword = async () => {
+    if (!signIn || !email.trim() || !password) return;
+    setError(null);
+    try {
+      const result = await signIn.password({
+        emailAddress: email.trim().toLowerCase(),
+        password,
+      });
+      if (result.error) throw result.error;
+      if (signIn.status !== "complete") {
+        throw new Error("This account needs another verification step. Please try again.");
+      }
+      const finalized = await signIn.finalize();
+      if (finalized.error) throw finalized.error;
+    } catch (caught) {
+      setError(clerkErrorMessage(caught, "Could not sign in. Check your details and try again."));
+    }
+  };
+
+  const sendRecoveryCode = async () => {
+    if (!signIn || !email.trim()) {
+      setError("Enter your email address first.");
+      return;
+    }
+    setError(null);
+    try {
+      const created = await signIn.create({ identifier: email.trim().toLowerCase() });
+      if (created.error) throw created.error;
+      const sent = await signIn.resetPasswordEmailCode.sendCode();
+      if (sent.error) throw sent.error;
+      setStep("recoveryCode");
+    } catch (caught) {
+      setError(clerkErrorMessage(caught, "Could not send the recovery code. Try again."));
+    }
+  };
+
+  const verifyRecoveryCode = async () => {
+    if (!signIn || !code.trim()) return;
+    setError(null);
+    try {
+      const result = await signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() });
+      if (result.error) throw result.error;
+      setStep("newPassword");
+    } catch (caught) {
+      setError(clerkErrorMessage(caught, "That code could not be verified."));
+    }
+  };
+
+  const saveNewPassword = async () => {
+    if (!signIn || !newPassword) return;
+    const mismatch = passwordConfirmationError(newPassword, confirmPassword);
+    if (mismatch) {
+      setError(mismatch);
+      return;
+    }
+    setError(null);
+    try {
+      const result = await signIn.resetPasswordEmailCode.submitPassword({
+        password: newPassword,
+        signOutOfOtherSessions: true,
+      });
+      if (result.error) throw result.error;
+      const finalized = await signIn.finalize();
+      if (finalized.error) throw finalized.error;
+    } catch (caught) {
+      setError(clerkErrorMessage(caught, "Could not save the new password."));
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    setSocialLoading(true);
+    setError(null);
+    try {
+      await startSSOFlow({ strategy: "oauth_google" });
+    } catch (caught) {
+      setError(clerkErrorMessage(caught, "Google sign-in did not finish. Try again."));
+    } finally {
+      setSocialLoading(false);
+    }
+  };
+
+  const heading =
+    step === "credentials"
+      ? "Welcome Back!"
+      : step === "recoveryCode"
+        ? "Check your email"
+        : "Choose a new password";
+  const body =
+    step === "credentials"
+      ? "Sign in to continue managing your print jobs."
+      : step === "recoveryCode"
+        ? `We sent a six-digit code to ${email.trim()}.`
+        : "Use a strong password you have not used for GRIDGO before.";
 
   return (
-    /*
-      No header sits above this screen, so it owns both edges itself. The
-      content is centred until it outgrows the screen, and then scrolls.
-    */
     <FormScreen
       edges={["top", "bottom"]}
       contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
     >
-      <View className="gg-page py-10">
-        {/*
-          Plain GRIDGO while signed out. Account type is unknown until login
-          resolves, and the product is one client binary — flashing Business
-          after sign-in on this screen would fight identity stability. Business
-          lockup appears on signed-in identity surfaces (home header) only.
-        */}
-        <GridgoLogo />
+      <View className="gg-page gap-7 py-8">
+        <AuthBackButton onPress={goBack} />
 
-        <Text className="mt-8 text-h1 text-text-primary" accessibilityRole="header">
-          Sign in
-        </Text>
-        <Text className="mt-2 text-body-lg text-text-secondary">
-          The client side of GRIDGO — request a print job, approve the proof, and follow
-          it to your door in Davao.
-        </Text>
-
-        <View className="mt-8 gap-4">
-          <FormField label="Email">
-            <TextField
-              value={email}
-              onChangeText={setEmail}
-              placeholder="you@company.com"
-              accessibilityLabel="Email"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              textContentType="username"
-              returnKeyType="next"
-            />
-          </FormField>
-
-          <FormField label="Password">
-            <TextField
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Your password"
-              accessibilityLabel="Password"
-              autoCapitalize="none"
-              secureTextEntry
-              textContentType="password"
-              returnKeyType="go"
-              onSubmitEditing={() => {
-                if (canSubmit) void login(email.trim(), password);
-              }}
-            />
-          </FormField>
-        </View>
-
-        {error ? (
-          <View className="mt-4">
-            <ErrorState label="Could not sign in" body={error} />
-          </View>
-        ) : null}
-
-        <View className="mt-6 gap-3">
-          <PrimaryButton
-            label={loading ? "Signing in…" : "Sign in"}
-            disabled={!canSubmit}
-            onPress={() => void login(email.trim(), password)}
-          />
-          {/* Secondary, and monochrome: the screen's one yellow control is
-              the sign-in button, and a first-time client reads down to this
-              without it needing to shout. */}
-          <SecondaryButton
-            label="Create an account"
-            disabled={loading}
-            onPress={() => router.push("/(auth)/signup")}
-          />
-        </View>
-
-        <Text className="mt-6 text-caption text-text-muted">
-          GRIDGO ships one app per role. If this account is a supplier, a rider or
-          Operations, sign in on that app instead.
-        </Text>
-
-        {/*
-          The door asks too, and it is the only surface that can. A customer
-          that installs GRIDGO and does not sign in for a week never reaches a
-          screen behind the guard, and on Android 13+ the permission can only
-          be asked while the app is open — so a door that never asks is a phone
-          GRIDGO can never tell to update. It draws only the ask, never a
-          failure or a settings link (see `pushOffer`), and its copy promises
-          only what an unclaimed phone actually receives.
-        */}
-        <PushEnableCard spacing="above" />
-
-        {/* Build diagnostics, kept quiet and kept last. */}
-        <View className="mt-8 flex-row items-center gap-2">
-          <Text className="shrink text-caption text-text-muted" numberOfLines={1}>
-            {apiBase}
+        <View className="gap-2">
+          <Text className="text-display font-black text-text-primary" accessibilityRole="header">
+            {heading}
           </Text>
-          {reachable === null ? (
-            <Text className="text-caption text-text-muted">Checking…</Text>
-          ) : (
-            <StatusChip
-              tone={reachable ? "success" : "error"}
-              label={reachable ? "Reachable" : "Unreachable"}
-              icon={reachable ? "circle-check" : "circle-x"}
-            />
-          )}
+          <Text className="text-body-lg text-text-secondary">{body}</Text>
         </View>
+
+        {step === "credentials" ? (
+          <>
+            <View className="gap-4">
+              <FormField label="Email">
+                <TextField
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@company.com"
+                  accessibilityLabel="Email"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  returnKeyType="next"
+                />
+              </FormField>
+
+              <FormField label="Password">
+                <PasswordField
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Enter your password"
+                  accessibilityLabel="Password"
+                  textContentType="password"
+                  returnKeyType="go"
+                  onSubmitEditing={() => void signInWithPassword()}
+                />
+              </FormField>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Recover password"
+                onPress={() => void sendRecoveryCode()}
+                className="gg-touch -mt-2 self-end justify-center"
+              >
+                <Text className="text-button text-brand">Recover password</Text>
+              </Pressable>
+            </View>
+
+            {(error ?? sessionError) ? (
+              <ErrorState label="Could not sign in" body={(error ?? sessionError)!} />
+            ) : null}
+
+            <PrimaryButton
+              label={busy ? "Signing in…" : "Sign In"}
+              disabled={!email.trim() || !password || busy}
+              onPress={() => void signInWithPassword()}
+            />
+
+            <AuthDivider />
+            <GoogleButton onPress={() => void signInWithGoogle()} disabled={busy} />
+
+            <View className="flex-row flex-wrap items-center justify-center gap-1">
+              <Text className="text-body text-text-secondary">Don’t have an account?</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Sign up"
+                onPress={() => router.push("/(auth)/signup")}
+                className="gg-touch justify-center px-1"
+              >
+                <Text className="text-button text-brand">Sign Up</Text>
+              </Pressable>
+            </View>
+
+            {__DEV__ ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Use local API instead"
+                disabled={!email.trim() || !password || busy}
+                onPress={() => void login(email.trim(), password)}
+                className="gg-touch items-center justify-center"
+              >
+                <Text className="text-caption text-text-muted">Use local API instead</Text>
+              </Pressable>
+            ) : null}
+
+            <PushEnableCard />
+          </>
+        ) : step === "recoveryCode" ? (
+          <>
+            <FormField label="Recovery code">
+              <TextField
+                value={code}
+                onChangeText={setCode}
+                placeholder="123456"
+                accessibilityLabel="Recovery code"
+                keyboardType="number-pad"
+                textContentType="oneTimeCode"
+                maxLength={6}
+                returnKeyType="go"
+                onSubmitEditing={() => void verifyRecoveryCode()}
+              />
+            </FormField>
+            {error ? <ErrorState label="Could not verify code" body={error} /> : null}
+            <PrimaryButton
+              label={clerkLoading ? "Checking…" : "Verify code"}
+              disabled={code.trim().length < 6 || clerkLoading}
+              onPress={() => void verifyRecoveryCode()}
+            />
+          </>
+        ) : (
+          <>
+            <View className="gap-4">
+              <FormField label="New password">
+                <PasswordField
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  accessibilityLabel="New password"
+                  textContentType="newPassword"
+                />
+              </FormField>
+              <FormField label="Confirm password">
+                <PasswordField
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  accessibilityLabel="Confirm new password"
+                  textContentType="newPassword"
+                  returnKeyType="go"
+                  onSubmitEditing={() => void saveNewPassword()}
+                />
+              </FormField>
+            </View>
+            {error ? <ErrorState label="Could not reset password" body={error} /> : null}
+            <PrimaryButton
+              label={clerkLoading ? "Saving…" : "Save password"}
+              disabled={!newPassword || !confirmPassword || clerkLoading}
+              onPress={() => void saveNewPassword()}
+            />
+          </>
+        )}
       </View>
     </FormScreen>
   );

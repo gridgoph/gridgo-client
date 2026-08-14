@@ -274,6 +274,8 @@ export type ClientSignupInput = {
 };
 
 let tokenMemory: string | null = null;
+type TokenProvider = () => Promise<string | null>;
+let tokenProvider: TokenProvider | null = null;
 
 /** Fired when a request with a bearer token receives 401 — session must clear. */
 type UnauthorizedListener = () => void;
@@ -432,8 +434,27 @@ export function setToken(token: string | null): void {
   tokenMemory = token;
 }
 
+/**
+ * Supply the current identity token without persisting it in app state.
+ * Clerk refreshes this value, so every request resolves it just in time.
+ */
+export function setTokenProvider(provider: TokenProvider | null): void {
+  tokenProvider = provider;
+}
+
 export function getToken(): string | null {
   return tokenMemory;
+}
+
+type ResolvedToken = {
+  token: string | null;
+  source: "legacy" | "provider" | null;
+};
+
+async function resolveToken(): Promise<ResolvedToken> {
+  if (tokenMemory) return { token: tokenMemory, source: "legacy" };
+  const token = (await tokenProvider?.()) ?? null;
+  return { token, source: token ? "provider" : null };
 }
 
 export class ApiError extends Error {
@@ -456,7 +477,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-  if (tokenMemory) headers.Authorization = `Bearer ${tokenMemory}`;
+  const auth = await resolveToken();
+  if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
 
   const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
   const text = await res.text();
@@ -471,8 +493,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     // Only clear when we actually sent a bearer token. Login 401 (wrong password)
     // has no token and must not touch session state.
-    if (res.status === 401 && tokenMemory) {
-      setToken(null);
+    if (res.status === 401 && auth.token) {
+      if (auth.source === "legacy") setToken(null);
       notifyUnauthorized();
     }
     throw new ApiError(res.status, data);
@@ -760,62 +782,69 @@ export function uploadFile(
 ): UploadHandle {
   const xhr = new XMLHttpRequest();
 
-  const done = new Promise<StoredFile>((resolve, reject) => {
-    const form = new FormData();
-    form.append("purpose", purpose);
-    // React Native's FormData takes this shape for a file part and streams it.
-    form.append("file", {
-      uri: asset.uri,
-      name: asset.name,
-      type: asset.mimeType || "application/octet-stream",
-    } as unknown as Blob);
+  const done = (async () => {
+    const auth = await resolveToken();
+    return new Promise<StoredFile>((resolve, reject) => {
+      const form = new FormData();
+      form.append("purpose", purpose);
+      // React Native's FormData takes this shape for a file part and streams it.
+      form.append("file", {
+        uri: asset.uri,
+        name: asset.name,
+        type: asset.mimeType || "application/octet-stream",
+      } as unknown as Blob);
 
-    xhr.open("POST", `${getApiBase()}/files`);
-    xhr.responseType = "text";
-    xhr.setRequestHeader("Accept", "application/json");
-    if (tokenMemory) xhr.setRequestHeader("Authorization", `Bearer ${tokenMemory}`);
-    // Content-Type is left unset on purpose: the platform supplies the
-    // multipart boundary, and overriding it corrupts the request body.
+      xhr.open("POST", `${getApiBase()}/files`);
+      xhr.responseType = "text";
+      xhr.setRequestHeader("Accept", "application/json");
+      if (auth.token) xhr.setRequestHeader("Authorization", `Bearer ${auth.token}`);
+      // Content-Type is left unset on purpose: the platform supplies the
+      // multipart boundary, and overriding it corrupts the request body.
 
-    if (xhr.upload && onProgress) {
-      xhr.upload.onprogress = (event: ProgressEvent) => {
-        onProgress(event.lengthComputable && event.total > 0 ? event.loaded / event.total : null);
-      };
-    }
-
-    xhr.onload = () => {
-      let data: unknown = null;
-      const text = typeof xhr.response === "string" ? xhr.response : "";
-      if (text) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = text;
-        }
+      if (xhr.upload && onProgress) {
+        xhr.upload.onprogress = (event: ProgressEvent) => {
+          onProgress(
+            event.lengthComputable && event.total > 0
+              ? event.loaded / event.total
+              : null,
+          );
+        };
       }
-      if (xhr.status === 201) {
-        const file = (data as { file?: StoredFile } | null)?.file;
-        if (file?.fileId) {
-          resolve(file);
+
+      xhr.onload = () => {
+        let data: unknown = null;
+        const text = typeof xhr.response === "string" ? xhr.response : "";
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = text;
+          }
+        }
+        if (xhr.status === 201) {
+          const file = (data as { file?: StoredFile } | null)?.file;
+          if (file?.fileId) {
+            resolve(file);
+            return;
+          }
+          // A 201 without an id is not success; never invent one.
+          reject(new ApiError(xhr.status, { error: "file_metadata_invalid" }));
           return;
         }
-        // A 201 without an id is not success; never invent one.
-        reject(new ApiError(xhr.status, { error: "file_metadata_invalid" }));
-        return;
-      }
-      if (xhr.status === 401 && tokenMemory) {
-        setToken(null);
-        notifyUnauthorized();
-      }
-      reject(new ApiError(xhr.status, data));
-    };
+        if (xhr.status === 401 && auth.token) {
+          if (auth.source === "legacy") setToken(null);
+          notifyUnauthorized();
+        }
+        reject(new ApiError(xhr.status, data));
+      };
 
-    xhr.onerror = () => reject(new Error("Network request failed"));
-    xhr.ontimeout = () => reject(new Error("Upload timeout"));
-    xhr.onabort = () => reject(new ApiError(0, { error: "upload_cancelled" }));
+      xhr.onerror = () => reject(new Error("Network request failed"));
+      xhr.ontimeout = () => reject(new Error("Upload timeout"));
+      xhr.onabort = () => reject(new ApiError(0, { error: "upload_cancelled" }));
 
-    xhr.send(form);
-  });
+      xhr.send(form);
+    });
+  })();
 
   return { done, cancel: () => xhr.abort() };
 }

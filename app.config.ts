@@ -38,6 +38,24 @@ export type BuildVersion = {
 };
 
 /**
+ * Keep Clerk's frontend key explicit at the Expo config boundary. A secret key
+ * can never be valid input here: everything under `extra` is readable from the
+ * installed client bundle.
+ */
+export function clerkPublishableKey(
+  value: string | null | undefined,
+): string | undefined {
+  const key = value?.trim();
+  if (!key) return undefined;
+  if (!key.startsWith("pk_")) {
+    throw new Error(
+      "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY must be a Clerk publishable key (pk_*), never a secret key.",
+    );
+  }
+  return key;
+}
+
+/**
  * @param baseVersion `expo.version` from app.json, e.g. "1.0.0".
  * @param buildNumber CI run number; blank or absent outside CI.
  */
@@ -132,12 +150,26 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     process.env.GOOGLE_SERVICES_JSON,
     __dirname,
   );
+  const clerkKey = clerkPublishableKey(
+    process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  );
+  const plugins = [...(config.plugins ?? [])];
+  for (const plugin of ["@clerk/expo", "expo-secure-store"] as const) {
+    if (!plugins.some((entry) => (Array.isArray(entry) ? entry[0] : entry) === plugin)) {
+      plugins.push(plugin);
+    }
+  }
 
   return {
     ...config,
     name,
     slug,
     version: versionName,
+    plugins,
+    extra: {
+      ...config.extra,
+      ...(clerkKey ? { clerkPublishableKey: clerkKey } : {}),
+    },
     android: {
       ...config.android,
       versionCode,

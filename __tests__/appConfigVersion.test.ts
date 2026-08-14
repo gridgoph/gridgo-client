@@ -81,7 +81,7 @@ describe("app.config stamps app.json without disturbing it", () => {
     const resolved = appConfig(context(appJson.expo));
 
     expect(resolved.slug).toBe(appJson.expo.slug);
-    expect(resolved.plugins).toEqual(appJson.expo.plugins);
+    expect(resolved.plugins).toEqual(expect.arrayContaining(appJson.expo.plugins ?? []));
     expect(resolved.android?.package).toBe(appJson.expo.android?.package);
     expect(resolved.version).toBe(appJson.expo.version);
   });
