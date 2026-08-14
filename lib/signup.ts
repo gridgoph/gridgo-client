@@ -10,7 +10,7 @@
  * Business lockup. It is a real declaration, not a preference.
  */
 
-import type { AccountType, ClientSignupInput } from "@/lib/api";
+import type { AccountType, ClerkActivateInput, ClientSignupInput, User } from "@/lib/api";
 
 export type AccountTypeOption = {
   value: AccountType;
@@ -158,6 +158,36 @@ export function signupInput(fields: SignupFields): ClientSignupInput {
     password: fields.password,
     name: fields.name.trim(),
     phone: fields.phone.trim(),
+    accountType: fields.accountType,
+    ...(needsOrgName(fields.accountType) && orgName ? { orgName } : {}),
+  };
+}
+
+export type ClientProfileFields = {
+  accountType: AccountType;
+  orgName: string;
+};
+
+/** True when the API client is missing the lockup the rest of the app reads. */
+export function needsClientProfile(
+  user: Pick<User, "accountType" | "orgName"> | null | undefined,
+): boolean {
+  if (!user) return true;
+  if (!user.accountType) return true;
+  return needsOrgName(user.accountType) && !user.orgName?.trim();
+}
+
+export function firstProfileProblem(fields: ClientProfileFields): string | null {
+  return checkSignupField("orgName", {
+    ...EMPTY_SIGNUP,
+    accountType: fields.accountType,
+    orgName: fields.orgName,
+  }).reason;
+}
+
+export function clerkActivateInput(fields: ClientProfileFields): ClerkActivateInput {
+  const orgName = fields.orgName.trim();
+  return {
     accountType: fields.accountType,
     ...(needsOrgName(fields.accountType) && orgName ? { orgName } : {}),
   };

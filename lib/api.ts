@@ -471,7 +471,19 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export type RequestOptions = {
+  /**
+   * Skip the mid-session 401 handler. Used to probe `/auth/me` before
+   * `POST /auth/clerk/activate` — that first 401 means "unmapped", not "sign out".
+   */
+  ignoreUnauthorized?: boolean;
+};
+
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  options: RequestOptions = {},
+): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
@@ -493,7 +505,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     // Only clear when we actually sent a bearer token. Login 401 (wrong password)
     // has no token and must not touch session state.
-    if (res.status === 401 && auth.token) {
+    if (res.status === 401 && auth.token && !options.ignoreUnauthorized) {
       if (auth.source === "legacy") setToken(null);
       notifyUnauthorized();
     }
@@ -642,8 +654,34 @@ export async function unregisterDevice(token: string): Promise<void> {
   });
 }
 
-export async function me(): Promise<User> {
-  const result = await request<{ user: User }>("/auth/me");
+export async function me(options?: RequestOptions): Promise<User> {
+  const result = await request<{ user: User }>("/auth/me", {}, options);
+  return result.user;
+}
+
+/** Fields a verified Clerk session may send when creating or completing a client. */
+export type ClerkActivateInput = {
+  accountType?: AccountType;
+  orgName?: string;
+  name?: string;
+};
+
+/**
+ * Create or link a client profile from the current Clerk session JWT.
+ *
+ * Sibling contract: `POST /auth/clerk/activate`. A 401 here is "still
+ * unmapped", not a dead session, so the probe does not fire `onUnauthorized`.
+ */
+export async function activateClerkClient(input: ClerkActivateInput = {}): Promise<User> {
+  const body: Record<string, string> = {};
+  if (input.accountType) body.accountType = input.accountType;
+  if (input.orgName) body.orgName = input.orgName;
+  if (input.name) body.name = input.name;
+  const result = await request<{ user: User }>(
+    "/auth/clerk/activate",
+    { method: "POST", body: JSON.stringify(body) },
+    { ignoreUnauthorized: true },
+  );
   return result.user;
 }
 

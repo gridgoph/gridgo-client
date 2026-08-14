@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, type Href, useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -7,13 +7,21 @@ import { GridgoLogo } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useThemeColors } from "@/hooks/useTheme";
+import { needsClientProfile } from "@/lib/signup";
 import { useSession } from "@/store/session";
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const user = useSession((state) => state.user);
+  const pendingClerkProfile = useSession((state) => state.pendingClerkProfile);
+  const justProvisioned = useSession((state) => state.justProvisioned);
 
+  if (user && needsClientProfile(user)) return <Redirect href={"/complete-profile" as Href} />;
+  if (!user && pendingClerkProfile) return <Redirect href={"/complete-profile" as Href} />;
+  if (user && justProvisioned) {
+    return <Redirect href={{ pathname: "/onboarding", params: { returnTo: "home" } }} />;
+  }
   if (user) return <Redirect href="/(tabs)/home" />;
 
   return (

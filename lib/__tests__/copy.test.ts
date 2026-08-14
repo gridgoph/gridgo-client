@@ -74,6 +74,7 @@ describe("userFacingError", () => {
     ["email_already_registered", /already has a GRIDGO account/i],
     ["invalid_password", /at least 8 characters/i],
     ["organization_name_required", /business or organization name/i],
+    ["invitation_required", /not a GRIDGO client/i],
   ])("turns %s into a next step", (code, expected) => {
     const message = userFacingError(new ApiError(409, { error: code }), "fallback");
     expect(message).toMatch(expected);

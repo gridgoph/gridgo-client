@@ -37,6 +37,7 @@ describe("AccountScreen", () => {
         email: "client@gridgo.local",
         name: "Demo Client",
         role: "client",
+        accountType: "business",
         orgName: "Demo Org",
       },
       loading: false,
@@ -48,6 +49,8 @@ describe("AccountScreen", () => {
     await renderInSafeArea(<AccountScreen />);
 
     expect(screen.getByText("Demo Client")).toBeTruthy();
+    expect(screen.getByText("client@gridgo.local")).toBeTruthy();
+    expect(screen.getByText("Business client")).toBeTruthy();
     expect(screen.getByLabelText("Settings")).toBeTruthy();
     expect(screen.queryByText("Theme")).toBeNull();
     expect(screen.queryByText("System")).toBeNull();

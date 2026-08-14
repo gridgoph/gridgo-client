@@ -132,6 +132,7 @@ function AppNavigation() {
               {/* Launch + public routes stay reachable; index maps session → entry. */}
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+              <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
 
               <Stack.Protected guard={!isSignedIn}>
                 {/*

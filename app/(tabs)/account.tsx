@@ -7,6 +7,7 @@ import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { getApiBase } from "@/lib/api";
 import { useThemeColors } from "@/hooks/useTheme";
+import { accountTypeOption } from "@/lib/signup";
 import { useSession } from "@/store/session";
 
 /**
@@ -31,7 +32,9 @@ export default function AccountScreen() {
             <Text className="text-caption text-text-muted">Signed in as</Text>
             <Text className="text-body-lg font-medium text-text-primary">{user?.name}</Text>
             <Text className="text-body text-text-secondary">{user?.email}</Text>
-            <Text className="mt-2 text-caption text-text-muted">Business client app</Text>
+            <Text className="mt-2 text-caption text-text-muted">
+              {accountTypeOption(user?.accountType ?? "individual").label} client
+            </Text>
           </View>
 
           <View className="gg-card gap-1">

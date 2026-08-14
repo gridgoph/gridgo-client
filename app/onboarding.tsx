@@ -88,6 +88,7 @@ export default function OnboardingScreen() {
   }
 
   function dismiss() {
+    useSession.getState().clearJustProvisioned();
     const target = resolveOnboardingDismissTarget(returnTo, router.canGoBack());
     if (target.type === "back") router.back();
     else router.replace(target.href);

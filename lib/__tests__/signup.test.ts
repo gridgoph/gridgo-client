@@ -2,8 +2,11 @@ import {
   ACCOUNT_TYPES,
   canSubmitSignup,
   checkSignupField,
+  clerkActivateInput,
   EMPTY_SIGNUP,
+  firstProfileProblem,
   firstSignupProblem,
+  needsClientProfile,
   needsOrgName,
   signupInput,
   type SignupFields,
@@ -114,5 +117,29 @@ describe("signupInput", () => {
   it("omits the organization name a personal account has no use for", () => {
     const input = signupInput(fields({ accountType: "individual", orgName: "Leftover Co." }));
     expect(input).not.toHaveProperty("orgName");
+  });
+});
+
+describe("client profile completion", () => {
+  it("asks Google users only for the lockup the rest of the app reads", () => {
+    expect(needsClientProfile({ accountType: undefined, orgName: undefined })).toBe(true);
+    expect(needsClientProfile({ accountType: "individual" })).toBe(false);
+    expect(needsClientProfile({ accountType: "business" })).toBe(true);
+    expect(needsClientProfile({ accountType: "business", orgName: "Davao Events Co." })).toBe(
+      false,
+    );
+  });
+
+  it("reuses the signup org-name rule and activate body", () => {
+    expect(firstProfileProblem({ accountType: "business", orgName: "" })).toMatch(/business name/i);
+    expect(clerkActivateInput({ accountType: "individual", orgName: "Leftover" })).toEqual({
+      accountType: "individual",
+    });
+    expect(
+      clerkActivateInput({ accountType: "organization", orgName: "  San Pedro Parish  " }),
+    ).toEqual({
+      accountType: "organization",
+      orgName: "San Pedro Parish",
+    });
   });
 });

@@ -19,6 +19,17 @@ describe("resolveOnboardingDismissTarget", () => {
     });
   });
 
+  it("goes home after first-launch from Google / profile complete", () => {
+    expect(resolveOnboardingDismissTarget("home", true)).toEqual({
+      type: "replace",
+      href: "/(tabs)/home",
+    });
+    expect(resolveOnboardingDismissTarget("home", false)).toEqual({
+      type: "replace",
+      href: "/(tabs)/home",
+    });
+  });
+
   it("goes back when launched with a previous screen and no returnTo", () => {
     expect(resolveOnboardingDismissTarget(undefined, true)).toEqual({ type: "back" });
   });

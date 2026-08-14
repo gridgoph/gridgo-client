@@ -147,6 +147,10 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "Choose whether this account is personal, a business, or an organization.";
       case "organization_name_required":
         return "Enter the business or organization name this account trades under.";
+      case "profile_incomplete":
+        return "Tell GRIDGO whether this account is personal, a business, or an organization.";
+      case "invitation_required":
+        return "This identity is not a GRIDGO client. Suppliers, riders, and Operations use their own app.";
 
       case "not_found":
         return "Nothing was found for that request. Go back and try again.";
