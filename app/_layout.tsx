@@ -22,15 +22,12 @@ import { useAppFonts } from "@/hooks/useAppFonts";
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
+import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
 import { pushedScreenOptions } from "@/lib/navigationHeaders";
 import { hasActiveSession } from "@/lib/sessionGuard";
 import { useSession } from "@/store/session";
 // Side-effect: rehydrate persisted theme preference from AsyncStorage.
 import "@/store/theme";
-
-const publishableKey = String(
-  Constants.expoConfig?.extra?.clerkPublishableKey ?? "",
-);
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,11 +52,10 @@ function navigationTheme(scheme: ThemeName): Theme {
 }
 
 export default function RootLayout() {
-  if (!publishableKey.startsWith("pk_")) {
-    throw new Error(
-      "Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Pull the Clerk development environment locally, or set a pk_live_* value in the EAS build environment.",
-    );
-  }
+  const publishableKey = resolveClerkPublishableKey(
+    Constants.expoConfig?.extra?.clerkPublishableKey,
+    __DEV__,
+  );
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>

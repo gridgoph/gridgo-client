@@ -47,3 +47,14 @@ describe("Clerk Expo configuration", () => {
     expect(resolved.extra?.clerkPublishableKey).toBeUndefined();
   });
 });
+
+describe("the app reads the baked Clerk key", () => {
+  it("routes Expo extra through the resolver and keeps the static env read", () => {
+    const layout = readFileSync(join(root, "app/_layout.tsx"), "utf8");
+    const clerk = readFileSync(join(root, "lib/clerkAuth.ts"), "utf8");
+
+    expect(layout).toMatch(/extra\?\.clerkPublishableKey/);
+    expect(layout).toMatch(/resolveClerkPublishableKey/);
+    expect(clerk).toMatch(/process\.env\.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY/);
+  });
+});

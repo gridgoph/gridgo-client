@@ -37,3 +37,39 @@ export function isAlreadySignedInError(error: unknown): boolean {
   const message = clerkErrorMessage(error, "").toLowerCase();
   return message.includes("already signed in");
 }
+
+/**
+ * Validate the public key without ever echoing its value into an error.
+ * Development may use either Clerk instance; a release must use Production.
+ */
+export function clerkPublishableKey(
+  value: string | null | undefined,
+  development: boolean,
+): string {
+  const key = value?.trim() ?? "";
+  if (!/^pk_(test|live)_/.test(key)) {
+    throw new Error(
+      "Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Pull the Clerk development environment locally, or set a pk_live_* value in the EAS build environment.",
+    );
+  }
+  if (!development && !key.startsWith("pk_live_")) {
+    throw new Error("Release builds require a Clerk publishable key starting pk_live_.");
+  }
+  return key;
+}
+
+/**
+ * Expo extra is preferred because app.config.ts writes it during prebuild.
+ * The static environment read is the Gradle-time fallback Babel can inline
+ * while assembling the release bundle if extra was not stamped.
+ */
+export function resolveClerkPublishableKey(
+  extra: unknown,
+  development: boolean,
+): string {
+  const fromExtra = typeof extra === "string" ? extra.trim() : "";
+  return clerkPublishableKey(
+    fromExtra || process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    development,
+  );
+}
