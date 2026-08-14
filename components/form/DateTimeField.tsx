@@ -92,7 +92,7 @@ export function DateTimeField({
         accessibilityLabel={accessibilityLabel}
         accessibilityValue={{ text: value ? formatDeadline(value) : placeholder }}
         onPress={open}
-        className="gg-field flex-row items-center justify-between"
+        className="gg-field flex-row items-center justify-between px-6"
       >
         <Text
           className={value ? "flex-1 text-body text-text-primary" : "flex-1 text-body text-text-muted"}

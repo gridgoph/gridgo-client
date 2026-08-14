@@ -25,6 +25,11 @@ const workflow = readFileSync(
   "utf8",
 );
 
+const verifyScript = readFileSync(
+  join(__dirname, "..", "scripts", "verify-release-apk.sh"),
+  "utf8",
+);
+
 /** A job body: every line from its key to the next job's key. */
 function jobBody(name: string): string {
   const lines = workflow.split("\n");
@@ -58,18 +63,37 @@ function steps(body: string): string[] {
 const apk = jobBody("apk");
 const apkSteps = steps(apk);
 
-describe("the release workflow bakes the deployed API URL into the bundle", () => {
+const publicApiUrlEnv =
+  /EXPO_PUBLIC_API_URL:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_API_URL\s*\}\}/;
+const clerkPublishableEnv =
+  /EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY\s*\}\}/;
+
+function stepEnv(step: string): string {
+  return /\n\s+env:\n([\s\S]*?)\n\s+run:/.exec(step)?.[1] ?? "";
+}
+
+function hasReleasePublicEnv(step: string): boolean {
+  const env = stepEnv(step);
+  return publicApiUrlEnv.test(env) && clerkPublishableEnv.test(env);
+}
+
+describe("the release workflow bakes its public configuration into the bundle", () => {
   it("finds the step that builds the bundle", () => {
     expect(apkSteps.filter((step) => step.includes("gradlew assembleRelease"))).toHaveLength(1);
   });
 
-  it("sets EXPO_PUBLIC_API_URL on that step, not somewhere it cannot reach", () => {
+  it("sets API and Clerk env on config, prebuild, and Gradle", () => {
+    const config = apkSteps.find((step) => step.includes("expo config --type public"));
+    const prebuild = apkSteps.find((step) => step.includes("expo prebuild"));
     const build = apkSteps.find((step) => step.includes("gradlew assembleRelease"));
-    expect(build).toBeDefined();
 
-    // The env: block of this step, up to the run: that consumes it.
-    const env = /\n\s+env:\n([\s\S]*?)\n\s+run:/.exec(build as string)?.[1] ?? "";
-    expect(env).toMatch(/EXPO_PUBLIC_API_URL:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_API_URL\s*\}\}/);
+    expect(config).toBeDefined();
+    expect(prebuild).toBeDefined();
+    expect(build).toBeDefined();
+    expect(hasReleasePublicEnv(config as string)).toBe(true);
+    expect(hasReleasePublicEnv(prebuild as string)).toBe(true);
+    expect(hasReleasePublicEnv(build as string)).toBe(true);
+    expect(build).toContain("pk_live_*");
   });
 
   it("verifies the built APK rather than trusting the build", () => {
@@ -88,6 +112,16 @@ describe("the release workflow bakes the deployed API URL into the bundle", () =
     expect(cleanup).toBeDefined();
     expect(cleanup).toMatch(/if:\s*always\(\)/);
     expect(cleanup).toContain("deploy_key");
+  });
+});
+
+describe("the verify script checks the Clerk value in the built artifact", () => {
+  it("requires a production Clerk publishable key", () => {
+    expect(verifyScript).toMatch(/require_env EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY/);
+    expect(verifyScript).toMatch(/pk_live_\*/);
+    expect(verifyScript).toMatch(
+      /grep -aqF -- "\$EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY"/,
+    );
   });
 });
 

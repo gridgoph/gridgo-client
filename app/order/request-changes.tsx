@@ -1,7 +1,7 @@
 import { usePreventRemove } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Platform, Text, TextInput, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ErrorState } from "@/components/ErrorState";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { TextField } from "@/components/form/TextField";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -101,14 +102,12 @@ export default function RequestChangesSheet() {
         </View>
 
         <View className="gap-2">
-          <TextInput
-            className="gg-field h-auto min-h-28 py-3"
+          <TextField
             value={reason}
             onChangeText={setReason}
             placeholder="The logo is cropped on the right edge and the brand red has printed orange."
-            placeholderTextColor={colors.textMuted}
             multiline
-            textAlignVertical="top"
+            multilineMinHeight={112}
             maxLength={500}
             autoFocus
             editable={!busy}

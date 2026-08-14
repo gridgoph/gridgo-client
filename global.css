@@ -318,9 +318,9 @@
   @apply min-h-11 min-w-11;
 }
 
-/** Text field / select shell. 20px inner inset so placeholder and value sit off the stroke. */
+/** Text field / select shell. Horizontal inset belongs to the concrete control. */
 @utility gg-field {
-  @apply h-12 rounded-field border border-outline bg-surface px-5 text-body text-text-primary;
+  @apply h-12 rounded-field border border-outline bg-surface text-body text-text-primary;
 }
 
 /** Shared button box. Compose with a fill below. */

@@ -11,6 +11,10 @@ type Props = {
   autoCapitalize?: TextInputProps["autoCapitalize"];
   returnKeyType?: TextInputProps["returnKeyType"];
   maxLength?: number;
+  autoFocus?: boolean;
+  editable?: boolean;
+  /** Defaults to 96; larger multiline destinations may preserve their composition. */
+  multilineMinHeight?: number;
   /** Lets the OS offer the right keyboard and the right autofill. */
   keyboardType?: TextInputProps["keyboardType"];
   textContentType?: TextInputProps["textContentType"];
@@ -34,6 +38,9 @@ export function TextField({
   autoCapitalize = "sentences",
   returnKeyType,
   maxLength,
+  autoFocus,
+  editable,
+  multilineMinHeight = 96,
   keyboardType,
   textContentType,
   secureTextEntry,
@@ -44,16 +51,24 @@ export function TextField({
   const colors = useThemeColors();
   return (
     <TextInput
-      className={multiline ? "gg-field h-auto min-h-24 py-3" : "gg-field"}
+      className={multiline ? "gg-field h-auto py-3" : "gg-field"}
+      style={{
+        paddingStart: 28,
+        paddingEnd: 28,
+        includeFontPadding: false,
+        textAlignVertical: multiline ? "top" : "center",
+        ...(multiline ? { minHeight: multilineMinHeight } : {}),
+      }}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
       placeholderTextColor={colors.textMuted}
       multiline={multiline}
-      textAlignVertical={multiline ? "top" : "center"}
       autoCapitalize={autoCapitalize}
       returnKeyType={returnKeyType}
       maxLength={maxLength}
+      autoFocus={autoFocus}
+      editable={editable}
       keyboardType={keyboardType}
       textContentType={textContentType}
       secureTextEntry={secureTextEntry}
