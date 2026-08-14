@@ -1,6 +1,6 @@
 import { useSignUp } from "@clerk/expo";
 import { usePreventRemove } from "@react-navigation/native";
-import { Redirect } from "expo-router";
+import { Redirect, type Href } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 
@@ -15,11 +15,14 @@ import {
   passwordConfirmationError,
   splitFullName,
 } from "@/lib/clerkAuth";
+import { needsClientProfile } from "@/lib/signup";
 import { useSession } from "@/store/session";
 
 export default function SignupScreen() {
   const { signUp, fetchStatus } = useSignUp();
   const user = useSession((state) => state.user);
+  const pendingClerkProfile = useSession((state) => state.pendingClerkProfile);
+  const justProvisioned = useSession((state) => state.justProvisioned);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -36,6 +39,11 @@ export default function SignupScreen() {
     setError(null);
   });
 
+  if (user && needsClientProfile(user)) return <Redirect href={"/complete-profile" as Href} />;
+  if (!user && pendingClerkProfile) return <Redirect href={"/complete-profile" as Href} />;
+  if (user && justProvisioned) {
+    return <Redirect href={{ pathname: "/onboarding", params: { returnTo: "home" } }} />;
+  }
   if (user) return <Redirect href="/(tabs)/home" />;
 
   const busy = fetchStatus === "fetching";

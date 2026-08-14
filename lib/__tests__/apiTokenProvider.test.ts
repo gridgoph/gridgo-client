@@ -49,4 +49,21 @@ describe("API Clerk token provider", () => {
       }),
     );
   });
+
+  it("can probe /auth/me without clearing a Clerk session on 401", async () => {
+    api.setTokenProvider(async () => "clerk-session-token");
+    const unauthorized = jest.fn();
+    const stop = api.onUnauthorized(unauthorized);
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({ error: "unauthorized" }),
+    } as Response);
+
+    await expect(api.me({ ignoreUnauthorized: true })).rejects.toMatchObject({ status: 401 });
+    expect(unauthorized).not.toHaveBeenCalled();
+
+    stop();
+    fetchMock.mockRestore();
+  });
 });

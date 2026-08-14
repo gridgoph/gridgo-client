@@ -2,8 +2,8 @@ import { useAuth, useClerk } from "@clerk/expo";
 import { useEffect } from "react";
 
 import * as api from "@/lib/api";
-import { roleAppLabel } from "@/lib/copy";
-import { APP_ROLE, useSession } from "@/store/session";
+import { bridgeClerkToGridgo, wrongRoleMessage } from "@/lib/clerkSessionBridge";
+import { useSession } from "@/store/session";
 
 /**
  * Clerk owns identity; gridgo-api still owns the client projection and role.
@@ -12,6 +12,7 @@ import { APP_ROLE, useSession } from "@/store/session";
 export function useClerkApiSession(): void {
   const { getToken, isLoaded, isSignedIn, sessionId } = useAuth();
   const { signOut } = useClerk();
+  const clerkSyncNonce = useSession((state) => state.clerkSyncNonce);
 
   useEffect(() => {
     useSession.getState().registerIdentityLogout(async () => {
@@ -31,7 +32,7 @@ export function useClerkApiSession(): void {
     const current = useSession.getState();
 
     if (!isSignedIn || !sessionId) {
-      if (current.source === "clerk") current.clearSession();
+      if (current.source === "clerk" || current.pendingClerkProfile) current.clearSession();
       return;
     }
     // A deliberately selected local API session owns the request bearer until
@@ -41,32 +42,31 @@ export function useClerkApiSession(): void {
     let cancelled = false;
     current.beginClerkSync();
     void (async () => {
-      try {
-        const user = await api.me();
-        if (cancelled) return;
-        if (user.role !== APP_ROLE) {
-          await signOut();
-          useSession
-            .getState()
-            .failClerkSync(
-              `This account belongs to ${roleAppLabel(user.role)}. Sign in there instead — GRIDGO ships one app per role.`,
-            );
-          return;
-        }
-        useSession.getState().adoptClerkUser(user);
-      } catch (error) {
-        if (cancelled) return;
-        const message = api.isNetworkFailure(error)
-          ? `Your identity is verified, but GRIDGO cannot reach ${api.getApiBase()}. Check the API connection and try again.`
-          : error instanceof Error
-            ? error.message
-            : "Your identity is verified, but GRIDGO could not load your client profile.";
-        useSession.getState().failClerkSync(message);
+      const result = await bridgeClerkToGridgo({
+        me: () => api.me({ ignoreUnauthorized: true }),
+        activate: (input) => api.activateClerkClient(input),
+      });
+      if (cancelled) return;
+
+      if (result.kind === "adopt") {
+        useSession.getState().adoptClerkUser(result.user, { provisioned: result.provisioned });
+        return;
       }
+      if (result.kind === "needs_profile") {
+        useSession.getState().needClerkProfile();
+        return;
+      }
+      if (result.kind === "wrong_role") {
+        await signOut();
+        useSession.getState().failClerkSync(wrongRoleMessage(result.role));
+        return;
+      }
+      if (result.signOut) await signOut();
+      useSession.getState().failClerkSync(result.message);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, sessionId, signOut]);
+  }, [isLoaded, isSignedIn, sessionId, signOut, clerkSyncNonce]);
 }

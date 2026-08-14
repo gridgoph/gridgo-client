@@ -31,3 +31,9 @@ export function clerkErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
   return fallback;
 }
+
+/** Clerk refuses a second SSO start once a session is already active. */
+export function isAlreadySignedInError(error: unknown): boolean {
+  const message = clerkErrorMessage(error, "").toLowerCase();
+  return message.includes("already signed in");
+}

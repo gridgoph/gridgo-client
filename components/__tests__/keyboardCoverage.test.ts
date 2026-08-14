@@ -102,6 +102,7 @@ describe("keyboard coverage contract", () => {
       "app/(tabs)/new-request.tsx",
       "app/(tabs)/notifications.tsx",
       "app/(tabs)/orders.tsx",
+      "app/complete-profile.tsx",
       "app/onboarding.tsx",
     ]);
   });

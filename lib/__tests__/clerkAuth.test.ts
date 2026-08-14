@@ -1,4 +1,9 @@
-import { clerkErrorMessage, passwordConfirmationError, splitFullName } from "@/lib/clerkAuth";
+import {
+  clerkErrorMessage,
+  isAlreadySignedInError,
+  passwordConfirmationError,
+  splitFullName,
+} from "@/lib/clerkAuth";
 
 describe("Clerk auth helpers", () => {
   it("splits the first word from the rest of a full name", () => {
@@ -25,5 +30,13 @@ describe("Clerk auth helpers", () => {
     ).toBe("That email address is already registered.");
     expect(clerkErrorMessage(new Error("Offline"), "Fallback")).toBe("Offline");
     expect(clerkErrorMessage({}, "Fallback")).toBe("Fallback");
+  });
+
+  it("recognises Clerk's already-signed-in refusal", () => {
+    expect(isAlreadySignedInError(new Error("You're already signed in"))).toBe(true);
+    expect(isAlreadySignedInError({ errors: [{ message: "You're already signed in." }] })).toBe(
+      true,
+    );
+    expect(isAlreadySignedInError(new Error("Invalid password"))).toBe(false);
   });
 });

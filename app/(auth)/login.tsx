@@ -1,7 +1,7 @@
-import { useSignIn } from "@clerk/expo";
+import { useAuth, useClerk, useSignIn } from "@clerk/expo";
 import { useSSO } from "@clerk/expo/experimental";
 import { usePreventRemove } from "@react-navigation/native";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -13,7 +13,9 @@ import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { clerkErrorMessage, passwordConfirmationError } from "@/lib/clerkAuth";
+import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
+import { completeGoogleSso } from "@/lib/googleSso";
+import { needsClientProfile } from "@/lib/signup";
 import { useSession } from "@/store/session";
 
 type Step = "credentials" | "recoveryCode" | "newPassword";
@@ -22,7 +24,16 @@ export default function LoginScreen() {
   const router = useRouter();
   const { signIn, fetchStatus } = useSignIn();
   const { startSSOFlow } = useSSO();
-  const { user, login, loading: localLoading, error: sessionError } = useSession();
+  const { isSignedIn } = useAuth();
+  const { setActive } = useClerk();
+  const {
+    user,
+    login,
+    loading: localLoading,
+    error: sessionError,
+    pendingClerkProfile,
+    justProvisioned,
+  } = useSession();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -40,6 +51,11 @@ export default function LoginScreen() {
     setError(null);
   });
 
+  if (user && needsClientProfile(user)) return <Redirect href={"/complete-profile" as Href} />;
+  if (!user && pendingClerkProfile) return <Redirect href={"/complete-profile" as Href} />;
+  if (user && justProvisioned) {
+    return <Redirect href={{ pathname: "/onboarding", params: { returnTo: "home" } }} />;
+  }
   if (user) return <Redirect href="/(tabs)/home" />;
 
   const clerkLoading = fetchStatus === "fetching";
@@ -118,8 +134,23 @@ export default function LoginScreen() {
     setSocialLoading(true);
     setError(null);
     try {
-      await startSSOFlow({ strategy: "oauth_google" });
+      const outcome = await completeGoogleSso({
+        alreadySignedIn: Boolean(isSignedIn),
+        startSSOFlow: () => startSSOFlow({ strategy: "oauth_google" }),
+        setActive: (args) => setActive(args),
+      });
+      if (outcome.status === "already_signed_in") {
+        useSession.getState().requestClerkSync();
+        return;
+      }
+      if (outcome.status === "incomplete") {
+        setError("Google sign-in did not finish. Try again.");
+      }
     } catch (caught) {
+      if (isAlreadySignedInError(caught)) {
+        useSession.getState().requestClerkSync();
+        return;
+      }
       setError(clerkErrorMessage(caught, "Google sign-in did not finish. Try again."));
     } finally {
       setSocialLoading(false);

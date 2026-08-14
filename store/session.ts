@@ -14,14 +14,23 @@ type SessionState = {
   source: "legacy" | "clerk" | null;
   loading: boolean;
   error: string | null;
+  /** Clerk is signed in but GRIDGO still needs account type (Google / unmapped). */
+  pendingClerkProfile: boolean;
+  /** True after activate created this session's client — send them through onboarding. */
+  justProvisioned: boolean;
+  /** Bump to retry the Clerk → API bridge without starting SSO again. */
+  clerkSyncNonce: number;
   login: (email: string, password: string) => Promise<void>;
   /** Create a client account and sign straight into it. */
   signUp: (fields: SignupFields) => Promise<void>;
   logout: () => Promise<void>;
   /** Domain identity projected after Clerk has issued a session token. */
-  adoptClerkUser: (user: User) => void;
+  adoptClerkUser: (user: User, options?: { provisioned?: boolean }) => void;
   beginClerkSync: () => void;
   failClerkSync: (message: string) => void;
+  needClerkProfile: () => void;
+  requestClerkSync: () => void;
+  clearJustProvisioned: () => void;
   registerIdentityLogout: (logout: (() => Promise<void>) | null) => void;
   /** Drop the in-memory user. Routing reacts via Stack.Protected — no router calls here. */
   clearSession: () => void;
@@ -35,17 +44,44 @@ export const useSession = create<SessionState>((set) => ({
   source: null,
   loading: false,
   error: null,
+  pendingClerkProfile: false,
+  justProvisioned: false,
+  clerkSyncNonce: 0,
   clearError: () => set({ error: null }),
   clearSession: () =>
     set((state) => {
       if (state.source === "clerk") void identityLogout?.();
-      return { user: null, source: null, loading: false };
+      return {
+        user: null,
+        source: null,
+        loading: false,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+      };
     }),
-  adoptClerkUser: (user) =>
-    set({ user, source: "clerk", loading: false, error: null }),
+  adoptClerkUser: (user, options) =>
+    set({
+      user,
+      source: "clerk",
+      loading: false,
+      error: null,
+      pendingClerkProfile: false,
+      justProvisioned: Boolean(options?.provisioned),
+    }),
   beginClerkSync: () => set({ loading: true, error: null }),
   failClerkSync: (message) =>
-    set({ user: null, source: null, loading: false, error: message }),
+    set({
+      user: null,
+      source: null,
+      loading: false,
+      error: message,
+      pendingClerkProfile: false,
+    }),
+  needClerkProfile: () =>
+    set({ pendingClerkProfile: true, loading: false, error: null }),
+  requestClerkSync: () =>
+    set((state) => ({ clerkSyncNonce: state.clerkSyncNonce + 1, error: null })),
+  clearJustProvisioned: () => set({ justProvisioned: false }),
   registerIdentityLogout: (logout) => {
     identityLogout = logout;
   },
@@ -113,7 +149,13 @@ export const useSession = create<SessionState>((set) => ({
       await api.logout(deviceToken);
     } finally {
       await identityLogout?.();
-      set({ user: null, source: null, loading: false });
+      set({
+        user: null,
+        source: null,
+        loading: false,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+      });
       void usePush.getState().release();
     }
   },

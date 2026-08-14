@@ -19,6 +19,8 @@ describe("public Clerk auth layout", () => {
     expect(login).toContain("useSignIn");
     expect(login).toContain("resetPasswordEmailCode");
     expect(login).toContain("oauth_google");
+    expect(login).toContain("completeGoogleSso");
+    expect(login).toContain("setActive");
     expect(login).toContain("PasswordField");
     expect(login).not.toMatch(/facebook/i);
   });

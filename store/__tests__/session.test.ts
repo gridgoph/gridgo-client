@@ -3,7 +3,15 @@ import { useSession } from "@/store/session";
 
 describe("session store", () => {
   beforeEach(() => {
-    useSession.setState({ user: null, loading: false, error: null, source: null });
+    useSession.setState({
+      user: null,
+      loading: false,
+      error: null,
+      source: null,
+      pendingClerkProfile: false,
+      justProvisioned: false,
+      clerkSyncNonce: 0,
+    });
     useSession.getState().registerIdentityLogout(null);
     api.setToken(null);
   });
