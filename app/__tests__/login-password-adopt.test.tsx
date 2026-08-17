@@ -141,7 +141,8 @@ describe("LoginScreen password already signed in", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(useSession.getState().clerkSyncNonce).toBe(1));
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
+    expect(useSession.getState().source).toBe("clerk");
     expect(mockPassword).not.toHaveBeenCalled();
     expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_leftover" });
     expect(screen.queryByText("Could not sign in")).toBeNull();

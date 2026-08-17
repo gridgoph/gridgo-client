@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -141,10 +141,37 @@ describe("LoginScreen password already-signed-in refusal", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(useSession.getState().clerkSyncNonce).toBe(1));
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
+    expect(useSession.getState().source).toBe("clerk");
     expect(mockPassword).toHaveBeenCalledTimes(1);
     expect(mockSignOut).not.toHaveBeenCalled();
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
+
+    mockPassword.mockClear();
+    mockGetToken.mockResolvedValue(null);
+    mockSignOut.mockRejectedValue(new Error("Clerk is unavailable"));
+    await act(async () => {
+      useSession.setState({
+        user: null,
+        source: null,
+        loading: false,
+        error: null,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+      });
+    });
+    await waitFor(() => expect(screen.getByLabelText("Email")).toBeTruthy());
+    fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
+    fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
+
+    fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
+
+    await waitFor(() => expect(screen.getByText(/could not sign you out of Clerk/i)).toBeTruthy());
+    expect(mockPassword).toHaveBeenCalledTimes(1);
+    expect(useSession.getState().loading).toBe(false);
+    expect(screen.getByRole("button", { name: "Sign out and try again" })).toBeTruthy();
+    expect(screen.queryByText("You're already signed in.")).toBeNull();
+    expect(screen.queryByText(/currently logged in/i)).toBeNull();
   });
 });

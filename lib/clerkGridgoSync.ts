@@ -14,34 +14,28 @@ import {
 } from "@/lib/clerkSessionBridge";
 import { useSession } from "@/store/session";
 
-type ClerkGridgoSyncResult = {
-  generation: number;
-  result: ClerkBridgeResult;
-};
-
 let currentGeneration = 0;
+const activeSyncs = new Map<string | ClerkGetToken, Promise<ClerkBridgeResult>>();
 
-export async function loadClerkGridgoUser(
-  getToken: ClerkGetToken,
-): Promise<ClerkGridgoSyncResult> {
-  const generation = ++currentGeneration;
+export function invalidateClerkGridgoSync(): void {
+  currentGeneration += 1;
+  activeSyncs.clear();
+}
+
+async function loadClerkGridgoUser(getToken: ClerkGetToken): Promise<ClerkBridgeResult> {
   api.setTokenProvider(() => clerkSessionToken(getToken));
   useSession.getState().beginClerkSync();
-  const result = await bridgeClerkToGridgo({
+  return bridgeClerkToGridgo({
     me: () => api.me({ ignoreUnauthorized: true }),
     activate: (input) => api.activateClerkClient(input),
     refreshToken: () => clerkSessionToken(getToken),
   });
-  return { generation, result };
 }
 
-export async function applyClerkGridgoResult(
-  sync: ClerkGridgoSyncResult,
+async function applyClerkGridgoResult(
+  result: ClerkBridgeResult,
   signOut: () => Promise<unknown>,
 ): Promise<void> {
-  if (sync.generation !== currentGeneration) return;
-
-  const { result } = sync;
   if (result.kind === "adopt") {
     useSession.getState().adoptClerkUser(result.user, { provisioned: result.provisioned });
     return;
@@ -62,6 +56,8 @@ export async function applyClerkGridgoResult(
   const current = useSession.getState();
   if (!current.user && !current.pendingClerkProfile) {
     current.failClerkSync(result.message);
+  } else {
+    useSession.setState({ loading: false });
   }
   if (result.signOut) {
     try {
@@ -72,11 +68,27 @@ export async function applyClerkGridgoResult(
   }
 }
 
-export async function syncClerkToGridgo(deps: {
+export function syncClerkToGridgo(deps: {
   getToken: ClerkGetToken;
   signOut: () => Promise<unknown>;
+  sessionId?: string | null;
 }): Promise<ClerkBridgeResult> {
-  const sync = await loadClerkGridgoUser(deps.getToken);
-  await applyClerkGridgoResult(sync, deps.signOut);
-  return sync.result;
+  const key = deps.sessionId ?? deps.getToken;
+  const active = activeSyncs.get(key);
+  if (active) return active;
+
+  const generation = ++currentGeneration;
+  const run = (async () => {
+    const result = await loadClerkGridgoUser(deps.getToken);
+    if (generation === currentGeneration) {
+      await applyClerkGridgoResult(result, deps.signOut);
+    }
+    return result;
+  })();
+  let tracked!: Promise<ClerkBridgeResult>;
+  tracked = run.finally(() => {
+    if (activeSyncs.get(key) === tracked) activeSyncs.delete(key);
+  });
+  activeSyncs.set(key, tracked);
+  return tracked;
 }

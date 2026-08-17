@@ -77,4 +77,22 @@ describe("adoptOrClearClerkSession", () => {
     ).resolves.toEqual({ status: "cleared" });
     expect(signOut).toHaveBeenCalled();
   });
+
+  it("reports when an expired leftover cannot be signed out", async () => {
+    const getToken = jest.fn(async () => null);
+    signOut.mockRejectedValueOnce(new Error("Clerk is unavailable"));
+
+    await expect(
+      adoptOrClearClerkSession({
+        isSignedIn: true,
+        sessionId: "sess_dead",
+        getToken,
+        setActive,
+        signOut,
+      }),
+    ).resolves.toEqual({
+      status: "cleanup_failed",
+      message: "GRIDGO could not sign you out of Clerk. Check your connection and try again.",
+    });
+  });
 });

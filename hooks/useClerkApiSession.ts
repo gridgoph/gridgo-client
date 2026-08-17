@@ -1,8 +1,8 @@
 import { useAuth, useClerk } from "@clerk/expo";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import * as api from "@/lib/api";
-import { applyClerkGridgoResult, loadClerkGridgoUser } from "@/lib/clerkGridgoSync";
+import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import { clerkSessionToken } from "@/lib/clerkSignIn";
 import { useSession } from "@/store/session";
 
@@ -14,6 +14,7 @@ export function useClerkApiSession(): void {
   const { getToken, isLoaded, isSignedIn, sessionId } = useAuth();
   const { signOut } = useClerk();
   const clerkSyncNonce = useSession((state) => state.clerkSyncNonce);
+  const syncedSessionId = useRef<string | null>(null);
 
   useEffect(() => {
     useSession.getState().registerIdentityLogout(async () => {
@@ -42,9 +43,17 @@ export function useClerkApiSession(): void {
     const current = useSession.getState();
 
     if (!isSignedIn || !sessionId) {
+      if (syncedSessionId.current) {
+        invalidateClerkGridgoSync();
+        syncedSessionId.current = null;
+      }
       if (current.source === "clerk" || current.pendingClerkProfile) current.clearSession();
       return;
     }
+    if (syncedSessionId.current && syncedSessionId.current !== sessionId) {
+      invalidateClerkGridgoSync();
+    }
+    syncedSessionId.current = sessionId;
     // A deliberately selected local API session owns the request bearer until
     // it signs out; do not overwrite it with a concurrent identity refresh.
     if (current.source === "legacy") return;
@@ -60,9 +69,7 @@ export function useClerkApiSession(): void {
         return;
       }
 
-      const sync = await loadClerkGridgoUser(getToken);
-      if (cancelled) return;
-      await applyClerkGridgoResult(sync, signOut);
+      await syncClerkToGridgo({ getToken, signOut, sessionId });
     })();
 
     return () => {

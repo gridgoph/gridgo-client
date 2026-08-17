@@ -141,7 +141,8 @@ describe("LoginScreen Google SSO", () => {
 
     fireEvent.press(screen.getByLabelText("Continue with Google"));
 
-    await waitFor(() => expect(useSession.getState().clerkSyncNonce).toBe(1));
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
+    expect(useSession.getState().source).toBe("clerk");
     expect(mockStartSSOFlow).not.toHaveBeenCalled();
     expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_leftover" });
     expect(screen.queryByText("Could not sign in")).toBeNull();

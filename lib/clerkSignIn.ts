@@ -16,7 +16,11 @@ export type AdoptOrClearClerkSessionInput = {
 export type AdoptOrClearClerkSessionResult =
   | { status: "fresh" }
   | { status: "adopt" }
-  | { status: "cleared" };
+  | { status: "cleared" }
+  | { status: "cleanup_failed"; message: string };
+
+export const clerkSignOutRecoveryMessage =
+  "GRIDGO could not sign you out of Clerk. Check your connection and try again.";
 
 /** Fresh JWT for gridgo-api. Cached leftovers are often expired or empty. */
 export async function clerkSessionToken(getToken: ClerkGetToken): Promise<string | null> {
@@ -48,7 +52,7 @@ export async function adoptOrClearClerkSession(
   try {
     await input.signOut();
   } catch {
-    // Clearing a dead leftover must not block the credentials just submitted.
+    return { status: "cleanup_failed", message: clerkSignOutRecoveryMessage };
   }
   return { status: "cleared" };
 }
