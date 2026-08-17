@@ -2,7 +2,7 @@ import { useAuth, useClerk, useSignIn } from "@clerk/expo";
 import { useSSO } from "@clerk/expo/experimental";
 import { usePreventRemove } from "@react-navigation/native";
 import { Redirect, type Href, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { AuthDivider } from "@/components/auth/AuthDivider";
@@ -15,12 +15,16 @@ import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
 import { syncClerkToGridgo } from "@/lib/clerkGridgoSync";
-import { adoptOrClearClerkSession, clerkSignOutRecoveryMessage } from "@/lib/clerkSignIn";
+import {
+  adoptOrClearClerkSession,
+  clerkSignOutRecoveryMessage,
+  continuationAfterPassword,
+  type ClerkSecondFactorStrategy,
+} from "@/lib/clerkSignIn";
 import { completeGoogleSso } from "@/lib/googleSso";
 import { needsClientProfile } from "@/lib/signup";
+import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
-
-type Step = "credentials" | "recoveryCode" | "newPassword";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -36,20 +40,33 @@ export default function LoginScreen() {
     pendingClerkProfile,
     justProvisioned,
   } = useSession();
+  const {
+    step,
+    code,
+    enterVerification,
+    enterRecovery,
+    enterNewPassword,
+    setCode,
+    reset: resetLoginFlow,
+  } = useLoginFlow();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [step, setStep] = useState<Step>("credentials");
   const [error, setError] = useState<string | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
 
-  // Recovery steps stay on this screen; the platform back (header + Android)
-  // would otherwise pop to welcome and lose the in-progress reset.
+  useEffect(() => {
+    return () => {
+      useLoginFlow.getState().reset();
+    };
+  }, []);
+
+  // Recovery / verification stay on this screen; the platform back (header +
+  // Android) would otherwise pop to welcome and lose the in-progress reset.
   usePreventRemove(step !== "credentials", () => {
-    setStep("credentials");
+    resetLoginFlow();
     setError(null);
   });
 
@@ -98,6 +115,27 @@ export default function LoginScreen() {
     }
   };
 
+  const finalizeCompletedSignIn = async () => {
+    if (!signIn) return;
+    const finalized = await signIn.finalize();
+    if (finalized.error) throw finalized.error;
+    resetLoginFlow();
+    await adoptGridgoClient();
+  };
+
+  const sendSecondFactor = async (factor: ClerkSecondFactorStrategy) => {
+    if (!signIn) return;
+    if (factor === "email_code") {
+      const sent = await signIn.mfa.sendEmailCode();
+      if (sent.error) throw sent.error;
+      return;
+    }
+    if (factor === "phone_code") {
+      const sent = await signIn.mfa.sendPhoneCode();
+      if (sent.error) throw sent.error;
+    }
+  };
+
   const completePasswordSignIn = async () => {
     if (!signIn) return;
     const result = await signIn.password({
@@ -105,11 +143,18 @@ export default function LoginScreen() {
       password,
     });
     if (result.error) throw result.error;
-    if (signIn.status !== "complete") {
-      throw new Error("This account needs another verification step. Please try again.");
+    const next = continuationAfterPassword(signIn.status, signIn.supportedSecondFactors);
+    if (next.kind === "complete") {
+      const finalized = await signIn.finalize();
+      if (finalized.error) throw finalized.error;
+      return;
     }
-    const finalized = await signIn.finalize();
-    if (finalized.error) throw finalized.error;
+    if (next.kind === "verification") {
+      enterVerification(next.factor);
+      await sendSecondFactor(next.factor);
+      return;
+    }
+    throw new Error(next.message);
   };
 
   const signInWithPassword = async () => {
@@ -150,23 +195,56 @@ export default function LoginScreen() {
       if (created.error) throw created.error;
       const sent = await signIn.resetPasswordEmailCode.sendCode();
       if (sent.error) throw sent.error;
-      setStep("recoveryCode");
+      enterRecovery();
     } catch (caught) {
       setError(clerkErrorMessage(caught, "Could not send the recovery code. Try again."));
     }
   };
 
-  const verifyRecoveryCode = async () => {
-    if (!signIn || !code.trim()) return;
+  const verifySecondFactor = async () => {
+    const current = useLoginFlow.getState();
+    if (!signIn || !current.code.trim()) return;
     setError(null);
     try {
-      const result = await signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() });
+      const trimmed = current.code.trim();
+      const factor = current.secondFactor;
+      const result =
+        factor === "phone_code"
+          ? await signIn.mfa.verifyPhoneCode({ code: trimmed })
+          : factor === "totp"
+            ? await signIn.mfa.verifyTOTP({ code: trimmed })
+            : factor === "backup_code"
+              ? await signIn.mfa.verifyBackupCode({ code: trimmed })
+              : await signIn.mfa.verifyEmailCode({ code: trimmed });
       if (result.error) throw result.error;
-      setStep("newPassword");
+      if (signIn.status !== "complete") {
+        throw new Error("That code could not be verified.");
+      }
+      await finalizeCompletedSignIn();
     } catch (caught) {
       setError(clerkErrorMessage(caught, "That code could not be verified."));
     }
   };
+
+  const verifyRecoveryCode = async () => {
+    const current = useLoginFlow.getState();
+    if (!signIn || !current.code.trim()) return;
+    setError(null);
+    try {
+      const result = await signIn.resetPasswordEmailCode.verifyCode({
+        code: current.code.trim(),
+      });
+      if (result.error) throw result.error;
+      enterNewPassword();
+    } catch (caught) {
+      setError(clerkErrorMessage(caught, "That code could not be verified."));
+    }
+  };
+
+  const submitCodeStep = () =>
+    useLoginFlow.getState().codePurpose === "verify"
+      ? verifySecondFactor()
+      : verifyRecoveryCode();
 
   const saveNewPassword = async () => {
     if (!signIn || !newPassword) return;
@@ -352,14 +430,14 @@ export default function LoginScreen() {
                 textContentType="oneTimeCode"
                 maxLength={6}
                 returnKeyType="go"
-                onSubmitEditing={() => void verifyRecoveryCode()}
+                onSubmitEditing={() => void submitCodeStep()}
               />
             </FormField>
             {error ? <ErrorState label="Could not verify code" body={error} /> : null}
             <PrimaryButton
               label={clerkLoading ? "Checking…" : "Verify code"}
               disabled={code.trim().length < 6 || clerkLoading}
-              onPress={() => void verifyRecoveryCode()}
+              onPress={() => void submitCodeStep()}
             />
           </>
         ) : (
