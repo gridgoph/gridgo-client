@@ -1,19 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import LoginScreen from "@/app/(auth)/login";
 import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
-
-const mockMe = jest.fn();
-const mappedClient: User = {
-  id: "u-client",
-  email: "client@gridgo.ph",
-  name: "Ana Santos",
-  role: "client",
-  accountType: "individual",
-};
 
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
@@ -22,6 +13,16 @@ const mockGetToken = jest.fn(
 );
 const mockSetActive = jest.fn(async () => undefined);
 const mockSignOut = jest.fn(async () => undefined);
+const mockMe = jest.fn();
+const mockActivate = jest.fn();
+
+const client: User = {
+  id: "u-client",
+  email: "client@gridgo.ph",
+  name: "Ana Santos",
+  role: "client",
+  accountType: "individual",
+};
 
 jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
@@ -56,7 +57,7 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     me: (...args: unknown[]) => mockMe(...args),
-    activateClerkClient: jest.fn(),
+    activateClerkClient: (...args: unknown[]) => mockActivate(...args),
   };
 });
 
@@ -83,15 +84,24 @@ jest.mock("@/components/auth/GoogleButton", () => {
   };
 });
 
-jest.mock("expo-router", () => ({
-  Redirect: () => null,
-  useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    back: jest.fn(),
-    canGoBack: () => true,
-  }),
-}));
+jest.mock("expo-router", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require("react");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Text } = require("react-native");
+  return {
+    Redirect: ({ href }: { href: unknown }) => {
+      const value = typeof href === "string" ? href : JSON.stringify(href);
+      return React.createElement(Text, { testID: "redirect" }, value);
+    },
+    useRouter: () => ({
+      push: jest.fn(),
+      replace: jest.fn(),
+      back: jest.fn(),
+      canGoBack: () => true,
+    }),
+  };
+});
 
 jest.mock("@react-navigation/native", () => ({
   usePreventRemove: jest.fn(),
@@ -112,14 +122,15 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen password already-signed-in refusal", () => {
+describe("LoginScreen currently-logged-in Clerk refusal", () => {
   beforeEach(() => {
-    mockPassword.mockReset().mockRejectedValue(new Error("You're already signed in."));
+    mockPassword.mockReset().mockRejectedValue(new Error("You're currently logged in."));
     mockFinalize.mockReset();
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
-    mockMe.mockReset().mockResolvedValue(mappedClient);
+    mockMe.mockReset().mockResolvedValue(client);
+    mockActivate.mockReset();
     useSession.setState({
       user: null,
       loading: false,
@@ -131,7 +142,7 @@ describe("LoginScreen password already-signed-in refusal", () => {
     });
   });
 
-  it("adopts when password() throws already-signed-in and the leftover can mint a JWT", async () => {
+  it("adopts the leftover session and goes home instead of showing Clerk's copy", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -142,36 +153,10 @@ describe("LoginScreen password already-signed-in refusal", () => {
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
-    expect(useSession.getState().source).toBe("clerk");
     expect(mockPassword).toHaveBeenCalledTimes(1);
-    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
-
-    mockPassword.mockClear();
-    mockGetToken.mockResolvedValue(null);
-    mockSignOut.mockRejectedValue(new Error("Clerk is unavailable"));
-    await act(async () => {
-      useSession.setState({
-        user: null,
-        source: null,
-        loading: false,
-        error: null,
-        pendingClerkProfile: false,
-        justProvisioned: false,
-      });
-    });
-    await waitFor(() => expect(screen.getByLabelText("Email")).toBeTruthy());
-    fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
-    fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
-
-    fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
-
-    await waitFor(() => expect(screen.getByText(/could not sign you out of Clerk/i)).toBeTruthy());
-    expect(mockPassword).toHaveBeenCalledTimes(1);
-    expect(useSession.getState().loading).toBe(false);
-    expect(screen.getByRole("button", { name: "Sign out and try again" })).toBeTruthy();
-    expect(screen.queryByText("You're already signed in.")).toBeNull();
-    expect(screen.queryByText(/currently logged in/i)).toBeNull();
+    expect(screen.queryByText("You're currently logged in.")).toBeNull();
   });
 });

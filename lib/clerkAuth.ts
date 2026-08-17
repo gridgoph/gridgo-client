@@ -1,8 +1,8 @@
 type ClerkErrorShape = {
-  errors?: Array<{
+  errors?: {
     longMessage?: string;
     message?: string;
-  }>;
+  }[];
 };
 
 /** Split a display name into the fields Clerk's password sign-up accepts. */
@@ -32,10 +32,15 @@ export function clerkErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-/** Clerk refuses a second SSO start once a session is already active. */
+/** Clerk refuses a second sign-in once a session is already active. */
 export function isAlreadySignedInError(error: unknown): boolean {
   const message = clerkErrorMessage(error, "").toLowerCase();
-  return message.includes("already signed in");
+  return (
+    message.includes("already signed in") ||
+    message.includes("already logged in") ||
+    message.includes("currently signed in") ||
+    message.includes("currently logged in")
+  );
 }
 
 /**

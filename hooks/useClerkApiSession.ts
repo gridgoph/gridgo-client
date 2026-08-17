@@ -1,9 +1,9 @@
 import { useAuth, useClerk } from "@clerk/expo";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import * as api from "@/lib/api";
+import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import { clerkSessionToken } from "@/lib/clerkSignIn";
-import { bridgeClerkToGridgo, wrongRoleMessage } from "@/lib/clerkSessionBridge";
 import { useSession } from "@/store/session";
 
 /**
@@ -14,6 +14,8 @@ export function useClerkApiSession(): void {
   const { getToken, isLoaded, isSignedIn, sessionId } = useAuth();
   const { signOut } = useClerk();
   const clerkSyncNonce = useSession((state) => state.clerkSyncNonce);
+  const syncedSessionId = useRef<string | null>(null);
+  const clerkOwnerPresent = useRef(false);
 
   useEffect(() => {
     useSession.getState().registerIdentityLogout(async () => {
@@ -24,7 +26,7 @@ export function useClerkApiSession(): void {
 
   useEffect(() => {
     if (!isLoaded) return;
-    if (!isSignedIn) {
+    if (!isSignedIn && !sessionId) {
       api.setTokenProvider(null);
       return;
     }
@@ -32,17 +34,29 @@ export function useClerkApiSession(): void {
     // activate /auth/me needs gridgo_role. Do not null the provider in cleanup
     // — Clerk recreates getToken often, and that gap is how me/activate go
     // out with no Bearer (the phone's "session expired" on first paint).
+    // Keep a leftover sessionId's provider too: login may adopt before
+    // useAuth().isSignedIn flips, and nulling here would drop the Bearer.
     api.setTokenProvider(() => getToken({ skipCache: true }));
-  }, [getToken, isLoaded, isSignedIn]);
+  }, [getToken, isLoaded, isSignedIn, sessionId]);
 
   useEffect(() => {
     if (!isLoaded) return;
     const current = useSession.getState();
 
-    if (!isSignedIn || !sessionId) {
+    if (!isSignedIn && !sessionId) {
+      if (clerkOwnerPresent.current) {
+        invalidateClerkGridgoSync();
+      }
+      clerkOwnerPresent.current = false;
+      syncedSessionId.current = null;
       if (current.source === "clerk" || current.pendingClerkProfile) current.clearSession();
       return;
     }
+    clerkOwnerPresent.current = true;
+    if (syncedSessionId.current && sessionId && syncedSessionId.current !== sessionId) {
+      invalidateClerkGridgoSync();
+    }
+    if (sessionId) syncedSessionId.current = sessionId;
     // A deliberately selected local API session owns the request bearer until
     // it signs out; do not overwrite it with a concurrent identity refresh.
     if (current.source === "legacy") return;
@@ -58,29 +72,7 @@ export function useClerkApiSession(): void {
         return;
       }
 
-      useSession.getState().beginClerkSync();
-      const result = await bridgeClerkToGridgo({
-        me: () => api.me({ ignoreUnauthorized: true }),
-        activate: (input) => api.activateClerkClient(input),
-        refreshToken: () => clerkSessionToken(getToken),
-      });
-      if (cancelled) return;
-
-      if (result.kind === "adopt") {
-        useSession.getState().adoptClerkUser(result.user, { provisioned: result.provisioned });
-        return;
-      }
-      if (result.kind === "needs_profile") {
-        useSession.getState().needClerkProfile();
-        return;
-      }
-      if (result.kind === "wrong_role") {
-        await signOut();
-        useSession.getState().failClerkSync(wrongRoleMessage(result.role));
-        return;
-      }
-      if (result.signOut) await signOut();
-      useSession.getState().failClerkSync(result.message);
+      await syncClerkToGridgo({ getToken, signOut, sessionId });
     })();
 
     return () => {

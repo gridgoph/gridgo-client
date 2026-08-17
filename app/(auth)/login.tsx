@@ -14,7 +14,8 @@ import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
-import { adoptOrClearClerkSession } from "@/lib/clerkSignIn";
+import { syncClerkToGridgo } from "@/lib/clerkGridgoSync";
+import { adoptOrClearClerkSession, clerkSignOutRecoveryMessage } from "@/lib/clerkSignIn";
 import { completeGoogleSso } from "@/lib/googleSso";
 import { needsClientProfile } from "@/lib/signup";
 import { useSession } from "@/store/session";
@@ -71,6 +72,32 @@ export default function LoginScreen() {
       signOut,
     });
 
+  const adoptGridgoClient = async () => {
+    await syncClerkToGridgo({ getToken, signOut, sessionId });
+  };
+
+  const settleClerkForSignIn = async (alreadySignedIn = Boolean(isSignedIn)) => {
+    const existing = await settleExistingClerkSession(alreadySignedIn);
+    if (existing.status === "adopt") {
+      await adoptGridgoClient();
+      return "handled" as const;
+    }
+    if (existing.status === "cleanup_failed") {
+      useSession.getState().failClerkSync(existing.message);
+      return "handled" as const;
+    }
+    return "ready" as const;
+  };
+
+  const abandonClerkSession = async () => {
+    try {
+      await signOut();
+      useSession.getState().clearError();
+    } catch {
+      useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+    }
+  };
+
   const completePasswordSignIn = async () => {
     if (!signIn) return;
     const result = await signIn.password({
@@ -89,23 +116,19 @@ export default function LoginScreen() {
     if (!signIn || !email.trim() || !password) return;
     setError(null);
     try {
-      const existing = await settleExistingClerkSession();
-      if (existing.status === "adopt") {
-        useSession.getState().requestClerkSync();
-        return;
-      }
+      if ((await settleClerkForSignIn()) === "handled") return;
       await completePasswordSignIn();
     } catch (caught) {
       if (isAlreadySignedInError(caught)) {
         try {
-          const existing = await settleExistingClerkSession(true);
-          if (existing.status === "adopt") {
-            useSession.getState().requestClerkSync();
-            return;
-          }
+          if ((await settleClerkForSignIn(true)) === "handled") return;
           await completePasswordSignIn();
           return;
         } catch (retryCaught) {
+          if (isAlreadySignedInError(retryCaught)) {
+            useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+            return;
+          }
           setError(
             clerkErrorMessage(retryCaught, "Could not sign in. Check your details and try again."),
           );
@@ -177,14 +200,10 @@ export default function LoginScreen() {
     setSocialLoading(true);
     setError(null);
     try {
-      const existing = await settleExistingClerkSession();
-      if (existing.status === "adopt") {
-        useSession.getState().requestClerkSync();
-        return;
-      }
+      if ((await settleClerkForSignIn()) === "handled") return;
       const outcome = await runGoogleSso();
       if (outcome.status === "already_signed_in") {
-        useSession.getState().requestClerkSync();
+        await adoptGridgoClient();
         return;
       }
       if (outcome.status === "incomplete") {
@@ -193,17 +212,17 @@ export default function LoginScreen() {
     } catch (caught) {
       if (isAlreadySignedInError(caught)) {
         try {
-          const existing = await settleExistingClerkSession(true);
-          if (existing.status === "adopt") {
-            useSession.getState().requestClerkSync();
-            return;
-          }
+          if ((await settleClerkForSignIn(true)) === "handled") return;
           const outcome = await runGoogleSso();
           if (outcome.status === "incomplete") {
             setError("Google sign-in did not finish. Try again.");
           }
           return;
         } catch (retryCaught) {
+          if (isAlreadySignedInError(retryCaught)) {
+            useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+            return;
+          }
           setError(clerkErrorMessage(retryCaught, "Google sign-in did not finish. Try again."));
           return;
         }
@@ -280,7 +299,12 @@ export default function LoginScreen() {
             </View>
 
             {(error ?? sessionError) ? (
-              <ErrorState label="Could not sign in" body={(error ?? sessionError)!} />
+              <ErrorState
+                label="Could not sign in"
+                body={(error ?? sessionError)!}
+                retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
+                onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+              />
             ) : null}
 
             <PrimaryButton

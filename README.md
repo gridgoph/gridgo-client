@@ -47,8 +47,9 @@ Typecheck with `npx tsc --noEmit`. Strict mode is on and `any` is not allowed.
 
 ```text
 app/                 Routes and screens only — no reusable UI, no business logic
+  (auth)/            Clerk-backed welcome, sign-in, and sign-up routes
   (tabs)/            Client tab shell: home, orders, new-request, notifications, account
-  index.tsx          Temporary launcher (see below)
+  index.tsx          Launch-state mapping into auth, profile setup, onboarding, or the app
   onboarding.tsx     First-run walkthrough
   design-system.tsx  Living token and component reference
 components/          Reusable UI
@@ -59,7 +60,7 @@ store/               Zustand stores
 lib/                 External service helpers
 ```
 
-`app/index.tsx` is scaffolding, not product. It opens the screens built so far without a sign-in flow, and the client home screen replaces it once auth and role gating land.
+Clerk owns the identity session while `gridgo-api` owns the Client projection. A valid Client session enters the app after any required profile setup or first-run onboarding; accounts that cannot be adopted stay on sign-in with a clear recovery action.
 
 `app/design-system.tsx` renders every colour token, type step, and base component in both themes. Open it when you need to check a token rather than reading the tables.
 
