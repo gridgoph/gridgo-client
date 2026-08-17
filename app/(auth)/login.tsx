@@ -1,28 +1,30 @@
 import { useAuth, useClerk, useSignIn } from "@clerk/expo";
 import { useSSO } from "@clerk/expo/experimental";
 import { usePreventRemove } from "@react-navigation/native";
-import { Redirect, type Href, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { AuthDivider } from "@/components/auth/AuthDivider";
 import { GoogleButton } from "@/components/auth/GoogleButton";
+import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { staysOnAuthScreen } from "@/lib/authLanding";
 import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
-import { syncClerkToGridgo } from "@/lib/clerkGridgoSync";
+import { completeClerkAuth, withSettledClerkSession } from "@/lib/clerkComplete";
 import {
   adoptOrClearClerkSession,
   clerkSignOutRecoveryMessage,
   continuationAfterPassword,
+  releaseClerkSession,
   type ClerkSecondFactorStrategy,
 } from "@/lib/clerkSignIn";
 import { completeGoogleSso } from "@/lib/googleSso";
-import { needsClientProfile } from "@/lib/signup";
 import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
 
@@ -32,14 +34,10 @@ export default function LoginScreen() {
   const { startSSOFlow } = useSSO();
   const { isSignedIn, getToken, sessionId } = useAuth();
   const { setActive, signOut } = useClerk();
-  const {
-    user,
-    login,
-    loading: localLoading,
-    error: sessionError,
-    pendingClerkProfile,
-    justProvisioned,
-  } = useSession();
+  const login = useSession((state) => state.login);
+  const localLoading = useSession((state) => state.loading);
+  const sessionError = useSession((state) => state.error);
+  const landing = useAuthLanding();
   const {
     step,
     code,
@@ -70,31 +68,28 @@ export default function LoginScreen() {
     setError(null);
   });
 
-  if (user && needsClientProfile(user)) return <Redirect href={"/complete-profile" as Href} />;
-  if (!user && pendingClerkProfile) return <Redirect href={"/complete-profile" as Href} />;
-  if (user && justProvisioned) {
-    return <Redirect href={{ pathname: "/onboarding", params: { returnTo: "home" } }} />;
-  }
-  if (user) return <Redirect href="/(tabs)/home" />;
+  if (!staysOnAuthScreen(landing)) return <AuthLandingRedirect landing={landing} />;
 
   const clerkLoading = fetchStatus === "fetching";
   const busy = clerkLoading || socialLoading || localLoading;
 
-  const settleExistingClerkSession = (alreadySignedIn = Boolean(isSignedIn)) =>
-    adoptOrClearClerkSession({
+  const adoptGridgoClient = (existingSessionId?: string | null) =>
+    completeClerkAuth({
+      existingSessionId,
+      getToken,
+      signOut,
+      sessionId,
+      setActive: (args) => setActive(args),
+    });
+
+  const settleClerkForSignIn = async (alreadySignedIn = Boolean(isSignedIn)) => {
+    const existing = await adoptOrClearClerkSession({
       isSignedIn: alreadySignedIn,
       sessionId,
       getToken,
       setActive: (args) => setActive(args),
       signOut,
     });
-
-  const adoptGridgoClient = async () => {
-    await syncClerkToGridgo({ getToken, signOut, sessionId });
-  };
-
-  const settleClerkForSignIn = async (alreadySignedIn = Boolean(isSignedIn)) => {
-    const existing = await settleExistingClerkSession(alreadySignedIn);
     if (existing.status === "adopt") {
       await adoptGridgoClient();
       return "handled" as const;
@@ -107,20 +102,25 @@ export default function LoginScreen() {
   };
 
   const abandonClerkSession = async () => {
-    try {
-      await signOut();
+    if (await releaseClerkSession(signOut)) {
       useSession.getState().clearError();
-    } catch {
-      useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+      return;
     }
+    useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
   };
 
+  /** Clerk is done; GRIDGO still has to adopt the client before Home exists. */
   const finalizeCompletedSignIn = async () => {
     if (!signIn) return;
-    const finalized = await signIn.finalize();
-    if (finalized.error) throw finalized.error;
+    await completeClerkAuth({
+      finalize: () => signIn.finalize(),
+      getToken,
+      signOut,
+      setActive: (args) => setActive(args),
+    });
+    // Only once it is really done: a throw above must leave the code step up
+    // with its error, not drop the person back on the credentials form.
     resetLoginFlow();
-    await adoptGridgoClient();
   };
 
   const sendSecondFactor = async (factor: ClerkSecondFactorStrategy) => {
@@ -143,10 +143,17 @@ export default function LoginScreen() {
       password,
     });
     if (result.error) throw result.error;
-    const next = continuationAfterPassword(signIn.status, signIn.supportedSecondFactors);
+    const next = continuationAfterPassword(
+      signIn.status,
+      signIn.supportedSecondFactors,
+      signIn.existingSession,
+    );
+    if (next.kind === "existing_session") {
+      await adoptGridgoClient(next.sessionId);
+      return;
+    }
     if (next.kind === "complete") {
-      const finalized = await signIn.finalize();
-      if (finalized.error) throw finalized.error;
+      await finalizeCompletedSignIn();
       return;
     }
     if (next.kind === "verification") {
@@ -161,24 +168,15 @@ export default function LoginScreen() {
     if (!signIn || !email.trim() || !password) return;
     setError(null);
     try {
-      if ((await settleClerkForSignIn()) === "handled") return;
-      await completePasswordSignIn();
+      await withSettledClerkSession({
+        isSignedIn: Boolean(isSignedIn),
+        settle: settleClerkForSignIn,
+        run: completePasswordSignIn,
+      });
     } catch (caught) {
       if (isAlreadySignedInError(caught)) {
-        try {
-          if ((await settleClerkForSignIn(true)) === "handled") return;
-          await completePasswordSignIn();
-          return;
-        } catch (retryCaught) {
-          if (isAlreadySignedInError(retryCaught)) {
-            useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
-            return;
-          }
-          setError(
-            clerkErrorMessage(retryCaught, "Could not sign in. Check your details and try again."),
-          );
-          return;
-        }
+        useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+        return;
       }
       setError(clerkErrorMessage(caught, "Could not sign in. Check your details and try again."));
     }
@@ -260,8 +258,9 @@ export default function LoginScreen() {
         signOutOfOtherSessions: true,
       });
       if (result.error) throw result.error;
-      const finalized = await signIn.finalize();
-      if (finalized.error) throw finalized.error;
+      // The reset finishes the sign-in, so it lands the same way every other
+      // completed flow does — adopted, not merely finalized.
+      await finalizeCompletedSignIn();
     } catch (caught) {
       setError(clerkErrorMessage(caught, "Could not save the new password."));
     }
@@ -278,32 +277,28 @@ export default function LoginScreen() {
     setSocialLoading(true);
     setError(null);
     try {
-      if ((await settleClerkForSignIn()) === "handled") return;
-      const outcome = await runGoogleSso();
-      if (outcome.status === "already_signed_in") {
-        await adoptGridgoClient();
-        return;
-      }
-      if (outcome.status === "incomplete") {
-        setError("Google sign-in did not finish. Try again.");
-      }
-    } catch (caught) {
-      if (isAlreadySignedInError(caught)) {
-        try {
-          if ((await settleClerkForSignIn(true)) === "handled") return;
+      await withSettledClerkSession({
+        isSignedIn: Boolean(isSignedIn),
+        settle: settleClerkForSignIn,
+        run: async () => {
           const outcome = await runGoogleSso();
+          // Google's session is activated but not yet a GRIDGO client; the
+          // adopt is what puts a user in the store and leaves this screen.
+          if (outcome.status === "activated" || outcome.status === "already_signed_in") {
+            await adoptGridgoClient(
+              outcome.status === "activated" ? outcome.sessionId : undefined,
+            );
+            return;
+          }
           if (outcome.status === "incomplete") {
             setError("Google sign-in did not finish. Try again.");
           }
-          return;
-        } catch (retryCaught) {
-          if (isAlreadySignedInError(retryCaught)) {
-            useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
-            return;
-          }
-          setError(clerkErrorMessage(retryCaught, "Google sign-in did not finish. Try again."));
-          return;
-        }
+        },
+      });
+    } catch (caught) {
+      if (isAlreadySignedInError(caught)) {
+        useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+        return;
       }
       setError(clerkErrorMessage(caught, "Google sign-in did not finish. Try again."));
     } finally {

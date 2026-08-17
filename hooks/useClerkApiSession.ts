@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 
 import * as api from "@/lib/api";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
-import { clerkSessionToken } from "@/lib/clerkSignIn";
+import { clerkSessionToken, releaseClerkSession } from "@/lib/clerkSignIn";
 import { useSession } from "@/store/session";
 
 /**
@@ -18,8 +18,11 @@ export function useClerkApiSession(): void {
   const clerkOwnerPresent = useRef(false);
 
   useEffect(() => {
+    // Never rejects: the session store awaits this inside `logout`'s finally,
+    // and a Clerk "you are signed out" throw there would abandon the state
+    // clear and leave the app looking signed in.
     useSession.getState().registerIdentityLogout(async () => {
-      await signOut();
+      await releaseClerkSession(signOut);
     });
     return () => useSession.getState().registerIdentityLogout(null);
   }, [signOut]);
@@ -36,7 +39,10 @@ export function useClerkApiSession(): void {
     // out with no Bearer (the phone's "session expired" on first paint).
     // Keep a leftover sessionId's provider too: login may adopt before
     // useAuth().isSignedIn flips, and nulling here would drop the Bearer.
-    api.setTokenProvider(() => getToken({ skipCache: true }));
+    // `clerkSessionToken` also swallows Clerk's "you are signed out" throw, so
+    // a request that races a sign-out fails as unauthorized rather than as an
+    // uncaught identity error.
+    api.setTokenProvider(() => clerkSessionToken(getToken));
   }, [getToken, isLoaded, isSignedIn, sessionId]);
 
   useEffect(() => {
@@ -63,16 +69,23 @@ export function useClerkApiSession(): void {
 
     let cancelled = false;
     void (async () => {
-      const token = await clerkSessionToken(getToken);
-      if (cancelled) return;
-      if (!token) {
-        // Dead leftover (failed Google, expired cache): drop it quietly so
-        // login can accept the password or Google tap the person just made.
-        await signOut();
-        return;
-      }
+      // Nothing in here may reject. This runs above every route on launch, and
+      // an unhandled Clerk rejection is the Metro "Unable to authenticate /
+      // You are signed out" flood that hides real errors.
+      try {
+        const token = await clerkSessionToken(getToken);
+        if (cancelled) return;
+        if (!token) {
+          // Dead leftover (failed Google, expired cache): drop it quietly so
+          // login can accept the password or Google tap the person just made.
+          await releaseClerkSession(signOut);
+          return;
+        }
 
-      await syncClerkToGridgo({ getToken, signOut, sessionId });
+        await syncClerkToGridgo({ getToken, signOut, sessionId });
+      } catch {
+        // The bridge already reported anything the person can act on.
+      }
     })();
 
     return () => {

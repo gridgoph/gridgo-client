@@ -1,7 +1,8 @@
-import { Redirect, type Href } from "expo-router";
+import { type Href } from "expo-router";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { FormField } from "@/components/form/FormField";
@@ -15,7 +16,6 @@ import {
   ACCOUNT_TYPES,
   clerkActivateInput,
   firstProfileProblem,
-  needsClientProfile,
   needsOrgName,
   type ClientProfileFields,
 } from "@/lib/signup";
@@ -25,22 +25,23 @@ import { useSession } from "@/store/session";
  * Account type (and org name when required) for Google / unmapped Clerk users.
  * Email and password are already on the Clerk identity — do not re-collect them.
  */
+const welcome = "/(auth)/welcome" as Href;
+
 export default function CompleteProfileScreen() {
   const user = useSession((state) => state.user);
-  const pendingClerkProfile = useSession((state) => state.pendingClerkProfile);
-  const justProvisioned = useSession((state) => state.justProvisioned);
   const logout = useSession((state) => state.logout);
+  const landing = useAuthLanding();
 
   const [accountType, setAccountType] = useState(user?.accountType ?? ACCOUNT_TYPES[0].value);
   const [orgName, setOrgName] = useState(user?.orgName ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (user && !needsClientProfile(user) && justProvisioned) {
-    return <Redirect href={{ pathname: "/onboarding", params: { returnTo: "home" } }} />;
+  // Only the "still incomplete" rung keeps this screen up; everything else is
+  // the shared ladder, so a finished profile cannot be stranded here.
+  if (landing.kind !== "complete_profile") {
+    return <AuthLandingRedirect landing={landing} whenSignedOut={welcome} />;
   }
-  if (user && !needsClientProfile(user)) return <Redirect href="/(tabs)/home" />;
-  if (!user && !pendingClerkProfile) return <Redirect href={"/(auth)/welcome" as Href} />;
 
   const fields: ClientProfileFields = { accountType, orgName };
   const problem = firstProfileProblem(fields);

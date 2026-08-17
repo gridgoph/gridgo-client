@@ -7,6 +7,9 @@ import { useSession } from "@/store/session";
 
 const mockSignUp = {
   status: "missing_requirements",
+  unverifiedFields: ["email_address"],
+  missingFields: [] as string[],
+  existingSession: null as { sessionId: string } | null,
   password: jest.fn(),
   finalize: jest.fn(),
   verifications: {
@@ -17,6 +20,16 @@ const mockSignUp = {
 
 jest.mock("@clerk/expo", () => ({
   useSignUp: () => ({ signUp: mockSignUp, fetchStatus: "idle" }),
+  useAuth: () => ({
+    isSignedIn: false,
+    isLoaded: true,
+    getToken: jest.fn(async () => "clerk-jwt"),
+    sessionId: null,
+  }),
+  useClerk: () => ({
+    setActive: jest.fn(async () => undefined),
+    signOut: jest.fn(async () => undefined),
+  }),
 }));
 
 jest.mock("expo-router", () => ({
@@ -50,8 +63,18 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("SignupScreen", () => {
   beforeEach(() => {
-    useSession.setState({ user: null, loading: false, error: null, source: null });
+    useSession.setState({
+      user: null,
+      loading: false,
+      error: null,
+      source: null,
+      pendingClerkProfile: false,
+      justProvisioned: false,
+    });
     mockSignUp.status = "missing_requirements";
+    mockSignUp.unverifiedFields = ["email_address"];
+    mockSignUp.missingFields = [];
+    mockSignUp.existingSession = null;
     mockSignUp.password.mockReset().mockResolvedValue({ error: null });
     mockSignUp.finalize.mockReset().mockResolvedValue({ error: null });
     mockSignUp.verifications.sendEmailCode.mockReset().mockResolvedValue({ error: null });
