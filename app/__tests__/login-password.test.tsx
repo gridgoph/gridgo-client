@@ -3,7 +3,17 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import LoginScreen from "@/app/(auth)/login";
+import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
+
+const mockMe = jest.fn();
+const mappedClient: User = {
+  id: "u-client",
+  email: "client@gridgo.ph",
+  name: "Ana Santos",
+  role: "client",
+  accountType: "individual",
+};
 
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
@@ -46,6 +56,19 @@ jest.mock("@clerk/expo", () => ({
 jest.mock("@clerk/expo/experimental", () => ({
   useSSO: () => ({ startSSOFlow: jest.fn() }),
 }));
+
+// The completed sign-in adopts the GRIDGO client, so the projection has to be
+// answered here — an unmocked `/auth/me` would reach the network and the test
+// would pass or fail on whether a local API happened to be up.
+jest.mock("@/lib/api", () => {
+  const actual = jest.requireActual("@/lib/api");
+  return {
+    ...actual,
+    me: (...args: unknown[]) => mockMe(...args),
+    activateClerkClient: jest.fn(),
+    setTokenProvider: jest.fn(),
+  };
+});
 
 jest.mock("@/components/auth/GoogleButton", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -109,6 +132,7 @@ describe("LoginScreen leftover password session", () => {
     mockGetToken.mockReset().mockResolvedValue(null);
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
+    mockMe.mockReset().mockResolvedValue(mappedClient);
     useSession.setState({
       user: null,
       loading: false,
@@ -138,6 +162,8 @@ describe("LoginScreen leftover password session", () => {
     });
     expect(mockFinalize).toHaveBeenCalled();
     expect(useSession.getState().clerkSyncNonce).toBe(0);
+    // Finalizing is not landing: the completed sign-in has to reach the client.
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
   });
