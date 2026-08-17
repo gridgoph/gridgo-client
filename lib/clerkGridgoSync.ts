@@ -14,20 +14,34 @@ import {
 } from "@/lib/clerkSessionBridge";
 import { useSession } from "@/store/session";
 
-export async function loadClerkGridgoUser(getToken: ClerkGetToken): Promise<ClerkBridgeResult> {
+type ClerkGridgoSyncResult = {
+  generation: number;
+  result: ClerkBridgeResult;
+};
+
+let currentGeneration = 0;
+
+export async function loadClerkGridgoUser(
+  getToken: ClerkGetToken,
+): Promise<ClerkGridgoSyncResult> {
+  const generation = ++currentGeneration;
   api.setTokenProvider(() => clerkSessionToken(getToken));
   useSession.getState().beginClerkSync();
-  return bridgeClerkToGridgo({
+  const result = await bridgeClerkToGridgo({
     me: () => api.me({ ignoreUnauthorized: true }),
     activate: (input) => api.activateClerkClient(input),
     refreshToken: () => clerkSessionToken(getToken),
   });
+  return { generation, result };
 }
 
 export async function applyClerkGridgoResult(
-  result: ClerkBridgeResult,
+  sync: ClerkGridgoSyncResult,
   signOut: () => Promise<unknown>,
 ): Promise<void> {
+  if (sync.generation !== currentGeneration) return;
+
+  const { result } = sync;
   if (result.kind === "adopt") {
     useSession.getState().adoptClerkUser(result.user, { provisioned: result.provisioned });
     return;
@@ -37,14 +51,24 @@ export async function applyClerkGridgoResult(
     return;
   }
   if (result.kind === "wrong_role") {
-    await signOut();
     useSession.getState().failClerkSync(wrongRoleMessage(result.role));
+    try {
+      await signOut();
+    } catch {
+      return;
+    }
     return;
   }
-  if (result.signOut) await signOut();
-  // A slower hook retry must not wipe a client login already applied.
-  if (!useSession.getState().user) {
-    useSession.getState().failClerkSync(result.message);
+  const current = useSession.getState();
+  if (!current.user && !current.pendingClerkProfile) {
+    current.failClerkSync(result.message);
+  }
+  if (result.signOut) {
+    try {
+      await signOut();
+    } catch {
+      return;
+    }
   }
 }
 
@@ -52,7 +76,7 @@ export async function syncClerkToGridgo(deps: {
   getToken: ClerkGetToken;
   signOut: () => Promise<unknown>;
 }): Promise<ClerkBridgeResult> {
-  const result = await loadClerkGridgoUser(deps.getToken);
-  await applyClerkGridgoResult(result, deps.signOut);
-  return result;
+  const sync = await loadClerkGridgoUser(deps.getToken);
+  await applyClerkGridgoResult(sync, deps.signOut);
+  return sync.result;
 }

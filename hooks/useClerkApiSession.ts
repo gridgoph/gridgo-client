@@ -60,9 +60,9 @@ export function useClerkApiSession(): void {
         return;
       }
 
-      const result = await loadClerkGridgoUser(getToken);
+      const sync = await loadClerkGridgoUser(getToken);
       if (cancelled) return;
-      await applyClerkGridgoResult(result, signOut);
+      await applyClerkGridgoResult(sync, signOut);
     })();
 
     return () => {

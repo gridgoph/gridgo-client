@@ -73,17 +73,18 @@ export default function LoginScreen() {
     });
 
   const adoptGridgoClient = async () => {
-    useSession.getState().requestClerkSync();
     await syncClerkToGridgo({ getToken, signOut });
   };
 
   const abandonClerkSession = async () => {
     try {
       await signOut();
+      useSession.getState().clearError();
     } catch {
-      // Clearing Clerk is the recovery path; a second failure must not stick them here.
+      useSession
+        .getState()
+        .failClerkSync("GRIDGO could not sign you out of Clerk. Check your connection and try again.");
     }
-    useSession.getState().clearError();
   };
 
   const completePasswordSignIn = async () => {

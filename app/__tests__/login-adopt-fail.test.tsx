@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -142,8 +142,22 @@ describe("LoginScreen leftover Clerk session that GRIDGO cannot adopt", () => {
     expect(screen.queryByText("You're already signed in.")).toBeNull();
     expect(screen.queryByText(/currently logged in/i)).toBeNull();
 
-    fireEvent.press(screen.getByRole("button", { name: "Sign out and try again" }));
-    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Sign out and try again" }));
+    });
+    expect(mockSignOut).toHaveBeenCalled();
     expect(useSession.getState().error).toBeNull();
+
+    mockSignOut.mockRejectedValue(new Error("Clerk is unavailable"));
+    fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
+    await waitFor(() => expect(screen.getByText("Could not sign in")).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Sign out and try again" }));
+    });
+
+    expect(screen.getByText(/could not sign you out of Clerk/i)).toBeTruthy();
+    expect(useSession.getState().loading).toBe(false);
+    expect(screen.getByRole("button", { name: "Sign out and try again" })).toBeTruthy();
   });
 });

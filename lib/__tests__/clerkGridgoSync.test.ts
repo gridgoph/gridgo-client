@@ -48,10 +48,10 @@ describe("clerkGridgoSync", () => {
   it("loads a mapped client and applies them to the session", async () => {
     mockMe.mockResolvedValue(client);
 
-    const result = await loadClerkGridgoUser(getToken);
-    await applyClerkGridgoResult(result, signOut);
+    const sync = await loadClerkGridgoUser(getToken);
+    await applyClerkGridgoResult(sync, signOut);
 
-    expect(result).toEqual({ kind: "adopt", user: client, provisioned: false });
+    expect(sync.result).toEqual({ kind: "adopt", user: client, provisioned: false });
     expect(useSession.getState().user?.id).toBe("u1");
     expect(useSession.getState().justProvisioned).toBe(false);
     expect(signOut).not.toHaveBeenCalled();
@@ -61,8 +61,8 @@ describe("clerkGridgoSync", () => {
   it("does not treat an already-mapped client as first-run onboarding", async () => {
     mockMe.mockResolvedValue(client);
 
-    const result = await loadClerkGridgoUser(getToken);
-    await applyClerkGridgoResult(result, signOut);
+    const sync = await loadClerkGridgoUser(getToken);
+    await applyClerkGridgoResult(sync, signOut);
 
     expect(useSession.getState().justProvisioned).toBe(false);
   });
@@ -70,10 +70,10 @@ describe("clerkGridgoSync", () => {
   it("holds a profile-complete lockup on the complete-profile route", async () => {
     mockMe.mockResolvedValue({ ...client, accountType: undefined });
 
-    const result = await loadClerkGridgoUser(getToken);
-    await applyClerkGridgoResult(result, signOut);
+    const sync = await loadClerkGridgoUser(getToken);
+    await applyClerkGridgoResult(sync, signOut);
 
-    expect(result.kind).toBe("needs_profile");
+    expect(sync.result.kind).toBe("needs_profile");
     expect(useSession.getState().user).toBeNull();
     expect(useSession.getState().pendingClerkProfile).toBe(true);
     expect(signOut).not.toHaveBeenCalled();
@@ -85,11 +85,49 @@ describe("clerkGridgoSync", () => {
     network.name = "TypeError";
     mockMe.mockRejectedValue(network);
 
-    const result = await loadClerkGridgoUser(getToken);
-    await applyClerkGridgoResult(result, signOut);
+    const sync = await loadClerkGridgoUser(getToken);
+    await applyClerkGridgoResult(sync, signOut);
 
-    expect(result.kind).toBe("error");
+    expect(sync.result.kind).toBe("error");
     expect(useSession.getState().user?.id).toBe("u1");
+    expect(useSession.getState().error).toBeNull();
+  });
+
+  it("keeps wrong-role recovery available when Clerk sign-out fails", async () => {
+    mockMe.mockResolvedValue({ ...client, role: "supplier" });
+    signOut.mockRejectedValue(new Error("Clerk is unavailable"));
+
+    const sync = await loadClerkGridgoUser(getToken);
+    await expect(applyClerkGridgoResult(sync, signOut)).resolves.toBeUndefined();
+
+    expect(useSession.getState().loading).toBe(false);
+    expect(useSession.getState().user).toBeNull();
+    expect(useSession.getState().error).toMatch(/GRIDGO Supplier/);
+  });
+
+  it("does not let an older failure erase a newer profile requirement", async () => {
+    let rejectOlder!: (reason: unknown) => void;
+    mockMe
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectOlder = reject;
+          }),
+      )
+      .mockResolvedValueOnce({ ...client, accountType: undefined });
+
+    const olderPromise = loadClerkGridgoUser(getToken);
+    const newer = await loadClerkGridgoUser(getToken);
+    await applyClerkGridgoResult(newer, signOut);
+
+    const network = new Error("Network request failed");
+    network.name = "TypeError";
+    rejectOlder(network);
+    const older = await olderPromise;
+    await applyClerkGridgoResult(older, signOut);
+
+    expect(useSession.getState().user).toBeNull();
+    expect(useSession.getState().pendingClerkProfile).toBe(true);
     expect(useSession.getState().error).toBeNull();
   });
 });
