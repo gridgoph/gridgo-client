@@ -39,6 +39,8 @@ describe("Clerk auth helpers", () => {
     expect(isAlreadySignedInError({ errors: [{ message: "You're already signed in." }] })).toBe(
       true,
     );
+    expect(isAlreadySignedInError(new Error("You're currently logged in."))).toBe(true);
+    expect(isAlreadySignedInError(new Error("You are currently signed in"))).toBe(true);
     expect(isAlreadySignedInError(new Error("Invalid password"))).toBe(false);
   });
 });

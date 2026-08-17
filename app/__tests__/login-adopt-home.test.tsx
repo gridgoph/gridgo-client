@@ -6,15 +6,6 @@ import LoginScreen from "@/app/(auth)/login";
 import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
 
-const mockMe = jest.fn();
-const mappedClient: User = {
-  id: "u-client",
-  email: "client@gridgo.ph",
-  name: "Ana Santos",
-  role: "client",
-  accountType: "individual",
-};
-
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
 const mockGetToken = jest.fn(
@@ -22,6 +13,16 @@ const mockGetToken = jest.fn(
 );
 const mockSetActive = jest.fn(async () => undefined);
 const mockSignOut = jest.fn(async () => undefined);
+const mockMe = jest.fn();
+const mockActivate = jest.fn();
+
+const client: User = {
+  id: "u-client",
+  email: "client@gridgo.ph",
+  name: "Ana Santos",
+  role: "client",
+  accountType: "individual",
+};
 
 jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
@@ -56,7 +57,7 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     me: (...args: unknown[]) => mockMe(...args),
-    activateClerkClient: jest.fn(),
+    activateClerkClient: (...args: unknown[]) => mockActivate(...args),
   };
 });
 
@@ -83,15 +84,24 @@ jest.mock("@/components/auth/GoogleButton", () => {
   };
 });
 
-jest.mock("expo-router", () => ({
-  Redirect: () => null,
-  useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    back: jest.fn(),
-    canGoBack: () => true,
-  }),
-}));
+jest.mock("expo-router", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require("react");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Text } = require("react-native");
+  return {
+    Redirect: ({ href }: { href: unknown }) => {
+      const value = typeof href === "string" ? href : JSON.stringify(href);
+      return React.createElement(Text, { testID: "redirect" }, value);
+    },
+    useRouter: () => ({
+      push: jest.fn(),
+      replace: jest.fn(),
+      back: jest.fn(),
+      canGoBack: () => true,
+    }),
+  };
+});
 
 jest.mock("@react-navigation/native", () => ({
   usePreventRemove: jest.fn(),
@@ -112,14 +122,15 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen password already signed in", () => {
+describe("LoginScreen leftover Clerk session reaches GRIDGO home", () => {
   beforeEach(() => {
     mockPassword.mockReset();
     mockFinalize.mockReset();
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
-    mockMe.mockReset().mockResolvedValue(mappedClient);
+    mockMe.mockReset().mockResolvedValue(client);
+    mockActivate.mockReset();
     useSession.setState({
       user: null,
       loading: false,
@@ -131,7 +142,7 @@ describe("LoginScreen password already signed in", () => {
     });
   });
 
-  it("adopts an already-signed-in Clerk session instead of showing an error", async () => {
+  it("adopts a signed-in Clerk client and redirects to home", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -141,10 +152,14 @@ describe("LoginScreen password already signed in", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(useSession.getState().clerkSyncNonce).toBe(1));
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
     expect(mockPassword).not.toHaveBeenCalled();
-    expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_leftover" });
+    expect(mockActivate).not.toHaveBeenCalled();
+    expect(mockMe).toHaveBeenCalled();
+    expect(useSession.getState().source).toBe("clerk");
+    expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
+    expect(screen.queryByText(/currently logged in/i)).toBeNull();
   });
 });

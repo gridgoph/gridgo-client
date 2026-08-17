@@ -2,8 +2,8 @@ import { useAuth, useClerk } from "@clerk/expo";
 import { useEffect } from "react";
 
 import * as api from "@/lib/api";
+import { applyClerkGridgoResult, loadClerkGridgoUser } from "@/lib/clerkGridgoSync";
 import { clerkSessionToken } from "@/lib/clerkSignIn";
-import { bridgeClerkToGridgo, wrongRoleMessage } from "@/lib/clerkSessionBridge";
 import { useSession } from "@/store/session";
 
 /**
@@ -24,7 +24,7 @@ export function useClerkApiSession(): void {
 
   useEffect(() => {
     if (!isLoaded) return;
-    if (!isSignedIn) {
+    if (!isSignedIn && !sessionId) {
       api.setTokenProvider(null);
       return;
     }
@@ -32,8 +32,10 @@ export function useClerkApiSession(): void {
     // activate /auth/me needs gridgo_role. Do not null the provider in cleanup
     // — Clerk recreates getToken often, and that gap is how me/activate go
     // out with no Bearer (the phone's "session expired" on first paint).
+    // Keep a leftover sessionId's provider too: login may adopt before
+    // useAuth().isSignedIn flips, and nulling here would drop the Bearer.
     api.setTokenProvider(() => getToken({ skipCache: true }));
-  }, [getToken, isLoaded, isSignedIn]);
+  }, [getToken, isLoaded, isSignedIn, sessionId]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -58,29 +60,9 @@ export function useClerkApiSession(): void {
         return;
       }
 
-      useSession.getState().beginClerkSync();
-      const result = await bridgeClerkToGridgo({
-        me: () => api.me({ ignoreUnauthorized: true }),
-        activate: (input) => api.activateClerkClient(input),
-        refreshToken: () => clerkSessionToken(getToken),
-      });
+      const result = await loadClerkGridgoUser(getToken);
       if (cancelled) return;
-
-      if (result.kind === "adopt") {
-        useSession.getState().adoptClerkUser(result.user, { provisioned: result.provisioned });
-        return;
-      }
-      if (result.kind === "needs_profile") {
-        useSession.getState().needClerkProfile();
-        return;
-      }
-      if (result.kind === "wrong_role") {
-        await signOut();
-        useSession.getState().failClerkSync(wrongRoleMessage(result.role));
-        return;
-      }
-      if (result.signOut) await signOut();
-      useSession.getState().failClerkSync(result.message);
+      await applyClerkGridgoResult(result, signOut);
     })();
 
     return () => {

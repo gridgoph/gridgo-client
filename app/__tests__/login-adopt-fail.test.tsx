@@ -3,17 +3,7 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import LoginScreen from "@/app/(auth)/login";
-import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
-
-const mockMe = jest.fn();
-const mappedClient: User = {
-  id: "u-client",
-  email: "client@gridgo.ph",
-  name: "Ana Santos",
-  role: "client",
-  accountType: "individual",
-};
 
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
@@ -22,6 +12,8 @@ const mockGetToken = jest.fn(
 );
 const mockSetActive = jest.fn(async () => undefined);
 const mockSignOut = jest.fn(async () => undefined);
+const mockMe = jest.fn();
+const mockActivate = jest.fn();
 
 jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
@@ -56,7 +48,7 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     me: (...args: unknown[]) => mockMe(...args),
-    activateClerkClient: jest.fn(),
+    activateClerkClient: (...args: unknown[]) => mockActivate(...args),
   };
 });
 
@@ -112,14 +104,17 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen password already signed in", () => {
+describe("LoginScreen leftover Clerk session that GRIDGO cannot adopt", () => {
   beforeEach(() => {
     mockPassword.mockReset();
     mockFinalize.mockReset();
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
-    mockMe.mockReset().mockResolvedValue(mappedClient);
+    const network = new Error("Network request failed");
+    network.name = "TypeError";
+    mockMe.mockReset().mockRejectedValue(network);
+    mockActivate.mockReset();
     useSession.setState({
       user: null,
       loading: false,
@@ -131,7 +126,7 @@ describe("LoginScreen password already signed in", () => {
     });
   });
 
-  it("adopts an already-signed-in Clerk session instead of showing an error", async () => {
+  it("explains the API failure and lets them sign out of Clerk", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -141,10 +136,14 @@ describe("LoginScreen password already signed in", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(useSession.getState().clerkSyncNonce).toBe(1));
-    expect(mockPassword).not.toHaveBeenCalled();
-    expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_leftover" });
-    expect(screen.queryByText("Could not sign in")).toBeNull();
+    await waitFor(() => expect(screen.getByText("Could not sign in")).toBeTruthy());
+    expect(useSession.getState().user).toBeNull();
+    expect(screen.getByText(/cannot reach/i)).toBeTruthy();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
+    expect(screen.queryByText(/currently logged in/i)).toBeNull();
+
+    fireEvent.press(screen.getByRole("button", { name: "Sign out and try again" }));
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
+    expect(useSession.getState().error).toBeNull();
   });
 });

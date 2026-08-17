@@ -14,6 +14,7 @@ import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
+import { syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import { adoptOrClearClerkSession } from "@/lib/clerkSignIn";
 import { completeGoogleSso } from "@/lib/googleSso";
 import { needsClientProfile } from "@/lib/signup";
@@ -71,6 +72,20 @@ export default function LoginScreen() {
       signOut,
     });
 
+  const adoptGridgoClient = async () => {
+    useSession.getState().requestClerkSync();
+    await syncClerkToGridgo({ getToken, signOut });
+  };
+
+  const abandonClerkSession = async () => {
+    try {
+      await signOut();
+    } catch {
+      // Clearing Clerk is the recovery path; a second failure must not stick them here.
+    }
+    useSession.getState().clearError();
+  };
+
   const completePasswordSignIn = async () => {
     if (!signIn) return;
     const result = await signIn.password({
@@ -91,7 +106,7 @@ export default function LoginScreen() {
     try {
       const existing = await settleExistingClerkSession();
       if (existing.status === "adopt") {
-        useSession.getState().requestClerkSync();
+        await adoptGridgoClient();
         return;
       }
       await completePasswordSignIn();
@@ -100,7 +115,7 @@ export default function LoginScreen() {
         try {
           const existing = await settleExistingClerkSession(true);
           if (existing.status === "adopt") {
-            useSession.getState().requestClerkSync();
+            await adoptGridgoClient();
             return;
           }
           await completePasswordSignIn();
@@ -179,12 +194,12 @@ export default function LoginScreen() {
     try {
       const existing = await settleExistingClerkSession();
       if (existing.status === "adopt") {
-        useSession.getState().requestClerkSync();
+        await adoptGridgoClient();
         return;
       }
       const outcome = await runGoogleSso();
       if (outcome.status === "already_signed_in") {
-        useSession.getState().requestClerkSync();
+        await adoptGridgoClient();
         return;
       }
       if (outcome.status === "incomplete") {
@@ -195,7 +210,7 @@ export default function LoginScreen() {
         try {
           const existing = await settleExistingClerkSession(true);
           if (existing.status === "adopt") {
-            useSession.getState().requestClerkSync();
+            await adoptGridgoClient();
             return;
           }
           const outcome = await runGoogleSso();
@@ -280,7 +295,12 @@ export default function LoginScreen() {
             </View>
 
             {(error ?? sessionError) ? (
-              <ErrorState label="Could not sign in" body={(error ?? sessionError)!} />
+              <ErrorState
+                label="Could not sign in"
+                body={(error ?? sessionError)!}
+                retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
+                onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+              />
             ) : null}
 
             <PrimaryButton

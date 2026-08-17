@@ -3,7 +3,17 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import LoginScreen from "@/app/(auth)/login";
+import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
+
+const mockMe = jest.fn();
+const mappedClient: User = {
+  id: "u-client",
+  email: "client@gridgo.ph",
+  name: "Ana Santos",
+  role: "client",
+  accountType: "individual",
+};
 
 const mockStartSSOFlow = jest.fn();
 const mockSetActive = jest.fn();
@@ -42,6 +52,15 @@ jest.mock("@clerk/expo", () => ({
 jest.mock("@clerk/expo/experimental", () => ({
   useSSO: () => ({ startSSOFlow: mockStartSSOFlow }),
 }));
+
+jest.mock("@/lib/api", () => {
+  const actual = jest.requireActual("@/lib/api");
+  return {
+    ...actual,
+    me: (...args: unknown[]) => mockMe(...args),
+    activateClerkClient: jest.fn(),
+  };
+});
 
 jest.mock("@/components/auth/GoogleButton", () => {
   // Jest mock factories cannot use ESM imports; this is the same pattern as jest.setup.js.
@@ -104,6 +123,7 @@ describe("LoginScreen Google SSO", () => {
     mockSignOut.mockReset().mockResolvedValue(undefined);
     mockStartSSOFlow.mockReset();
     mockSetActive.mockReset().mockResolvedValue(undefined);
+    mockMe.mockReset().mockResolvedValue(mappedClient);
     useSession.setState({
       user: null,
       loading: false,
