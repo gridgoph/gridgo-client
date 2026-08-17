@@ -1,4 +1,10 @@
-import { adoptOrClearClerkSession, clerkSessionToken } from "@/lib/clerkSignIn";
+import {
+  adoptOrClearClerkSession,
+  clerkPasswordIncompleteMessage,
+  clerkSessionToken,
+  continuationAfterPassword,
+  pickSupportedSecondFactor,
+} from "@/lib/clerkSignIn";
 
 describe("clerkSessionToken", () => {
   it("asks Clerk for a fresh JWT and treats blanks as missing", async () => {
@@ -94,5 +100,51 @@ describe("adoptOrClearClerkSession", () => {
       status: "cleanup_failed",
       message: "GRIDGO could not sign you out of Clerk. Check your connection and try again.",
     });
+  });
+});
+
+describe("continuationAfterPassword", () => {
+  it("finalizes a completed password attempt", () => {
+    expect(continuationAfterPassword("complete")).toEqual({ kind: "complete" });
+  });
+
+  it("collects a code for second factor and new-device trust", () => {
+    expect(continuationAfterPassword("needs_second_factor", [{ strategy: "email_code" }])).toEqual({
+      kind: "verification",
+      factor: "email_code",
+    });
+    expect(continuationAfterPassword("needs_client_trust", [{ strategy: "phone_code" }])).toEqual({
+      kind: "verification",
+      factor: "phone_code",
+    });
+  });
+
+  it("never uses the generic incomplete copy for those statuses", () => {
+    for (const status of ["needs_second_factor", "needs_client_trust"] as const) {
+      const next = continuationAfterPassword(status, []);
+      expect(next.kind).toBe("verification");
+      expect(next).not.toEqual(
+        expect.objectContaining({ message: clerkPasswordIncompleteMessage }),
+      );
+    }
+  });
+
+  it("keeps the generic copy for other incomplete statuses", () => {
+    expect(continuationAfterPassword("needs_first_factor")).toEqual({
+      kind: "blocked",
+      message: clerkPasswordIncompleteMessage,
+    });
+  });
+});
+
+describe("pickSupportedSecondFactor", () => {
+  it("prefers email, then the factor Clerk listed", () => {
+    expect(pickSupportedSecondFactor(null)).toBe("email_code");
+    expect(pickSupportedSecondFactor([{ strategy: "totp" }, { strategy: "email_code" }])).toBe(
+      "email_code",
+    );
+    expect(pickSupportedSecondFactor([{ strategy: "backup_code" }, { strategy: "totp" }])).toBe(
+      "totp",
+    );
   });
 });
