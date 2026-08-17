@@ -1,4 +1,4 @@
-import { ApiError, type User } from "@/lib/api";
+import { type User } from "@/lib/api";
 import { syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import { useSession } from "@/store/session";
 

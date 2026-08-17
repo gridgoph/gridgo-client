@@ -1,8 +1,8 @@
 type ClerkErrorShape = {
-  errors?: Array<{
+  errors?: {
     longMessage?: string;
     message?: string;
-  }>;
+  }[];
 };
 
 /** Split a display name into the fields Clerk's password sign-up accepts. */
