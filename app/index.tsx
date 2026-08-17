@@ -1,16 +1,15 @@
-import { Redirect, type Href } from "expo-router";
-import { needsClientProfile } from "@/lib/signup";
-import { useSession } from "@/store/session";
+import { type Href } from "expo-router";
 
-const completeProfile = "/complete-profile" as Href;
+import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
 
+const welcome = "/(auth)/welcome" as Href;
+
+/**
+ * Launch mapping only. The ladder itself lives in `lib/authLanding.ts`, and
+ * this screen is also where the root guard lands anyone whose auth screen was
+ * removed the moment their session appeared.
+ */
 export default function Index() {
-  const { user, pendingClerkProfile, justProvisioned } = useSession();
-  if (user && needsClientProfile(user)) return <Redirect href={completeProfile} />;
-  if (!user && pendingClerkProfile) return <Redirect href={completeProfile} />;
-  if (user && justProvisioned) {
-    return <Redirect href={{ pathname: "/onboarding", params: { returnTo: "home" } }} />;
-  }
-  if (user) return <Redirect href="/(tabs)/home" />;
-  return <Redirect href={"/(auth)/welcome" as Href} />;
+  const landing = useAuthLanding();
+  return <AuthLandingRedirect landing={landing} whenSignedOut={welcome} />;
 }

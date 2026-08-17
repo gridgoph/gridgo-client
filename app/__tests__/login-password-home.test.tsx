@@ -4,7 +4,14 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import LoginScreen from "@/app/(auth)/login";
 import type { User } from "@/lib/api";
+import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
+
+/**
+ * The plain password sign-in: Clerk answers `complete` on the first call, with
+ * no second factor. Finalizing is not the end of it — without the adopt the
+ * form stays up with no error to act on.
+ */
 
 const mockMe = jest.fn();
 const mappedClient: User = {
@@ -23,10 +30,6 @@ const mockGetToken = jest.fn(
 const mockSetActive = jest.fn(async () => undefined);
 const mockSignOut = jest.fn(async () => undefined);
 
-let mockIsSignedIn = false;
-let mockSessionId: string | null = "sess_leftover";
-let mockSignInStatus = "complete";
-
 jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
     signIn: {
@@ -38,17 +41,25 @@ jest.mock("@clerk/expo", () => ({
         verifyCode: jest.fn(),
         submitPassword: jest.fn(),
       },
-      get status() {
-        return mockSignInStatus;
+      mfa: {
+        sendEmailCode: jest.fn(),
+        verifyEmailCode: jest.fn(),
+        sendPhoneCode: jest.fn(),
+        verifyPhoneCode: jest.fn(),
+        verifyTOTP: jest.fn(),
+        verifyBackupCode: jest.fn(),
       },
+      status: "complete",
+      supportedSecondFactors: [],
+      existingSession: null,
     },
     fetchStatus: "idle",
   }),
   useAuth: () => ({
-    isSignedIn: mockIsSignedIn,
+    isSignedIn: false,
     isLoaded: true,
     getToken: mockGetToken,
-    sessionId: mockSessionId,
+    sessionId: null,
   }),
   useClerk: () => ({ setActive: mockSetActive, signOut: mockSignOut }),
 }));
@@ -57,9 +68,6 @@ jest.mock("@clerk/expo/experimental", () => ({
   useSSO: () => ({ startSSOFlow: jest.fn() }),
 }));
 
-// The completed sign-in adopts the GRIDGO client, so the projection has to be
-// answered here — an unmocked `/auth/me` would reach the network and the test
-// would pass or fail on whether a local API happened to be up.
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
   return {
@@ -74,13 +82,7 @@ jest.mock("@/components/auth/GoogleButton", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pressable, Text } = require("react-native");
   return {
-    GoogleButton: ({
-      onPress,
-      disabled,
-    }: {
-      onPress: () => void;
-      disabled?: boolean;
-    }) => (
+    GoogleButton: ({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) => (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Continue with Google"
@@ -93,15 +95,24 @@ jest.mock("@/components/auth/GoogleButton", () => {
   };
 });
 
-jest.mock("expo-router", () => ({
-  Redirect: () => null,
-  useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    back: jest.fn(),
-    canGoBack: () => true,
-  }),
-}));
+jest.mock("expo-router", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require("react");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Text } = require("react-native");
+  return {
+    Redirect: ({ href }: { href: unknown }) => {
+      const value = typeof href === "string" ? href : JSON.stringify(href);
+      return React.createElement(Text, { testID: "redirect" }, value);
+    },
+    useRouter: () => ({
+      push: jest.fn(),
+      replace: jest.fn(),
+      back: jest.fn(),
+      canGoBack: () => true,
+    }),
+  };
+});
 
 jest.mock("@react-navigation/native", () => ({
   usePreventRemove: jest.fn(),
@@ -122,17 +133,15 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen leftover password session", () => {
+describe("LoginScreen completed password sign-in", () => {
   beforeEach(() => {
-    mockIsSignedIn = true;
-    mockSessionId = "sess_leftover";
-    mockSignInStatus = "complete";
     mockPassword.mockReset().mockResolvedValue({ error: null });
     mockFinalize.mockReset().mockResolvedValue({ error: null });
-    mockGetToken.mockReset().mockResolvedValue(null);
+    mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
     mockMe.mockReset().mockResolvedValue(mappedClient);
+    useLoginFlow.getState().reset();
     useSession.setState({
       user: null,
       loading: false,
@@ -144,7 +153,7 @@ describe("LoginScreen leftover password session", () => {
     });
   });
 
-  it("clears an expired leftover session then submits the password", async () => {
+  it("finalizes, adopts the GRIDGO client, and lands home", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -154,17 +163,11 @@ describe("LoginScreen leftover password session", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
-    await waitFor(() => expect(mockPassword).toHaveBeenCalled());
-    expect(mockPassword).toHaveBeenCalledWith({
-      emailAddress: "client@gridgo.ph",
-      password: "fixture-password",
-    });
-    expect(mockFinalize).toHaveBeenCalled();
-    expect(useSession.getState().clerkSyncNonce).toBe(0);
-    // Finalizing is not landing: the completed sign-in has to reach the client.
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
+    expect(mockFinalize).toHaveBeenCalled();
+    expect(mockMe).toHaveBeenCalled();
+    expect(useSession.getState().source).toBe("clerk");
+    expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
     expect(screen.queryByText("Could not sign in")).toBeNull();
-    expect(screen.queryByText("You're already signed in.")).toBeNull();
   });
 });

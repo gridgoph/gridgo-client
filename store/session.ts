@@ -50,7 +50,9 @@ export const useSession = create<SessionState>((set) => ({
   clearError: () => set({ error: null }),
   clearSession: () =>
     set((state) => {
-      if (state.source === "clerk") void identityLogout?.();
+      // Fire-and-forget, so a Clerk failure cannot leave the app signed in;
+      // the registered logout is the one that swallows "already signed out".
+      if (state.source === "clerk") void identityLogout?.().catch(() => undefined);
       return {
         user: null,
         source: null,
@@ -147,8 +149,12 @@ export const useSession = create<SessionState>((set) => ({
     const deviceToken = usePush.getState().token;
     try {
       await api.logout(deviceToken);
+    } catch {
+      // An unreachable API cannot keep a person signed in, and a rejection
+      // here would surface as an uncaught error from a `void logout()` tap.
+      // The bearer token is dropped either way.
     } finally {
-      await identityLogout?.();
+      await identityLogout?.().catch(() => undefined);
       set({
         user: null,
         source: null,

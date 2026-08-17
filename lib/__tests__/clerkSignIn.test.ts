@@ -1,9 +1,12 @@
 import {
   adoptOrClearClerkSession,
+  clerkNeedsNewPasswordMessage,
   clerkPasswordIncompleteMessage,
   clerkSessionToken,
   continuationAfterPassword,
+  isClerkSignedOutError,
   pickSupportedSecondFactor,
+  releaseClerkSession,
 } from "@/lib/clerkSignIn";
 
 describe("clerkSessionToken", () => {
@@ -11,6 +14,40 @@ describe("clerkSessionToken", () => {
     const getToken = jest.fn(async () => "  ");
     await expect(clerkSessionToken(getToken)).resolves.toBeNull();
     expect(getToken).toHaveBeenCalledWith({ skipCache: true });
+  });
+
+  it("answers null instead of throwing once Clerk is signed out", async () => {
+    const getToken = jest.fn(async () => {
+      throw new Error("Unable to authenticate this request, you are signed out.");
+    });
+    await expect(clerkSessionToken(getToken)).resolves.toBeNull();
+  });
+});
+
+describe("isClerkSignedOutError", () => {
+  it("recognises the signed-out complaints Clerk throws from effects", () => {
+    expect(isClerkSignedOutError(new Error("You are signed out"))).toBe(true);
+    expect(
+      isClerkSignedOutError(new Error("Unable to authenticate this request")),
+    ).toBe(true);
+    expect(isClerkSignedOutError(new Error("Wrong email or password"))).toBe(false);
+    expect(isClerkSignedOutError(null)).toBe(false);
+  });
+});
+
+describe("releaseClerkSession", () => {
+  it("counts an already signed-out Clerk as released", async () => {
+    const signOut = jest.fn(async () => {
+      throw new Error("You are signed out");
+    });
+    await expect(releaseClerkSession(signOut)).resolves.toBe(true);
+  });
+
+  it("reports a sign-out that really failed", async () => {
+    const signOut = jest.fn(async () => {
+      throw new Error("Clerk is unavailable");
+    });
+    await expect(releaseClerkSession(signOut)).resolves.toBe(false);
   });
 });
 
@@ -134,6 +171,19 @@ describe("continuationAfterPassword", () => {
       kind: "blocked",
       message: clerkPasswordIncompleteMessage,
     });
+  });
+
+  it("sends a forced password change to recovery instead of a dead end", () => {
+    expect(continuationAfterPassword("needs_new_password")).toEqual({
+      kind: "blocked",
+      message: clerkNeedsNewPasswordMessage,
+    });
+  });
+
+  it("adopts the session Clerk kept rather than failing the sign-in", () => {
+    expect(
+      continuationAfterPassword("complete", [], { sessionId: "sess_leftover" }),
+    ).toEqual({ kind: "existing_session", sessionId: "sess_leftover" });
   });
 });
 
