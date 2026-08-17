@@ -130,8 +130,10 @@ describe("clerkGridgoSync", () => {
     expect(useSession.getState().error).toBeNull();
   });
 
-  it("coalesces same-session syncs so a valid client adoption wins", async () => {
+  it("coalesces a no-ID sync when the same Clerk session ID appears", async () => {
     let resolveClient!: (user: User) => void;
+    const firstGetToken = jest.fn(async () => "clerk-jwt");
+    const identifiedGetToken = jest.fn(async () => "clerk-jwt");
     const network = new Error("Network request failed");
     network.name = "TypeError";
     mockMe
@@ -143,8 +145,12 @@ describe("clerkGridgoSync", () => {
       )
       .mockRejectedValueOnce(network);
 
-    const first = syncClerkToGridgo({ getToken, signOut, sessionId: "sess_shared" });
-    const second = syncClerkToGridgo({ getToken, signOut, sessionId: "sess_shared" });
+    const first = syncClerkToGridgo({ getToken: firstGetToken, signOut });
+    const second = syncClerkToGridgo({
+      getToken: identifiedGetToken,
+      signOut,
+      sessionId: "sess_shared",
+    });
     resolveClient(client);
 
     await expect(Promise.all([first, second])).resolves.toEqual([

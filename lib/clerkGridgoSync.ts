@@ -15,11 +15,16 @@ import {
 import { useSession } from "@/store/session";
 
 let currentGeneration = 0;
-const activeSyncs = new Map<string | ClerkGetToken, Promise<ClerkBridgeResult>>();
+type ActiveClerkSync = {
+  sessionId: string | null;
+  promise: Promise<ClerkBridgeResult>;
+};
+
+let activeSync: ActiveClerkSync | null = null;
 
 export function invalidateClerkGridgoSync(): void {
   currentGeneration += 1;
-  activeSyncs.clear();
+  activeSync = null;
 }
 
 async function loadClerkGridgoUser(getToken: ClerkGetToken): Promise<ClerkBridgeResult> {
@@ -73,9 +78,18 @@ export function syncClerkToGridgo(deps: {
   signOut: () => Promise<unknown>;
   sessionId?: string | null;
 }): Promise<ClerkBridgeResult> {
-  const key = deps.sessionId ?? deps.getToken;
-  const active = activeSyncs.get(key);
-  if (active) return active;
+  const sessionId = deps.sessionId ?? null;
+  if (activeSync) {
+    if (
+      activeSync.sessionId === sessionId ||
+      activeSync.sessionId === null ||
+      sessionId === null
+    ) {
+      if (sessionId) activeSync.sessionId = sessionId;
+      return activeSync.promise;
+    }
+    invalidateClerkGridgoSync();
+  }
 
   const generation = ++currentGeneration;
   const run = (async () => {
@@ -85,10 +99,11 @@ export function syncClerkToGridgo(deps: {
     }
     return result;
   })();
-  let tracked!: Promise<ClerkBridgeResult>;
-  tracked = run.finally(() => {
-    if (activeSyncs.get(key) === tracked) activeSyncs.delete(key);
+  let owner!: ActiveClerkSync;
+  const tracked = run.finally(() => {
+    if (activeSync === owner) activeSync = null;
   });
-  activeSyncs.set(key, tracked);
+  owner = { sessionId, promise: tracked };
+  activeSync = owner;
   return tracked;
 }

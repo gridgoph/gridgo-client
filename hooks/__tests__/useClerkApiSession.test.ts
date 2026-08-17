@@ -11,13 +11,16 @@ const mockSignOut = jest.fn(async () => undefined);
 const mockMe = jest.fn();
 const mockActivate = jest.fn();
 const mockSetTokenProvider = jest.fn();
+let mockAuthGetToken = mockGetToken;
+let mockIsSignedIn = true;
+let mockSessionId: string | null = "sess_1";
 
 jest.mock("@clerk/expo", () => ({
   useAuth: () => ({
-    getToken: mockGetToken,
+    getToken: mockAuthGetToken,
     isLoaded: true,
-    isSignedIn: true,
-    sessionId: "sess_1",
+    isSignedIn: mockIsSignedIn,
+    sessionId: mockSessionId,
   }),
   useClerk: () => ({ signOut: mockSignOut }),
 }));
@@ -42,6 +45,9 @@ const supplier: User = {
 describe("useClerkApiSession", () => {
   beforeEach(() => {
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
+    mockAuthGetToken = mockGetToken;
+    mockIsSignedIn = true;
+    mockSessionId = "sess_1";
     mockSignOut.mockClear();
     mockSetTokenProvider.mockClear();
     mockMe.mockReset();
@@ -119,5 +125,28 @@ describe("useClerkApiSession", () => {
     mockGetToken.mockClear();
     await provider();
     expect(mockGetToken).toHaveBeenCalledWith({ skipCache: true });
+  });
+
+  it("preserves an adopted client while Clerk still exposes the session ID", async () => {
+    const client: User = {
+      id: "u1",
+      email: "ana@company.com",
+      name: "Ana",
+      role: "client",
+      accountType: "individual",
+    };
+    mockIsSignedIn = false;
+    mockMe.mockResolvedValue(client);
+    useSession.getState().adoptClerkUser(client);
+
+    const { rerender } = await renderHook(() => useClerkApiSession());
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u1"));
+
+    mockAuthGetToken = jest.fn(async () => "clerk-jwt");
+    await rerender({});
+
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u1"));
+    expect(useSession.getState().source).toBe("clerk");
+    expect(mockSignOut).not.toHaveBeenCalled();
   });
 });
