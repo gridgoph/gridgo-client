@@ -6,7 +6,7 @@
  */
 
 import * as api from "@/lib/api";
-import { clerkSessionToken, type ClerkGetToken } from "@/lib/clerkSignIn";
+import { awaitClerkSessionToken, type ClerkGetToken } from "@/lib/clerkSignIn";
 import {
   bridgeClerkToGridgo,
   wrongRoleMessage,
@@ -28,12 +28,16 @@ export function invalidateClerkGridgoSync(): void {
 }
 
 async function loadClerkGridgoUser(getToken: ClerkGetToken): Promise<ClerkBridgeResult> {
-  api.setTokenProvider(() => clerkSessionToken(getToken));
+  // Every leg waits for a token rather than probing once: this runs straight
+  // after a Clerk step completes, and Clerk needs a beat to mint the first JWT
+  // of a new session. The wait costs nothing once one exists.
+  api.setTokenProvider(() => awaitClerkSessionToken(getToken));
   useSession.getState().beginClerkSync();
   return bridgeClerkToGridgo({
+    awaitToken: () => awaitClerkSessionToken(getToken),
     me: () => api.me({ ignoreUnauthorized: true }),
     activate: (input) => api.activateClerkClient(input),
-    refreshToken: () => clerkSessionToken(getToken),
+    refreshToken: () => awaitClerkSessionToken(getToken),
   });
 }
 

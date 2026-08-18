@@ -1,19 +1,18 @@
+/**
+ * Clerk finalizes before it can mint the session's first JWT.
+ *
+ * `getToken` answers empty for a beat after `finalize`, and a request sent in
+ * that gap carries no Bearer at all — which gridgo-api answers `401
+ * unauthorized`, the same body an unmapped identity gets. The bridge used to
+ * read that as a dead session and put "your session expired" under a sign-in
+ * that had just succeeded. Nothing goes out until there is a token to send.
+ */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import LoginScreen from "@/app/(auth)/login";
-import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
-
-const mockMe = jest.fn();
-const mappedClient: User = {
-  id: "u-client",
-  email: "client@gridgo.ph",
-  name: "Ana Santos",
-  role: "client",
-  accountType: "individual",
-};
 
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
@@ -22,10 +21,6 @@ const mockGetToken = jest.fn(
 );
 const mockSetActive = jest.fn(async () => undefined);
 const mockSignOut = jest.fn(async () => undefined);
-
-let mockIsSignedIn = false;
-let mockSessionId: string | null = "sess_leftover";
-let mockSignInStatus = "complete";
 
 jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
@@ -38,17 +33,15 @@ jest.mock("@clerk/expo", () => ({
         verifyCode: jest.fn(),
         submitPassword: jest.fn(),
       },
-      get status() {
-        return mockSignInStatus;
-      },
+      status: "complete",
     },
     fetchStatus: "idle",
   }),
   useAuth: () => ({
-    isSignedIn: mockIsSignedIn,
+    isSignedIn: false,
     isLoaded: true,
     getToken: mockGetToken,
-    sessionId: mockSessionId,
+    sessionId: null,
   }),
   useClerk: () => ({ setActive: mockSetActive, signOut: mockSignOut }),
 }));
@@ -57,30 +50,11 @@ jest.mock("@clerk/expo/experimental", () => ({
   useSSO: () => ({ startSSOFlow: jest.fn() }),
 }));
 
-// The completed sign-in adopts the GRIDGO client, so the projection has to be
-// answered here — an unmocked `/auth/me` would reach the network and the test
-// would pass or fail on whether a local API happened to be up.
-jest.mock("@/lib/api", () => {
-  const actual = jest.requireActual("@/lib/api");
-  return {
-    ...actual,
-    me: (...args: unknown[]) => mockMe(...args),
-    activateClerkClient: jest.fn(),
-    setTokenProvider: jest.fn(),
-  };
-});
-
 jest.mock("@/components/auth/GoogleButton", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pressable, Text } = require("react-native");
   return {
-    GoogleButton: ({
-      onPress,
-      disabled,
-    }: {
-      onPress: () => void;
-      disabled?: boolean;
-    }) => (
+    GoogleButton: ({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) => (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Continue with Google"
@@ -122,24 +96,58 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen leftover password session", () => {
+const client = {
+  id: "u1",
+  email: "client@gridgo.ph",
+  name: "Ana Santos",
+  role: "client" as const,
+  accountType: "individual" as const,
+};
+
+type Call = { path: string; authorization: string | undefined };
+
+let requested: Call[] = [];
+
+/**
+ * gridgo-api as it really answers: no Bearer is `401 unauthorized`, which is
+ * byte-for-byte what an unmapped identity gets. Mocking `api.me` instead would
+ * hide the bug, because a stub returns the client whether or not a token was
+ * ever sent.
+ */
+function stubApi(): jest.SpyInstance {
+  return jest.spyOn(global, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const authorization = headers.Authorization;
+    requested.push({ path, authorization });
+    if (!authorization) {
+      return {
+        ok: false,
+        status: 401,
+        text: async () => JSON.stringify({ error: "unauthorized" }),
+      } as Response;
+    }
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ user: client }),
+    } as Response;
+  });
+}
+
+describe("LoginScreen when Clerk mints the session JWT a tick late", () => {
   beforeEach(() => {
-    mockIsSignedIn = true;
-    mockSessionId = "sess_leftover";
-    mockSignInStatus = "complete";
-    // The leftover cannot mint a JWT; the password sign-in that replaces it
-    // can. Modelling that swap matters: nothing may be sent to gridgo-api
-    // before a token exists, so a token that never appears is a different
-    // scenario (see login-token-missing.test.tsx), not this one.
-    mockGetToken.mockReset().mockResolvedValue(null);
-    mockPassword.mockReset().mockImplementation(async () => {
-      mockGetToken.mockResolvedValue("clerk-jwt");
-      return { error: null };
-    });
-    mockFinalize.mockReset().mockResolvedValue({ error: null });
+    mockPassword.mockReset().mockResolvedValue({});
+    mockFinalize.mockReset().mockResolvedValue({});
+    // Empty right after finalize, then the real token — the race the phone hit.
+    mockGetToken
+      .mockReset()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("")
+      .mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
-    mockMe.mockReset().mockResolvedValue(mappedClient);
+    requested = [];
     useSession.setState({
       user: null,
       loading: false,
@@ -149,9 +157,14 @@ describe("LoginScreen leftover password session", () => {
       justProvisioned: false,
       clerkSyncNonce: 0,
     });
+    stubApi();
   });
 
-  it("clears an expired leftover session then submits the password", async () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("waits for the token and adopts the client instead of showing an expiry", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -161,17 +174,15 @@ describe("LoginScreen leftover password session", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
-    await waitFor(() => expect(mockPassword).toHaveBeenCalled());
-    expect(mockPassword).toHaveBeenCalledWith({
-      emailAddress: "client@gridgo.ph",
-      password: "fixture-password",
-    });
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u1"));
     expect(mockFinalize).toHaveBeenCalled();
-    expect(useSession.getState().clerkSyncNonce).toBe(0);
-    // Finalizing is not landing: the completed sign-in has to reach the client.
-    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
+    // Every request that went out carried a Bearer, so the API never saw the
+    // unauthenticated probe that used to be mistaken for a dead session.
+    expect(requested.length).toBeGreaterThan(0);
+    expect(requested.every((call) => call.authorization === "Bearer clerk-jwt")).toBe(true);
+    expect(requested.some((call) => call.path.endsWith("/auth/clerk/activate"))).toBe(false);
+    expect(useSession.getState().error).toBeNull();
     expect(screen.queryByText("Could not sign in")).toBeNull();
-    expect(screen.queryByText("You're already signed in.")).toBeNull();
+    expect(screen.queryByText(/session expired/i)).toBeNull();
   });
 });

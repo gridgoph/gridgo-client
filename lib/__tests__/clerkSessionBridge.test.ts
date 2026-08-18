@@ -1,5 +1,16 @@
 import { ApiError, type User } from "@/lib/api";
-import { bridgeClerkToGridgo, wrongRoleMessage } from "@/lib/clerkSessionBridge";
+import {
+  bridgeClerkToGridgo,
+  clerkTokenUnavailableMessage,
+  wrongRoleMessage,
+} from "@/lib/clerkSessionBridge";
+import { userFacingError } from "@/lib/copy";
+
+/** The copy this whole fix exists to keep off a live Clerk session. */
+const sessionExpired = userFacingError(
+  new ApiError(401, { error: "unauthorized" }),
+  "fallback",
+);
 
 const client: User = {
   id: "u1",
@@ -99,6 +110,63 @@ describe("bridgeClerkToGridgo", () => {
 
     expect(result).toEqual({ kind: "wrong_role", role: "" });
     expect(wrongRoleMessage("")).toMatch(/no Client profile/i);
+  });
+
+  it("sends nothing until Clerk has minted a JWT", async () => {
+    const me = jest.fn();
+    const activate = jest.fn();
+    const awaitToken = jest.fn(async () => "clerk-jwt");
+
+    await expect(
+      bridgeClerkToGridgo({ me: me.mockResolvedValue(client), activate, awaitToken }),
+    ).resolves.toEqual({ kind: "adopt", user: client, provisioned: false });
+
+    expect(awaitToken).toHaveBeenCalledTimes(1);
+    expect(me.mock.invocationCallOrder[0]).toBeGreaterThan(
+      awaitToken.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("never calls it a session expiry when Clerk hands over no token", async () => {
+    const me = jest.fn();
+    const activate = jest.fn();
+
+    const result = await bridgeClerkToGridgo({
+      me,
+      activate,
+      awaitToken: async () => null,
+    });
+
+    expect(result).toEqual({
+      kind: "error",
+      message: clerkTokenUnavailableMessage,
+      signOut: false,
+    });
+    // The whole bug: an unauthenticated probe reads as a dead session.
+    expect(result.kind === "error" && result.message).not.toBe(sessionExpired);
+    expect(me).not.toHaveBeenCalled();
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it("reports a rejected token as unverified, not expired, when activate 401s", async () => {
+    const unauthorized = new ApiError(401, { error: "unauthorized" });
+    const me = jest.fn().mockRejectedValue(unauthorized);
+    const activate = jest.fn().mockRejectedValue(unauthorized);
+
+    const result = await bridgeClerkToGridgo({
+      me,
+      activate,
+      awaitToken: async () => "clerk-jwt",
+    });
+
+    expect(result.kind).toBe("error");
+    if (result.kind !== "error") return;
+    expect(result.message).not.toBe(sessionExpired);
+    expect(result.message).not.toMatch(/expired/i);
+    expect(result.message).toMatch(/could not verify/i);
+    // Clerk is signed in, so the recovery has to be a sign-out the person
+    // presses — never an automatic one that hides why it happened.
+    expect(result.signOut).toBe(false);
   });
 
   it("does not invent a client when the API has no activate route", async () => {

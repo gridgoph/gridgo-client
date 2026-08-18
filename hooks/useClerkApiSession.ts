@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 
 import * as api from "@/lib/api";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
-import { clerkSessionToken, releaseClerkSession } from "@/lib/clerkSignIn";
+import { awaitClerkSessionToken, releaseClerkSession } from "@/lib/clerkSignIn";
 import { useSession } from "@/store/session";
 
 /**
@@ -39,10 +39,11 @@ export function useClerkApiSession(): void {
     // out with no Bearer (the phone's "session expired" on first paint).
     // Keep a leftover sessionId's provider too: login may adopt before
     // useAuth().isSignedIn flips, and nulling here would drop the Bearer.
-    // `clerkSessionToken` also swallows Clerk's "you are signed out" throw, so
-    // a request that races a sign-out fails as unauthorized rather than as an
-    // uncaught identity error.
-    api.setTokenProvider(() => clerkSessionToken(getToken));
+    // `awaitClerkSessionToken` also swallows Clerk's "you are signed out"
+    // throw, so a request that races a sign-out fails as unauthorized rather
+    // than as an uncaught identity error, and it waits out the gap where a
+    // freshly activated session has not minted its first JWT yet.
+    api.setTokenProvider(() => awaitClerkSessionToken(getToken));
   }, [getToken, isLoaded, isSignedIn, sessionId]);
 
   useEffect(() => {
@@ -73,7 +74,10 @@ export function useClerkApiSession(): void {
       // an unhandled Clerk rejection is the Metro "Unable to authenticate /
       // You are signed out" flood that hides real errors.
       try {
-        const token = await clerkSessionToken(getToken);
+        // Wait for the token rather than probing once — on first paint Clerk
+        // often has the session before it has a JWT, and signing out there
+        // would throw away a session that was about to work.
+        const token = await awaitClerkSessionToken(getToken);
         if (cancelled) return;
         if (!token) {
           // Dead leftover (failed Google, expired cache): drop it quietly so

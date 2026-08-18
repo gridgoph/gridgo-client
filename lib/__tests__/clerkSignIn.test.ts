@@ -1,5 +1,6 @@
 import {
   adoptOrClearClerkSession,
+  awaitClerkSessionToken,
   clerkNeedsNewPasswordMessage,
   clerkPasswordIncompleteMessage,
   clerkSessionToken,
@@ -21,6 +22,39 @@ describe("clerkSessionToken", () => {
       throw new Error("Unable to authenticate this request, you are signed out.");
     });
     await expect(clerkSessionToken(getToken)).resolves.toBeNull();
+  });
+});
+
+describe("awaitClerkSessionToken", () => {
+  const noSleep = async () => undefined;
+
+  it("waits out the gap where a just-completed Clerk step has no JWT yet", async () => {
+    const getToken = jest
+      .fn<Promise<string | null>, [unknown?]>()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("")
+      .mockResolvedValue("clerk-jwt");
+
+    await expect(
+      awaitClerkSessionToken(getToken, { attempts: 5, delayMs: 0, sleep: noSleep }),
+    ).resolves.toBe("clerk-jwt");
+    expect(getToken).toHaveBeenCalledTimes(3);
+  });
+
+  it("costs one probe when Clerk already has a token", async () => {
+    const getToken = jest.fn(async () => "clerk-jwt");
+    await expect(
+      awaitClerkSessionToken(getToken, { sleep: noSleep }),
+    ).resolves.toBe("clerk-jwt");
+    expect(getToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up rather than hanging when no token ever arrives", async () => {
+    const getToken = jest.fn(async () => null);
+    await expect(
+      awaitClerkSessionToken(getToken, { attempts: 3, delayMs: 0, sleep: noSleep }),
+    ).resolves.toBeNull();
+    expect(getToken).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -54,6 +88,7 @@ describe("releaseClerkSession", () => {
 describe("adoptOrClearClerkSession", () => {
   const setActive = jest.fn(async () => undefined);
   const signOut = jest.fn(async () => undefined);
+  const tokenWait = { attempts: 2, delayMs: 0, sleep: async () => undefined };
 
   beforeEach(() => {
     setActive.mockClear();
@@ -73,6 +108,25 @@ describe("adoptOrClearClerkSession", () => {
     ).resolves.toEqual({ status: "fresh" });
     expect(getToken).not.toHaveBeenCalled();
     expect(setActive).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("keeps a leftover whose first JWT arrives a tick late", async () => {
+    const getToken = jest
+      .fn<Promise<string | null>, [unknown?]>()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue("clerk-jwt");
+
+    await expect(
+      adoptOrClearClerkSession({
+        isSignedIn: true,
+        sessionId: "sess_leftover",
+        getToken,
+        setActive,
+        signOut,
+        tokenWait,
+      }),
+    ).resolves.toEqual({ status: "adopt" });
     expect(signOut).not.toHaveBeenCalled();
   });
 
@@ -101,6 +155,7 @@ describe("adoptOrClearClerkSession", () => {
         getToken,
         setActive,
         signOut,
+        tokenWait,
       }),
     ).resolves.toEqual({ status: "cleared" });
     expect(signOut).toHaveBeenCalled();
@@ -116,6 +171,7 @@ describe("adoptOrClearClerkSession", () => {
         getToken,
         setActive,
         signOut,
+        tokenWait,
       }),
     ).resolves.toEqual({ status: "cleared" });
     expect(signOut).toHaveBeenCalled();
@@ -132,6 +188,7 @@ describe("adoptOrClearClerkSession", () => {
         getToken,
         setActive,
         signOut,
+        tokenWait,
       }),
     ).resolves.toEqual({
       status: "cleanup_failed",
