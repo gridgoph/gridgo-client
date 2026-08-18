@@ -21,7 +21,7 @@ import {
 } from "@/lib/clerkAuth";
 import { completeClerkAuth, withSettledClerkSession } from "@/lib/clerkComplete";
 import {
-  adoptOrClearClerkSession,
+  clearClerkSessionForNewAttempt,
   clerkSignOutRecoveryMessage,
   releaseClerkSession,
 } from "@/lib/clerkSignIn";
@@ -65,24 +65,10 @@ export default function SignupScreen() {
   const verifyCopy = signupVerifyCopy(email);
 
   const settleClerkForSignUp = async (alreadySignedIn: boolean) => {
-    const existing = await adoptOrClearClerkSession({
+    const existing = await clearClerkSessionForNewAttempt({
       isSignedIn: alreadySignedIn,
-      sessionId,
-      getToken,
-      setActive: (args) => setActive(args),
       signOut,
     });
-    // A leftover that still works belongs to somebody already signed in: adopt
-    // it into GRIDGO rather than reporting a failed sign-up.
-    if (existing.status === "adopt") {
-      await completeClerkAuth({
-        getToken,
-        signOut,
-        sessionId,
-        setActive: (args) => setActive(args),
-      });
-      return "handled" as const;
-    }
     if (existing.status === "cleanup_failed") {
       useSession.getState().failClerkSync(existing.message);
       return "handled" as const;
@@ -105,13 +91,13 @@ export default function SignupScreen() {
     });
 
     if (next.kind === "existing_session") {
-      await completeClerkAuth({
-        existingSessionId: next.sessionId,
-        getToken,
-        signOut,
-        setActive: (args) => setActive(args),
-      });
-      return;
+      // Same trap as login: Clerk kept a leftover rather than creating this
+      // account. Drop it so the details just typed can start a real sign-up.
+      if (!(await releaseClerkSession(signOut))) {
+        useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+        return;
+      }
+      throw new Error("You're currently logged in.");
     }
     if (next.kind === "complete") {
       await completeClerkAuth({

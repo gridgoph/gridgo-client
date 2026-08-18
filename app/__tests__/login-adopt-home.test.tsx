@@ -122,7 +122,7 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen leftover Clerk session reaches GRIDGO home", () => {
+describe("LoginScreen leftover Clerk session is replaced by the typed password", () => {
   beforeEach(() => {
     mockPassword.mockReset();
     mockFinalize.mockReset();
@@ -142,7 +142,9 @@ describe("LoginScreen leftover Clerk session reaches GRIDGO home", () => {
     });
   });
 
-  it("adopts a signed-in Clerk client and redirects to home", async () => {
+  it("signs the leftover out and submits the typed password", async () => {
+    mockPassword.mockResolvedValue({ error: null });
+    mockFinalize.mockResolvedValue({ error: null });
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -153,7 +155,11 @@ describe("LoginScreen leftover Clerk session reaches GRIDGO home", () => {
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
-    expect(mockPassword).not.toHaveBeenCalled();
+    expect(mockSignOut).toHaveBeenCalled();
+    expect(mockPassword).toHaveBeenCalledWith({
+      emailAddress: "client@gridgo.ph",
+      password: "fixture-password",
+    });
     expect(mockActivate).not.toHaveBeenCalled();
     expect(mockMe).toHaveBeenCalled();
     expect(useSession.getState().source).toBe("clerk");

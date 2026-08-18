@@ -14,13 +14,13 @@ export function useClerkApiSession(): void {
   const { getToken, isLoaded, isSignedIn, sessionId } = useAuth();
   const { signOut } = useClerk();
   const clerkSyncNonce = useSession((state) => state.clerkSyncNonce);
+  const signingOut = useSession((state) => state.signingOut);
   const syncedSessionId = useRef<string | null>(null);
   const clerkOwnerPresent = useRef(false);
 
   useEffect(() => {
-    // Never rejects: the session store awaits this inside `logout`'s finally,
-    // and a Clerk "you are signed out" throw there would abandon the state
-    // clear and leave the app looking signed in.
+    // Never rejects: the session store awaits this from `logout`,
+    // and a Clerk "you are signed out" throw there used to stall sign-out.
     useSession.getState().registerIdentityLogout(async () => {
       await releaseClerkSession(signOut);
     });
@@ -56,9 +56,16 @@ export function useClerkApiSession(): void {
       }
       clerkOwnerPresent.current = false;
       syncedSessionId.current = null;
+      if (current.signingOut) current.finishSigningOut();
       if (current.source === "clerk" || current.pendingClerkProfile) current.clearSession();
       return;
     }
+
+    // Local sign-out has already dropped the GRIDGO user. Do not rebuild it
+    // from a Clerk leftover that has not finished signing out yet — that is
+    // how the previous person came back after a slow logout.
+    if (current.signingOut) return;
+
     clerkOwnerPresent.current = true;
     if (syncedSessionId.current && sessionId && syncedSessionId.current !== sessionId) {
       invalidateClerkGridgoSync();
@@ -95,5 +102,5 @@ export function useClerkApiSession(): void {
     return () => {
       cancelled = true;
     };
-  }, [getToken, isLoaded, isSignedIn, sessionId, signOut, clerkSyncNonce]);
+  }, [getToken, isLoaded, isSignedIn, sessionId, signOut, clerkSyncNonce, signingOut]);
 }

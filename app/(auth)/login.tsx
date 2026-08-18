@@ -20,7 +20,7 @@ import { loginVerifyCopy } from "@/lib/verifyCode";
 import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
 import { completeClerkAuth, withSettledClerkSession } from "@/lib/clerkComplete";
 import {
-  adoptOrClearClerkSession,
+  clearClerkSessionForNewAttempt,
   clerkSignOutRecoveryMessage,
   continuationAfterPassword,
   releaseClerkSession,
@@ -87,17 +87,13 @@ export default function LoginScreen() {
     });
 
   const settleClerkForSignIn = async (alreadySignedIn = Boolean(isSignedIn)) => {
-    const existing = await adoptOrClearClerkSession({
+    // Never adopt here. A leftover Clerk session may belong to a different
+    // person than the email just typed (or the Google account about to be
+    // picked). Sign it out so this attempt is the one that lands.
+    const existing = await clearClerkSessionForNewAttempt({
       isSignedIn: alreadySignedIn,
-      sessionId,
-      getToken,
-      setActive: (args) => setActive(args),
       signOut,
     });
-    if (existing.status === "adopt") {
-      await adoptGridgoClient();
-      return "handled" as const;
-    }
     if (existing.status === "cleanup_failed") {
       useSession.getState().failClerkSync(existing.message);
       return "handled" as const;
@@ -140,19 +136,29 @@ export default function LoginScreen() {
     }
   };
 
-  const completePasswordSignIn = async () => {
+  const completePasswordSignIn = async (retriedExistingSession = false) => {
     if (!signIn) return;
     const result = await signIn.password({
       emailAddress: email.trim().toLowerCase(),
       password,
     });
-    if (result.error) throw result.error;
+    if (result?.error) throw result.error;
     const next = continuationAfterPassword(
       signIn.status,
       signIn.supportedSecondFactors,
       signIn.existingSession,
     );
     if (next.kind === "existing_session") {
+      // Clerk kept a session it already had. That leftover may not be the
+      // person who just typed this password — drop it and try once more.
+      if (!retriedExistingSession) {
+        if (!(await releaseClerkSession(signOut))) {
+          useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+          return;
+        }
+        await completePasswordSignIn(true);
+        return;
+      }
       await adoptGridgoClient(next.sessionId);
       return;
     }

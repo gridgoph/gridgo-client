@@ -135,16 +135,21 @@ describe("LoginScreen Google SSO", () => {
     });
   });
 
-  it("does not start SSO or throw when Clerk is already signed in", async () => {
+  it("signs a leftover Clerk session out then starts Google", async () => {
     mockIsSignedIn = true;
+    mockStartSSOFlow.mockResolvedValue({
+      createdSessionId: "sess_google",
+      setActive: undefined,
+    });
     await renderInSafeArea(<LoginScreen />);
 
     fireEvent.press(screen.getByLabelText("Continue with Google"));
 
-    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
-    expect(useSession.getState().source).toBe("clerk");
-    expect(mockStartSSOFlow).not.toHaveBeenCalled();
-    expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_leftover" });
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_google" }),
+    );
+    expect(mockStartSSOFlow).toHaveBeenCalled();
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
   });

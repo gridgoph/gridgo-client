@@ -554,12 +554,18 @@ export async function signupClient(
  * to somebody else. None of those is a failure worth showing anyone.
  */
 export async function logout(deviceToken?: string | null): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2500);
   try {
     await request("/auth/logout", {
       method: "POST",
       body: JSON.stringify(deviceToken ? { deviceToken } : {}),
+      signal: controller.signal,
     });
+  } catch {
+    // Timeout, abort, or unreachable API: the local session is already gone.
   } finally {
+    clearTimeout(timer);
     setToken(null);
   }
 }

@@ -106,8 +106,8 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("LoginScreen leftover Clerk session that GRIDGO cannot adopt", () => {
   beforeEach(() => {
-    mockPassword.mockReset();
-    mockFinalize.mockReset();
+    mockPassword.mockReset().mockResolvedValue({ error: null });
+    mockFinalize.mockReset().mockResolvedValue({ error: null });
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
