@@ -3,10 +3,11 @@
 
 Source: printing_app ic_launcher_foreground.xml (108×108 viewport, r=6,
 path starts M32/48/64 — geometric centres 38/54/70) on cockpit-black
-#111111. Captain change: middle-left is #5B5B5B, not white.
+#111111. Copy the fills exactly: seven #FFFFFF, top-right #FFDE58,
+bottom-right #8A8A8A. No #5B5B5B.
 
     #FFFFFF  #FFFFFF  #FFDE58
-    #5B5B5B  #FFFFFF  #FFFFFF
+    #FFFFFF  #FFFFFF  #FFFFFF
     #FFFFFF  #FFFFFF  #8A8A8A
 
 Run from the repo root:
@@ -24,7 +25,6 @@ from PIL import Image, ImageDraw
 PLATE = (0x11, 0x11, 0x11, 255)
 DOT_WHITE = (0xFF, 0xFF, 0xFF, 255)
 DOT_YELLOW = (0xFF, 0xDE, 0x58, 255)
-DOT_MID_LEFT = (0x5B, 0x5B, 0x5B, 255)
 DOT_BOT_RIGHT = (0x8A, 0x8A, 0x8A, 255)
 
 # Vector viewport 108. Path `M32,38 a6,6 …` is a r=6 circle whose centre
@@ -45,8 +45,6 @@ def dot_fill(col: int, row: int, *, mono: bool) -> tuple[int, int, int, int]:
         return DOT_WHITE
     if col == 2 and row == 0:
         return DOT_YELLOW
-    if col == 0 and row == 1:
-        return DOT_MID_LEFT
     if col == 2 and row == 2:
         return DOT_BOT_RIGHT
     return DOT_WHITE
