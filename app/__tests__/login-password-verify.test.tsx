@@ -121,8 +121,9 @@ jest.mock("expo-router", () => {
   };
 });
 
+const mockPreventRemove = jest.fn();
 jest.mock("@react-navigation/native", () => ({
-  usePreventRemove: jest.fn(),
+  usePreventRemove: (prevent: boolean, callback: () => void) => mockPreventRemove(prevent, callback),
 }));
 
 function renderInSafeArea(ui: ReactElement) {
@@ -155,6 +156,7 @@ describe("LoginScreen password verification code", () => {
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
     mockMe.mockReset().mockResolvedValue(mappedClient);
+    mockPreventRemove.mockClear();
     useLoginFlow.getState().reset();
     useSession.setState({
       user: null,
@@ -165,6 +167,27 @@ describe("LoginScreen password verification code", () => {
       justProvisioned: false,
       clerkSyncNonce: 0,
     });
+  });
+
+  it("shows the Home redirect after adopt even while the code step is still armed", async () => {
+    // The live bug: verify+adopt left the code step up, so usePreventRemove
+    // stayed on and native navigation never left the form.
+    useLoginFlow.getState().enterVerification("email_code");
+    useSession.setState({
+      user: mappedClient,
+      source: "clerk",
+      loading: false,
+      error: null,
+      pendingClerkProfile: false,
+      justProvisioned: true,
+    });
+
+    await renderInSafeArea(<LoginScreen />);
+
+    expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
+    expect(mockPreventRemove).toHaveBeenLastCalledWith(false, expect.any(Function));
+    expect(screen.queryByText("Recovery code")).toBeNull();
+    expect(screen.queryByText("Enter the code")).toBeNull();
   });
 
   it("collects the email code after password, then adopts the client home", async () => {
@@ -179,18 +202,22 @@ describe("LoginScreen password verification code", () => {
       fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
     });
 
-    await waitFor(() => expect(screen.getByText("Check your email")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Enter the code")).toBeTruthy());
     expect(mockSendEmailCode).toHaveBeenCalled();
-    expect(screen.getByLabelText("Recovery code")).toBeTruthy();
+    expect(screen.getByLabelText("Verification code")).toBeTruthy();
+    expect(screen.queryByText("Recovery code")).toBeNull();
+    expect(screen.queryByLabelText("Recovery code")).toBeNull();
+    expect(screen.queryByText("Check your email")).toBeNull();
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(
       screen.queryByText("This account needs another verification step. Please try again."),
     ).toBeNull();
     expect(mockFinalize).not.toHaveBeenCalled();
+    expect(mockPreventRemove).toHaveBeenLastCalledWith(true, expect.any(Function));
 
-    fireEvent.changeText(screen.getByLabelText("Recovery code"), "123456");
+    fireEvent.changeText(screen.getByLabelText("Verification code"), "123456");
     await waitFor(() =>
-      expect(screen.getByLabelText("Recovery code").props.value).toBe("123456"),
+      expect(screen.getByLabelText("Verification code").props.value).toBe("123456"),
     );
     fireEvent.press(screen.getByRole("button", { name: "Verify code" }));
 
@@ -199,6 +226,7 @@ describe("LoginScreen password verification code", () => {
     expect(mockFinalize).toHaveBeenCalled();
     expect(useSession.getState().source).toBe("clerk");
     expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
+    expect(mockPreventRemove).toHaveBeenLastCalledWith(false, expect.any(Function));
     expect(screen.queryByText("Could not sign in")).toBeNull();
   });
 });

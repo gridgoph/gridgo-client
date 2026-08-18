@@ -99,8 +99,9 @@ jest.mock("expo-router", () => {
   };
 });
 
+const mockPreventRemove = jest.fn();
 jest.mock("@react-navigation/native", () => ({
-  usePreventRemove: jest.fn(),
+  usePreventRemove: (prevent: boolean, callback: () => void) => mockPreventRemove(prevent, callback),
 }));
 
 function renderInSafeArea(ui: ReactElement) {
@@ -135,6 +136,7 @@ describe("SignupScreen finalize", () => {
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
+    mockPreventRemove.mockClear();
     mockMe.mockReset().mockResolvedValue(client);
     useSession.setState({
       user: null,
@@ -146,6 +148,26 @@ describe("SignupScreen finalize", () => {
       clerkSyncNonce: 0,
     });
     useSignupFlow.getState().reset();
+  });
+
+  it("shows the Home redirect after adopt even while the code step is still armed", async () => {
+    // The live bug: verify+adopt left `verifying` true, so usePreventRemove
+    // stayed on and native navigation never left the form.
+    useSignupFlow.getState().enterEmailCode();
+    useSession.setState({
+      user: client,
+      source: "clerk",
+      loading: false,
+      error: null,
+      pendingClerkProfile: false,
+      justProvisioned: true,
+    });
+
+    await renderInSafeArea(<SignupScreen />);
+
+    expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
+    expect(mockPreventRemove).toHaveBeenLastCalledWith(false, expect.any(Function));
+    expect(screen.queryByText("Verify your email")).toBeNull();
   });
 
   it("verifies the emailed code, adopts the client, and lands home", async () => {
@@ -165,6 +187,8 @@ describe("SignupScreen finalize", () => {
     await waitFor(() => expect(screen.getByText("Verify your email")).toBeTruthy());
     expect(mockSendEmailCode).toHaveBeenCalled();
     expect(mockFinalize).not.toHaveBeenCalled();
+    expect(screen.queryByText("Recovery code")).toBeNull();
+    expect(mockPreventRemove).toHaveBeenLastCalledWith(true, expect.any(Function));
 
     fireEvent.changeText(screen.getByLabelText("Verification code"), "123456");
     await waitFor(() =>
@@ -176,7 +200,9 @@ describe("SignupScreen finalize", () => {
     expect(mockVerifyEmailCode).toHaveBeenCalledWith({ code: "123456" });
     expect(mockFinalize).toHaveBeenCalled();
     expect(useSession.getState().source).toBe("clerk");
+    expect(useSignupFlow.getState().step).toBe("details");
     expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
+    expect(mockPreventRemove).toHaveBeenLastCalledWith(false, expect.any(Function));
     expect(screen.queryByText("Could not create account")).toBeNull();
   });
 });

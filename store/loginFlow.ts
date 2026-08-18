@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 import type { ClerkSecondFactorStrategy } from "@/lib/clerkSignIn";
 
-export type LoginStep = "credentials" | "recoveryCode" | "newPassword";
+export type LoginStep = "credentials" | "verifyCode" | "recoveryCode" | "newPassword";
 export type LoginCodePurpose = "reset" | "verify";
 
 type LoginFlowState = {
@@ -28,7 +28,7 @@ export const useLoginFlow = create<LoginFlowState>((set) => ({
   ...initial,
   enterVerification: (factor) =>
     set({
-      step: "recoveryCode",
+      step: "verifyCode",
       codePurpose: "verify",
       secondFactor: factor,
       code: "",
