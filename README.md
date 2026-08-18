@@ -23,19 +23,20 @@ Product requirements, the design system, and the operations model live in the `G
 
 ```bash
 npm install
-npx expo start
+npx expo start --dev-client
 ```
 
-Then open the app on a device or simulator from the Expo CLI output.
+Android day-to-day is a USB development build (`expo-dev-client`), not Expo Go. Install once with `npx expo run:android` (export `GOOGLE_SERVICES_JSON` to the captain's Firebase file so push is wired). Then the installed `ph.gridgo.client` app talks to Metro.
 
-**Expo Go is not sufficient.** Background location, the Navigation SDK, and Clerk's native flows require a development build. Expo Go works for early UI work only.
+**Expo Go is not sufficient.** Native FCM tokens, lock-screen push, and `gridgoclient://` returns need this app's own debug build. Expo Go Android SDK 53 throws if `expo-notifications` is imported.
 
 ## Scripts
 
 | Command | Does |
 |---|---|
-| `npm start` | Expo dev server |
-| `npm run android` / `npm run ios` | Dev server targeting one platform |
+| `npm start` | Metro for the development client (`expo start --dev-client`) |
+| `npm run android` | Build and install the USB debug app (`expo run:android`) |
+| `npm run ios` | Dev server targeting iOS |
 | `npm run web` | Web target — useful for quick layout checks, not a shipping surface |
 | `npm run lint` | ESLint via `expo lint` |
 | `npm test` | Jest + `@testing-library/react-native` |
