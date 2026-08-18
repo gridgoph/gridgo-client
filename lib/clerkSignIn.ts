@@ -1,6 +1,10 @@
 /**
- * Adopt a leftover Clerk session, or clear it so the credentials just typed
- * can proceed. "You're already signed in" is never a login failure.
+ * Adopt a leftover Clerk session, or clear it so a new attempt can proceed.
+ *
+ * Restoring a leftover is only for a silent launch (the app already knows
+ * who is signed in). An explicit Sign In / Sign Up / Google tap must never
+ * adopt a leftover: that leftover may belong to a different person than the
+ * credentials just typed.
  */
 
 export type ClerkGetToken = (options?: { skipCache?: boolean }) => Promise<string | null | undefined>;
@@ -126,6 +130,31 @@ export type ClerkTokenWait = {
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Clerk / API calls that hang must not keep the person on a signed-in screen. */
+export const CLERK_SIGNOUT_TIMEOUT_MS = 4000;
+
+/**
+ * Reject if `promise` has not settled. The timer is cleared on settle so a
+ * fast path does not leak, and a late resolution cannot still win.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("timeout"));
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 /**
  * A non-empty JWT, waiting briefly for Clerk to mint one.
  *
@@ -161,13 +190,32 @@ export async function awaitClerkSessionToken(
  */
 export async function releaseClerkSession(
   signOut: () => Promise<unknown>,
+  timeoutMs: number = CLERK_SIGNOUT_TIMEOUT_MS,
 ): Promise<boolean> {
   try {
-    await signOut();
+    await withTimeout(Promise.resolve(signOut()), timeoutMs);
     return true;
   } catch (error) {
     return isClerkSignedOutError(error);
   }
+}
+
+/**
+ * Drop a live leftover so the credentials / Google tap just made can run.
+ *
+ * Unlike {@link adoptOrClearClerkSession}, a leftover that can still mint a
+ * JWT is signed out too. Adopting it would land whoever Clerk already had —
+ * not the email that was just typed.
+ */
+export async function clearClerkSessionForNewAttempt(input: {
+  isSignedIn: boolean;
+  signOut: () => Promise<unknown>;
+}): Promise<AdoptOrClearClerkSessionResult> {
+  if (!input.isSignedIn) return { status: "fresh" };
+  if (!(await releaseClerkSession(input.signOut))) {
+    return { status: "cleanup_failed", message: clerkSignOutRecoveryMessage };
+  }
+  return { status: "cleared" };
 }
 
 /**

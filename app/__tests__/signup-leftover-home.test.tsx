@@ -8,9 +8,9 @@ import { useSession } from "@/store/session";
 import { useSignupFlow } from "@/store/signupFlow";
 
 /**
- * Signing up on a phone Clerk still holds a session for. Clerk refuses to
- * create a second one, and "you are currently logged in" is not a failure —
- * the leftover is adopted and the person lands home.
+ * Signing up on a phone Clerk still holds a session for. That leftover may
+ * belong to a different person than the email just typed, so it is signed
+ * out and the new sign-up proceeds.
  */
 
 const mockMe = jest.fn();
@@ -123,7 +123,7 @@ describe("SignupScreen with a leftover Clerk session", () => {
     useSignupFlow.getState().reset();
   });
 
-  it("adopts the leftover session and lands home instead of failing", async () => {
+  it("signs the leftover out and starts the typed sign-up instead of adopting it", async () => {
     await renderInSafeArea(<SignupScreen />);
     fireEvent.changeText(screen.getByLabelText("Full name"), "Ana Santos");
     fireEvent.changeText(screen.getByLabelText("Email"), "ana@company.com");
@@ -137,13 +137,16 @@ describe("SignupScreen with a leftover Clerk session", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign Up" }));
 
-    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
-    expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_leftover" });
-    // The leftover was usable, so no new sign-up was started and nothing was
-    // signed out from under the person.
-    expect(mockPassword).not.toHaveBeenCalled();
-    expect(mockSignOut).not.toHaveBeenCalled();
-    expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
+    await waitFor(() => expect(mockPassword).toHaveBeenCalled());
+    expect(mockPassword).toHaveBeenCalledWith({
+      emailAddress: "ana@company.com",
+      password: "a-long-gridgo-password",
+      firstName: "Ana",
+      lastName: "Santos",
+    });
+    expect(useSession.getState().user).toBeNull();
+    expect(screen.getByRole("button", { name: "Verify email" })).toBeTruthy();
     expect(screen.queryByText("Could not create account")).toBeNull();
   });
 });

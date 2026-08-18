@@ -1,5 +1,6 @@
 import * as api from "@/lib/api";
-import { useSession } from "@/store/session";
+import { CLERK_SIGNOUT_TIMEOUT_MS } from "@/lib/clerkSignIn";
+import { LOGOUT_API_TIMEOUT_MS, useSession } from "@/store/session";
 
 describe("session store", () => {
   beforeEach(() => {
@@ -10,10 +11,13 @@ describe("session store", () => {
       source: null,
       pendingClerkProfile: false,
       justProvisioned: false,
+      signingOut: false,
       clerkSyncNonce: 0,
     });
     useSession.getState().registerIdentityLogout(null);
     api.setToken(null);
+    jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   it("adopts a Clerk-authenticated client without storing its token", () => {
@@ -51,6 +55,51 @@ describe("session store", () => {
     expect(logoutSpy).toHaveBeenCalled();
     expect(identityLogout).toHaveBeenCalled();
     expect(useSession.getState()).toMatchObject({ user: null, source: null });
+  });
+
+  it("leaves the signed-in area before a hung API logout finishes", async () => {
+    jest.useFakeTimers();
+    useSession.setState({
+      user: {
+        id: "u1",
+        email: "client@gridgo.local",
+        name: "Client",
+        role: "client",
+      },
+      source: "clerk",
+    });
+    jest.spyOn(api, "logout").mockReturnValue(new Promise(() => {}));
+    useSession.getState().registerIdentityLogout(jest.fn(async () => undefined));
+
+    const pending = useSession.getState().logout();
+    expect(useSession.getState().user).toBeNull();
+    expect(useSession.getState().signingOut).toBe(true);
+
+    await jest.advanceTimersByTimeAsync(LOGOUT_API_TIMEOUT_MS);
+    await pending;
+    jest.useRealTimers();
+  });
+
+  it("finishes sign-out even when Clerk never answers", async () => {
+    jest.useFakeTimers();
+    useSession.setState({
+      user: {
+        id: "u1",
+        email: "client@gridgo.local",
+        name: "Client",
+        role: "client",
+      },
+      source: "clerk",
+    });
+    jest.spyOn(api, "logout").mockResolvedValue(undefined);
+    useSession.getState().registerIdentityLogout(() => new Promise(() => {}));
+
+    const pending = useSession.getState().logout();
+    expect(useSession.getState().user).toBeNull();
+
+    await jest.advanceTimersByTimeAsync(CLERK_SIGNOUT_TIMEOUT_MS);
+    await pending;
+    jest.useRealTimers();
   });
 
   it("logout clears the user so the route guard can leave the signed-in area", async () => {

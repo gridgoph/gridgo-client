@@ -6,15 +6,6 @@ import LoginScreen from "@/app/(auth)/login";
 import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
 
-const mockMe = jest.fn();
-const mappedClient: User = {
-  id: "u-client",
-  email: "client@gridgo.ph",
-  name: "Ana Santos",
-  role: "client",
-  accountType: "individual",
-};
-
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
 const mockGetToken = jest.fn(
@@ -22,6 +13,23 @@ const mockGetToken = jest.fn(
 );
 const mockSetActive = jest.fn(async () => undefined);
 const mockSignOut = jest.fn(async () => undefined);
+const mockMe = jest.fn();
+const mockActivate = jest.fn();
+
+const leftoverClient: User = {
+  id: "u-leftover",
+  email: "markdavidprado@gmail.com",
+  name: "Mark David Prado",
+  role: "client",
+  accountType: "individual",
+};
+
+const rider: User = {
+  id: "u-rider",
+  email: "mddprado00290@usep.edu.ph",
+  name: "Rider",
+  role: "rider",
+};
 
 jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
@@ -35,6 +43,8 @@ jest.mock("@clerk/expo", () => ({
         submitPassword: jest.fn(),
       },
       status: "complete",
+      supportedSecondFactors: [],
+      existingSession: null,
     },
     fetchStatus: "idle",
   }),
@@ -56,7 +66,7 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     me: (...args: unknown[]) => mockMe(...args),
-    activateClerkClient: jest.fn(),
+    activateClerkClient: (...args: unknown[]) => mockActivate(...args),
   };
 });
 
@@ -83,15 +93,24 @@ jest.mock("@/components/auth/GoogleButton", () => {
   };
 });
 
-jest.mock("expo-router", () => ({
-  Redirect: () => null,
-  useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    back: jest.fn(),
-    canGoBack: () => true,
-  }),
-}));
+jest.mock("expo-router", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require("react");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Text } = require("react-native");
+  return {
+    Redirect: ({ href }: { href: unknown }) => {
+      const value = typeof href === "string" ? href : JSON.stringify(href);
+      return React.createElement(Text, { testID: "redirect" }, value);
+    },
+    useRouter: () => ({
+      push: jest.fn(),
+      replace: jest.fn(),
+      back: jest.fn(),
+      canGoBack: () => true,
+    }),
+  };
+});
 
 jest.mock("@react-navigation/native", () => ({
   usePreventRemove: jest.fn(),
@@ -112,14 +131,18 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen password already signed in", () => {
+describe("LoginScreen leftover Clerk session of a different account", () => {
   beforeEach(() => {
-    mockPassword.mockReset();
-    mockFinalize.mockReset();
+    mockPassword.mockReset().mockImplementation(async () => {
+      mockMe.mockResolvedValue(rider);
+      return { error: null };
+    });
+    mockFinalize.mockReset().mockResolvedValue({ error: null });
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
-    mockMe.mockReset().mockResolvedValue(mappedClient);
+    mockMe.mockReset().mockResolvedValue(leftoverClient);
+    mockActivate.mockReset();
     useSession.setState({
       user: null,
       loading: false,
@@ -131,11 +154,9 @@ describe("LoginScreen password already signed in", () => {
     });
   });
 
-  it("signs the leftover out and submits the typed password instead of adopting it", async () => {
-    mockPassword.mockResolvedValue({ error: null });
-    mockFinalize.mockResolvedValue({ error: null });
+  it("does not land Home as the leftover person when a rider email is typed", async () => {
     await renderInSafeArea(<LoginScreen />);
-    fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
+    fireEvent.changeText(screen.getByLabelText("Email"), "mddprado00290@usep.edu.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
     await waitFor(() =>
       expect(screen.getByLabelText("Password").props.value).toBe("fixture-password"),
@@ -143,14 +164,16 @@ describe("LoginScreen password already signed in", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
-    expect(useSession.getState().source).toBe("clerk");
-    expect(mockSignOut).toHaveBeenCalled();
-    expect(mockPassword).toHaveBeenCalledWith({
-      emailAddress: "client@gridgo.ph",
-      password: "fixture-password",
-    });
-    expect(screen.queryByText("Could not sign in")).toBeNull();
-    expect(screen.queryByText("You're already signed in.")).toBeNull();
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockPassword).toHaveBeenCalledWith({
+        emailAddress: "mddprado00290@usep.edu.ph",
+        password: "fixture-password",
+      }),
+    );
+    await waitFor(() => expect(screen.getByText(/GRIDGO Rider/)).toBeTruthy());
+    expect(useSession.getState().user).toBeNull();
+    expect(screen.queryByText("markdavidprado@gmail.com")).toBeNull();
+    expect(screen.queryByTestId("redirect")).toBeNull();
   });
 });

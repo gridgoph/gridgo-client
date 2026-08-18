@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react-native";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
 
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
 import { ApiError, type User } from "@/lib/api";
@@ -60,6 +60,7 @@ describe("useClerkApiSession", () => {
       pendingClerkProfile: false,
       justProvisioned: false,
       clerkSyncNonce: 0,
+      signingOut: false,
     });
     useSession.getState().registerIdentityLogout(null);
   });
@@ -125,6 +126,26 @@ describe("useClerkApiSession", () => {
     mockGetToken.mockClear();
     await provider();
     expect(mockGetToken).toHaveBeenCalledWith({ skipCache: true });
+  });
+
+  it("does not restore a leftover Clerk session while signing out", async () => {
+    mockMe.mockResolvedValue({
+      id: "u-old",
+      email: "old@gridgo.ph",
+      name: "Old",
+      role: "client",
+      accountType: "individual",
+    });
+    useSession.setState({ signingOut: true });
+
+    renderHook(() => useClerkApiSession());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(mockMe).not.toHaveBeenCalled();
+    expect(useSession.getState().user).toBeNull();
+    expect(mockSignOut).not.toHaveBeenCalled();
   });
 
   it("preserves an adopted client while Clerk still exposes the session ID", async () => {

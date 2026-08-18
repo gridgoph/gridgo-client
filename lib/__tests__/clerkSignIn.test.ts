@@ -1,6 +1,7 @@
 import {
   adoptOrClearClerkSession,
   awaitClerkSessionToken,
+  clearClerkSessionForNewAttempt,
   clerkNeedsNewPasswordMessage,
   clerkPasswordIncompleteMessage,
   clerkSessionToken,
@@ -82,6 +83,41 @@ describe("releaseClerkSession", () => {
       throw new Error("Clerk is unavailable");
     });
     await expect(releaseClerkSession(signOut)).resolves.toBe(false);
+  });
+
+  it("does not hang when Clerk never answers", async () => {
+    const signOut = jest.fn(() => new Promise(() => {}));
+    await expect(releaseClerkSession(signOut, 20)).resolves.toBe(false);
+  });
+});
+
+describe("clearClerkSessionForNewAttempt", () => {
+  it("leaves a signed-out attempt alone", async () => {
+    const signOut = jest.fn(async () => undefined);
+    await expect(
+      clearClerkSessionForNewAttempt({ isSignedIn: false, signOut }),
+    ).resolves.toEqual({ status: "fresh" });
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("signs out a live leftover so the typed credentials can run", async () => {
+    const signOut = jest.fn(async () => undefined);
+    await expect(
+      clearClerkSessionForNewAttempt({ isSignedIn: true, signOut }),
+    ).resolves.toEqual({ status: "cleared" });
+    expect(signOut).toHaveBeenCalled();
+  });
+
+  it("reports when the leftover cannot be signed out", async () => {
+    const signOut = jest.fn(async () => {
+      throw new Error("Clerk is unavailable");
+    });
+    await expect(
+      clearClerkSessionForNewAttempt({ isSignedIn: true, signOut }),
+    ).resolves.toEqual({
+      status: "cleanup_failed",
+      message: "GRIDGO could not sign you out of Clerk. Check your connection and try again.",
+    });
   });
 });
 

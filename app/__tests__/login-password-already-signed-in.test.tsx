@@ -114,8 +114,11 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("LoginScreen password already-signed-in refusal", () => {
   beforeEach(() => {
-    mockPassword.mockReset().mockRejectedValue(new Error("You're already signed in."));
-    mockFinalize.mockReset();
+    mockPassword
+      .mockReset()
+      .mockRejectedValueOnce(new Error("You're already signed in."))
+      .mockResolvedValue({ error: null });
+    mockFinalize.mockReset().mockResolvedValue({ error: null });
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
@@ -131,7 +134,7 @@ describe("LoginScreen password already-signed-in refusal", () => {
     });
   });
 
-  it("adopts when password() throws already-signed-in and the leftover can mint a JWT", async () => {
+  it("signs the leftover out and retries the typed password when Clerk says already signed in", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -143,12 +146,12 @@ describe("LoginScreen password already-signed-in refusal", () => {
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
     expect(useSession.getState().source).toBe("clerk");
-    expect(mockPassword).toHaveBeenCalledTimes(1);
-    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockPassword).toHaveBeenCalledTimes(2);
+    expect(mockSignOut).toHaveBeenCalled();
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
 
-    mockPassword.mockClear();
+    mockPassword.mockReset().mockRejectedValue(new Error("You're already signed in."));
     mockGetToken.mockResolvedValue(null);
     mockSignOut.mockRejectedValue(new Error("Clerk is unavailable"));
     await act(async () => {

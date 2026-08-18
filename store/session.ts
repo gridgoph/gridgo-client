@@ -2,12 +2,16 @@ import { create } from "zustand";
 
 import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
+import { CLERK_SIGNOUT_TIMEOUT_MS, withTimeout } from "@/lib/clerkSignIn";
 import { roleAppLabel, userFacingError } from "@/lib/copy";
 import { signupInput, type SignupFields } from "@/lib/signup";
 import { usePush } from "@/store/push";
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "client" as const;
+
+/** Do not wait on a hung API before the signed-in area is already gone. */
+export const LOGOUT_API_TIMEOUT_MS = 2500;
 
 type SessionState = {
   user: User | null;
@@ -18,6 +22,11 @@ type SessionState = {
   pendingClerkProfile: boolean;
   /** True after activate created this session's client. Landing is Home; Settings still offers onboarding. */
   justProvisioned: boolean;
+  /**
+   * Local session is gone and Clerk sign-out may still be in flight.
+   * The Clerk→GRIDGO bridge must not restore the previous person.
+   */
+  signingOut: boolean;
   /** Bump to retry the Clerk → API bridge without starting SSO again. */
   clerkSyncNonce: number;
   login: (email: string, password: string) => Promise<void>;
@@ -35,6 +44,7 @@ type SessionState = {
   /** Drop the in-memory user. Routing reacts via Stack.Protected — no router calls here. */
   clearSession: () => void;
   clearError: () => void;
+  finishSigningOut: () => void;
 };
 
 let identityLogout: (() => Promise<void>) | null = null;
@@ -46,8 +56,10 @@ export const useSession = create<SessionState>((set) => ({
   error: null,
   pendingClerkProfile: false,
   justProvisioned: false,
+  signingOut: false,
   clerkSyncNonce: 0,
   clearError: () => set({ error: null }),
+  finishSigningOut: () => set({ signingOut: false }),
   clearSession: () =>
     set((state) => {
       // Fire-and-forget, so a Clerk failure cannot leave the app signed in;
@@ -59,6 +71,7 @@ export const useSession = create<SessionState>((set) => ({
         loading: false,
         pendingClerkProfile: false,
         justProvisioned: false,
+        signingOut: false,
       };
     }),
   adoptClerkUser: (user, options) =>
@@ -69,8 +82,9 @@ export const useSession = create<SessionState>((set) => ({
       error: null,
       pendingClerkProfile: false,
       justProvisioned: Boolean(options?.provisioned),
+      signingOut: false,
     }),
-  beginClerkSync: () => set({ loading: true, error: null }),
+  beginClerkSync: () => set({ loading: true, error: null, signingOut: false }),
   failClerkSync: (message) =>
     set({
       user: null,
@@ -78,6 +92,7 @@ export const useSession = create<SessionState>((set) => ({
       loading: false,
       error: message,
       pendingClerkProfile: false,
+      signingOut: false,
     }),
   needClerkProfile: () =>
     set({ pendingClerkProfile: true, loading: false, error: null }),
@@ -136,34 +151,28 @@ export const useSession = create<SessionState>((set) => ({
     }
   },
   logout: async () => {
-    // The device token rides along with the sign-out rather than being
-    // unregistered separately: afterwards the bearer token is dead, so a phone
-    // that signed out first could no longer authenticate the unregister and
-    // would keep waking up for the previous person's orders. The server accepts
-    // a sign-out with no token exactly as before, so a phone that never got one
-    // is unaffected.
-    //
-    // Afterwards the phone goes back on the unclaimed list rather than off it
-    // entirely: a customer that signs out has not uninstalled GRIDGO, and
-    // "there is a new version" still has to reach it.
+    // Leave the signed-in area first. Waiting on `/auth/logout` or Clerk
+    // used to keep Account up for tens of seconds when the API was slow or
+    // unreachable, and a leftover Clerk session could then be adopted as
+    // whoever signed in last — not the next email typed.
     const deviceToken = usePush.getState().token;
-    try {
-      await api.logout(deviceToken);
-    } catch {
-      // An unreachable API cannot keep a person signed in, and a rejection
-      // here would surface as an uncaught error from a `void logout()` tap.
-      // The bearer token is dropped either way.
-    } finally {
-      await identityLogout?.().catch(() => undefined);
-      set({
-        user: null,
-        source: null,
-        loading: false,
-        pendingClerkProfile: false,
-        justProvisioned: false,
-      });
-      void usePush.getState().release();
-    }
+    const identity = identityLogout;
+    set({
+      user: null,
+      source: null,
+      loading: false,
+      pendingClerkProfile: false,
+      justProvisioned: false,
+      signingOut: true,
+      error: null,
+    });
+    void usePush.getState().release();
+    await Promise.all([
+      withTimeout(api.logout(deviceToken), LOGOUT_API_TIMEOUT_MS).catch(() => undefined),
+      withTimeout(identity?.() ?? Promise.resolve(), CLERK_SIGNOUT_TIMEOUT_MS).catch(
+        () => undefined,
+      ),
+    ]);
   },
 }));
 

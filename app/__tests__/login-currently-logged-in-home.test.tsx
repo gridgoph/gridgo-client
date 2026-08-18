@@ -124,8 +124,11 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("LoginScreen currently-logged-in Clerk refusal", () => {
   beforeEach(() => {
-    mockPassword.mockReset().mockRejectedValue(new Error("You're currently logged in."));
-    mockFinalize.mockReset();
+    mockPassword
+      .mockReset()
+      .mockRejectedValueOnce(new Error("You're currently logged in."))
+      .mockResolvedValue({ error: null });
+    mockFinalize.mockReset().mockResolvedValue({ error: null });
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
@@ -142,7 +145,7 @@ describe("LoginScreen currently-logged-in Clerk refusal", () => {
     });
   });
 
-  it("adopts the leftover session and goes home instead of showing Clerk's copy", async () => {
+  it("signs the leftover out, retries the typed password, and goes home", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -153,7 +156,8 @@ describe("LoginScreen currently-logged-in Clerk refusal", () => {
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
-    expect(mockPassword).toHaveBeenCalledTimes(1);
+    expect(mockPassword).toHaveBeenCalledTimes(2);
+    expect(mockSignOut).toHaveBeenCalled();
     expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
