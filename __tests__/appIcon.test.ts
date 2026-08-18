@@ -36,7 +36,7 @@ describe("GRIDGO app icon", () => {
   it("points icon, adaptive layers, favicon and splash at the mark files", () => {
     expect(appJson.expo.icon).toBe("./assets/images/icon.png");
     expect(appJson.expo.android?.adaptiveIcon).toEqual({
-      backgroundColor: "#FFFFFF",
+      backgroundColor: "#000000",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
