@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import SignupScreen from "@/app/(auth)/signup";
 import { useSession } from "@/store/session";
+import { useSignupFlow } from "@/store/signupFlow";
 
 const mockSignUp = {
   status: "missing_requirements",
@@ -63,6 +64,7 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("SignupScreen", () => {
   beforeEach(() => {
+    useSignupFlow.getState().reset();
     useSession.setState({
       user: null,
       loading: false,

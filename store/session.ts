@@ -16,7 +16,7 @@ type SessionState = {
   error: string | null;
   /** Clerk is signed in but GRIDGO still needs account type (Google / unmapped). */
   pendingClerkProfile: boolean;
-  /** True after activate created this session's client — send them through onboarding. */
+  /** True after activate created this session's client. Landing is Home; Settings still offers onboarding. */
   justProvisioned: boolean;
   /** Bump to retry the Clerk → API bridge without starting SSO again. */
   clerkSyncNonce: number;

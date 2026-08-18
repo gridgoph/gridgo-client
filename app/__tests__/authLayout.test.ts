@@ -25,6 +25,15 @@ describe("public Clerk auth layout", () => {
     expect(login).not.toMatch(/facebook/i);
   });
 
+  it("keeps MFA verify on a real OTP step and recovery on its own form", () => {
+    expect(login).toContain("OtpCodeStep");
+    expect(login).toContain("shouldPreventAuthLeave");
+    expect(signup).toContain("OtpCodeStep");
+    expect(signup).toContain("shouldPreventAuthLeave");
+    expect(login).toContain('accessibilityLabel="Recovery code"');
+    expect(login).toContain("verifyCode");
+  });
+
   it("never loads push on the public login screen", () => {
     // Expo Go Android SDK 53 throws when `expo-notifications` is first imported.
     // Login used to pull that in through PushEnableCard → store/push. Alerts

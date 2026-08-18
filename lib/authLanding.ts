@@ -9,11 +9,11 @@
  * The ladder, in order:
  * - a client whose profile the app cannot read → complete profile;
  * - a Clerk identity GRIDGO has not mapped yet → complete profile;
- * - a client the platform *created* during this sign-in → first-run onboarding,
- *   which finishes on Home. An existing client never goes there: `provisioned`
- *   is set only when `/auth/me` refused the identity and activate had to make
- *   the client, and onboarding clears the flag as it leaves;
  * - any other signed-in client → Home.
+ *
+ * First-run onboarding is no longer a landing destination. `justProvisioned`
+ * is still written when activate creates the client, and Settings still offers
+ * “View onboarding”; a just-verified client must leave the code form for Home.
  */
 
 import type { User } from "@/lib/api";
@@ -28,13 +28,16 @@ export type AuthLanding =
 export type AuthLandingState = {
   user: Pick<User, "accountType" | "orgName"> | null;
   pendingClerkProfile: boolean;
+  /**
+   * Still written when activate creates the client. It no longer changes
+   * landing: a complete client goes Home. Settings still offers onboarding.
+   */
   justProvisioned: boolean;
 };
 
 export function authLanding(state: AuthLandingState): AuthLanding {
   if (state.user && needsClientProfile(state.user)) return { kind: "complete_profile" };
   if (!state.user && state.pendingClerkProfile) return { kind: "complete_profile" };
-  if (state.user && state.justProvisioned) return { kind: "onboarding" };
   if (state.user) return { kind: "home" };
   return { kind: "signed_out" };
 }
@@ -42,4 +45,12 @@ export function authLanding(state: AuthLandingState): AuthLanding {
 /** True while the auth screens should keep showing their own form. */
 export function staysOnAuthScreen(landing: AuthLanding): boolean {
   return landing.kind === "signed_out";
+}
+
+/**
+ * Arm `usePreventRemove` only while the form is still the destination.
+ * Back must not dump an in-progress code; a successful adopt must leave.
+ */
+export function shouldPreventAuthLeave(landing: AuthLanding, inProgress: boolean): boolean {
+  return staysOnAuthScreen(landing) && inProgress;
 }

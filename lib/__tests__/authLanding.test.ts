@@ -1,4 +1,4 @@
-import { authLanding, staysOnAuthScreen } from "@/lib/authLanding";
+import { authLanding, shouldPreventAuthLeave, staysOnAuthScreen } from "@/lib/authLanding";
 
 const client = { accountType: "individual" as const, orgName: undefined };
 
@@ -23,10 +23,10 @@ describe("authLanding", () => {
     expect(staysOnAuthScreen(landing)).toBe(false);
   });
 
-  it("sends a client the platform just created through first-run onboarding", () => {
+  it("sends a just-activated complete client home, not first-run onboarding", () => {
     expect(
       authLanding({ user: client, pendingClerkProfile: false, justProvisioned: true }),
-    ).toEqual({ kind: "onboarding" });
+    ).toEqual({ kind: "home" });
   });
 
   it("never sends an existing client to onboarding", () => {
@@ -51,5 +51,18 @@ describe("authLanding", () => {
     expect(
       authLanding({ user: null, pendingClerkProfile: true, justProvisioned: false }),
     ).toEqual({ kind: "complete_profile" });
+  });
+});
+
+describe("shouldPreventAuthLeave", () => {
+  it("holds the code step only while the person is still signed out", () => {
+    expect(shouldPreventAuthLeave({ kind: "signed_out" }, true)).toBe(true);
+    expect(shouldPreventAuthLeave({ kind: "signed_out" }, false)).toBe(false);
+  });
+
+  it("lets a successful adopt leave even if the code step is still showing", () => {
+    expect(shouldPreventAuthLeave({ kind: "home" }, true)).toBe(false);
+    expect(shouldPreventAuthLeave({ kind: "complete_profile" }, true)).toBe(false);
+    expect(shouldPreventAuthLeave({ kind: "onboarding" }, true)).toBe(false);
   });
 });

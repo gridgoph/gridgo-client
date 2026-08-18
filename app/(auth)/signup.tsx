@@ -3,6 +3,7 @@ import { usePreventRemove } from "@react-navigation/native";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 
+import { OtpCodeStep } from "@/components/auth/OtpCodeStep";
 import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
@@ -10,7 +11,8 @@ import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { staysOnAuthScreen } from "@/lib/authLanding";
+import { shouldPreventAuthLeave, staysOnAuthScreen } from "@/lib/authLanding";
+import { signupVerifyCopy } from "@/lib/verifyCode";
 import {
   clerkErrorMessage,
   isAlreadySignedInError,
@@ -33,6 +35,7 @@ export default function SignupScreen() {
   const { setActive, signOut } = useClerk();
   const landing = useAuthLanding();
   const sessionError = useSession((state) => state.error);
+  const adoptLoading = useSession((state) => state.loading);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -50,14 +53,16 @@ export default function SignupScreen() {
 
   // Verification stays on this screen; the platform back would otherwise
   // pop to welcome and lose the in-progress sign-up.
-  usePreventRemove(verifying, () => {
+  // Disarm once landing is Home / complete-profile so adopt can leave.
+  usePreventRemove(shouldPreventAuthLeave(landing, verifying), () => {
     resetSignupFlow();
     setError(null);
   });
 
   if (!staysOnAuthScreen(landing)) return <AuthLandingRedirect landing={landing} />;
 
-  const busy = fetchStatus === "fetching";
+  const busy = fetchStatus === "fetching" || adoptLoading;
+  const verifyCopy = signupVerifyCopy(email);
 
   const settleClerkForSignUp = async (alreadySignedIn: boolean) => {
     const existing = await adoptOrClearClerkSession({
@@ -180,6 +185,17 @@ export default function SignupScreen() {
     }
   };
 
+  const resendEmailCode = async () => {
+    if (!signUp) return;
+    setError(null);
+    try {
+      const sent = await signUp.verifications.sendEmailCode();
+      if (sent.error) throw sent.error;
+    } catch (caught) {
+      reportSignUpFailure(caught, "Could not send a new code. Try again.");
+    }
+  };
+
   const verifyEmail = async () => {
     // Read the store rather than the render's copy: a submit fired from the
     // keyboard can beat the re-render that carries the last keystroke.
@@ -190,6 +206,9 @@ export default function SignupScreen() {
       const result = await signUp.verifications.verifyEmailCode({ code: typed });
       if (result.error) throw result.error;
       await continueSignUp({ allowEmailCode: false });
+      // Adopt succeeded: drop the code step so verifying cannot keep the
+      // screen armed if landing is still resolving.
+      resetSignupFlow();
     } catch (caught) {
       reportSignUpFailure(caught, "That code could not be verified.");
     }
@@ -201,48 +220,37 @@ export default function SignupScreen() {
       contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
     >
       <View className="gg-page gap-7 py-8">
-        <View className="gap-2">
-          <Text className="text-display font-black text-text-primary" accessibilityRole="header">
-            {verifying ? "Verify your email" : "Create Account"}
-          </Text>
-          <Text className="text-body-lg text-text-secondary">
-            {verifying
-              ? `Enter the six-digit code sent to ${email.trim()}.`
-              : "Your GRIDGO client account starts here."}
-          </Text>
-        </View>
-
         {verifying ? (
-          <>
-            <FormField label="Verification code">
-              <TextField
-                value={code}
-                onChangeText={setCode}
-                placeholder="123456"
-                accessibilityLabel="Verification code"
-                keyboardType="number-pad"
-                textContentType="oneTimeCode"
-                maxLength={6}
-                returnKeyType="go"
-                onSubmitEditing={() => void verifyEmail()}
-              />
-            </FormField>
-            {(error ?? sessionError) ? (
-              <ErrorState
-                label="Could not verify email"
-                body={(error ?? sessionError)!}
-                retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
-                onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
-              />
-            ) : null}
-            <PrimaryButton
-              label={busy ? "Checking…" : "Verify email"}
-              disabled={code.trim().length < 6 || busy}
-              onPress={() => void verifyEmail()}
-            />
-          </>
+          <OtpCodeStep
+            heading={verifyCopy.heading}
+            body={verifyCopy.body}
+            code={code}
+            onChangeCode={setCode}
+            onSubmit={() => void verifyEmail()}
+            onResend={() => void resendEmailCode()}
+            busy={busy}
+            submitLabel="Verify email"
+            error={
+              (error ?? sessionError) ? (
+                <ErrorState
+                  label="Could not verify email"
+                  body={(error ?? sessionError)!}
+                  retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
+                  onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                />
+              ) : null
+            }
+          />
         ) : (
           <>
+            <View className="gap-2">
+              <Text className="text-display font-black text-text-primary" accessibilityRole="header">
+                Create Account
+              </Text>
+              <Text className="text-body-lg text-text-secondary">
+                Your GRIDGO client account starts here.
+              </Text>
+            </View>
             <View className="gap-4">
               <FormField label="Full name">
                 <TextField

@@ -7,6 +7,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { AuthDivider } from "@/components/auth/AuthDivider";
 import { GoogleButton } from "@/components/auth/GoogleButton";
+import { OtpCodeStep } from "@/components/auth/OtpCodeStep";
 import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
@@ -14,7 +15,8 @@ import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { staysOnAuthScreen } from "@/lib/authLanding";
+import { shouldPreventAuthLeave, staysOnAuthScreen } from "@/lib/authLanding";
+import { loginVerifyCopy } from "@/lib/verifyCode";
 import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
 import { completeClerkAuth, withSettledClerkSession } from "@/lib/clerkComplete";
 import {
@@ -41,6 +43,7 @@ export default function LoginScreen() {
   const {
     step,
     code,
+    secondFactor,
     enterVerification,
     enterRecovery,
     enterNewPassword,
@@ -63,7 +66,8 @@ export default function LoginScreen() {
 
   // Recovery / verification stay on this screen; the platform back (header +
   // Android) would otherwise pop to welcome and lose the in-progress reset.
-  usePreventRemove(step !== "credentials", () => {
+  // Disarm once landing is Home / complete-profile so adopt can leave.
+  usePreventRemove(shouldPreventAuthLeave(landing, step !== "credentials"), () => {
     resetLoginFlow();
     setError(null);
   });
@@ -239,8 +243,18 @@ export default function LoginScreen() {
     }
   };
 
+  const resendVerificationCode = async () => {
+    const factor = useLoginFlow.getState().secondFactor;
+    setError(null);
+    try {
+      await sendSecondFactor(factor);
+    } catch (caught) {
+      setError(clerkErrorMessage(caught, "Could not send a new code. Try again."));
+    }
+  };
+
   const submitCodeStep = () =>
-    useLoginFlow.getState().codePurpose === "verify"
+    useLoginFlow.getState().step === "verifyCode"
       ? verifySecondFactor()
       : verifyRecoveryCode();
 
@@ -306,6 +320,7 @@ export default function LoginScreen() {
     }
   };
 
+  const verifyCopy = loginVerifyCopy(secondFactor, email);
   const heading =
     step === "credentials"
       ? "Welcome Back!"
@@ -316,8 +331,9 @@ export default function LoginScreen() {
     step === "credentials"
       ? "Sign in to continue managing your print jobs."
       : step === "recoveryCode"
-        ? `We sent a six-digit code to ${email.trim()}.`
+        ? `We sent a recovery code to ${email.trim()}.`
         : "Use a strong password you have not used for GRIDGO before.";
+  const codeError = error ?? sessionError;
 
   return (
     <FormScreen
@@ -325,14 +341,37 @@ export default function LoginScreen() {
       contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
     >
       <View className="gg-page gap-7 py-8">
-        <View className="gap-2">
-          <Text className="text-display font-black text-text-primary" accessibilityRole="header">
-            {heading}
-          </Text>
-          <Text className="text-body-lg text-text-secondary">{body}</Text>
-        </View>
+        {step !== "verifyCode" ? (
+          <View className="gap-2">
+            <Text className="text-display font-black text-text-primary" accessibilityRole="header">
+              {heading}
+            </Text>
+            <Text className="text-body-lg text-text-secondary">{body}</Text>
+          </View>
+        ) : null}
 
-        {step === "credentials" ? (
+        {step === "verifyCode" ? (
+          <OtpCodeStep
+            heading={verifyCopy.heading}
+            body={verifyCopy.body}
+            code={code}
+            onChangeCode={setCode}
+            onSubmit={() => void verifySecondFactor()}
+            onResend={verifyCopy.resend ? () => void resendVerificationCode() : undefined}
+            busy={busy}
+            submitLabel="Verify code"
+            error={
+              codeError ? (
+                <ErrorState
+                  label="Could not verify code"
+                  body={codeError}
+                  retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
+                  onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                />
+              ) : null
+            }
+          />
+        ) : step === "credentials" ? (
           <>
             <View className="gap-4">
               <FormField label="Email">
@@ -428,10 +467,17 @@ export default function LoginScreen() {
                 onSubmitEditing={() => void submitCodeStep()}
               />
             </FormField>
-            {error ? <ErrorState label="Could not verify code" body={error} /> : null}
+            {codeError ? (
+              <ErrorState
+                label="Could not verify code"
+                body={codeError}
+                retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
+                onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+              />
+            ) : null}
             <PrimaryButton
-              label={clerkLoading ? "Checking…" : "Verify code"}
-              disabled={code.trim().length < 6 || clerkLoading}
+              label={busy ? "Checking…" : "Verify code"}
+              disabled={code.trim().length < 6 || busy}
               onPress={() => void submitCodeStep()}
             />
           </>
