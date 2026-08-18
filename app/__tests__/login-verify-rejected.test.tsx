@@ -1,19 +1,20 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+/**
+ * The API refuses a Clerk JWT that was minted seconds ago.
+ *
+ * `/auth/me` and `POST /auth/clerk/activate` both answer `401 unauthorized`,
+ * which means the API verified nothing — an unknown authorized party, the
+ * wrong instance, a skewed clock. Clerk is signed in the whole time, so
+ * "your session expired, sign in again" is both untrue and unfollowable: it
+ * is the dead end the captain hit on the LAN. What the person gets instead is
+ * what happened, and the one control that can change it.
+ */
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import LoginScreen from "@/app/(auth)/login";
-import type { User } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { useSession } from "@/store/session";
-
-const mockMe = jest.fn();
-const mappedClient: User = {
-  id: "u-client",
-  email: "client@gridgo.ph",
-  name: "Ana Santos",
-  role: "client",
-  accountType: "individual",
-};
 
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
@@ -22,10 +23,8 @@ const mockGetToken = jest.fn(
 );
 const mockSetActive = jest.fn(async () => undefined);
 const mockSignOut = jest.fn(async () => undefined);
-
-let mockIsSignedIn = false;
-let mockSessionId: string | null = "sess_leftover";
-let mockSignInStatus = "complete";
+const mockMe = jest.fn();
+const mockActivate = jest.fn();
 
 jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
@@ -38,17 +37,15 @@ jest.mock("@clerk/expo", () => ({
         verifyCode: jest.fn(),
         submitPassword: jest.fn(),
       },
-      get status() {
-        return mockSignInStatus;
-      },
+      status: "complete",
     },
     fetchStatus: "idle",
   }),
   useAuth: () => ({
-    isSignedIn: mockIsSignedIn,
+    isSignedIn: false,
     isLoaded: true,
     getToken: mockGetToken,
-    sessionId: mockSessionId,
+    sessionId: null,
   }),
   useClerk: () => ({ setActive: mockSetActive, signOut: mockSignOut }),
 }));
@@ -57,16 +54,12 @@ jest.mock("@clerk/expo/experimental", () => ({
   useSSO: () => ({ startSSOFlow: jest.fn() }),
 }));
 
-// The completed sign-in adopts the GRIDGO client, so the projection has to be
-// answered here — an unmocked `/auth/me` would reach the network and the test
-// would pass or fail on whether a local API happened to be up.
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
   return {
     ...actual,
     me: (...args: unknown[]) => mockMe(...args),
-    activateClerkClient: jest.fn(),
-    setTokenProvider: jest.fn(),
+    activateClerkClient: (...args: unknown[]) => mockActivate(...args),
   };
 });
 
@@ -74,13 +67,7 @@ jest.mock("@/components/auth/GoogleButton", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pressable, Text } = require("react-native");
   return {
-    GoogleButton: ({
-      onPress,
-      disabled,
-    }: {
-      onPress: () => void;
-      disabled?: boolean;
-    }) => (
+    GoogleButton: ({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) => (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Continue with Google"
@@ -122,24 +109,16 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen leftover password session", () => {
+describe("LoginScreen when the API cannot verify a just-issued Clerk token", () => {
   beforeEach(() => {
-    mockIsSignedIn = true;
-    mockSessionId = "sess_leftover";
-    mockSignInStatus = "complete";
-    // The leftover cannot mint a JWT; the password sign-in that replaces it
-    // can. Modelling that swap matters: nothing may be sent to gridgo-api
-    // before a token exists, so a token that never appears is a different
-    // scenario (see login-token-missing.test.tsx), not this one.
-    mockGetToken.mockReset().mockResolvedValue(null);
-    mockPassword.mockReset().mockImplementation(async () => {
-      mockGetToken.mockResolvedValue("clerk-jwt");
-      return { error: null };
-    });
-    mockFinalize.mockReset().mockResolvedValue({ error: null });
+    const unauthorized = new ApiError(401, { error: "unauthorized" });
+    mockPassword.mockReset().mockResolvedValue({});
+    mockFinalize.mockReset().mockResolvedValue({});
+    mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
-    mockMe.mockReset().mockResolvedValue(mappedClient);
+    mockMe.mockReset().mockRejectedValue(unauthorized);
+    mockActivate.mockReset().mockRejectedValue(unauthorized);
     useSession.setState({
       user: null,
       loading: false,
@@ -151,7 +130,7 @@ describe("LoginScreen leftover password session", () => {
     });
   });
 
-  it("clears an expired leftover session then submits the password", async () => {
+  it("offers a retryable sign-out instead of calling the new session expired", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -161,17 +140,18 @@ describe("LoginScreen leftover password session", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
-    await waitFor(() => expect(mockPassword).toHaveBeenCalled());
-    expect(mockPassword).toHaveBeenCalledWith({
-      emailAddress: "client@gridgo.ph",
-      password: "fixture-password",
+    await waitFor(() => expect(screen.getByText("Could not sign in")).toBeTruthy());
+    expect(mockActivate).toHaveBeenCalled();
+    expect(screen.queryByText(/session expired/i)).toBeNull();
+    expect(screen.queryByText(/sign in again to continue/i)).toBeNull();
+    expect(screen.getByText(/could not verify that identity/i)).toBeTruthy();
+
+    // Clerk is still signed in, so the recovery has to be able to leave it.
+    const recovery = screen.getByRole("button", { name: "Sign out and try again" });
+    await act(async () => {
+      fireEvent.press(recovery);
     });
-    expect(mockFinalize).toHaveBeenCalled();
-    expect(useSession.getState().clerkSyncNonce).toBe(0);
-    // Finalizing is not landing: the completed sign-in has to reach the client.
-    await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
-    expect(screen.queryByText("Could not sign in")).toBeNull();
-    expect(screen.queryByText("You're already signed in.")).toBeNull();
+    expect(mockSignOut).toHaveBeenCalled();
+    expect(useSession.getState().error).toBeNull();
   });
 });

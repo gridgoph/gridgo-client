@@ -1,4 +1,4 @@
-import { type User } from "@/lib/api";
+import { ApiError, type User } from "@/lib/api";
 import { syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import { useSession } from "@/store/session";
 
@@ -89,6 +89,52 @@ describe("clerkGridgoSync", () => {
     expect(useSession.getState().error).toBeNull();
   });
 
+  it("waits for the first JWT of a new session instead of probing unauthenticated", async () => {
+    getToken.mockReset();
+    getToken
+      .mockResolvedValueOnce(null as unknown as string)
+      .mockResolvedValue("clerk-jwt");
+    mockMe.mockResolvedValue(client);
+
+    const result = await syncClerkToGridgo({ getToken, signOut, sessionId: "sess_1" });
+
+    expect(result).toEqual({ kind: "adopt", user: client, provisioned: false });
+    expect(useSession.getState().error).toBeNull();
+    expect(mockMe).toHaveBeenCalledTimes(1);
+  });
+
+  it("never says the session expired when Clerk hands over no token at all", async () => {
+    getToken.mockReset().mockResolvedValue(null as unknown as string);
+
+    const result = await syncClerkToGridgo({ getToken, signOut, sessionId: "sess_1" });
+
+    expect(result.kind).toBe("error");
+    expect(mockMe).not.toHaveBeenCalled();
+    expect(mockActivate).not.toHaveBeenCalled();
+    const message = useSession.getState().error ?? "";
+    expect(message).not.toMatch(/expired/i);
+    expect(message).toMatch(/never received an identity token/i);
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("offers sign-out, not an expiry, when the API refuses a live Clerk token", async () => {
+    const unauthorized = new ApiError(401, { error: "unauthorized" });
+    mockMe.mockRejectedValue(unauthorized);
+    mockActivate.mockRejectedValue(unauthorized);
+
+    const result = await syncClerkToGridgo({ getToken, signOut, sessionId: "sess_1" });
+
+    expect(result.kind).toBe("error");
+    expect(mockActivate).toHaveBeenCalledTimes(1);
+    const message = useSession.getState().error ?? "";
+    expect(message).not.toMatch(/expired/i);
+    expect(message).toMatch(/could not verify/i);
+    expect(useSession.getState().user).toBeNull();
+    expect(useSession.getState().loading).toBe(false);
+    // Clerk stays signed in; the person presses the recovery themselves.
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
   it("keeps wrong-role recovery available when Clerk sign-out fails", async () => {
     mockMe.mockResolvedValue({ ...client, role: "supplier" });
     signOut.mockRejectedValue(new Error("Clerk is unavailable"));
@@ -136,14 +182,20 @@ describe("clerkGridgoSync", () => {
     const identifiedGetToken = jest.fn(async () => "clerk-jwt");
     const network = new Error("Network request failed");
     network.name = "TypeError";
-    mockMe
-      .mockImplementationOnce(
-        () =>
-          new Promise<User>((resolve) => {
-            resolveClient = resolve;
-          }),
-      )
-      .mockRejectedValueOnce(network);
+    // The sync waits for a JWT before it calls /auth/me, so the resolver only
+    // exists once that call has really been made — wait for it rather than
+    // assuming the request went out in the same tick.
+    const meCalled = new Promise<void>((called) => {
+      mockMe
+        .mockImplementationOnce(
+          () =>
+            new Promise<User>((resolve) => {
+              resolveClient = resolve;
+              called();
+            }),
+        )
+        .mockRejectedValueOnce(network);
+    });
 
     const first = syncClerkToGridgo({ getToken: firstGetToken, signOut });
     const second = syncClerkToGridgo({
@@ -151,6 +203,7 @@ describe("clerkGridgoSync", () => {
       signOut,
       sessionId: "sess_shared",
     });
+    await meCalled;
     resolveClient(client);
 
     await expect(Promise.all([first, second])).resolves.toEqual([

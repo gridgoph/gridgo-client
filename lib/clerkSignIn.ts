@@ -11,6 +11,8 @@ export type AdoptOrClearClerkSessionInput = {
   getToken: ClerkGetToken;
   setActive: (args: { session: string }) => Promise<unknown>;
   signOut: () => Promise<unknown>;
+  /** Override the short wait for a JWT — tests pass a no-delay sleep. */
+  tokenWait?: ClerkTokenWait;
 };
 
 export type AdoptOrClearClerkSessionResult =
@@ -115,6 +117,44 @@ export async function clerkSessionToken(getToken: ClerkGetToken): Promise<string
   }
 }
 
+export type ClerkTokenWait = {
+  /** Total probes, the first one immediate. */
+  attempts?: number;
+  delayMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+};
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * A non-empty JWT, waiting briefly for Clerk to mint one.
+ *
+ * A completing Clerk step does not make a token available in the same tick:
+ * `finalize` / `setActive` resolve, and `getToken` still answers empty (or
+ * throws "you are signed out") for a beat while the client swaps sessions.
+ * Sending `/auth/me` or activate in that gap means sending them with **no
+ * Bearer**, which gridgo-api answers `401 unauthorized` — the same body an
+ * unmapped identity gets, which is how a perfectly good sign-in came out as
+ * "your session expired". So nothing goes out until a token exists.
+ *
+ * The first probe is immediate, so a session that already has a token costs
+ * nothing; only the empty case waits.
+ */
+export async function awaitClerkSessionToken(
+  getToken: ClerkGetToken,
+  wait: ClerkTokenWait = {},
+): Promise<string | null> {
+  const attempts = Math.max(1, wait.attempts ?? 5);
+  const delayMs = wait.delayMs ?? 120;
+  const sleep = wait.sleep ?? defaultSleep;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const token = await clerkSessionToken(getToken);
+    if (token) return token;
+    if (attempt < attempts - 1) await sleep(delayMs);
+  }
+  return null;
+}
+
 /**
  * Sign out of Clerk and say whether the session is really gone. "You are
  * signed out" means it already was, which is success, not a cleanup failure.
@@ -134,6 +174,11 @@ export async function releaseClerkSession(
  * If Clerk already has a session, activate it and keep it only when it can
  * mint a JWT. A dead leftover (failed Google, expired cache) is signed out
  * so password / Google can run again.
+ *
+ * The token probe waits a moment because `setActive` above may only just have
+ * swapped the session in — but only a moment: a leftover that really has no
+ * JWT must be cleared quickly so the password the person just typed can run,
+ * rather than leaving them looking at an error they cannot act on.
  */
 export async function adoptOrClearClerkSession(
   input: AdoptOrClearClerkSessionInput,
@@ -148,7 +193,10 @@ export async function adoptOrClearClerkSession(
     }
   }
 
-  const token = await clerkSessionToken(input.getToken);
+  const token = await awaitClerkSessionToken(
+    input.getToken,
+    input.tokenWait ?? { attempts: 2, delayMs: 120 },
+  );
   if (token) return { status: "adopt" };
 
   if (!(await releaseClerkSession(input.signOut))) {
