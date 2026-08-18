@@ -83,4 +83,16 @@ describe("GRIDGO app icon", () => {
     expect(names.filter((name) => name.includes("react-logo"))).toEqual([]);
     expect(names).not.toContain("partial-react-logo.png");
   });
+
+  it("locks the captain most-final 3×3 in the generator", () => {
+    const src = readFileSync(join(root, "scripts/generate-app-icon.py"), "utf8");
+    expect(src).toContain("DOT_YELLOW = (0xFF, 0xDE, 0x58, 255)");
+    expect(src).toContain("DOT_MUTED = (0x8A, 0x8A, 0x8A, 255)");
+    expect(src).toContain("PLATE = (0x11, 0x11, 0x11, 255)");
+    expect(src).toContain("if col == 2 and row == 0:");
+    expect(src).toContain("if col == 2:");
+    expect(src).not.toContain("0x5B, 0x5B, 0x5B");
+    // Seven-white (middle-right white) was the previous wrong lock.
+    expect(src).not.toMatch(/if col == 2 and row == 2:/);
+  });
 });
