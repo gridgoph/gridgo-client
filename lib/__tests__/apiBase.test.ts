@@ -1,4 +1,4 @@
-import { hostnameFromHostUri, resolveApiBase } from "@/lib/api";
+import { hostnameFromHostUri, notificationImageUrl, resolveApiBase } from "@/lib/api";
 
 describe("resolveApiBase", () => {
   it("prefers a non-empty EXPO_PUBLIC_API_URL and strips a trailing slash", () => {
@@ -157,5 +157,15 @@ describe("hostnameFromHostUri", () => {
     expect(hostnameFromHostUri("exp://192.168.1.55:8081")).toBe("192.168.1.55");
     expect(hostnameFromHostUri(null)).toBeNull();
     expect(hostnameFromHostUri("")).toBeNull();
+  });
+});
+
+describe("notificationImageUrl", () => {
+  it("leaves a public picture link alone and ignores blanks", () => {
+    expect(notificationImageUrl("https://cdn.gridgo.example/update.png")).toBe(
+      "https://cdn.gridgo.example/update.png",
+    );
+    expect(notificationImageUrl("  ")).toBeNull();
+    expect(notificationImageUrl(undefined)).toBeNull();
   });
 });

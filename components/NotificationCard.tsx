@@ -1,3 +1,4 @@
+import { Image } from "expo-image";
 import { Check, ChevronRight } from "lucide-react-native";
 import { useMemo, useRef } from "react";
 import { Animated, PanResponder, Pressable, Text, View } from "react-native";
@@ -5,7 +6,7 @@ import { Animated, PanResponder, Pressable, Text, View } from "react-native";
 import { OrderStageRail } from "@/components/OrderStageRail";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
-import type { Notification, Order } from "@/lib/api";
+import { notificationImageUrl, type Notification, type Order } from "@/lib/api";
 import { formatTimelineStamp } from "@/lib/relativeTime";
 import { orderStageIndex } from "@/lib/orderStages";
 import { getOrderStateMeta } from "@/lib/orderState";
@@ -46,6 +47,7 @@ export function NotificationCard({ notification, read, order, onOpen, onMarkRead
   const reducedMotion = useReducedMotion();
   const translateX = useRef(new Animated.Value(0)).current;
   const stageIndex = orderStageIndex(order?.state);
+  const picture = notificationImageUrl(notification.imageUrl);
 
   const responder = useMemo(
     () =>
@@ -168,6 +170,15 @@ export function NotificationCard({ notification, read, order, onOpen, onMarkRead
                   <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
                 ) : null}
               </View>
+
+              {picture ? (
+                <Image
+                  testID="notification-picture"
+                  source={{ uri: picture }}
+                  style={{ width: "100%", height: 144, borderRadius: 12 }}
+                  contentFit="cover"
+                />
+              ) : null}
 
               {order ? (
                 <View className="gap-3 border-t border-outline-subtle pt-4">
