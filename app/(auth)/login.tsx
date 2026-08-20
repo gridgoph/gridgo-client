@@ -15,18 +15,23 @@ import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import * as api from "@/lib/api";
 import { shouldPreventAuthLeave, staysOnAuthScreen } from "@/lib/authLanding";
-import { loginVerifyCopy } from "@/lib/verifyCode";
 import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
 import { completeClerkAuth, withSettledClerkSession } from "@/lib/clerkComplete";
 import {
   clearClerkSessionForNewAttempt,
   clerkSignOutRecoveryMessage,
+  clerkSignOutRetryLabel,
   continuationAfterPassword,
+  projectionForTypedEmail,
   releaseClerkSession,
+  verificationCodeGate,
   type ClerkSecondFactorStrategy,
 } from "@/lib/clerkSignIn";
+import { clientEmailUnavailableMessage } from "@/lib/copy";
 import { completeGoogleSso } from "@/lib/googleSso";
+import { loginVerifyCopy } from "@/lib/verifyCode";
 import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
 
@@ -36,7 +41,6 @@ export default function LoginScreen() {
   const { startSSOFlow } = useSSO();
   const { isSignedIn, getToken, sessionId } = useAuth();
   const { setActive, signOut } = useClerk();
-  const login = useSession((state) => state.login);
   const localLoading = useSession((state) => state.loading);
   const sessionError = useSession((state) => state.error);
   const landing = useAuthLanding();
@@ -86,7 +90,26 @@ export default function LoginScreen() {
       setActive: (args) => setActive(args),
     });
 
+  const refuseNonClientEmail = async () => {
+    useSession.getState().failClerkSync(clientEmailUnavailableMessage);
+    await releaseClerkSession(signOut);
+  };
+
   const settleClerkForSignIn = async (alreadySignedIn = Boolean(isSignedIn)) => {
+    // A leftover on this phone may already be this email as a rider (or
+    // another non-client). Refuse on the password form — never send a code.
+    const typed = email.trim();
+    if (alreadySignedIn && typed) {
+      const leftover = await projectionForTypedEmail({
+        typedEmail: typed,
+        getToken,
+        me: () => api.me({ ignoreUnauthorized: true }),
+      });
+      if (leftover === "wrong_role") {
+        await refuseNonClientEmail();
+        return "handled" as const;
+      }
+    }
     // Never adopt here. A leftover Clerk session may belong to a different
     // person than the email just typed (or the Google account about to be
     // picked). Sign it out so this attempt is the one that lands.
@@ -167,8 +190,21 @@ export default function LoginScreen() {
       return;
     }
     if (next.kind === "verification") {
-      enterVerification(next.factor);
+      const gate = await verificationCodeGate({
+        typedEmail: email.trim(),
+        getToken,
+        me: () => api.me({ ignoreUnauthorized: true }),
+        emailAvailable: api.clientEmailAvailable,
+      });
+      if (gate === "wrong_role") {
+        await refuseNonClientEmail();
+        return;
+      }
+      // Only show "Enter the code" after Clerk has actually sent one. A leftover
+      // session that makes send fail must stay on the password form.
       await sendSecondFactor(next.factor);
+      useSession.getState().clearError();
+      enterVerification(next.factor);
       return;
     }
     throw new Error(next.message);
@@ -177,6 +213,7 @@ export default function LoginScreen() {
   const signInWithPassword = async () => {
     if (!signIn || !email.trim() || !password) return;
     setError(null);
+    useSession.getState().clearError();
     try {
       await withSettledClerkSession({
         isSignedIn: Boolean(isSignedIn),
@@ -296,6 +333,7 @@ export default function LoginScreen() {
   const signInWithGoogle = async () => {
     setSocialLoading(true);
     setError(null);
+    useSession.getState().clearError();
     try {
       await withSettledClerkSession({
         isSignedIn: Boolean(isSignedIn),
@@ -326,6 +364,7 @@ export default function LoginScreen() {
     }
   };
 
+  const signOutRetry = clerkSignOutRetryLabel(sessionError, error);
   const verifyCopy = loginVerifyCopy(secondFactor, email);
   const heading =
     step === "credentials"
@@ -339,7 +378,11 @@ export default function LoginScreen() {
       : step === "recoveryCode"
         ? `We sent a recovery code to ${email.trim()}.`
         : "Use a strong password you have not used for GRIDGO before.";
-  const codeError = error ?? sessionError;
+  // A refused other-app email must not appear as "could not verify code"
+  // on the next attempt's device-trust step.
+  const identityRefusal =
+    sessionError === clientEmailUnavailableMessage ? null : sessionError;
+  const codeError = error ?? identityRefusal;
 
   return (
     <FormScreen
@@ -371,8 +414,8 @@ export default function LoginScreen() {
                 <ErrorState
                   label="Could not verify code"
                   body={codeError}
-                  retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
-                  onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                  retryLabel={signOutRetry}
+                  onRetry={signOutRetry ? () => void abandonClerkSession() : undefined}
                 />
               ) : null
             }
@@ -420,8 +463,8 @@ export default function LoginScreen() {
               <ErrorState
                 label="Could not sign in"
                 body={(error ?? sessionError)!}
-                retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
-                onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                retryLabel={signOutRetry}
+                onRetry={signOutRetry ? () => void abandonClerkSession() : undefined}
               />
             ) : null}
 
@@ -445,18 +488,6 @@ export default function LoginScreen() {
                 <Text className="text-button text-brand">Sign Up</Text>
               </Pressable>
             </View>
-
-            {__DEV__ ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Use local API instead"
-                disabled={!email.trim() || !password || busy}
-                onPress={() => void login(email.trim(), password)}
-                className="gg-touch items-center justify-center"
-              >
-                <Text className="text-caption text-text-muted">Use local API instead</Text>
-              </Pressable>
-            ) : null}
           </>
         ) : step === "recoveryCode" ? (
           <>
@@ -477,8 +508,8 @@ export default function LoginScreen() {
               <ErrorState
                 label="Could not verify code"
                 body={codeError}
-                retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
-                onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                retryLabel={signOutRetry}
+                onRetry={signOutRetry ? () => void abandonClerkSession() : undefined}
               />
             ) : null}
             <PrimaryButton

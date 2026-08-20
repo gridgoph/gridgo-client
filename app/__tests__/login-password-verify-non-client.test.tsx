@@ -4,25 +4,18 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import LoginScreen from "@/app/(auth)/login";
 import type { User } from "@/lib/api";
+import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
 
+const mockMe = jest.fn();
 const mockPassword = jest.fn();
-const mockFinalize = jest.fn();
+const mockSendEmailCode = jest.fn();
+const mockClientEmailAvailable = jest.fn();
 const mockGetToken = jest.fn(
-  async (_options?: { skipCache?: boolean }): Promise<string | null> => "clerk-jwt",
+  async (_options?: { skipCache?: boolean }): Promise<string | null> => null,
 );
 const mockSetActive = jest.fn(async () => undefined);
 const mockSignOut = jest.fn(async () => undefined);
-const mockMe = jest.fn();
-const mockActivate = jest.fn();
-
-const leftoverClient: User = {
-  id: "u-leftover",
-  email: "markdavidprado@gmail.com",
-  name: "Mark David Prado",
-  role: "client",
-  accountType: "individual",
-};
 
 const rider: User = {
   id: "u-rider",
@@ -31,28 +24,39 @@ const rider: User = {
   role: "rider",
 };
 
+let mockSignInStatus = "needs_client_trust";
+
 jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
     signIn: {
       password: (...args: unknown[]) => mockPassword(...args),
-      finalize: (...args: unknown[]) => mockFinalize(...args),
+      finalize: jest.fn(),
       create: jest.fn(),
       resetPasswordEmailCode: {
         sendCode: jest.fn(),
         verifyCode: jest.fn(),
         submitPassword: jest.fn(),
       },
-      status: "complete",
-      supportedSecondFactors: [],
-      existingSession: null,
+      mfa: {
+        sendEmailCode: (...args: unknown[]) => mockSendEmailCode(...args),
+        verifyEmailCode: jest.fn(),
+        sendPhoneCode: jest.fn(),
+        verifyPhoneCode: jest.fn(),
+        verifyTOTP: jest.fn(),
+        verifyBackupCode: jest.fn(),
+      },
+      get status() {
+        return mockSignInStatus;
+      },
+      supportedSecondFactors: [{ strategy: "email_code" }],
     },
     fetchStatus: "idle",
   }),
   useAuth: () => ({
-    isSignedIn: true,
+    isSignedIn: false,
     isLoaded: true,
     getToken: mockGetToken,
-    sessionId: "sess_leftover",
+    sessionId: null,
   }),
   useClerk: () => ({ setActive: mockSetActive, signOut: mockSignOut }),
 }));
@@ -66,7 +70,8 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     me: (...args: unknown[]) => mockMe(...args),
-    activateClerkClient: (...args: unknown[]) => mockActivate(...args),
+    activateClerkClient: jest.fn(),
+    clientEmailAvailable: (...args: unknown[]) => mockClientEmailAvailable(...args),
   };
 });
 
@@ -131,18 +136,25 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen leftover Clerk session of a different account", () => {
+async function fillRiderCredentials() {
+  fireEvent.changeText(screen.getByLabelText("Email"), "mddprado00290@usep.edu.ph");
+  fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
+  await waitFor(() =>
+    expect(screen.getByLabelText("Password").props.value).toBe("fixture-password"),
+  );
+}
+
+describe("LoginScreen refuses a non-client before any verification code", () => {
   beforeEach(() => {
-    mockPassword.mockReset().mockImplementation(async () => {
-      mockMe.mockResolvedValue(rider);
-      return { error: null };
-    });
-    mockFinalize.mockReset().mockResolvedValue({ error: null });
-    mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
+    mockSignInStatus = "needs_client_trust";
+    mockPassword.mockReset().mockResolvedValue({ error: null });
+    mockSendEmailCode.mockReset().mockResolvedValue({ error: null });
+    mockGetToken.mockReset().mockResolvedValue(null);
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
-    mockMe.mockReset().mockResolvedValue(leftoverClient);
-    mockActivate.mockReset();
+    mockMe.mockReset().mockResolvedValue(rider);
+    mockClientEmailAvailable.mockReset().mockResolvedValue(false);
+    useLoginFlow.getState().reset();
     useSession.setState({
       user: null,
       loading: false,
@@ -154,29 +166,21 @@ describe("LoginScreen leftover Clerk session of a different account", () => {
     });
   });
 
-  it("does not land Home as the leftover person when a rider email is typed", async () => {
+  it("stays on the password form when GRIDGO already knows the email is not a client", async () => {
     await renderInSafeArea(<LoginScreen />);
-    fireEvent.changeText(screen.getByLabelText("Email"), "mddprado00290@usep.edu.ph");
-    fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
-    await waitFor(() =>
-      expect(screen.getByLabelText("Password").props.value).toBe("fixture-password"),
-    );
+    await fillRiderCredentials();
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(mockPassword).toHaveBeenCalledWith({
-        emailAddress: "mddprado00290@usep.edu.ph",
-        password: "fixture-password",
-      }),
-    );
     await waitFor(() =>
       expect(screen.getByText("This email is not available. Try a different email.")).toBeTruthy(),
     );
+    expect(mockPassword).toHaveBeenCalled();
+    expect(mockClientEmailAvailable).toHaveBeenCalledWith("mddprado00290@usep.edu.ph");
+    expect(mockSendEmailCode).not.toHaveBeenCalled();
+    expect(screen.queryByText("Enter the code")).toBeNull();
     expect(screen.queryByRole("button", { name: "Sign out and try again" })).toBeNull();
+    expect(screen.queryByText(/could not sign you out of Clerk/i)).toBeNull();
     expect(useSession.getState().user).toBeNull();
-    expect(screen.queryByText("markdavidprado@gmail.com")).toBeNull();
-    expect(screen.queryByTestId("redirect")).toBeNull();
   });
 });

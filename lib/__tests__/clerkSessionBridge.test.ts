@@ -97,7 +97,9 @@ describe("bridgeClerkToGridgo", () => {
     const result = await bridgeClerkToGridgo({ me, activate: jest.fn() });
 
     expect(result).toEqual({ kind: "wrong_role", role: "rider" });
-    expect(wrongRoleMessage("rider")).toMatch(/GRIDGO Rider/);
+    expect(wrongRoleMessage("rider")).toBe(
+      "This email is not available. Try a different email.",
+    );
   });
 
   it("maps invitation_required to an obvious missing-client message", async () => {
@@ -109,7 +111,9 @@ describe("bridgeClerkToGridgo", () => {
     const result = await bridgeClerkToGridgo({ me, activate });
 
     expect(result).toEqual({ kind: "wrong_role", role: "" });
-    expect(wrongRoleMessage("")).toMatch(/no Client profile/i);
+    expect(wrongRoleMessage("")).toBe(
+      "This email is not available. Try a different email.",
+    );
   });
 
   it("sends nothing until Clerk has minted a JWT", async () => {

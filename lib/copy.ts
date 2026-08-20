@@ -66,6 +66,13 @@ export function roleAppLabel(role: string | null | undefined): string {
 }
 
 /**
+ * Client login refused an identity that is not a client.
+ * Never name the other app — that would confirm who this email belongs to.
+ */
+export const clientEmailUnavailableMessage =
+  "This email is not available. Try a different email.";
+
+/**
  * Timeline actor: who did this, in roles the client understands.
  * Never surfaces raw user ids.
  */

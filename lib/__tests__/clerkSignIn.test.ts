@@ -5,11 +5,27 @@ import {
   clerkNeedsNewPasswordMessage,
   clerkPasswordIncompleteMessage,
   clerkSessionToken,
+  clerkSignOutRecoveryMessage,
+  clerkSignOutRetryLabel,
   continuationAfterPassword,
   isClerkSignedOutError,
   pickSupportedSecondFactor,
+  projectionForTypedEmail,
   releaseClerkSession,
+  verificationCodeGate,
 } from "@/lib/clerkSignIn";
+
+describe("clerkSignOutRetryLabel", () => {
+  it("does not ask a refused email to sign out", () => {
+    expect(
+      clerkSignOutRetryLabel("This email is not available. Try a different email."),
+    ).toBeUndefined();
+  });
+
+  it("keeps the leftover-session recovery", () => {
+    expect(clerkSignOutRetryLabel(clerkSignOutRecoveryMessage)).toBe("Sign out and try again");
+  });
+});
 
 describe("clerkSessionToken", () => {
   it("asks Clerk for a fresh JWT and treats blanks as missing", async () => {
@@ -289,5 +305,67 @@ describe("pickSupportedSecondFactor", () => {
     expect(pickSupportedSecondFactor([{ strategy: "backup_code" }, { strategy: "totp" }])).toBe(
       "totp",
     );
+  });
+});
+
+describe("projectionForTypedEmail", () => {
+  it("refuses a leftover rider for the typed email", async () => {
+    await expect(
+      projectionForTypedEmail({
+        typedEmail: "mddprado00290@usep.edu.ph",
+        getToken: async () => "clerk-jwt",
+        me: async () => ({ email: "mddprado00290@usep.edu.ph", role: "rider" }),
+      }),
+    ).resolves.toBe("wrong_role");
+  });
+
+  it("does not treat a leftover client as the typed rider email", async () => {
+    await expect(
+      projectionForTypedEmail({
+        typedEmail: "mddprado00290@usep.edu.ph",
+        getToken: async () => "clerk-jwt",
+        me: async () => ({ email: "markdavidprado@gmail.com", role: "client" }),
+      }),
+    ).resolves.toBe("other_account");
+  });
+
+  it("is unknown when Clerk has no JWT yet", async () => {
+    await expect(
+      projectionForTypedEmail({
+        typedEmail: "client@gridgo.ph",
+        getToken: async () => null,
+        me: async () => {
+          throw new Error("must not call me without a token");
+        },
+      }),
+    ).resolves.toBe("unknown");
+  });
+});
+
+describe("verificationCodeGate", () => {
+  it("blocks a rider before any code is sent, even without a leftover JWT", async () => {
+    await expect(
+      verificationCodeGate({
+        typedEmail: "mddprado00290@usep.edu.ph",
+        getToken: async () => null,
+        me: async () => {
+          throw new Error("must not call me without a token");
+        },
+        emailAvailable: async () => false,
+      }),
+    ).resolves.toBe("wrong_role");
+  });
+
+  it("still collects a code for a client on a new device", async () => {
+    await expect(
+      verificationCodeGate({
+        typedEmail: "client@gridgo.ph",
+        getToken: async () => null,
+        me: async () => {
+          throw new Error("must not call me without a token");
+        },
+        emailAvailable: async () => true,
+      }),
+    ).resolves.toBe("collect");
   });
 });

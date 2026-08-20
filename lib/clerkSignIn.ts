@@ -7,6 +7,8 @@
  * credentials just typed.
  */
 
+import { clientEmailUnavailableMessage } from "@/lib/copy";
+
 export type ClerkGetToken = (options?: { skipCache?: boolean }) => Promise<string | null | undefined>;
 
 export type AdoptOrClearClerkSessionInput = {
@@ -27,6 +29,20 @@ export type AdoptOrClearClerkSessionResult =
 
 export const clerkSignOutRecoveryMessage =
   "GRIDGO could not sign you out of Clerk. Check your connection and try again.";
+
+/**
+ * The password form's "Sign out and try again" control is only for a live
+ * Clerk leftover GRIDGO could not drop. A refused email is not signed in to
+ * Client — offering sign-out there is the wrong recovery.
+ */
+export function clerkSignOutRetryLabel(
+  sessionError: string | null | undefined,
+  localError?: string | null,
+): string | undefined {
+  if (localError || !sessionError) return undefined;
+  if (sessionError === clientEmailUnavailableMessage) return undefined;
+  return "Sign out and try again";
+}
 
 export const clerkPasswordIncompleteMessage =
   "This account needs another verification step. Please try again.";
@@ -197,6 +213,81 @@ export async function releaseClerkSession(
     return true;
   } catch (error) {
     return isClerkSignedOutError(error);
+  }
+}
+
+function isUnauthorizedProbe(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    (error as { status: unknown }).status === 401
+  );
+}
+
+export function emailsMatch(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
+export type TypedEmailProjection =
+  | "unknown"
+  | "unmapped"
+  | "wrong_role"
+  | "same_client"
+  | "other_account";
+
+/**
+ * What GRIDGO already knows about the typed email, using only a live JWT.
+ *
+ * Never activates a profile: that path can attach a client membership onto an
+ * existing rider. A missing token is unknown, not a client.
+ */
+export async function projectionForTypedEmail(input: {
+  typedEmail: string;
+  getToken: ClerkGetToken;
+  me: () => Promise<{ email?: string; role?: string }>;
+}): Promise<TypedEmailProjection> {
+  const token = await clerkSessionToken(input.getToken);
+  if (!token) return "unknown";
+  try {
+    const user = await input.me();
+    if (!user?.email) return "unknown";
+    if (!emailsMatch(user.email, input.typedEmail)) return "other_account";
+    if (user.role !== "client") return "wrong_role";
+    return "same_client";
+  } catch (error) {
+    if (isUnauthorizedProbe(error)) return "unmapped";
+    return "unknown";
+  }
+}
+
+export type VerificationCodeGate = "collect" | "wrong_role";
+
+/**
+ * Whether Clerk may email a second-factor / new-device code.
+ *
+ * A leftover or current projection that is not a client is refused here so
+ * the password form can show "email not available" instead of "enter the code".
+ * When there is no JWT yet, `emailAvailable` is the GRIDGO lookup for that
+ * typed address. A lookup failure must not lock a real client out of device
+ * trust, so it collects.
+ */
+export async function verificationCodeGate(input: {
+  typedEmail: string;
+  getToken: ClerkGetToken;
+  me: () => Promise<{ email?: string; role?: string }>;
+  emailAvailable?: (email: string) => Promise<boolean>;
+}): Promise<VerificationCodeGate> {
+  const projection = await projectionForTypedEmail(input);
+  if (projection === "wrong_role") return "wrong_role";
+  if (projection === "same_client") return "collect";
+  if (!input.emailAvailable) return "collect";
+  try {
+    return (await input.emailAvailable(input.typedEmail.trim().toLowerCase()))
+      ? "collect"
+      : "wrong_role";
+  } catch {
+    return "collect";
   }
 }
 

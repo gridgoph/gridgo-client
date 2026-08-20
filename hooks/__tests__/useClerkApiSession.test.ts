@@ -2,7 +2,9 @@ import { act, renderHook, waitFor } from "@testing-library/react-native";
 
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
 import { ApiError, type User } from "@/lib/api";
+import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
+import { useSignupFlow } from "@/store/signupFlow";
 
 const mockGetToken = jest.fn(
   async (_options?: { skipCache?: boolean }): Promise<string | null> => "clerk-jwt",
@@ -52,6 +54,8 @@ describe("useClerkApiSession", () => {
     mockSetTokenProvider.mockClear();
     mockMe.mockReset();
     mockActivate.mockReset();
+    useLoginFlow.getState().reset();
+    useSignupFlow.getState().reset();
     useSession.setState({
       user: null,
       source: null,
@@ -72,7 +76,9 @@ describe("useClerkApiSession", () => {
 
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
     expect(useSession.getState().user).toBeNull();
-    expect(useSession.getState().error).toMatch(/GRIDGO Supplier/);
+    expect(useSession.getState().error).toBe(
+      "This email is not available. Try a different email.",
+    );
   });
 
   it("activates then adopts a new Google client", async () => {
@@ -126,6 +132,20 @@ describe("useClerkApiSession", () => {
     mockGetToken.mockClear();
     await provider();
     expect(mockGetToken).toHaveBeenCalledWith({ skipCache: true });
+  });
+
+  it("does not join a leftover identity while login is collecting a code", async () => {
+    mockMe.mockResolvedValue(supplier);
+    useLoginFlow.getState().enterVerification("email_code");
+
+    renderHook(() => useClerkApiSession());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(mockMe).not.toHaveBeenCalled();
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(useSession.getState().error).toBeNull();
   });
 
   it("does not restore a leftover Clerk session while signing out", async () => {

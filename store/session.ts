@@ -3,7 +3,7 @@ import { create } from "zustand";
 import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
 import { CLERK_SIGNOUT_TIMEOUT_MS, withTimeout } from "@/lib/clerkSignIn";
-import { roleAppLabel, userFacingError } from "@/lib/copy";
+import { clientEmailUnavailableMessage, userFacingError } from "@/lib/copy";
 import { signupInput, type SignupFields } from "@/lib/signup";
 import { usePush } from "@/store/push";
 
@@ -113,8 +113,7 @@ export const useSession = create<SessionState>((set) => ({
         set({
           user: null,
           loading: false,
-          // Never the raw role value: "ops_admin" tells a person nothing.
-          error: `This account belongs to ${roleAppLabel(user.role)}. Sign in there instead — GRIDGO ships one app per role.`,
+          error: clientEmailUnavailableMessage,
         });
         return;
       }

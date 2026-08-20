@@ -675,6 +675,39 @@ export async function me(options?: RequestOptions): Promise<User> {
   return result.user;
 }
 
+/**
+ * Whether this email may continue in the Client app.
+ *
+ * Called after Clerk has accepted the password, before any device-trust code
+ * is sent. Never sends a bearer: a leftover JWT would stall the lookup on a
+ * token wait, and this answer is about the typed address, not the leftover.
+ * A missing route (older API) throws {@link ApiError} so the login gate can
+ * fail open for real clients.
+ */
+export async function clientEmailAvailable(email: string): Promise<boolean> {
+  const res = await fetch(`${getApiBase()}/auth/clerk/client-available`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  });
+  const text = await res.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  if (!res.ok) throw new ApiError(res.status, data);
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "available" in data &&
+    (data as { available: unknown }).available === true
+  );
+}
+
 /** Fields a verified Clerk session may send when creating or completing a client. */
 export type ClerkActivateInput = {
   accountType?: AccountType;

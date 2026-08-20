@@ -67,9 +67,15 @@ describe("public Clerk auth layout", () => {
     expect(signup).toContain("GRIDGO app");
   });
 
-  it("keeps the legacy endpoint behind a development-only branch", () => {
-    expect(login).toContain("__DEV__");
-    expect(login).toContain("Use local API instead");
+  it("does not expose a local API sign-in fallback on the login screen", () => {
+    expect(login).not.toContain("Use local API instead");
+    expect(login).not.toContain("state.login");
+  });
+
+  it("refuses a non-client email before Clerk sends a verification code", () => {
+    expect(login).toContain("verificationCodeGate");
+    expect(login).toContain("clientEmailAvailable");
+    expect(login).toContain("refuseNonClientEmail");
   });
 
   it("keeps login and signup on the shared page gutter", () => {

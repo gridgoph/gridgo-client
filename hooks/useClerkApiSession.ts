@@ -4,7 +4,9 @@ import { useEffect, useRef } from "react";
 import * as api from "@/lib/api";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import { awaitClerkSessionToken, releaseClerkSession } from "@/lib/clerkSignIn";
+import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
+import { useSignupFlow } from "@/store/signupFlow";
 
 /**
  * Clerk owns identity; gridgo-api still owns the client projection and role.
@@ -15,6 +17,8 @@ export function useClerkApiSession(): void {
   const { signOut } = useClerk();
   const clerkSyncNonce = useSession((state) => state.clerkSyncNonce);
   const signingOut = useSession((state) => state.signingOut);
+  const loginStep = useLoginFlow((state) => state.step);
+  const signupStep = useSignupFlow((state) => state.step);
   const syncedSessionId = useRef<string | null>(null);
   const clerkOwnerPresent = useRef(false);
 
@@ -66,6 +70,12 @@ export function useClerkApiSession(): void {
     // how the previous person came back after a slow logout.
     if (current.signingOut) return;
 
+    // A typed password / Google attempt is collecting a code. Do not join a
+    // leftover Clerk identity to GRIDGO here — that leftover may be a rider
+    // from the previous tap, and painting "email not available" onto the
+    // code step is how a valid client email looked refused.
+    if (loginStep !== "credentials" || signupStep !== "details") return;
+
     clerkOwnerPresent.current = true;
     if (syncedSessionId.current && sessionId && syncedSessionId.current !== sessionId) {
       invalidateClerkGridgoSync();
@@ -102,5 +112,5 @@ export function useClerkApiSession(): void {
     return () => {
       cancelled = true;
     };
-  }, [getToken, isLoaded, isSignedIn, sessionId, signOut, clerkSyncNonce, signingOut]);
+  }, [getToken, isLoaded, isSignedIn, sessionId, signOut, clerkSyncNonce, signingOut, loginStep, signupStep]);
 }

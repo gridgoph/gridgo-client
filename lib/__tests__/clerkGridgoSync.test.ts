@@ -145,7 +145,9 @@ describe("clerkGridgoSync", () => {
 
     expect(useSession.getState().loading).toBe(false);
     expect(useSession.getState().user).toBeNull();
-    expect(useSession.getState().error).toMatch(/GRIDGO Supplier/);
+    expect(useSession.getState().error).toBe(
+      "This email is not available. Try a different email.",
+    );
   });
 
   it("does not let an older failure erase a newer profile requirement", async () => {
