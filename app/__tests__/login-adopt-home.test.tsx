@@ -122,7 +122,7 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen leftover Clerk session is replaced by the typed password", () => {
+describe("LoginScreen leftover Clerk session for the typed email", () => {
   beforeEach(() => {
     mockPassword.mockReset();
     mockFinalize.mockReset();
@@ -142,7 +142,17 @@ describe("LoginScreen leftover Clerk session is replaced by the typed password",
     });
   });
 
-  it("signs the leftover out and submits the typed password", async () => {
+  /**
+   * The leftover on this phone *is* the email being typed, signed in as a
+   * client right now. Adopt it and land Home. Signing it out first bought a
+   * sign-out round trip, a fresh password attempt and a new JWT mint — and
+   * `getToken` answered empty in the gap between them, which is what the
+   * captain saw as "GRIDGO never received an identity token for that session".
+   *
+   * A leftover belonging to a *different* account is still never adopted;
+   * that guard lives in `login-leftover-other-account.test.tsx`.
+   */
+  it("adopts it instead of signing it out and replaying the password", async () => {
     mockPassword.mockResolvedValue({ error: null });
     mockFinalize.mockResolvedValue({ error: null });
     await renderInSafeArea(<LoginScreen />);
@@ -155,16 +165,15 @@ describe("LoginScreen leftover Clerk session is replaced by the typed password",
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
-    expect(mockSignOut).toHaveBeenCalled();
-    expect(mockPassword).toHaveBeenCalledWith({
-      emailAddress: "client@gridgo.ph",
-      password: "fixture-password",
-    });
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockPassword).not.toHaveBeenCalled();
+    expect(mockFinalize).not.toHaveBeenCalled();
     expect(mockActivate).not.toHaveBeenCalled();
     expect(mockMe).toHaveBeenCalled();
     expect(useSession.getState().source).toBe("clerk");
     expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
     expect(screen.queryByText("Could not sign in")).toBeNull();
+    expect(screen.queryByText(/never received an identity token/i)).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
     expect(screen.queryByText(/currently logged in/i)).toBeNull();
   });

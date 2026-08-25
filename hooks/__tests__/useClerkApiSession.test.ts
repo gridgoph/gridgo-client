@@ -116,7 +116,7 @@ describe("useClerkApiSession", () => {
     expect(useSession.getState().loading).toBe(false);
   });
 
-  it("installs a token provider that always asks Clerk for a fresh JWT", async () => {
+  it("installs a token provider that reads Clerk's cache instead of minting per request", async () => {
     mockMe.mockResolvedValue({
       id: "u1",
       email: "ana@company.com",
@@ -128,10 +128,46 @@ describe("useClerkApiSession", () => {
     renderHook(() => useClerkApiSession());
 
     await waitFor(() => expect(mockSetTokenProvider).toHaveBeenCalled());
-    const provider = mockSetTokenProvider.mock.calls.at(-1)?.[0] as () => Promise<string | null>;
+    const provider = mockSetTokenProvider.mock.calls.at(-1)?.[0] as (options?: {
+      force?: boolean;
+    }) => Promise<string | null>;
+
+    // Every ordinary request: one cached read, no Clerk FAPI round trip.
     mockGetToken.mockClear();
-    await provider();
+    await expect(provider()).resolves.toBe("clerk-jwt");
+    expect(mockGetToken).toHaveBeenCalledTimes(1);
+    expect(mockGetToken).toHaveBeenCalledWith(undefined);
+    expect(mockGetToken).not.toHaveBeenCalledWith({ skipCache: true });
+
+    // Only gridgo-api refusing the bearer buys a forced mint.
+    mockGetToken.mockClear();
+    await expect(provider({ force: true })).resolves.toBe("clerk-jwt");
+    expect(mockGetToken).toHaveBeenCalledTimes(1);
     expect(mockGetToken).toHaveBeenCalledWith({ skipCache: true });
+  });
+
+  it("falls back to one mint when Clerk's cache is empty, so no request goes out bare", async () => {
+    mockMe.mockResolvedValue({
+      id: "u1",
+      email: "ana@company.com",
+      name: "Ana",
+      role: "client",
+      accountType: "individual",
+    });
+
+    renderHook(() => useClerkApiSession());
+
+    await waitFor(() => expect(mockSetTokenProvider).toHaveBeenCalled());
+    const provider = mockSetTokenProvider.mock.calls.at(-1)?.[0] as (options?: {
+      force?: boolean;
+    }) => Promise<string | null>;
+
+    mockGetToken.mockClear();
+    mockGetToken.mockResolvedValueOnce(null).mockResolvedValue("clerk-jwt");
+    await expect(provider()).resolves.toBe("clerk-jwt");
+    expect(mockGetToken).toHaveBeenNthCalledWith(1, undefined);
+    expect(mockGetToken).toHaveBeenNthCalledWith(2, { skipCache: true });
+    expect(mockGetToken).toHaveBeenCalledTimes(2);
   });
 
   it("does not join a leftover identity while login is collecting a code", async () => {

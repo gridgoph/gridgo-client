@@ -3,6 +3,7 @@ import { Tabs, useRouter } from "expo-router";
 import { GridgoTabBar } from "@/components/GridgoTabBar";
 import { ACTION_TAB, TABS } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useCart } from "@/store/cart";
 import { useRequestDraft } from "@/store/requestDraft";
 
 /**
@@ -15,9 +16,9 @@ import { useRequestDraft } from "@/store/requestDraft";
  * The yellow "+" is the app's single "start a print request" control, so it has
  * to land where a request actually starts. With nothing chosen yet that is the
  * category screen, not an empty stepper — a client should never meet a form
- * before they have said what they are printing. With a request already in
- * progress it goes back to that one, which is what "+" means to someone who
- * left mid-draft.
+ * before they have said what they are printing. With work already in progress
+ * it goes back to that, which is what "+" means to someone who left part-way:
+ * a basket goes to checkout, and an older stepper draft opens the stepper.
  */
 export default function TabsLayout() {
   const colors = useThemeColors();
@@ -47,6 +48,11 @@ export default function TabsLayout() {
             tab.name === ACTION_TAB
               ? {
                   tabPress: (event) => {
+                    if (useCart.getState().cartId) {
+                      event.preventDefault();
+                      router.push("/checkout");
+                      return;
+                    }
                     if (useRequestDraft.getState().productId) return;
                     event.preventDefault();
                     router.push("/request/category");

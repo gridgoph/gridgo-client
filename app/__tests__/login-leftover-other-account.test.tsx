@@ -167,7 +167,7 @@ describe("LoginScreen leftover Clerk session of a different account", () => {
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
     await waitFor(() =>
       expect(mockPassword).toHaveBeenCalledWith({
-        emailAddress: "mddprado00290@usep.edu.ph",
+        identifier: "mddprado00290@usep.edu.ph",
         password: "fixture-password",
       }),
     );

@@ -51,6 +51,14 @@ export function DeliveryTrackingCard({ order }: Props) {
     return () => clearInterval(timer);
   }, [refresh]);
 
+  /*
+    The origin, as far as the client is concerned.
+
+    GRIDGO withholds the press's own pin from this app's projection, so on a
+    delivery this is simply absent and the map draws the drop-off and the rider
+    alone. On a collected order it is GRIDGO's own counter, which is where the
+    client actually goes. Either way it is never a shop's address.
+  */
   const pickup = isGeoPoint(order.pickup) ? (order.pickup as GeoPoint) : null;
   const dropoff = isGeoPoint(order.dropoff) ? (order.dropoff as GeoPoint) : null;
   const rider = useMemo(
@@ -91,8 +99,8 @@ export function DeliveryTrackingCard({ order }: Props) {
       ) : (
         <View className="items-center bg-surface-variant px-4 py-8">
           <Text className="text-center text-body text-text-secondary">
-            There is nothing to map yet — no pickup, drop-off or rider position has been set
-            on this job.
+            There is nothing to map yet — GRIDGO has no drop-off or rider position on this
+            job.
           </Text>
         </View>
       )}

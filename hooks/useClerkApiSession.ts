@@ -3,7 +3,11 @@ import { useEffect, useRef } from "react";
 
 import * as api from "@/lib/api";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
-import { awaitClerkSessionToken, releaseClerkSession } from "@/lib/clerkSignIn";
+import {
+  awaitClerkSessionToken,
+  clerkTokenProvider,
+  releaseClerkSession,
+} from "@/lib/clerkSignIn";
 import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
 import { useSignupFlow } from "@/store/signupFlow";
@@ -37,17 +41,20 @@ export function useClerkApiSession(): void {
       api.setTokenProvider(null);
       return;
     }
-    // Fresh JWT each time: a cached leftover is often expired, and after
-    // activate /auth/me needs gridgo_role. Do not null the provider in cleanup
-    // — Clerk recreates getToken often, and that gap is how me/activate go
-    // out with no Bearer (the phone's "session expired" on first paint).
-    // Keep a leftover sessionId's provider too: login may adopt before
-    // useAuth().isSignedIn flips, and nulling here would drop the Bearer.
-    // `awaitClerkSessionToken` also swallows Clerk's "you are signed out"
-    // throw, so a request that races a sign-out fails as unauthorized rather
-    // than as an uncaught identity error, and it waits out the gap where a
-    // freshly activated session has not minted its first JWT yet.
-    api.setTokenProvider(() => awaitClerkSessionToken(getToken));
+    // Clerk's cached JWT, with a single forced mint only when the cache is
+    // empty (a session that has just been swapped in) and one more only when
+    // gridgo-api has answered 401 to a token we sent. `skipCache` on every
+    // request was a Clerk FAPI round trip per API call — the multi-second
+    // sign-in, and the throttled mints behind "GRIDGO never received an
+    // identity token".
+    // Do not null the provider in cleanup — Clerk recreates getToken often,
+    // and that gap is how me/activate go out with no Bearer (the phone's
+    // "session expired" on first paint). Keep a leftover sessionId's provider
+    // too: login may adopt before useAuth().isSignedIn flips, and nulling here
+    // would drop the Bearer. The provider also swallows Clerk's "you are
+    // signed out" throw, so a request that races a sign-out fails as
+    // unauthorized rather than as an uncaught identity error.
+    api.setTokenProvider(clerkTokenProvider(getToken));
   }, [getToken, isLoaded, isSignedIn, sessionId]);
 
   useEffect(() => {
@@ -93,8 +100,10 @@ export function useClerkApiSession(): void {
       try {
         // Wait for the token rather than probing once — on first paint Clerk
         // often has the session before it has a JWT, and signing out there
-        // would throw away a session that was about to work.
-        const token = await awaitClerkSessionToken(getToken);
+        // would throw away a session that was about to work. This runs once
+        // per launch / session change, not per request, so it can afford to
+        // be more patient than the bearer path.
+        const token = await awaitClerkSessionToken(getToken, { attempts: 3, delayMs: 150 });
         if (cancelled) return;
         if (!token) {
           // Dead leftover (failed Google, expired cache): drop it quietly so

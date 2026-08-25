@@ -159,6 +159,25 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "invitation_required":
         return "This identity is not a GRIDGO client. Suppliers, riders, and Operations use their own app.";
 
+      // ---- the account's own details, and the business upgrade ----
+      // `src/account-profile-routes.js` writes plain sentences of its own and
+      // names the field it refused, so most of these pass the server's wording
+      // through rather than restating it worse. Only the two the client cannot
+      // act on are replaced.
+      case "invalid_account_profile":
+      case "org_name_required":
+      case "org_name_not_allowed":
+      case "contact_name_required":
+      case "contact_phone_required":
+        return apiMessage(error) ?? fallback;
+      case "account_version_conflict":
+        return "Your account changed somewhere else while this screen was open. Load the latest, then make your change again.";
+      case "expected_version_required":
+        return "GRIDGO could not tell which version of your account this change was for. Load the latest and try again.";
+      case "client_profile_unavailable":
+      case "membership_required":
+        return "This identity is not a GRIDGO client account, so its details cannot be changed here.";
+
       case "not_found":
         return "Nothing was found for that request. Go back and try again.";
       default:
@@ -188,4 +207,19 @@ export function userFacingError(error: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+/**
+ * The sentence the API sent, where it wrote one worth reading.
+ *
+ * GRIDGO's newer routes answer with real copy — "Enter a Philippine mobile
+ * number, for example 0917 123 4567." — and restating that here in worse words
+ * is how two sources of truth start disagreeing. Only used for codes listed
+ * above: an unmapped code still falls back, so no internal string leaks.
+ */
+function apiMessage(error: ApiError): string | null {
+  const body = error.body;
+  if (typeof body !== "object" || body === null || !("message" in body)) return null;
+  const message = (body as { message: unknown }).message;
+  return typeof message === "string" && message.trim() ? message : null;
 }

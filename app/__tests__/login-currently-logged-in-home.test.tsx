@@ -145,7 +145,13 @@ describe("LoginScreen currently-logged-in Clerk refusal", () => {
     });
   });
 
-  it("signs the leftover out, retries the typed password, and goes home", async () => {
+  /**
+   * Clerk refuses the attempt because a session is already live. That session
+   * turns out to be this same email, as a client — so it is adopted and the
+   * person lands Home. It is never a login failure, and it never costs a
+   * sign-out plus a second password attempt.
+   */
+  it("adopts the session Clerk was holding and goes home", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -156,8 +162,8 @@ describe("LoginScreen currently-logged-in Clerk refusal", () => {
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
-    expect(mockPassword).toHaveBeenCalledTimes(2);
-    expect(mockSignOut).toHaveBeenCalled();
+    expect(mockPassword).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).not.toHaveBeenCalled();
     expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
     expect(screen.queryByText("Could not sign in")).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();

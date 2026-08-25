@@ -97,6 +97,10 @@ export function ConfirmDialog({
             {tone === "destructive" ? (
               <Pressable
                 accessibilityRole="button"
+                // Named explicitly: the same verb can appear on the screen
+                // behind the dialog, and the answer to the question has to be
+                // reachable without counting matches.
+                accessibilityLabel={confirmLabel}
                 accessibilityState={{ disabled: Boolean(busy) }}
                 disabled={busy}
                 onPress={onConfirm}
@@ -111,6 +115,7 @@ export function ConfirmDialog({
             ) : (
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={confirmLabel}
                 accessibilityState={{ disabled: Boolean(busy) }}
                 disabled={busy}
                 onPress={onConfirm}

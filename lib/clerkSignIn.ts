@@ -125,20 +125,68 @@ export function isClerkSignedOutError(error: unknown): boolean {
 }
 
 /**
- * Fresh JWT for gridgo-api. Cached leftovers are often expired or empty, and a
- * signed-out Clerk throws rather than returning null — answer null either way.
+ * One read of Clerk's `getToken`, never throwing.
+ *
+ * A signed-out Clerk throws instead of answering null, and these run from
+ * effects and from the API bearer path — an unhandled rejection there is the
+ * Metro "Unable to authenticate / You are signed out" flood.
  */
-export async function clerkSessionToken(getToken: ClerkGetToken): Promise<string | null> {
+async function readClerkToken(
+  getToken: ClerkGetToken,
+  skipCache: boolean,
+): Promise<string | null> {
   try {
-    const token = (await getToken({ skipCache: true }))?.trim() ?? "";
+    const token = (await getToken(skipCache ? { skipCache: true } : undefined))?.trim() ?? "";
     return token || null;
   } catch {
     return null;
   }
 }
 
+/**
+ * Clerk's cached JWT — the hot path, and almost always the right answer.
+ *
+ * `skipCache` is a Clerk FAPI round trip *per call*. Spending one on every
+ * request (and several per sign-in) is what made authentication take seconds
+ * and what left a just-signed-in person told GRIDGO never received an identity
+ * token. Clerk already refreshes this token before it expires, so reading the
+ * cache is not a stale-token risk.
+ */
+export function clerkCachedSessionToken(getToken: ClerkGetToken): Promise<string | null> {
+  return readClerkToken(getToken, false);
+}
+
+/**
+ * Force Clerk to mint a new JWT. Costs a network round trip, so it is only for
+ * the two cases that need one: after `POST /auth/clerk/activate` writes
+ * `gridgo_role` (the cached token predates the claim), and after gridgo-api
+ * answered `401` to a token we had sent.
+ */
+export function clerkFreshSessionToken(getToken: ClerkGetToken): Promise<string | null> {
+  return readClerkToken(getToken, true);
+}
+
+/**
+ * A JWT for gridgo-api: the cached one, and a single mint only if there is
+ * none. Nothing here sleeps — a caller that has to wait out a session swap
+ * uses {@link awaitClerkSessionToken}.
+ */
+export async function clerkSessionToken(getToken: ClerkGetToken): Promise<string | null> {
+  return (
+    (await clerkCachedSessionToken(getToken)) ?? (await clerkFreshSessionToken(getToken))
+  );
+}
+
+/** The bearer `lib/api.ts` asks for. `force` is the post-401 retry. */
+export function clerkTokenProvider(
+  getToken: ClerkGetToken,
+): (options?: { force?: boolean }) => Promise<string | null> {
+  return (options) =>
+    options?.force ? clerkFreshSessionToken(getToken) : clerkSessionToken(getToken);
+}
+
 export type ClerkTokenWait = {
-  /** Total probes, the first one immediate. */
+  /** Total probes: the first is the cache, the rest force a mint. */
   attempts?: number;
   delayMs?: number;
   sleep?: (ms: number) => Promise<void>;
@@ -182,18 +230,24 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  * unmapped identity gets, which is how a perfectly good sign-in came out as
  * "your session expired". So nothing goes out until a token exists.
  *
- * The first probe is immediate, so a session that already has a token costs
- * nothing; only the empty case waits.
+ * Probe 0 is the cache and is immediate, so a session that already has a token
+ * costs nothing and no network. Only an empty cache waits, and only then does
+ * a probe force a mint. Five forced mints per call was the multi-second sign
+ * in — and, when Clerk throttled them, the reported "GRIDGO never received an
+ * identity token".
  */
 export async function awaitClerkSessionToken(
   getToken: ClerkGetToken,
   wait: ClerkTokenWait = {},
 ): Promise<string | null> {
-  const attempts = Math.max(1, wait.attempts ?? 5);
+  const attempts = Math.max(1, wait.attempts ?? 2);
   const delayMs = wait.delayMs ?? 120;
   const sleep = wait.sleep ?? defaultSleep;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const token = await clerkSessionToken(getToken);
+    const token =
+      attempt === 0
+        ? await clerkCachedSessionToken(getToken)
+        : await clerkFreshSessionToken(getToken);
     if (token) return token;
     if (attempt < attempts - 1) await sleep(delayMs);
   }

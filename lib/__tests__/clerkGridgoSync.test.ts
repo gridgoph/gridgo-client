@@ -1,5 +1,5 @@
 import { ApiError, type User } from "@/lib/api";
-import { syncClerkToGridgo } from "@/lib/clerkGridgoSync";
+import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import { useSession } from "@/store/session";
 
 const mockMe = jest.fn();
@@ -215,5 +215,112 @@ describe("clerkGridgoSync", () => {
     expect(mockMe).toHaveBeenCalledTimes(1);
     expect(useSession.getState().user?.id).toBe("u1");
     expect(useSession.getState().error).toBeNull();
+  });
+});
+
+/**
+ * `beginClerkSync` raises `session.loading` and only a *result* used to lower
+ * it, so any sync that was abandoned left the flag raised with nothing alive
+ * to clear it. Zustand outlives the screen, so it survived Fast Refresh and a
+ * return to the login form — where Sign In was disabled on that flag. That is
+ * how "after using the app they cannot tap login again" happened.
+ */
+describe("the sync never leaves the app waiting", () => {
+  const getToken = jest.fn(async () => "clerk-jwt");
+  const signOut = jest.fn(async () => undefined);
+
+  beforeEach(() => {
+    invalidateClerkGridgoSync();
+    getToken.mockReset().mockResolvedValue("clerk-jwt");
+    signOut.mockReset().mockResolvedValue(undefined);
+    mockMe.mockReset();
+    mockActivate.mockReset();
+    mockSetTokenProvider.mockReset();
+    useSession.setState({
+      user: null,
+      source: null,
+      loading: false,
+      error: null,
+      pendingClerkProfile: false,
+      justProvisioned: false,
+      signingOut: false,
+      clerkSyncNonce: 0,
+    });
+  });
+
+  it("stops waiting when the sync is abandoned mid-flight", async () => {
+    mockMe.mockReturnValue(new Promise<never>(() => {}));
+
+    void syncClerkToGridgo({ getToken, signOut }).catch(() => undefined);
+    await Promise.resolve();
+    expect(useSession.getState().loading).toBe(true);
+
+    // What sign-out does: `useClerkApiSession` invalidates on the signed-out
+    // leg, orphaning whatever was in flight.
+    invalidateClerkGridgoSync();
+
+    expect(useSession.getState().loading).toBe(false);
+  });
+
+  it("stops waiting when the sync throws instead of answering", async () => {
+    mockMe.mockRejectedValue(new Error("the network went away"));
+
+    await syncClerkToGridgo({ getToken, signOut }).catch(() => undefined);
+
+    expect(useSession.getState().loading).toBe(false);
+  });
+
+  it("stops waiting when the token never arrives", async () => {
+    getToken.mockResolvedValue(null as unknown as string);
+
+    await syncClerkToGridgo({ getToken, signOut }).catch(() => undefined);
+
+    expect(useSession.getState().loading).toBe(false);
+  });
+
+  it("does not let an abandoned sync clear the wait belonging to the one that replaced it", async () => {
+    let failFirst!: (reason: unknown) => void;
+    mockMe
+      .mockImplementationOnce(
+        () =>
+          new Promise<User>((_resolve, reject) => {
+            failFirst = reject;
+          }),
+      )
+      .mockReturnValue(new Promise<never>(() => {}));
+
+    void syncClerkToGridgo({ getToken, signOut, sessionId: "sess_one" }).catch(
+      () => undefined,
+    );
+    await Promise.resolve();
+    void syncClerkToGridgo({ getToken, signOut, sessionId: "sess_two" }).catch(
+      () => undefined,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useSession.getState().loading).toBe(true);
+
+    failFirst(new Error("abandoned"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The second sync is still running, so the app is still waiting on it.
+    expect(useSession.getState().loading).toBe(true);
+  });
+});
+
+describe("endClerkSync", () => {
+  it("only lowers the wait, and touches nothing else", () => {
+    useSession.setState({ loading: true, error: "kept", user: null });
+    useSession.getState().endClerkSync();
+
+    expect(useSession.getState().loading).toBe(false);
+    expect(useSession.getState().error).toBe("kept");
+  });
+
+  it("is safe to call when nothing is waiting", () => {
+    useSession.setState({ loading: false });
+    useSession.getState().endClerkSync();
+    expect(useSession.getState().loading).toBe(false);
   });
 });

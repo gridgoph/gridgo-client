@@ -20,9 +20,13 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
 /**
  * Settings — preferences and app help, not identity.
  *
- * Account keeps who is signed in and Sign out. Theme and replaying onboarding
- * live here. No remote load: there is no empty/loading/failed list for this
- * screen; every control is local preference or a navigation destination.
+ * Account keeps who is signed in, what GRIDGO matches on, and Sign out.
+ * Theme and replaying onboarding live here — and only here. The match ranking
+ * used to sit on both screens; two homes for one setting is two places to look
+ * and one of them always showing the older answer.
+ *
+ * No remote load: there is no empty/loading/failed list for this screen; every
+ * control is a local preference or a navigation destination.
  */
 export default function SettingsScreen() {
   const colors = useThemeColors();

@@ -4,6 +4,8 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { CartButton } from "@/components/CartButton";
+import { ChatButton } from "@/components/ChatButton";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
@@ -17,6 +19,7 @@ import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { orderNeedsClient } from "@/lib/orderState";
 import { type ProductCategory } from "@/lib/productCategories";
+import { cartLineCount, useCart } from "@/store/cart";
 import { useNotifications } from "@/store/notifications";
 import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
@@ -42,35 +45,41 @@ export default function HomeScreen() {
   const draftTitle = useRequestDraft((s) => s.title || s.productName);
   const hasDraft = useRequestDraft(draftHasContent);
   const refreshNotifications = useNotifications((s) => s.refresh);
+  const basketCount = useCart(cartLineCount);
+  const loadCart = useCart((s) => s.load);
   const { start, pendingLabel, confirmReplace, cancelReplace } = useStartRequest();
 
   const [orders, setOrders] = useState<api.Order[]>([]);
-  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [list, products, tree] = await Promise.all([
+      const [list, products] = await Promise.all([
         api.listOrders(),
         api.listCatalog(),
-        api.getProductCategories(),
       ]);
       setOrders(list);
       setCatalog(products);
-      setCategories(tree);
       setError(null);
     } catch (e) {
       setOrders([]);
       setCatalog([]);
-      setCategories([]);
       setError(userFacingError(e, "Could not load home. Check your connection and try again."));
     } finally {
       setLoading(false);
     }
+    void api.getProductCategories().then(setCategories).catch(() => {
+      // Seed already on screen.
+    });
     void refreshNotifications();
-  }, [refreshNotifications]);
+    // The basket lives on GRIDGO, so the count on the cart control is only
+    // honest if it is re-read. Coming back from checkout is exactly when it
+    // has changed.
+    void loadCart();
+  }, [refreshNotifications, loadCart]);
 
   useFocusEffect(
     useCallback(() => {
@@ -98,7 +107,33 @@ export default function HomeScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
       <ScrollView className="gg-screen">
         <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
-          <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
+          {/*
+            The mark, then the two ways back into work already in flight.
+
+            Cart: Home is where a client lands after leaving checkout to add one
+            more thing, and until now nothing on it said the basket was still
+            there. Empty still opens checkout — its empty state is a real
+            answer, and a control that disappears is a control nobody learns.
+
+            Chat: the people attached to a job. Same size and weight as Cart and
+            just as monochrome — the yellow in a thumb's reach of this row is
+            the tab bar's "+", and it only means one thing if it is the only
+            thing wearing it. No badge on Chat: there is no unread count to be
+            honest about yet.
+
+            No portrait, illustration or photo in this row. The mark is the
+            identity here, and a second image beside it would make the header
+            about the account rather than about the work.
+          */}
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="min-w-0 flex-1">
+              <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
+            </View>
+            <View className="flex-row items-center gap-2">
+              <CartButton count={basketCount} onPress={() => router.push("/checkout")} />
+              <ChatButton onPress={() => router.push("/chat")} />
+            </View>
+          </View>
           <Text className="mt-5 text-h1 text-text-primary" numberOfLines={2}>
             {user?.orgName || user?.name || "GRIDGO"}
           </Text>

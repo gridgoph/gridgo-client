@@ -1,103 +1,81 @@
 import { ChevronRight } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { ErrorState, ErrorScreenState } from "@/components/ErrorState";
-import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
-import { SkeletonList } from "@/components/Skeleton";
-import { useStartRequest } from "@/hooks/useStartRequest";
+import { ErrorState } from "@/components/ErrorState";
+import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { formatUnitPrice } from "@/lib/catalog";
+import { formatPhp } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
+import { findCategory, type ProductCategory, type ProductSubcategory } from "@/lib/productCategories";
 import {
-  findCategory,
-  productsForSubcategory,
-  splitByAvailability,
-  type ProductCategory,
-  type ProductSubcategory,
-} from "@/lib/productCategories";
-import { useRequestDraft } from "@/store/requestDraft";
+  listingsFor,
+  loadCategoryBoards,
+  orderableSubcategories,
+} from "@/lib/shopBoards";
 
 /**
  * One category, and the things inside it.
  *
- * The subcategories are split by whether the app can price them today. That is
- * a real difference, not a defect to hide: GRIDGO prints acrylic build-up
- * letters, but nothing in the catalog prices them, so an order created against
- * a guessed product would be the wrong job. Those rows say who quotes them and
- * are not tappable — a control that cannot act must not look like one.
+ * The split is between what a shop is printing today and what only Operations
+ * can quote — and it is read from the shops' own boards rather than guessed
+ * from the platform catalog. That difference is the whole marketplace: GRIDGO
+ * prints acrylic build-up letters, but if no approved shop has them on a board
+ * there is nobody to match a client to, and a row that looks tappable would end
+ * on a screen saying so.
+ *
+ * The boards are cached for a minute, so the match screen this leads to almost
+ * always has them already.
  */
 export default function CategoryScreen() {
   const { category: categoryCode } = useLocalSearchParams<{ category: string }>();
   const router = useRouter();
   const colors = useThemeColors();
-  const { start, pendingLabel, confirmReplace, cancelReplace } = useStartRequest();
+  const startJob = useStartPrintJob();
 
-  const [categories, setCategories] = useState<ProductCategory[] | null>(null);
-  const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  /** Subcategory whose several catalog products are showing. */
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
+  const [boards, setBoards] = useState<api.ShopBoard[] | null>(null);
+  const [boardsError, setBoardsError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const loadBoards = useCallback(async () => {
+    if (!categoryCode) return;
     try {
-      const [tree, products] = await Promise.all([
-        api.getProductCategories(),
-        api.listCatalog(),
-      ]);
-      setCategories(tree);
-      setCatalog(products);
-      setError(null);
+      const read = await loadCategoryBoards(categoryCode);
+      setBoards(read.boards);
+      setBoardsError(null);
     } catch (e) {
-      setCategories(null);
-      setError(
-        userFacingError(e, "Could not load this category. Check your connection and try again."),
+      setBoards(null);
+      setBoardsError(
+        userFacingError(e, "GRIDGO could not read today's prices, so this list may be short."),
       );
     }
+  }, [categoryCode]);
+
+  useEffect(() => {
+    let alive = true;
+    void api.getProductCategories().then((tree) => {
+      if (alive) setCategories(tree);
+    }).catch(() => {
+      // Seed already on screen.
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
+  useEffect(() => {
+    void loadBoards();
+  }, [loadBoards]);
+
+  const category = findCategory(categories, categoryCode);
+
+  const listed = useMemo(
+    () => (boards ? orderableSubcategories(boards) : null),
+    [boards],
   );
-
-  const category = findCategory(categories ?? [], categoryCode);
-
-  const choose = (product: api.CatalogProduct) => {
-    start(product.name, () => useRequestDraft.getState().selectProduct(product));
-  };
-
-  const pick = (subcategory: ProductSubcategory) => {
-    const products = productsForSubcategory(subcategory, catalog);
-    if (products.length === 1) {
-      choose(products[0]);
-      return;
-    }
-    setExpanded((current) => (current === subcategory.code ? null : subcategory.code));
-  };
-
-  if (error && !categories) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
-        <ErrorScreenState label="Could not load" body={error} onRetry={() => void load()} />
-      </SafeAreaView>
-    );
-  }
-
-  if (!categories) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
-        <View className="gg-page gap-4 pt-6">
-          <Text className="text-body text-text-muted">Loading this category…</Text>
-          <SkeletonList count={4} />
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   if (!category) {
     return (
@@ -114,17 +92,15 @@ export default function CategoryScreen() {
     );
   }
 
-  const { orderable, quotedByOperations } = splitByAvailability(
-    category.subcategories,
-    catalog,
-  );
-  /*
-    A group label is only information against the group it is being told apart
-    from. Where a category is entirely priced, or entirely quoted, the overline
-    heads the only list on the screen and says nothing the list does not — and
-    in the quoted-only case the sentence underneath already says it in words.
-  */
-  const split = orderable.length > 0 && quotedByOperations.length > 0;
+  // Until the boards land, nothing is claimed either way: every row is shown as
+  // itself and the split appears once GRIDGO knows who is printing what.
+  const onBoards = listed
+    ? category.subcategories.filter((entry) => listed.has(entry.code))
+    : category.subcategories;
+  const quotedByOperations = listed
+    ? category.subcategories.filter((entry) => !listed.has(entry.code))
+    : [];
+  const split = onBoards.length > 0 && quotedByOperations.length > 0;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
@@ -137,25 +113,27 @@ export default function CategoryScreen() {
             </Text>
           ) : null}
 
-          {error ? (
+          {boardsError ? (
             <View className="mt-6">
-              <ErrorState label="Prices may be stale" body={error} onRetry={() => void load()} />
+              <ErrorState
+                label="Prices not loaded"
+                body={boardsError}
+                onRetry={() => void loadBoards()}
+              />
             </View>
           ) : null}
 
-          {orderable.length ? (
+          {onBoards.length ? (
             <View className="mt-8 gap-3">
               {split ? (
-                <Text className="text-overline text-text-muted">ORDER IN THE APP</Text>
+                <Text className="text-overline text-text-muted">GRIDGO PRINTS THESE NOW</Text>
               ) : null}
-              {orderable.map((subcategory) => (
+              {onBoards.map((subcategory) => (
                 <SubcategoryRow
                   key={subcategory.code}
                   subcategory={subcategory}
-                  products={productsForSubcategory(subcategory, catalog)}
-                  expanded={expanded === subcategory.code}
-                  onPress={() => pick(subcategory)}
-                  onChooseProduct={choose}
+                  boards={boards}
+                  onPress={() => startJob(category.code, subcategory.code)}
                 />
               ))}
             </View>
@@ -167,17 +145,15 @@ export default function CategoryScreen() {
                 <Text className="text-overline text-text-muted">QUOTED BY OPERATIONS</Text>
               ) : null}
               <Text className="text-body text-text-secondary">
-                GRIDGO prints {split ? "these too" : "these"}. They are not priced in the
-                app yet, so Operations quotes them with you directly.
+                GRIDGO prints {split ? "these too" : "these"}. None of them is on a press
+                today, so Operations quotes them with you directly.
               </Text>
               <View className="gg-panel gap-4">
                 {quotedByOperations.map((subcategory) => (
                   <View key={subcategory.code} className="gap-1">
                     <Text className="text-body-lg text-text-primary">{subcategory.name}</Text>
                     {subcategory.examples ? (
-                      <Text className="text-caption text-text-muted">
-                        {subcategory.examples}
-                      </Text>
+                      <Text className="text-caption text-text-muted">{subcategory.examples}</Text>
                     ) : null}
                   </View>
                 ))}
@@ -186,97 +162,69 @@ export default function CategoryScreen() {
           ) : null}
         </View>
       </ScrollView>
-
-      <ReplaceDraftDialog
-        label={pendingLabel}
-        onConfirm={confirmReplace}
-        onCancel={cancelReplace}
-      />
     </SafeAreaView>
   );
 }
 
+/**
+ * One thing to print.
+ *
+ * The row carries what a client is choosing between: the thing itself and what
+ * it starts at. Not how many shops print it — that is a number nobody can act
+ * on, it invites the comparing this flow exists to remove, and it makes GRIDGO
+ * read as a directory rather than the counter. The price is read from the
+ * boards, so it appears once they have landed.
+ */
 function SubcategoryRow({
   subcategory,
-  products,
-  expanded,
+  boards,
   onPress,
-  onChooseProduct,
 }: {
   subcategory: ProductSubcategory;
-  products: api.CatalogProduct[];
-  expanded: boolean;
+  boards: api.ShopBoard[] | null;
   onPress: () => void;
-  onChooseProduct: (product: api.CatalogProduct) => void;
 }) {
   const colors = useThemeColors();
-  const single = products.length === 1 ? products[0] : null;
+
+  const cheapest = boards
+    ? boards
+        .flatMap((board) => listingsFor(board, subcategory.code))
+        .reduce<number | null>(
+          (low, item) => (low == null ? item.fromPriceMinor : Math.min(low, item.fromPriceMinor)),
+          null,
+        )
+    : null;
 
   return (
-    <View className="gg-card-flush">
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={subcategory.name}
-        accessibilityHint={
-          single
-            ? `Starts a request for ${single.name}`
-            : `Shows ${products.length} products`
-        }
-        accessibilityState={single ? undefined : { expanded }}
-        className="gg-touch flex-row items-center gap-3 p-4"
-      >
-        {({ pressed }) => (
-          <>
-            <View className="flex-1">
-              <Text className="text-body-lg font-medium text-text-primary">
-                {subcategory.name}
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={subcategory.name}
+      accessibilityHint="Finds GRIDGO's printer for this"
+      className="gg-card-flush flex-row items-center gap-3 p-4"
+    >
+      {({ pressed }) => (
+        <>
+          <View className="min-w-0 flex-1">
+            <Text className="text-body-lg font-medium text-text-primary">
+              {subcategory.name}
+            </Text>
+            {subcategory.examples ? (
+              <Text className="mt-1 text-caption text-text-muted">{subcategory.examples}</Text>
+            ) : null}
+            {boards ? (
+              <Text className="mt-2 text-caption text-text-secondary">
+                {cheapest != null
+                  ? `From ${formatPhp(cheapest)}`
+                  : "Priced when GRIDGO matches you"}
               </Text>
-              {subcategory.examples ? (
-                <Text className="mt-1 text-caption text-text-muted">
-                  {subcategory.examples}
-                </Text>
-              ) : null}
-              {single ? (
-                <Text className="mt-2 text-caption text-text-secondary">
-                  From {formatUnitPrice(single.basePriceMinor, single.unit)}
-                </Text>
-              ) : (
-                <Text className="mt-2 text-caption text-text-secondary">
-                  {products.length} products
-                </Text>
-              )}
-            </View>
-            <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
-            {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
-          </>
-        )}
-      </Pressable>
-
-      {/* Inline disclosure rather than a sheet: it is two or three rows of the
-          same list, and a sheet for that is ceremony with no payoff. */}
-      {expanded && !single
-        ? products.map((product) => (
-            <Pressable
-              key={product.id}
-              onPress={() => onChooseProduct(product)}
-              accessibilityRole="button"
-              accessibilityLabel={`${product.name}, from ${formatUnitPrice(product.basePriceMinor, product.unit)}`}
-              className="gg-touch flex-row items-center justify-between gap-3 border-t border-outline-subtle bg-surface-variant px-4 py-3"
-            >
-              {({ pressed }) => (
-                <>
-                  <Text className="flex-1 text-body text-text-primary">{product.name}</Text>
-                  <Text className="text-caption text-text-muted">
-                    From {formatUnitPrice(product.basePriceMinor, product.unit)}
-                  </Text>
-                  {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
-                </>
-              )}
-            </Pressable>
-          ))
-        : null}
-    </View>
+            ) : null}
+          </View>
+          <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
+        </>
+      )}
+    </Pressable>
   );
 }
 

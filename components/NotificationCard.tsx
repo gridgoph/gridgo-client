@@ -6,7 +6,7 @@ import { Animated, PanResponder, Pressable, Text, View } from "react-native";
 import { OrderStageRail } from "@/components/OrderStageRail";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
-import { notificationImageUrl, type Notification, type Order } from "@/lib/api";
+import { notificationImageUrl, type Notification } from "@/lib/api";
 import { formatTimelineStamp } from "@/lib/relativeTime";
 import { orderStageIndex } from "@/lib/orderStages";
 import { getOrderStateMeta } from "@/lib/orderState";
@@ -19,8 +19,6 @@ const HORIZONTAL_INTENT = 12;
 type Props = {
   notification: Notification;
   read: boolean;
-  /** The job this update is about, when the client has it. */
-  order: Order | null;
   onOpen: (() => void) | null;
   onMarkRead: () => void;
 };
@@ -42,11 +40,11 @@ type Props = {
  * the same choice `components/Sheet.tsx` makes and keeps one drag idiom in the
  * app — and avoids mounting a gesture root the rest of the app does not need.
  */
-export function NotificationCard({ notification, read, order, onOpen, onMarkRead }: Props) {
+export function NotificationCard({ notification, read, onOpen, onMarkRead }: Props) {
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
   const translateX = useRef(new Animated.Value(0)).current;
-  const stageIndex = orderStageIndex(order?.state);
+  const stageIndex = orderStageIndex(notification.orderState);
   const picture = notificationImageUrl(notification.imageUrl);
 
   const responder = useMemo(
@@ -86,7 +84,7 @@ export function NotificationCard({ notification, read, order, onOpen, onMarkRead
     [read, onMarkRead, translateX],
   );
 
-  const meta = order ? getOrderStateMeta(order.state) : null;
+  const meta = notification.orderState ? getOrderStateMeta(notification.orderState) : null;
 
   return (
     <View className="relative">
@@ -180,10 +178,12 @@ export function NotificationCard({ notification, read, order, onOpen, onMarkRead
                 />
               ) : null}
 
-              {order ? (
+              {notification.orderState ? (
                 <View className="gap-3 border-t border-outline-subtle pt-4">
                   <Text className="text-caption text-text-muted" numberOfLines={1}>
-                    {order.title} · {meta?.label}
+                    {notification.orderTitle
+                      ? `${notification.orderTitle} · ${meta?.label}`
+                      : meta?.label}
                   </Text>
                   <OrderStageRail currentIndex={stageIndex} />
                 </View>

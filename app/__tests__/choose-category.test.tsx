@@ -5,7 +5,10 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import CategoryScreen from "@/app/request/[category]";
 import ChooseCategoryScreen from "@/app/request/category";
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
-import { useRequestDraft } from "@/store/requestDraft";
+import { clearProductCategoryCache } from "@/lib/api";
+import { clearBoardCache } from "@/lib/shopBoards";
+import { useCart } from "@/store/cart";
+import { usePriorities } from "@/store/priorities";
 
 const mockPush = jest.fn();
 
@@ -30,10 +33,14 @@ jest.mock("expo-router", () => ({
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
+  const { PRODUCT_CATEGORY_SEED: seed } = jest.requireActual("@/data/productCategories");
   return {
     ...actual,
     getProductCategories: jest.fn(),
+    productCategoriesNow: jest.fn(() => seed),
     listCatalog: jest.fn(),
+    listCatalogShops: jest.fn(),
+    getCatalogShop: jest.fn(),
   };
 });
 
@@ -44,6 +51,65 @@ const CATALOG = [
   { id: "prod_flyer", name: "Brochures / Flyers", family: "flyer", basePriceMinor: 2500, unit: "pack100" },
   { id: "prod_apparel", name: "Simple Apparel Print", family: "apparel", basePriceMinor: 28000, unit: "piece" },
 ];
+
+/**
+ * One approved shop with one complete listing.
+ *
+ * What a client may order is what a shop has on its board, so the split on this
+ * screen is built from boards rather than from the platform catalog. Custom
+ * apparel is listed here; nothing else in the category is, which is exactly the
+ * shape the screen has to tell apart.
+ */
+function listing(subcategoryCode: string, fromPriceMinor: number) {
+  return {
+    id: `sci_${subcategoryCode}`,
+    supplierId: "user_shop",
+    supplierServiceId: "svc_merch",
+    categoryCode: "event_merchandise",
+    subcategoryCode,
+    name: "Custom apparel",
+    description: null,
+    basePriceMinor: fromPriceMinor,
+    fromPriceMinor,
+    effectivePriceMinor: null,
+    pricingUnit: "per_unit" as const,
+    packageQty: null,
+    pricingBasis: "per_unit",
+    turnaroundMode: "override" as const,
+    turnaroundHours: 72,
+    rush: null,
+    acceptedFormats: [],
+    photos: [],
+    prepSteps: [],
+    optionGroups: [],
+    version: 1,
+    serviceVersion: 1,
+  };
+}
+
+const SHOP = {
+  supplierId: "user_shop",
+  shopName: "Lovis Printshop",
+  shop: { lat: 7.0731, lng: 125.6128, label: "Bajada, Davao City" },
+  media: [],
+  categories: ["event_merchandise"],
+  itemCount: 1,
+};
+
+const BOARD = {
+  ...SHOP,
+  services: [
+    {
+      id: "svc_merch",
+      version: 1,
+      categoryCode: "event_merchandise",
+      pricingBasis: "per_unit",
+      turnaroundHours: 72,
+      acceptedFormats: ["png"],
+      items: [listing("custom_apparel", 28000)],
+    },
+  ],
+};
 
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
@@ -64,11 +130,28 @@ beforeEach(() => {
   mockPush.mockClear();
   mockOpenCategory = "event_merchandise";
   api.getProductCategories.mockResolvedValue(PRODUCT_CATEGORY_SEED);
+  api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
+  clearProductCategoryCache();
   api.listCatalog.mockResolvedValue(CATALOG);
-  useRequestDraft.getState().reset();
+  api.listCatalogShops.mockResolvedValue([SHOP]);
+  api.getCatalogShop.mockResolvedValue(BOARD);
+  // The boards are cached for a minute across screens, so each test starts
+  // from a cold read rather than the previous test's shop.
+  clearBoardCache();
+  useCart.getState().reset();
+  usePriorities.setState({ ranking: ["quality", "speed", "distance"], loaded: true });
 });
 
 describe("ChooseCategoryScreen", () => {
+  it("shows the four categories without waiting on the network", async () => {
+    api.getProductCategories.mockReturnValue(new Promise(() => {}));
+    await renderInSafeArea(<ChooseCategoryScreen />);
+
+    expect(screen.getByText("Marketing & promotional collateral")).toBeTruthy();
+    expect(screen.getByText("Corporate & event merchandise")).toBeTruthy();
+    expect(screen.queryByText("Loading what GRIDGO prints…")).toBeNull();
+  });
+
   it("leads with the audience line, because that is how a client recognises themselves", async () => {
     await renderInSafeArea(<ChooseCategoryScreen />);
 
@@ -120,56 +203,82 @@ describe("ChooseCategoryScreen", () => {
 });
 
 describe("CategoryScreen", () => {
-  it("separates what the app prices from what Operations quotes", async () => {
+  it("separates what GRIDGO is printing today from what Operations quotes", async () => {
     await renderInSafeArea(<CategoryScreen />);
 
-    expect(await screen.findByText("ORDER IN THE APP")).toBeTruthy();
+    expect(await screen.findByText("GRIDGO PRINTS THESE NOW")).toBeTruthy();
     expect(screen.getByText("QUOTED BY OPERATIONS")).toBeTruthy();
-    expect(screen.getByText(/not priced in the app yet/)).toBeTruthy();
+    expect(screen.getByText(/None of them is on a press today/)).toBeTruthy();
   });
 
   it("drops the group labels when there is only one group to label", async () => {
-    // Nothing in this category is priced, so "QUOTED BY OPERATIONS" would head
-    // the only list on the screen and tell the client nothing the sentence
+    // No shop lists anything in this category, so "QUOTED BY OPERATIONS" would
+    // head the only list on the screen and tell the client nothing the sentence
     // under it does not already say in words.
     mockOpenCategory = "specialized_prototyping";
+    api.listCatalogShops.mockResolvedValue([]);
     await renderInSafeArea(<CategoryScreen />);
 
-    expect(await screen.findByText(/not priced in the app yet/)).toBeTruthy();
+    expect(await screen.findByText(/None of them is on a press today/)).toBeTruthy();
     expect(screen.queryByText("QUOTED BY OPERATIONS")).toBeNull();
-    expect(screen.queryByText("ORDER IN THE APP")).toBeNull();
+    expect(screen.queryByText("GRIDGO PRINTS THESE NOW")).toBeNull();
   });
 
-  it("makes only the priced subcategory a control", async () => {
+  it("makes only the subcategory GRIDGO can really print a control", async () => {
     await renderInSafeArea(<CategoryScreen />);
-    await screen.findByText("ORDER IN THE APP");
+    await screen.findByText("GRIDGO PRINTS THESE NOW");
 
-    // Custom apparel resolves to a catalog product, so it is tappable.
+    // A shop has custom apparel on its board, so it is tappable.
     expect(screen.getByLabelText("Custom apparel")).toBeTruthy();
-    // Drinkware does not, so it is shown as information and never as a button
-    // that leads nowhere.
+    // Nobody lists drinkware, so it is shown as information and never as a
+    // button that leads to a screen saying there is no shop for it.
     expect(screen.getByText("Drinkware")).toBeTruthy();
     expect(screen.queryByLabelText("Drinkware")).toBeNull();
   });
 
-  it("seeds the draft from the catalog product behind the subcategory", async () => {
+  it("says what it starts at, and never how many shops print it", async () => {
     await renderInSafeArea(<CategoryScreen />);
-    await screen.findByText("ORDER IN THE APP");
+    await screen.findByText("GRIDGO PRINTS THESE NOW");
+
+    expect(screen.getByText("From ₱280.00")).toBeTruthy();
+    // A shop count is a number nobody can act on, and it makes GRIDGO read as
+    // a directory rather than the counter the client is buying from.
+    expect(screen.queryByText(/\d+ shops?/)).toBeNull();
+    expect(screen.queryByText(/Lovis/i)).toBeNull();
+  });
+
+  it("takes the client to GRIDGO's match, not to a platform product", async () => {
+    await renderInSafeArea(<CategoryScreen />);
+    await screen.findByText("GRIDGO PRINTS THESE NOW");
 
     fireEvent.press(screen.getByLabelText("Custom apparel"));
 
-    await waitFor(() =>
-      expect(useRequestDraft.getState().productId).toBe("prod_apparel"),
-    );
-    expect(useRequestDraft.getState().family).toBe("apparel");
-    expect(useRequestDraft.getState().productName).toBe("Simple Apparel Print");
+    await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/request/match",
+      params: { subcategory: "custom_apparel", category: "event_merchandise" },
+    });
   });
 
-  it("shows a designed failure, not a blank screen, when the tree cannot load", async () => {
+  it("asks where the job is going first when the client put distance first", async () => {
+    usePriorities.setState({ ranking: ["distance", "speed", "quality"], loaded: true });
+    await renderInSafeArea(<CategoryScreen />);
+    await screen.findByText("GRIDGO PRINTS THESE NOW");
+
+    fireEvent.press(screen.getByLabelText("Custom apparel"));
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/request/where",
+      params: { subcategory: "custom_apparel", category: "event_merchandise" },
+    });
+  });
+
+  it("still shows the category when taxonomy cannot be reached", async () => {
     api.getProductCategories.mockRejectedValue(new Error("Failed to fetch"));
     await renderInSafeArea(<CategoryScreen />);
 
-    expect(await screen.findByText("Could not load")).toBeTruthy();
-    expect(screen.getByText("Try again")).toBeTruthy();
+    expect(await screen.findByText("Corporate & event merchandise")).toBeTruthy();
+    expect(screen.queryByText("Could not load")).toBeNull();
   });
 });

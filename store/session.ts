@@ -35,7 +35,35 @@ type SessionState = {
   logout: () => Promise<void>;
   /** Domain identity projected after Clerk has issued a session token. */
   adoptClerkUser: (user: User, options?: { provisioned?: boolean }) => void;
+  /**
+   * Replace the account projection in place, leaving identity alone.
+   *
+   * For a screen that has just corrected the account and already holds
+   * GRIDGO's answer. It is not a sign-in: it never touches `source`, and it
+   * does nothing when nobody is signed in, so a late response cannot resurrect
+   * a session that has since been signed out.
+   */
+  setUser: (user: User) => void;
+  /**
+   * Re-read the account. Account does this every time it comes back into view,
+   * because the screen that corrects the name is one tap away and this card is
+   * where a wrong one gets noticed.
+   */
+  refresh: () => Promise<void>;
   beginClerkSync: () => void;
+  /**
+   * The Clerk → GRIDGO sync that owned `loading` is no longer running.
+   *
+   * `beginClerkSync` raises `loading`, and only a *result* used to lower it —
+   * so a sync that was superseded, invalidated by sign-out, or interrupted by
+   * Fast Refresh left `loading: true` with nothing alive to turn it off. The
+   * store survives Fast Refresh, so that stuck flag outlived the screen that
+   * caused it and read as "Signing in…" on a Sign In nobody could tap again.
+   *
+   * Idempotent, and it touches nothing but `loading`: it says the wait is
+   * over, never who is signed in.
+   */
+  endClerkSync: () => void;
   failClerkSync: (message: string) => void;
   needClerkProfile: () => void;
   requestClerkSync: () => void;
@@ -84,7 +112,23 @@ export const useSession = create<SessionState>((set) => ({
       justProvisioned: Boolean(options?.provisioned),
       signingOut: false,
     }),
+  setUser: (user) =>
+    set((state) => (state.user ? { user } : {})),
+  refresh: async () => {
+    if (!useSession.getState().user) return;
+    try {
+      const user = await api.getAccount();
+      // Signing out while this was in flight wins. Restoring the previous
+      // person here is the same bug the launch bridge guards `signingOut` for.
+      useSession.setState((state) => (state.user ? { user } : {}));
+    } catch {
+      // A 401 already clears the session through the unauthorized handler, and
+      // anything else leaves the account as last known rather than emptying
+      // the card because one request did not land.
+    }
+  },
   beginClerkSync: () => set({ loading: true, error: null, signingOut: false }),
+  endClerkSync: () => set((state) => (state.loading ? { loading: false } : {})),
   failClerkSync: (message) =>
     set({
       user: null,
@@ -175,8 +219,23 @@ export const useSession = create<SessionState>((set) => ({
   },
 }));
 
-// Mid-session 401 (expired / invalid token) clears the same user flag logout
-// does, so the root route guard — not individual screens — returns to login.
+// Mid-session 401 drops the GRIDGO projection so signed-in routes unmount.
+// It must not sign out of Clerk — the shop app keeps that session, and the
+// next Sign in / Google tap (or the Clerk bridge) can adopt it. Signing Clerk
+// out here is what trapped people on "Sign in again".
 api.onUnauthorized(() => {
-  useSession.getState().clearSession();
+  const current = useSession.getState();
+  if (current.source === "legacy") {
+    current.clearSession();
+    return;
+  }
+  useSession.setState((state) => ({
+    user: null,
+    loading: false,
+    pendingClerkProfile: false,
+    justProvisioned: false,
+    signingOut: false,
+    error: null,
+    clerkSyncNonce: state.clerkSyncNonce + 1,
+  }));
 });

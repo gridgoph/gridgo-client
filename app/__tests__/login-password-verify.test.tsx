@@ -70,7 +70,7 @@ jest.mock("@clerk/expo/experimental", () => ({
   useSSO: () => ({ startSSOFlow: jest.fn() }),
 }));
 
-const mockClientEmailAvailable = jest.fn(async () => true);
+const mockClientEmailAvailable = jest.fn(async (..._args: unknown[]) => true);
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");

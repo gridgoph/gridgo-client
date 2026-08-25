@@ -19,11 +19,20 @@ export type MapTheme = "light" | "dark";
 
 export type MapModel = {
   theme: MapTheme;
-  /** Supplier's print shop, once one is assigned. */
+  /** Where the job starts its journey, once there is one. */
   pickup: GeoPoint | null;
   /** Where the client is having it delivered. */
   dropoff: GeoPoint | null;
   pickupLabel: string;
+  /**
+   * The word written on the pickup pin itself.
+   *
+   * Each app names this point for whoever is reading the map — the rider is
+   * going to a shop, a GRIDGO client is dealing with GRIDGO — so the pin's
+   * short label is the model's rather than this file's. Defaults to "Shop", so
+   * the fleet's other copies of this file behave exactly as they did.
+   */
+  pickupMark?: string;
   dropoffLabel: string;
   /** GeoJSON LineString coordinates [lon, lat][]. */
   routeCoordinates: LonLat[];
@@ -34,6 +43,15 @@ export type MapModel = {
   riderStale: boolean;
   /** When true, show an on-map note that routing failed. */
   routeUnavailable: boolean;
+  /**
+   * Let a tap on the map set the drop-off.
+   *
+   * Off everywhere the client is watching a delivery — the client watches, and
+   * a stray tap must not look like it moved anything. On only where the client
+   * is being asked where the job goes, and the tapped point is posted straight
+   * back to the host as `{ type: "pin", lat, lng }`.
+   */
+  pickable?: boolean;
 };
 
 const LIGHT_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -203,8 +221,8 @@ export function buildMapHtml(model: MapModel): string {
       var bounds = [];
       if (m.pickup) {
         markers.push(L.marker([m.pickup.lat, m.pickup.lng], {
-          icon: pinIcon('pickup', 'Shop', false),
-          title: m.pickupLabel || 'Print shop'
+          icon: pinIcon('pickup', m.pickupMark || 'Shop', false),
+          title: m.pickupLabel || m.pickupMark || 'Shop'
         }).addTo(map));
         bounds.push([m.pickup.lat, m.pickup.lng]);
       }
@@ -223,6 +241,11 @@ export function buildMapHtml(model: MapModel): string {
         bounds.push([m.rider.lat, m.rider.lng]);
       }
 
+      // A pick moves one pin the client just put down. Refitting the view
+      // there would slide the map out from under their finger.
+      if (m.pickable && map.__ggPicked) {
+        return;
+      }
       if (routeLayer) {
         try { map.fitBounds(routeLayer.getBounds().pad(0.15)); }
         catch (e) { /* keep previous view */ }
@@ -236,7 +259,25 @@ export function buildMapHtml(model: MapModel): string {
       }
     }
 
+    // Tap-to-pin. Registered once; whether it does anything is read from the
+    // current model at tap time, so switching the flag needs no page rebuild.
+    function bindPicking() {
+      if (!map || map.__ggPickBound) return;
+      map.__ggPickBound = true;
+      map.on('click', function (e) {
+        if (!MODEL.pickable) return;
+        var point = { type: 'pin', lat: e.latlng.lat, lng: e.latlng.lng };
+        MODEL.dropoff = { lat: point.lat, lng: point.lng };
+        map.__ggPicked = true;
+        applyModel(MODEL);
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(point));
+        }
+      });
+    }
+
     applyModel(MODEL);
+    bindPicking();
 
     // Host can push updates without a full HTML reload.
     document.addEventListener('message', function (e) {

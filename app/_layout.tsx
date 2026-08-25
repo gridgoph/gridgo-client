@@ -20,6 +20,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
+import { useClientPreferences } from "@/hooks/useClientPreferences";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
@@ -74,6 +75,10 @@ function AppNavigation() {
   const isSignedIn = hasActiveSession(user);
 
   useClerkApiSession();
+
+  // What this account asked GRIDGO to match on, read once a session exists.
+  // The landing ladder waits on it, so it cannot live in the ranking screen.
+  useClientPreferences();
 
   // Registration, token rotation, and opening the right screen from a tapped
   // notification. Mounted once, above every route, so a tap that launched the
@@ -193,6 +198,49 @@ function AppNavigation() {
                   name="request/[category]"
                   options={pushedScreenOptions("New request")}
                 />
+                {/*
+                  Ranking quality, speed and distance. Reached once as the last
+                  rung of the landing ladder, and again from Settings — one
+                  screen either way, so the ranking a client edits is the same
+                  ranking they first set.
+                */}
+                <Stack.Screen name="priorities" options={pushedScreenOptions("Matching")} />
+                {/*
+                  Where the job goes, asked before the match when the client put
+                  distance first. Part of the same flow as the category screens,
+                  so it carries the same band.
+                */}
+                <Stack.Screen
+                  name="request/where"
+                  options={pushedScreenOptions("New request")}
+                />
+                {/*
+                  GRIDGO's match. Not named in the band: the screen's own
+                  heading already says what the job is, and repeating it in the
+                  header would spend the band saying nothing new.
+                */}
+                <Stack.Screen
+                  name="request/match"
+                  options={pushedScreenOptions("New request")}
+                />
+                <Stack.Screen
+                  name="request/listing"
+                  options={pushedScreenOptions("Listing")}
+                />
+                <Stack.Screen
+                  name="request/artwork"
+                  options={pushedScreenOptions("Artwork")}
+                />
+                {/*
+                  Everyone attached to a job — supplier, rider, Gridbot. Header
+                  only, never a tab: this is correspondence about work already
+                  in flight, not one of the four places the app lives. The band
+                  names the area rather than the thread, so the thread screen's
+                  own heading (the counterparty) is not written twice.
+                */}
+                <Stack.Screen name="chat/index" options={pushedScreenOptions("Chat")} />
+                <Stack.Screen name="chat/[thread]" options={pushedScreenOptions("Chat")} />
+                <Stack.Screen name="checkout" options={pushedScreenOptions("Checkout")} />
                 <Stack.Screen name="order/[id]" options={pushedScreenOptions("Order")} />
                 {/*
                   Asking for a change to a proof is a real destination with a
@@ -216,6 +264,38 @@ function AppNavigation() {
                   options={pushedScreenOptions("Design system")}
                 />
                 <Stack.Screen name="settings" options={pushedScreenOptions("Settings")} />
+                {/*
+                  The account's own details. The band names the screen, so the
+                  form below it opens straight on the record rather than
+                  spending a display heading repeating the header.
+                */}
+                <Stack.Screen
+                  name="account-details"
+                  options={pushedScreenOptions("Your details")}
+                />
+                {/*
+                  The two halves of the sign-in that take steps rather than
+                  keystrokes. The band names the thing being changed, because
+                  each screen's own heading says what is being done to it —
+                  "Change your sign-in email" under a band reading "Email".
+                */}
+                <Stack.Screen
+                  name="change-email"
+                  options={pushedScreenOptions("Email")}
+                />
+                <Stack.Screen
+                  name="change-password"
+                  options={pushedScreenOptions("Password")}
+                />
+                {/*
+                  Becoming a business client. Each step carries its own
+                  question as the heading, so the band names the flow they are
+                  in and never repeats what is under it.
+                */}
+                <Stack.Screen
+                  name="business-apply"
+                  options={pushedScreenOptions("Apply as a business")}
+                />
               </Stack.Protected>
             </Stack>
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />

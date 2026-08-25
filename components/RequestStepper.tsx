@@ -1,27 +1,37 @@
 import { Text, View } from "react-native";
 
-import { REQUEST_STEPS, type RequestStepId } from "@/lib/requestValidation";
+import { REQUEST_STEPS } from "@/lib/requestValidation";
+
+/** Anything with an id and a name a client would recognise the step by. */
+export type StepperStep = { id: string; label: string };
 
 type Props = {
   /** Zero-based index of the current step. */
   currentIndex: number;
+  /**
+   * The steps to draw. Defaults to the print request's four, which is what
+   * every caller wanted until a second numbered flow — the business
+   * application — needed the same bar. Same language, same yellow budget, one
+   * component: two step bars that looked alike but behaved differently would
+   * be worse than either.
+   */
+  steps?: readonly StepperStep[];
 };
 
 /**
- * Four-step print request progress.
+ * Progress through a numbered flow.
  * The current step is the only yellow element on the bar.
  */
-export function RequestStepper({ currentIndex }: Props) {
+export function RequestStepper({ currentIndex, steps = REQUEST_STEPS }: Props) {
   return (
     <View className="flex-row items-center gap-2" accessibilityRole="progressbar">
-      {REQUEST_STEPS.map((step, index) => {
+      {steps.map((step, index) => {
         const current = index === currentIndex;
         const done = index < currentIndex;
         return (
           <StepPill
             key={step.id}
             label={step.label}
-            stepId={step.id}
             index={index}
             current={current}
             done={done}
@@ -39,7 +49,6 @@ function StepPill({
   done,
 }: {
   label: string;
-  stepId: RequestStepId;
   index: number;
   current: boolean;
   done: boolean;

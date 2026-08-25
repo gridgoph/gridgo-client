@@ -762,9 +762,9 @@ function SendStep({
             <Text className="text-body-lg text-text-primary">A range, once you send</Text>
           </View>
           <Text className="text-caption text-text-muted">
-            GRIDGO shows the range its suppliers charge for this job as soon as it is sent.
-            The exact figure exists only when a supplier accepts, and delivery is priced by
-            the distance from their shop to you.
+            GRIDGO shows the range this job costs to print as soon as it is sent. The exact
+            figure exists only once GRIDGO has put it on a press, and delivery is priced by
+            the distance from there to you.
           </Text>
         </View>
       </View>

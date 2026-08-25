@@ -6,12 +6,18 @@ import { useArtworkImage } from "@/hooks/useArtworkImage";
 import {
   MOCKUP_LABEL,
   templateForFamily,
+  templateForSubcategory,
   templateLabel,
   type PreviewTemplate,
 } from "@/lib/productPreview";
 
 type Props = {
   family?: string | null;
+  /**
+   * A shop listing's platform subcategory. Wins over `family` when present,
+   * because a listing has no catalog family to read a template from.
+   */
+  subcategoryCode?: string | null;
   artworkName?: string | null;
   productName?: string | null;
   size?: string | null;
@@ -29,12 +35,15 @@ type Props = {
  */
 export function ProductPreview({
   family,
+  subcategoryCode,
   artworkName,
   productName,
   size,
   artworkFileId,
 }: Props) {
-  const template = templateForFamily(family);
+  const template = subcategoryCode
+    ? templateForSubcategory(subcategoryCode)
+    : templateForFamily(family);
   const { uri, unavailable, markUnrenderable } = useArtworkImage(artworkFileId);
   const name = artworkName?.trim() || "No artwork yet";
 

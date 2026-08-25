@@ -8,20 +8,18 @@ import { createPersistStorage } from "@/lib/persistStorage";
 type NotificationsState = {
   items: Notification[];
   /**
-   * Updates this phone has been shown and dismissed.
-   *
-   * The demo API has no mark-as-read route, so `read` on the record is only
-   * ever what the server decided. Without this, swiping a row read would
-   * un-read itself on the next refresh, which is worse than not offering the
-   * gesture at all. Persisted, so it survives the app being killed. It is a
-   * per-device record until the API grows `POST /notifications/:id/read`.
+   * Optimistic overlay until `PATCH /notifications/:id` (or read-all) lands.
+   * Server `read` is the source of truth after refresh; this set only covers
+   * swipes this phone has not yet seen come back on the list.
    */
   readIds: string[];
+  /** Echoed to `PATCH /notifications/read-all`. Null until the first list. */
+  snapshot: string | null;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  markRead: (id: string) => void;
-  markAllRead: () => void;
+  markRead: (id: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
 };
 
 /** Server truth, plus whatever this phone has already dismissed. */
@@ -36,18 +34,31 @@ function countUnread(items: Notification[], readIds: readonly string[]): number 
   return items.filter((item) => !isNotificationRead(item, readIds)).length;
 }
 
+/** Drop overlay ids the server now agrees are read, or that left the window. */
+function pruneReadIds(items: Notification[], readIds: readonly string[]): string[] {
+  return readIds.filter((id) => items.some((item) => item.id === id && !item.read));
+}
+
 export const useNotifications = create<NotificationsState>()(
   persist(
     (set, get) => ({
       items: [],
       readIds: [],
+      snapshot: null,
       loading: false,
       error: null,
       refresh: async () => {
-        set({ loading: true, error: null });
+        const hadItems = get().items.length > 0;
+        set(hadItems ? { error: null } : { loading: true, error: null });
         try {
-          const items = await api.listNotifications();
-          set({ items, loading: false });
+          const result = await api.listNotifications();
+          set({
+            items: result.notifications,
+            snapshot: result.snapshot,
+            loading: false,
+            error: null,
+            readIds: pruneReadIds(result.notifications, get().readIds),
+          });
         } catch (e) {
           set({
             loading: false,
@@ -58,23 +69,41 @@ export const useNotifications = create<NotificationsState>()(
           });
         }
       },
-      markRead: (id) => {
-        if (get().readIds.includes(id)) return;
-        set({ readIds: [...get().readIds, id] });
-      },
-      markAllRead: () => {
+      markRead: async (id) => {
         const { items, readIds } = get();
+        const item = items.find((notification) => notification.id === id);
+        if (item && isNotificationRead(item, readIds)) return;
+        if (!readIds.includes(id)) set({ readIds: [...readIds, id] });
+        try {
+          await api.markNotificationRead(id, true);
+        } catch {
+          set({ readIds: get().readIds.filter((existing) => existing !== id) });
+        }
+      },
+      markAllRead: async () => {
+        const { items, readIds, snapshot } = get();
         const unread = items.filter((item) => !isNotificationRead(item, readIds));
         if (!unread.length) return;
-        set({ readIds: [...readIds, ...unread.map((item) => item.id)] });
+        const overlay = unread.map((item) => item.id);
+        set({ readIds: [...readIds, ...overlay] });
+        if (!snapshot) return;
+        try {
+          await api.markAllNotificationsRead(snapshot);
+        } catch {
+          const drop = new Set(overlay);
+          set({ readIds: get().readIds.filter((id) => !drop.has(id)) });
+        }
       },
     }),
     {
       name: "gridgo-notifications",
       storage: createPersistStorage<NotificationsState>(),
-      // The list itself is server data and is fetched on every focus. Only the
-      // dismissals are this phone's to remember.
-      partialize: (state) => ({ readIds: state.readIds }) as NotificationsState,
+      partialize: (state) =>
+        ({
+          items: state.items,
+          readIds: state.readIds,
+          snapshot: state.snapshot,
+        }) as NotificationsState,
     },
   ),
 );

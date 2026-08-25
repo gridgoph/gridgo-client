@@ -6,6 +6,7 @@ import {
   clerkPasswordIncompleteMessage,
   clerkSessionToken,
   clerkSignOutRecoveryMessage,
+  clerkTokenProvider,
   clerkSignOutRetryLabel,
   continuationAfterPassword,
   isClerkSignedOutError,
@@ -28,10 +29,23 @@ describe("clerkSignOutRetryLabel", () => {
 });
 
 describe("clerkSessionToken", () => {
-  it("asks Clerk for a fresh JWT and treats blanks as missing", async () => {
-    const getToken = jest.fn(async () => "  ");
-    await expect(clerkSessionToken(getToken)).resolves.toBeNull();
-    expect(getToken).toHaveBeenCalledWith({ skipCache: true });
+  it("reads Clerk's cache and never forces a mint when it answers", async () => {
+    const getToken = jest.fn(async () => "clerk-jwt");
+    await expect(clerkSessionToken(getToken)).resolves.toBe("clerk-jwt");
+    expect(getToken).toHaveBeenCalledTimes(1);
+    expect(getToken).toHaveBeenCalledWith(undefined);
+    expect(getToken).not.toHaveBeenCalledWith({ skipCache: true });
+  });
+
+  it("forces exactly one mint when the cache is empty, and treats blanks as missing", async () => {
+    const getToken = jest
+      .fn<Promise<string | null>, [unknown?]>()
+      .mockResolvedValueOnce("  ")
+      .mockResolvedValue("clerk-jwt");
+    await expect(clerkSessionToken(getToken)).resolves.toBe("clerk-jwt");
+    expect(getToken).toHaveBeenCalledTimes(2);
+    expect(getToken).toHaveBeenNthCalledWith(1, undefined);
+    expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true });
   });
 
   it("answers null instead of throwing once Clerk is signed out", async () => {
@@ -39,6 +53,21 @@ describe("clerkSessionToken", () => {
       throw new Error("Unable to authenticate this request, you are signed out.");
     });
     await expect(clerkSessionToken(getToken)).resolves.toBeNull();
+  });
+});
+
+describe("clerkTokenProvider", () => {
+  it("keeps the bearer path off the network until gridgo-api refuses a token", async () => {
+    const getToken = jest.fn(async () => "clerk-jwt");
+    const provider = clerkTokenProvider(getToken);
+
+    await expect(provider()).resolves.toBe("clerk-jwt");
+    expect(getToken).toHaveBeenCalledTimes(1);
+    expect(getToken).toHaveBeenCalledWith(undefined);
+
+    // Only the post-401 retry spends a Clerk FAPI round trip.
+    await expect(provider({ force: true })).resolves.toBe("clerk-jwt");
+    expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true });
   });
 });
 
@@ -58,12 +87,29 @@ describe("awaitClerkSessionToken", () => {
     expect(getToken).toHaveBeenCalledTimes(3);
   });
 
-  it("costs one probe when Clerk already has a token", async () => {
+  it("costs one cached probe — no network — when Clerk already has a token", async () => {
     const getToken = jest.fn(async () => "clerk-jwt");
     await expect(
       awaitClerkSessionToken(getToken, { sleep: noSleep }),
     ).resolves.toBe("clerk-jwt");
     expect(getToken).toHaveBeenCalledTimes(1);
+    expect(getToken).toHaveBeenCalledWith(undefined);
+  });
+
+  it("reads the cache first and only then forces mints", async () => {
+    const getToken = jest.fn<Promise<string | null>, [unknown?]>().mockResolvedValue(null);
+    await expect(
+      awaitClerkSessionToken(getToken, { attempts: 3, delayMs: 0, sleep: noSleep }),
+    ).resolves.toBeNull();
+    expect(getToken).toHaveBeenNthCalledWith(1, undefined);
+    expect(getToken).toHaveBeenNthCalledWith(2, { skipCache: true });
+    expect(getToken).toHaveBeenNthCalledWith(3, { skipCache: true });
+  });
+
+  it("defaults to a cached probe and a single mint, not a storm of them", async () => {
+    const getToken = jest.fn<Promise<string | null>, [unknown?]>().mockResolvedValue(null);
+    await expect(awaitClerkSessionToken(getToken, { sleep: noSleep })).resolves.toBeNull();
+    expect(getToken).toHaveBeenCalledTimes(2);
   });
 
   it("gives up rather than hanging when no token ever arrives", async () => {
@@ -194,7 +240,9 @@ describe("adoptOrClearClerkSession", () => {
       }),
     ).resolves.toEqual({ status: "adopt" });
     expect(setActive).toHaveBeenCalledWith({ session: "sess_leftover" });
-    expect(getToken).toHaveBeenCalledWith({ skipCache: true });
+    // The cached read settles it; adopting a live leftover costs no round trip.
+    expect(getToken).toHaveBeenCalledTimes(1);
+    expect(getToken).toHaveBeenCalledWith(undefined);
     expect(signOut).not.toHaveBeenCalled();
   });
 

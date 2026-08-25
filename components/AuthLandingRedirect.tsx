@@ -1,6 +1,8 @@
 import { Redirect, type Href } from "expo-router";
 
 import { authLanding, type AuthLanding } from "@/lib/authLanding";
+import { PRIORITIES_ROUTE } from "@/lib/priorities";
+import { hasRanked, usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
 
 /**
@@ -13,12 +15,21 @@ import { useSession } from "@/store/session";
  */
 
 const COMPLETE_PROFILE = "/complete-profile" as Href;
+const PRIORITIES = PRIORITIES_ROUTE as Href;
 
 export function useAuthLanding(): AuthLanding {
   const user = useSession((state) => state.user);
   const pendingClerkProfile = useSession((state) => state.pendingClerkProfile);
   const justProvisioned = useSession((state) => state.justProvisioned);
-  return authLanding({ user, pendingClerkProfile, justProvisioned });
+  const prioritiesReady = usePriorities((state) => state.loaded);
+  const ranked = usePriorities(hasRanked);
+  return authLanding({
+    user,
+    pendingClerkProfile,
+    justProvisioned,
+    prioritiesReady,
+    hasRanked: ranked,
+  });
 }
 
 export function AuthLandingRedirect({
@@ -30,6 +41,10 @@ export function AuthLandingRedirect({
   whenSignedOut?: Href;
 }) {
   if (landing.kind === "complete_profile") return <Redirect href={COMPLETE_PROFILE} />;
+  // Nothing at all while a durable read is outstanding. A blink of Home
+  // followed by a redirect is worse than a blink of nothing.
+  if (landing.kind === "pending") return null;
+  if (landing.kind === "priorities") return <Redirect href={PRIORITIES} />;
   if (landing.kind === "onboarding") {
     return <Redirect href={{ pathname: "/onboarding", params: { returnTo: "home" } }} />;
   }

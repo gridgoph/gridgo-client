@@ -2,6 +2,7 @@ import {
   clerkErrorMessage,
   clerkPublishableKey,
   isAlreadySignedInError,
+  isStaleSignInError,
   passwordConfirmationError,
   resolveClerkPublishableKey,
   splitFullName,
@@ -42,6 +43,16 @@ describe("Clerk auth helpers", () => {
     expect(isAlreadySignedInError(new Error("You're currently logged in."))).toBe(true);
     expect(isAlreadySignedInError(new Error("You are currently signed in"))).toBe(true);
     expect(isAlreadySignedInError(new Error("Invalid password"))).toBe(false);
+  });
+
+  it("recognises a Clerk sign-in attempt that no longer exists", () => {
+    expect(
+      isStaleSignInError(new Error("No sign in was found with id sia_abc")),
+    ).toBe(true);
+    expect(
+      isStaleSignInError({ errors: [{ message: "sign_in_not_found" }] }),
+    ).toBe(true);
+    expect(isStaleSignInError(new Error("Invalid password"))).toBe(false);
   });
 });
 
