@@ -1,13 +1,22 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { CartButton } from "@/components/CartButton";
+import { colors } from "@/constants/theme";
 
 describe("CartButton", () => {
   it("badges what is in the basket", async () => {
     await render(<CartButton count={3} onPress={jest.fn()} />);
 
     expect(screen.getByLabelText("Your order, 3 items")).toBeTruthy();
-    expect(screen.getByText("3")).toBeTruthy();
+    const numeral = screen.getByText("3");
+    expect(numeral).toBeTruthy();
+    expect(numeral.props.style).toEqual(
+      expect.objectContaining({
+        fontSize: 10,
+        includeFontPadding: false,
+        color: colors.light.accentOn,
+      }),
+    );
   });
 
   it("counts one item in the singular", async () => {

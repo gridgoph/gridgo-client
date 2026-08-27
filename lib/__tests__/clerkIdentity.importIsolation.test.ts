@@ -17,6 +17,8 @@ describe("expo-image-picker must not load at import time", () => {
   it("clerkIdentity has no static import of the native module", () => {
     const source = readFileSync(join(__dirname, "../clerkIdentity.ts"), "utf8");
     expect(source).not.toMatch(/import\s+[^;]*from\s+["']expo-image-picker["']/);
+    expect(source).not.toMatch(/import\s+[^;]*from\s+["']expo-document-picker["']/);
+    expect(source).toContain("requireOptionalNativeModule");
   });
 
   it("Your details and the sign-in steps have no static import of the native module", () => {
@@ -40,10 +42,16 @@ describe("expo-image-picker must not load at import time", () => {
     });
   });
 
-  it("tapping change-photo asks for a rebuilt app rather than crashing", async () => {
+  it("tapping change-photo asks for a rebuilt app when neither picker is on the phone", async () => {
     await jest.isolateModulesAsync(async () => {
+      jest.doMock("expo-modules-core", () => ({
+        requireOptionalNativeModule: () => null,
+      }));
       jest.doMock("expo-image-picker", () => {
         throw new Error(MISSING_NATIVE);
+      });
+      jest.doMock("expo-document-picker", () => {
+        throw new Error("Cannot find native module 'ExpoDocumentPicker'");
       });
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { changeClientPhoto, PORTRAIT_NEEDS_REBUILD } = require("@/lib/clerkIdentity") as typeof import("@/lib/clerkIdentity");
@@ -52,5 +60,43 @@ describe("expo-image-picker must not load at import time", () => {
       });
       expect(outcome).toEqual({ status: "failed", message: PORTRAIT_NEEDS_REBUILD });
     });
+  });
+
+  it("sets a picture through the file picker when the photo library is not on the binary", async () => {
+    const setProfileImage = jest.fn(async () => undefined);
+    const reload = jest.fn(async () => undefined);
+    const getDocumentAsync = jest.fn(async () => ({
+      canceled: false,
+      assets: [{ uri: "file:///tmp/a.jpg", name: "a.jpg", mimeType: "image/jpeg" }],
+    }));
+
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock("expo-modules-core", () => ({
+        requireOptionalNativeModule: (name: string) =>
+          name === "ExpoDocumentPicker" ? { name } : null,
+      }));
+      jest.doMock("expo-image-picker", () => {
+        throw new Error(MISSING_NATIVE);
+      });
+      jest.doMock("expo-document-picker", () => ({ getDocumentAsync }));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { changeClientPhoto } = require("@/lib/clerkIdentity") as typeof import("@/lib/clerkIdentity");
+      expect(
+        await changeClientPhoto({
+          setProfileImage,
+          reload,
+        }),
+      ).toEqual({ status: "ok" });
+    });
+
+    expect(getDocumentAsync).toHaveBeenCalledWith({
+      type: "image/*",
+      multiple: false,
+      copyToCacheDirectory: true,
+    });
+    expect(setProfileImage).toHaveBeenCalledWith({
+      file: { uri: "file:///tmp/a.jpg", name: "a.jpg", type: "image/jpeg" },
+    });
+    expect(reload).toHaveBeenCalled();
   });
 });

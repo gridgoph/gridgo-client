@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Screen } from "@/components/Screen";
+import { TabScreen } from "@/components/TabScreen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
@@ -39,7 +39,7 @@ export default function NotificationsScreen() {
   const unreadCount = items.filter((item) => !isNotificationRead(item, readIds)).length;
 
   return (
-    <Screen edges={["top"]}>
+    <TabScreen>
       <ScrollView className="gg-screen">
         <View className="gg-page gap-4 pt-4" style={{ paddingBottom: tabPad }}>
           <ScreenHeader title="Notifications" />
@@ -102,6 +102,6 @@ export default function NotificationsScreen() {
           ) : null}
         </View>
       </ScrollView>
-    </Screen>
+    </TabScreen>
   );
 }

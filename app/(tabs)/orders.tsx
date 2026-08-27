@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Screen } from "@/components/Screen";
+import { TabScreen } from "@/components/TabScreen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { OrderCard } from "@/components/OrderCard";
@@ -76,7 +76,7 @@ export default function OrdersScreen() {
   };
 
   return (
-    <Screen edges={["top"]}>
+    <TabScreen>
       <ScrollView className="gg-screen">
         <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
           <ScreenHeader title="Orders" />
@@ -137,6 +137,6 @@ export default function OrdersScreen() {
         onConfirm={confirmReplace}
         onCancel={cancelReplace}
       />
-    </Screen>
+    </TabScreen>
   );
 }

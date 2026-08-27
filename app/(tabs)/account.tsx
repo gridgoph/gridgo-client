@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Screen } from "@/components/Screen";
+import { TabScreen } from "@/components/TabScreen";
 import { ClientMonogram } from "@/components/ClientMonogram";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
@@ -48,9 +48,6 @@ export default function AccountScreen() {
   const refresh = useSession((s) => s.refresh);
   const ranking = usePriorities((s) => s.ranking);
   const colors = useThemeColors();
-  // The bar floats over the scene. A flat `pb-12` left Sign out underneath it
-  // on every phone with a home indicator — the other four tabs already derive
-  // this from the bar's own metrics.
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
@@ -78,7 +75,7 @@ export default function AccountScreen() {
   const photoUrl = clerkUser?.hasImage ? (clerkUser.imageUrl ?? null) : null;
 
   return (
-    <Screen edges={["top"]}>
+    <TabScreen>
       <ScrollView className="gg-screen" showsVerticalScrollIndicator={false}>
         <View className="gg-page gap-6 pt-4" style={{ paddingBottom: tabPad }}>
           <ScreenHeader title="Account" />
@@ -208,7 +205,7 @@ export default function AccountScreen() {
         }}
         onCancel={() => setConfirmingSignOut(false)}
       />
-    </Screen>
+    </TabScreen>
   );
 }
 

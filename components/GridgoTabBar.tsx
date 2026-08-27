@@ -1,5 +1,5 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { Bell, FileText, House, Plus, User, type LucideIcon } from "lucide-react-native";
+import { Bell, FileText, House, User, type LucideIcon } from "lucide-react-native";
 import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -97,9 +97,12 @@ export type TabBarMetrics = {
   itemPaddingTop: number;
   itemGap: number;
   itemPaddingBottom: number;
-  /** The yellow disc that starts a request. Never below the 44pt touch floor. */
+  /** The floating yellow disc that starts a request. Never below the 44pt touch floor. */
   actionDiameter: number;
-  /** How far that disc rises through the bar's top hairline. */
+  /**
+   * How far a disc used to rise through this bar's hairline. Always 0: the
+   * plus floats over the scene now, so this bar paints edge to edge.
+   */
   actionRise: number;
 };
 
@@ -122,8 +125,8 @@ export function tabBarMetrics(platformOS: string): TabBarMetrics {
       itemPaddingTop: 4,
       itemGap: 2,
       itemPaddingBottom: 3,
-      actionDiameter: 44,
-      actionRise: 10,
+      actionDiameter: 56,
+      actionRise: 0,
     };
   }
   // Material 3: 80dp container, 12dp above the item, 16dp below it, 24dp icon.
@@ -133,11 +136,16 @@ export function tabBarMetrics(platformOS: string): TabBarMetrics {
     itemGap: 4,
     itemPaddingBottom: 16,
     actionDiameter: 56,
-    actionRise: 16,
+    actionRise: 0,
   };
 }
 
 export const TAB_BAR_METRICS = tabBarMetrics(Platform.OS);
+
+/** Air between the floating plus and the tab bar — close, never touching. */
+export const START_PRINT_FAB_GAP = 16;
+/** Inset from the page edge. A hair more than the tab gap so it is not glued to the corner. */
+export const START_PRINT_FAB_INSET_RIGHT = 20;
 
 /**
  * What sits below the content row: whatever the platform reserves, with the
@@ -165,22 +173,25 @@ export function tabBarPaddingBottom(insetBottom: number): number {
  * table above is one assertion rather than a re-derivation in the test.
  *
  * This is the number UIKit and Material 3 publish, and it is the same in all
- * three GRIDGO apps. The transparent strip the action disc overhangs into is
- * not part of it.
+ * three GRIDGO apps. The plus floats over the scene rather than overhanging
+ * this bar, so the layout box and the painted bar are the same height.
  */
 export function tabBarPaintedHeight(platformOS: string, insetBottom: number): number {
   return tabBarMetrics(platformOS).columnHeight + tabBarPaddingBottom(insetBottom);
 }
 
 /**
- * The bar's layout box: the painted bar with the disc's overhang strip on top.
- *
- * gridgo-supplier has no disc, so there its strip is zero and this equals
- * {@link tabBarPaintedHeight}. Here it is `actionRise` taller, and that
- * difference is transparent — a scene scrolls under it.
+ * The bar's layout box. Equals {@link tabBarPaintedHeight}: there is no
+ * overhang strip now that the plus floats on the scene.
  */
 export function tabBarHeight(platformOS: string, insetBottom: number): number {
   return tabBarMetrics(platformOS).actionRise + tabBarPaintedHeight(platformOS, insetBottom);
+}
+
+export function startPrintFabBottom(_insetBottom: number): number {
+  // The tab scene already sits above the bar. Adding the bar's height here
+  // parked the disc a whole row too high. This is only the air above the bar.
+  return START_PRINT_FAB_GAP;
 }
 
 /**
@@ -207,25 +218,24 @@ export function tabBarTopGap(platformOS: string): number {
 }
 
 /**
- * Bottom padding a tab screen's scroll content needs so its last row clears
- * the bar instead of ending underneath it.
+ * Bottom padding on a main tab's scroll content.
  *
- * The bar floats over the scene, so a screen that only pads by its own design
- * gap loses its final card. Derived from the bar's own height, so the two
- * cannot drift apart.
+ * The scene already sits above the tab bar, and the plus floats over the
+ * page rather than owning a well of empty canvas. A disc-sized pad here is
+ * what made Account scroll when Sign out was already on screen, and what
+ * opened the black gap under Home's last card. Keep a page gutter only.
  */
-export function tabScreenContentPadding(insetBottom: number): number {
-  return tabBarHeight(Platform.OS, insetBottom) + 24;
+export function tabScreenContentPadding(_insetBottom: number): number {
+  return 16;
 }
 
 /**
  * One Lucide glyph per tab, all outline, all the same optical weight, so the
  * row reads as one set.
  */
-const ICONS: Record<TabName, LucideIcon> = {
+const ICONS: Record<Exclude<TabName, typeof ACTION_TAB>, LucideIcon> = {
   home: House,
   orders: FileText,
-  "new-request": Plus,
   notifications: Bell,
   account: User,
 };
@@ -233,25 +243,19 @@ const ICONS: Record<TabName, LucideIcon> = {
 /**
  * The GRIDGO tab bar.
  *
- * Four labelled destinations and one unlabelled action. The column height and
- * the item padding come from `tabBarMetrics` — the HIG's 49pt row on iOS, and
- * Material 3's 80dp container on Android — with the note above this file's
- * metrics explaining why the two differ and why neither adds a design gap on
- * top of a platform inset.
+ * Four labelled destinations. The yellow "+" floats over the scene (see
+ * `StartPrintFab`) instead of living in this bar, so the row paints edge to
+ * edge the way gridgo-supplier does.
+ *
+ * The column height and the item padding come from `tabBarMetrics` — the HIG's
+ * 49pt row on iOS, and Material 3's 80dp container on Android — with the note
+ * above this file's metrics explaining why the two differ and why neither adds
+ * a design gap on top of a platform inset.
  *
  * Each column is laid out with `justify-end`, so any slack a platform leaves
  * over its natural stack sits above the glyph and absorbs the badge's `-top-1`
  * overhang. No fixed `h-13` — a rigid 52 left zero top slack and put the badge
  * above the bar border.
- *
- * The action disc carries no label, because a filled yellow plus in the middle
- * of a tab bar needs no caption. Its column is the only one that reaches up
- * into the `actionRise` strip above the paint, and the disc sits at the top of
- * it, so the disc rises through the hairline without drawing outside its
- * parent. The row is bottom-aligned, so every labelled column hangs off the
- * painted edge instead — which is what makes the space above their glyphs read
- * the same here as in gridgo-supplier, where there is no strip at all. It stays
- * at or above the 44pt touch floor on both platforms.
  *
  * The surface and top border are absolute to the outer edges, so they fill the
  * inset region down to the physical edge whatever the padding is.
@@ -259,7 +263,7 @@ const ICONS: Record<TabName, LucideIcon> = {
  * The open tab is said twice over, in colour and in weight: its glyph goes
  * from muted to full-strength ink and its label from muted regular to medium.
  * The row therefore still reads correctly in grayscale. Yellow is spent in one
- * place only — the disc that starts a print request.
+ * place only — the floating disc that starts a print request.
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -278,13 +282,13 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
       */}
       <View
         className="absolute inset-x-0 bottom-0 border-t border-outline bg-surface"
-        style={{ top: TAB_BAR_METRICS.actionRise }}
+        style={{ top: 0 }}
       />
 
       <View className="flex-row items-end">
         {state.routes.map((route, index) => {
           const tab = TABS.find((entry) => entry.name === route.name);
-          if (!tab) return null;
+          if (!tab || tab.name === ACTION_TAB) return null;
 
           const focused = state.index === index;
 
@@ -317,7 +321,7 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
 }
 
 type TabItemProps = {
-  name: TabName;
+  name: Exclude<TabName, typeof ACTION_TAB>;
   label: string;
   focused: boolean;
   onPress: () => void;
@@ -327,35 +331,6 @@ type TabItemProps = {
 function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
   const colors = useThemeColors();
   const Icon = ICONS[name];
-
-  // The one column that owns the strip above the paint: `actionRise` taller
-  // than its labelled neighbours, with the disc at the top of it. The row is
-  // bottom-aligned, so this column's extra height is what lifts the row's top
-  // above the painted edge and lets the disc break the hairline — and what
-  // leaves the labelled columns hanging off the paint, where they belong.
-  if (name === ACTION_TAB) {
-    const { actionDiameter } = TAB_BAR_METRICS;
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="tab"
-        accessibilityLabel={label}
-        accessibilityState={{ selected: focused }}
-        className="flex-1 items-center"
-        style={{ height: TAB_BAR_METRICS.columnHeight + TAB_BAR_METRICS.actionRise }}
-      >
-        {({ pressed }) => (
-          <View
-            className="items-center justify-center rounded-pill bg-action-yellow"
-            style={{ height: actionDiameter, width: actionDiameter }}
-          >
-            <Icon size={26} color={colors.actionYellowOn} strokeWidth={2.5} />
-            {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-pill" /> : null}
-          </View>
-        )}
-      </Pressable>
-    );
-  }
 
   return (
     <Pressable

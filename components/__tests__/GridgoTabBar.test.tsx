@@ -134,12 +134,11 @@ describe("tabBarPaintedHeight", () => {
 });
 
 describe("tabBarHeight", () => {
-  it("is the painted bar plus the disc's overhang strip", () => {
+  it("is the painted bar: the plus floats over the scene, so there is no overhang strip", () => {
     for (const os of ["ios", "android"]) {
       for (const inset of [0, 24, 34, 48]) {
-        expect(tabBarHeight(os, inset)).toBe(
-          tabBarPaintedHeight(os, inset) + tabBarMetrics(os).actionRise,
-        );
+        expect(tabBarMetrics(os).actionRise).toBe(0);
+        expect(tabBarHeight(os, inset)).toBe(tabBarPaintedHeight(os, inset));
       }
     }
   });
@@ -177,17 +176,11 @@ describe("tabBarTopGap", () => {
     expect(tabBarTopGap("ios")).toBe(tabBarMetrics("ios").itemPaddingTop);
   });
 
-  it("is never eaten by the overhang strip", () => {
-    // The defect, stated as the property that failed: measuring from the layout
-    // top rather than the paint cost `actionRise` on both platforms, and on iOS
-    // that is more than the whole gap.
+  it("is the full gap, because there is no overhang strip to eat it", () => {
     for (const os of ["ios", "android"]) {
       expect(tabBarTopGap(os)).toBeGreaterThan(0);
-      expect(tabBarTopGap(os) - tabBarMetrics(os).actionRise).toBeLessThan(
-        tabBarTopGap(os),
-      );
+      expect(tabBarMetrics(os).actionRise).toBe(0);
     }
-    expect(tabBarTopGap("ios") - tabBarMetrics("ios").actionRise).toBeLessThan(0);
   });
 });
 
@@ -216,7 +209,7 @@ describe("tabBarMetrics", () => {
     expect(android.columnHeight + tabBarPaddingBottom(48)).toBe(128);
   });
 
-  it("keeps the action disc on the 44pt touch floor on both platforms", () => {
+  it("keeps the floating plus on the 44pt touch floor on both platforms", () => {
     for (const os of ["ios", "android", "web"]) {
       expect(tabBarMetrics(os).actionDiameter).toBeGreaterThanOrEqual(44);
     }
@@ -246,11 +239,12 @@ describe("GridgoTabBar", () => {
     }
   });
 
-  it("names the action tab for screen readers even though it draws no label", async () => {
+  it("does not put New request in the bar — the plus floats on the scene", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
     expect(screen.queryByText("New request")).toBeNull();
-    expect(screen.getByRole("tab", { name: "New request" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "New request" })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
   });
 
   it("marks only the open tab as selected", async () => {
@@ -281,7 +275,7 @@ describe("GridgoTabBar", () => {
 
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    fireEvent.press(screen.getByRole("tab", { name: "New request" }));
+    fireEvent.press(screen.getByRole("tab", { name: "Notifications" }));
 
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -319,33 +313,19 @@ describe("GridgoTabBar", () => {
     expect(style.paddingTop).toBe(TAB_BAR_METRICS.itemPaddingTop);
   });
 
-  it("lets only the action column reach above the painted edge", async () => {
+  it("keeps every destination column on the painted row", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
-
-    // The row is bottom-aligned, so this column being `actionRise` taller is
-    // what holds the disc over the hairline and drops every labelled column
-    // onto the paint. Shrinking it back to `columnHeight` is the regression:
-    // the items climb into the strip again and the gap a person sees closes.
-    const action = screen.getByRole("tab", { name: "New request" });
-    expect(flatten(action.props.style).height).toBe(
-      TAB_BAR_METRICS.columnHeight + TAB_BAR_METRICS.actionRise,
-    );
 
     const labelled = screen.getByRole("tab", { name: "Home" });
     expect(flatten(labelled.props.style).minHeight).toBe(TAB_BAR_METRICS.columnHeight);
+    expect(flatten(labelled.props.style).height).toBeUndefined();
   });
 });
 
 describe("tabScreenContentPadding", () => {
-  it("clears the whole bar, not just the design gap", () => {
-    const bar = TAB_BAR_METRICS.columnHeight + TAB_BAR_METRICS.actionRise;
-    expect(tabScreenContentPadding(0)).toBe(TAB_BAR_MIN_BOTTOM_GAP + bar + 24);
-    expect(tabScreenContentPadding(34)).toBe(34 + bar + 24);
-  });
-
-  it("is always taller than the bar it has to clear", () => {
-    for (const inset of [0, 12, 34, 48]) {
-      expect(tabScreenContentPadding(inset)).toBeGreaterThan(tabBarPaddingBottom(inset));
-    }
+  it("is a page gutter, not a well the size of the plus or the tab bar", () => {
+    expect(tabScreenContentPadding(0)).toBe(16);
+    expect(tabScreenContentPadding(34)).toBe(16);
+    expect(tabScreenContentPadding(48)).toBe(16);
   });
 });

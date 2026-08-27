@@ -49,7 +49,13 @@
           }
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "GRIDGO needs your photos so you can set a picture on your account."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

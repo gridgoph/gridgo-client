@@ -13,6 +13,15 @@ import {
   type ClerkEmailAddress,
 } from "@/lib/clerkIdentity";
 
+jest.mock("expo-modules-core", () => {
+  const actual = jest.requireActual("expo-modules-core") as Record<string, unknown>;
+  return {
+    ...actual,
+    requireOptionalNativeModule: (name: string) =>
+      name === "ExponentImagePicker" ? { name } : null,
+  };
+});
+
 jest.mock("expo-image-picker", () => ({
   launchImageLibraryAsync: jest.fn(),
 }));

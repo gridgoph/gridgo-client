@@ -115,11 +115,11 @@ export const PORTRAIT_LIBRARY_REFUSED =
   "GRIDGO needs access to your photos to set a picture. Turn it on for this app in your phone's settings.";
 
 /**
- * The USB development binary was built without `expo-image-picker`. The
- * native module throws at **import time**, so it is never statically imported
- * from this file — a throw on Your details would take the whole screen down
- * even if nobody tapped the photo. Said plainly, because "could not save"
- * would send them to retry a picker that is not on the phone.
+ * Last resort when this binary has neither the photo library nor the file
+ * picker. Artwork and payment proof already ship the file picker, so a USB
+ * development build that predates `expo-image-picker` can still set a picture.
+ * Said plainly, because "could not save" would send them to retry a picker
+ * that is not on the phone.
  */
 export const PORTRAIT_NEEDS_REBUILD =
   "Changing your picture needs a rebuilt GRIDGO app on this phone. Your other details still work.";
@@ -128,23 +128,66 @@ const PORTRAIT_FAILED =
   "That picture could not be saved to your GRIDGO sign-in. Check this phone's connection and try again.";
 
 type ImagePickerNative = typeof import("expo-image-picker");
+type DocumentPickerNative = typeof import("expo-document-picker");
 
 let imagePickerNative: ImagePickerNative | null | undefined;
+let documentPickerNative: DocumentPickerNative | null | undefined;
 
 /**
- * The picker, or null when this binary was built without it.
+ * Whether a native Expo module is compiled into this binary.
+ *
+ * `require("expo-image-picker")` still throws `Cannot find native module
+ * 'ExponentImagePicker'` when the JS package is present and the APK is not,
+ * and LogBox reports that throw as uncaught even from a try/catch — which is
+ * the red overlay on Change photo. Probe first; never load the JS package
+ * unless the native module is actually there.
+ */
+function optionalNative(name: string): unknown {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { requireOptionalNativeModule } = require("expo-modules-core") as {
+      requireOptionalNativeModule: (moduleName: string) => unknown;
+    };
+    return requireOptionalNativeModule(name);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The cropped library picker, or null when this binary was built without it.
  *
  * Same shape as `getNotificationsNative`: Metro evaluates the require only
- * when someone taps Change photo. A throw costs the picker, never the screen.
+ * when someone taps Change photo, and only after the native module is present.
  */
 export function getImagePickerNative(): ImagePickerNative | null {
   if (imagePickerNative !== undefined) return imagePickerNative;
+  if (!optionalNative("ExponentImagePicker")) {
+    imagePickerNative = null;
+    return null;
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     imagePickerNative = require("expo-image-picker") as ImagePickerNative;
     return imagePickerNative;
   } catch {
     imagePickerNative = null;
+    return null;
+  }
+}
+
+function getDocumentPickerNative(): DocumentPickerNative | null {
+  if (documentPickerNative !== undefined) return documentPickerNative;
+  if (!optionalNative("ExpoDocumentPicker")) {
+    documentPickerNative = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    documentPickerNative = require("expo-document-picker") as DocumentPickerNative;
+    return documentPickerNative;
+  } catch {
+    documentPickerNative = null;
     return null;
   }
 }
@@ -173,6 +216,66 @@ export function portraitFile(asset: {
   return { uri: asset.uri, name: asset.fileName || `client-photo.${suffix}`, type };
 }
 
+type PickedPortrait =
+  | { status: "ok"; asset: { uri: string; fileName?: string | null; mimeType?: string | null } }
+  | { status: "cancelled" }
+  | { status: "failed"; message: string };
+
+/**
+ * Prefer the cropped photo library. A USB binary built before
+ * `expo-image-picker` still has the artwork file picker, which can choose an
+ * image without a rebuild.
+ */
+async function pickPortraitAsset(): Promise<PickedPortrait> {
+  const ImagePicker = getImagePickerNative();
+  if (ImagePicker) {
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        // The tile is square, so anything else is cropped by the frame rather
+        // than by the client, and someone who centred their face would not see
+        // it.
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      const asset = picked.canceled ? null : picked.assets[0];
+      if (!asset) return { status: "cancelled" };
+      return { status: "ok", asset };
+    } catch (error) {
+      if (!isNativePickerMissing(error)) {
+        return { status: "failed", message: PORTRAIT_LIBRARY_REFUSED };
+      }
+      // Fall through to the file picker already on this binary.
+    }
+  }
+
+  const Documents = getDocumentPickerNative();
+  if (!Documents) {
+    return { status: "failed", message: PORTRAIT_NEEDS_REBUILD };
+  }
+
+  try {
+    const picked = await Documents.getDocumentAsync({
+      type: "image/*",
+      multiple: false,
+      copyToCacheDirectory: true,
+    });
+    if (picked.canceled) return { status: "cancelled" };
+    const asset = picked.assets[0];
+    if (!asset) return { status: "cancelled" };
+    return {
+      status: "ok",
+      asset: { uri: asset.uri, fileName: asset.name, mimeType: asset.mimeType },
+    };
+  } catch (error) {
+    if (isNativePickerMissing(error)) {
+      return { status: "failed", message: PORTRAIT_NEEDS_REBUILD };
+    }
+    return { status: "failed", message: PORTRAIT_LIBRARY_REFUSED };
+  }
+}
+
 /**
  * Choose a picture and put it on the GRIDGO sign-in.
  *
@@ -184,34 +287,11 @@ export function portraitFile(asset: {
 export async function changeClientPhoto(
   user: ClerkPortraitUser,
 ): Promise<PortraitOutcome> {
-  const ImagePicker = getImagePickerNative();
-  if (!ImagePicker) {
-    return { status: "failed", message: PORTRAIT_NEEDS_REBUILD };
-  }
-
-  let picked: Awaited<ReturnType<ImagePickerNative["launchImageLibraryAsync"]>>;
-  try {
-    picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      // The tile is square, so anything else is cropped by the frame rather
-      // than by the client, and someone who centred their face would not see
-      // it.
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-  } catch (error) {
-    if (isNativePickerMissing(error)) {
-      return { status: "failed", message: PORTRAIT_NEEDS_REBUILD };
-    }
-    return { status: "failed", message: PORTRAIT_LIBRARY_REFUSED };
-  }
-
-  const asset = picked.canceled ? null : picked.assets[0];
-  if (!asset) return { status: "cancelled" };
+  const picked = await pickPortraitAsset();
+  if (picked.status !== "ok") return picked;
 
   try {
-    await user.setProfileImage({ file: portraitFile(asset) as unknown as Blob });
+    await user.setProfileImage({ file: portraitFile(picked.asset) as unknown as Blob });
     // Clerk's own copy of the user is what every screen reads `imageUrl` from,
     // so it is re-read here rather than leaving the old picture on screen.
     await user.reload?.();

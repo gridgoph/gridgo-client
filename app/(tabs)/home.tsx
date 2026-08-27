@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Screen } from "@/components/Screen";
+import { TabScreen } from "@/components/TabScreen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
@@ -103,7 +103,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <Screen edges={["top"]}>
+    <TabScreen>
       <ScrollView className="gg-screen">
         <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
           {/*
@@ -121,13 +121,11 @@ export default function HomeScreen() {
           </ScreenHeader>
 
           {/*
-            No "start a request" button here. The tab bar's yellow "+" is that
-            control, it is on every screen, and Home was drawing a second one
-            directly above it — the same action, in the same colour, 60px apart.
-
-            A draft in progress is different: it is a fact the client cannot see
-            anywhere else, and it disappears the moment they start something new.
-            So Home surfaces it, quietly, as a way back into it.
+            No "start a request" button in the page. The yellow "+" floats on
+            the bottom right of every main tab, and a second one in this column
+            would be the same action twice. A draft in progress is different:
+            it is a fact the client cannot see anywhere else, so Home surfaces
+            it as a way back into it.
           */}
           {hasDraft ? (
             <Pressable
@@ -266,6 +264,6 @@ export default function HomeScreen() {
         onConfirm={confirmReplace}
         onCancel={cancelReplace}
       />
-    </Screen>
+    </TabScreen>
   );
 }
