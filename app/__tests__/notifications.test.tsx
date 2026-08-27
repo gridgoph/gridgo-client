@@ -9,6 +9,7 @@ import { useNotifications } from "@/store/notifications";
 const mockPush = jest.fn();
 
 jest.mock("expo-router", () => ({
+  router: { push: (...args: unknown[]) => mockPush(...args) },
   useRouter: () => ({ push: (...args: unknown[]) => mockPush(...args) }),
   useFocusEffect: (effect: () => void) => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -182,5 +183,19 @@ describe("NotificationsScreen", () => {
     await renderInSafeArea(<NotificationsScreen />);
 
     expect(await screen.findByText("You are all caught up")).toBeTruthy();
+  });
+
+  it("keeps cart and chat on the header, and drops the helper line", async () => {
+    api.listNotifications.mockResolvedValue({ notifications: [], snapshot: null });
+    await renderInSafeArea(<NotificationsScreen />);
+
+    expect(await screen.findByLabelText("Your order, empty")).toBeTruthy();
+    expect(screen.getByLabelText("Chat")).toBeTruthy();
+    expect(
+      screen.queryByText("Deadlines and status changes for your print jobs."),
+    ).toBeNull();
+    expect(
+      screen.queryByText("Tap an update to open the job, or swipe it left to mark it read."),
+    ).toBeNull();
   });
 });

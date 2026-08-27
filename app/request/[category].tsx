@@ -2,8 +2,8 @@ import { ChevronRight } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Screen } from "@/components/Screen";
 import { ErrorState } from "@/components/ErrorState";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -79,7 +79,7 @@ export default function CategoryScreen() {
 
   if (!category) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         <View className="gg-page gap-4 pt-6">
           <ErrorState
             label="Category not found"
@@ -88,7 +88,7 @@ export default function CategoryScreen() {
             onRetry={() => router.back()}
           />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
@@ -103,7 +103,7 @@ export default function CategoryScreen() {
   const split = onBoards.length > 0 && quotedByOperations.length > 0;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen">
         <View className="gg-page pb-16 pt-2">
           <Text className="text-h1 text-text-primary">{category.name}</Text>
@@ -162,7 +162,7 @@ export default function CategoryScreen() {
           ) : null}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

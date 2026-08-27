@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Screen } from "@/components/Screen";
 
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
@@ -122,7 +122,7 @@ export default function OrderDetailScreen() {
 
   if (error && !order) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         {headerEscape}
         <View className="gg-page gap-3 pt-6">
           <ErrorState label="Could not load order" body={error} onRetry={() => void load()} />
@@ -131,13 +131,13 @@ export default function OrderDetailScreen() {
             onPress={stranded ? exitToOrders : () => router.back()}
           />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   if (!order) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         {headerEscape}
         <View className="gg-page gap-4 pt-6">
           <Text className="text-body text-text-muted">Loading this order…</Text>
@@ -155,7 +155,7 @@ export default function OrderDetailScreen() {
             <SkeletonList count={2} />
           </View>
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 

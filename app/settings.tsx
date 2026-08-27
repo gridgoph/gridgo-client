@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Screen } from "@/components/Screen";
 
 import {
   useThemeColors,
@@ -36,7 +36,7 @@ export default function SettingsScreen() {
 
   return (
     /* Bottom only — the stack header above has already cleared the status bar. */
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen">
         <View className="gg-page gap-6 pb-12 pt-4">
           <View className="gg-card gap-3">
@@ -106,6 +106,6 @@ export default function SettingsScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

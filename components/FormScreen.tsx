@@ -1,8 +1,8 @@
 import { Platform, type StyleProp, type ViewStyle } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import type { ReactNode } from "react";
 
+import { Screen, type Edge } from "@/components/Screen";
 import { useThemeColors } from "@/hooks/useTheme";
 
 /**
@@ -70,7 +70,7 @@ export function FormScreen({
   const colors = useThemeColors();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={edges}>
+    <Screen edges={edges}>
       <KeyboardAwareScrollView
         style={{ flex: 1, backgroundColor: colors.canvas }}
         contentContainerStyle={contentContainerStyle}
@@ -81,7 +81,7 @@ export function FormScreen({
         {children}
       </KeyboardAwareScrollView>
       {overlay}
-    </SafeAreaView>
+    </Screen>
   );
 }
 

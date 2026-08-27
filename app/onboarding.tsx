@@ -17,7 +17,7 @@ import Animated, {
   useSharedValue,
   type SharedValue,
 } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Screen } from "@/components/Screen";
 
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { PaginationDots } from "@/components/PaginationDots";
@@ -95,7 +95,7 @@ export default function OnboardingScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
+    <Screen edges={["top", "bottom"]}>
       {/* Header stays outside the pager so Skip is never swallowed. */}
       <View className="gg-page flex-row items-center justify-between py-3">
         <GridgoLogo role={logoRoleForClientAccount(accountType)} />
@@ -188,7 +188,7 @@ export default function OnboardingScreen() {
           onPress={() => (index === last ? dismiss() : goTo(index + 1))}
         />
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

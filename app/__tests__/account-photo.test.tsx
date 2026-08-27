@@ -13,6 +13,7 @@ const PHOTO = "https://img.clerk.com/ana.jpg";
 
 jest.mock("expo-router", () => ({
   router: { push: jest.fn() },
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
   useFocusEffect: (effect: () => void | (() => void)) => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useEffect } = require("react");

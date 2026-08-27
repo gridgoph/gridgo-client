@@ -3,11 +3,13 @@ import { router, useFocusEffect } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Screen } from "@/components/Screen";
 import { ClientMonogram } from "@/components/ClientMonogram";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useThemeColors } from "@/hooks/useTheme";
 import {
@@ -76,10 +78,10 @@ export default function AccountScreen() {
   const photoUrl = clerkUser?.hasImage ? (clerkUser.imageUrl ?? null) : null;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
+    <Screen edges={["top"]}>
       <ScrollView className="gg-screen" showsVerticalScrollIndicator={false}>
         <View className="gg-page gap-6 pt-4" style={{ paddingBottom: tabPad }}>
-          <Text className="text-h2 text-text-primary">Account</Text>
+          <ScreenHeader title="Account" />
 
           {/*
             Identity first, and the way into correcting it. This is where a
@@ -206,7 +208,7 @@ export default function AccountScreen() {
         }}
         onCancel={() => setConfirmingSignOut(false)}
       />
-    </SafeAreaView>
+    </Screen>
   );
 }
 

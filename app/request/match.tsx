@@ -2,8 +2,8 @@ import { ChevronRight } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Screen } from "@/components/Screen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { MatchCard } from "@/components/MatchCard";
@@ -126,7 +126,7 @@ export default function MatchScreen() {
 
   if (error === "match_not_found") {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         <View className="gg-screen gg-page justify-center">
           <EmptyState
             title={`GRIDGO cannot print ${subcategoryName.toLowerCase()} today`}
@@ -135,19 +135,19 @@ export default function MatchScreen() {
             onAction={() => router.back()}
           />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         <ErrorScreenState
           label="GRIDGO could not answer"
           body={error}
           onRetry={() => void load()}
         />
-      </SafeAreaView>
+      </Screen>
     );
   }
 
@@ -168,7 +168,7 @@ export default function MatchScreen() {
   */
   if (loading || !match) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         <View className="gg-page flex-1 pt-2">
           <Text className="text-h1 text-text-primary">
             Your {subcategoryName.toLowerCase()}
@@ -187,12 +187,12 @@ export default function MatchScreen() {
             <MatchingWait thing={subcategoryName} />
           </View>
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen" contentContainerClassName="gg-page pb-16 pt-2">
         <Text className="text-h1 text-text-primary">
           Your {subcategoryName.toLowerCase()}
@@ -251,7 +251,7 @@ export default function MatchScreen() {
           </Text>
         ) : null}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

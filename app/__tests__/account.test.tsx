@@ -14,6 +14,11 @@ jest.mock("@clerk/expo", () => ({
 
 jest.mock("expo-router", () => ({
   router: { push: (...args: unknown[]) => mockPush(...args) },
+  useRouter: () => ({
+    push: (...args: unknown[]) => mockPush(...args),
+    replace: jest.fn(),
+    back: jest.fn(),
+  }),
   // The real hook needs a navigation container. What matters to this screen is
   // that the callback runs while the screen is on show, which is what focus is.
   useFocusEffect: (effect: () => void | (() => void)) => {
@@ -96,6 +101,8 @@ describe("the identity card", () => {
     // The shop app's IA. The card and the row lead to the same screen and are
     // named apart, so a screen reader is not offered one destination twice.
     expect(screen.getByLabelText("Your account")).toBeTruthy();
+    expect(screen.getByLabelText("Your order, empty")).toBeTruthy();
+    expect(screen.getByLabelText("Chat")).toBeTruthy();
     expect(screen.getByLabelText("Your details")).toBeTruthy();
     expect(screen.getByLabelText("Apply as a business")).toBeTruthy();
     expect(screen.getByLabelText("What GRIDGO matches on")).toBeTruthy();

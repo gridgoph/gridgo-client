@@ -9,6 +9,7 @@ import { useSession } from "@/store/session";
 const mockPush = jest.fn();
 
 jest.mock("expo-router", () => ({
+  router: { push: mockPush, replace: jest.fn(), back: jest.fn() },
   useRouter: () => ({ push: mockPush, replace: jest.fn(), back: jest.fn() }),
   useFocusEffect: (effect: () => void) => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -70,6 +71,9 @@ describe("Home's header controls", () => {
 
     expect(await screen.findByLabelText("Your order, empty")).toBeTruthy();
     expect(screen.getByLabelText("Chat")).toBeTruthy();
+    expect(screen.getByLabelText("GRIDGO Business")).toBeTruthy();
+    expect(screen.queryByText("Cruz Signs")).toBeNull();
+    expect(screen.queryByText("Rina Cruz")).toBeNull();
   });
 
   it("opens checkout from the cart", async () => {

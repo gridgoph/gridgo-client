@@ -15,7 +15,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
@@ -99,7 +99,14 @@ function AppNavigation() {
   if (!fontsReady) return null;
 
   return (
-    <SafeAreaProvider>
+    /*
+      Insets synchronously, from the native module, on the very first frame.
+      Without `initialWindowMetrics` the provider reports zero until it has
+      measured, so every screen shell — and the tab bar's bottom padding —
+      lays out once at the wrong size and again a frame later. On a phone that
+      is a visible settle as content drops under the status bar.
+    */
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       {/*
         Every input in the app reads the keyboard through this.
 

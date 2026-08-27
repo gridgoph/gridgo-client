@@ -1,11 +1,13 @@
 import { useCallback, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Screen } from "@/components/Screen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { OrderCard } from "@/components/OrderCard";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
 import { SkeletonOrderList } from "@/components/Skeleton";
 import { useStartRequest } from "@/hooks/useStartRequest";
@@ -74,13 +76,10 @@ export default function OrdersScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
+    <Screen edges={["top"]}>
       <ScrollView className="gg-screen">
         <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
-          <Text className="text-h1 text-text-primary">Orders</Text>
-          <Text className="mt-2 text-body text-text-secondary">
-            Open a job to approve your artwork, pay, or follow the delivery.
-          </Text>
+          <ScreenHeader title="Orders" />
 
           {error ? (
             <View className="mt-8">
@@ -138,6 +137,6 @@ export default function OrdersScreen() {
         onConfirm={confirmReplace}
         onCancel={cancelReplace}
       />
-    </SafeAreaView>
+    </Screen>
   );
 }

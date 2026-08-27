@@ -10,6 +10,7 @@ import { useSession } from "@/store/session";
 const mockPush = jest.fn();
 
 jest.mock("expo-router", () => ({
+  router: { push: mockPush, replace: jest.fn(), back: jest.fn() },
   useRouter: () => ({ push: mockPush, replace: jest.fn(), back: jest.fn() }),
   useFocusEffect: (effect: () => void) => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports

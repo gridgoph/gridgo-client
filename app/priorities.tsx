@@ -2,7 +2,7 @@ import { RotateCcw } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Screen } from "@/components/Screen";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import {
@@ -78,7 +78,7 @@ export default function PrioritiesScreen() {
 
   return (
     /* Bottom only — the stack header above has already cleared the status bar. */
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen" contentContainerClassName="gg-page pb-8 pt-2">
         <Text className="text-display text-text-primary">
           What matters most on a print job?
@@ -160,7 +160,7 @@ export default function PrioritiesScreen() {
           Settings.
         </Text>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

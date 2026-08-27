@@ -2,8 +2,8 @@ import { TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Screen } from "@/components/Screen";
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { ProductPreview } from "@/components/ProductPreview";
@@ -155,14 +155,14 @@ export default function ArtworkScreen() {
 
   if (!line) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         <ErrorScreenState
           label="That item is no longer in your order"
           body="It was removed, or the order was placed. Go back and pick what you are printing."
           retryLabel="Back"
           onRetry={() => router.replace("/(tabs)/home")}
         />
-      </SafeAreaView>
+      </Screen>
     );
   }
 
@@ -174,7 +174,7 @@ export default function ArtworkScreen() {
   const name = item?.name ?? "this item";
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <StepTrailBar current="artwork" onStep={goStep} />
 
       <ScrollView className="gg-screen" contentContainerClassName="gg-page pb-8 pt-4">
@@ -283,6 +283,6 @@ export default function ArtworkScreen() {
           </Text>
         ) : null}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

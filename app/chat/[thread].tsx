@@ -1,8 +1,8 @@
 import { ChevronLeft, MessageSquare } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Screen } from "@/components/Screen";
 import { EmptyState } from "@/components/EmptyState";
 import { useThemeColors } from "@/hooks/useTheme";
 import { CHAT_LIST_ROUTE, CHAT_MEANWHILE, CHAT_NOT_LIVE, chatThread } from "@/lib/chatThreads";
@@ -50,7 +50,7 @@ export default function ChatThreadScreen() {
 
   if (!thread) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         {headerEscape}
         <View className="gg-page pt-6">
           <EmptyState
@@ -60,13 +60,13 @@ export default function ChatThreadScreen() {
             onAction={exitToChat}
           />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   return (
     /* Bottom only — the stack header above has already cleared the status bar. */
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       {headerEscape}
       <ScrollView className="gg-screen">
         <View className="gg-page gap-6 pb-12 pt-4">
@@ -96,6 +96,6 @@ export default function ChatThreadScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

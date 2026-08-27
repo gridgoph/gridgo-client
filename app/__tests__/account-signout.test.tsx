@@ -14,6 +14,11 @@ jest.mock("@clerk/expo", () => ({
 
 jest.mock("expo-router", () => ({
   router: { push: (...args: unknown[]) => mockPush(...args) },
+  useRouter: () => ({
+    push: (...args: unknown[]) => mockPush(...args),
+    replace: jest.fn(),
+    back: jest.fn(),
+  }),
   // The real hook needs a navigation container. What matters to this screen is
   // that the callback runs while the screen is on show, which is what focus is.
   useFocusEffect: (effect: () => void | (() => void)) => {

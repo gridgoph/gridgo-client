@@ -15,15 +15,14 @@ type Props = {
 /**
  * One 44×44 control in a screen's header row.
  *
- * Cart and Chat sit side by side at the top of Home, so their geometry is
- * shared rather than described twice: the same touch target, the same hairline
- * shell, the same 18pt glyph and the same badge. Two controls a thumb's width
- * apart are read as a pair, and a pair that disagrees by two points looks
- * broken long before anyone can say why.
+ * Cart and Chat sit side by side, so their geometry is shared rather than
+ * described twice: the same hit target, the same 22pt glyph, the same badge.
+ * They are glyphs on the canvas — no outlined box — because a second filled
+ * chip next to the GRIDGO mark reads as chrome fighting the identity, and
+ * the tab bar's "+" is already the one yellow object in a thumb's reach.
  *
- * Monochrome, always. Home's yellow is the tab bar's "+" one row below this,
- * and a second yellow thing in the same thumb's reach is how a screen stops
- * having a primary action. That includes the badge.
+ * Monochrome, always. The badge is the only colour, and only when there is
+ * a count to show.
  */
 export function HeaderIconButton({ icon: Icon, accessibilityLabel, onPress, count }: Props) {
   const colors = useThemeColors();
@@ -34,26 +33,32 @@ export function HeaderIconButton({ icon: Icon, accessibilityLabel, onPress, coun
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      className="gg-btn-secondary h-11 w-11 px-0"
-      style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
+      className="h-11 w-11 items-center justify-center"
     >
-      <Icon
-        size={18}
-        color={colors.textPrimary}
-        strokeWidth={2}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
-      />
-      {badge > 0 ? (
-        <View
-          pointerEvents="none"
-          className="absolute -right-1.5 -top-1.5 h-5 min-w-5 items-center justify-center rounded-pill border border-surface bg-accent px-1"
-        >
-          <Text className="text-caption text-accent-on" numberOfLines={1}>
-            {badge > 9 ? "9+" : badge}
-          </Text>
-        </View>
-      ) : null}
+      {({ pressed }) => (
+        <>
+          {pressed ? (
+            <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-full" />
+          ) : null}
+          <Icon
+            size={22}
+            color={colors.textPrimary}
+            strokeWidth={1.75}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+          {badge > 0 ? (
+            <View
+              pointerEvents="none"
+              className="absolute right-0.5 top-0.5 h-4 min-w-4 items-center justify-center rounded-pill bg-accent px-0.5"
+            >
+              <Text className="text-caption font-medium text-accent-on" numberOfLines={1}>
+                {badge > 9 ? "9+" : badge}
+              </Text>
+            </View>
+          ) : null}
+        </>
+      )}
     </Pressable>
   );
 }

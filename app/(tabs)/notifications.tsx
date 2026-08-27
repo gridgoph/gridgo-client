@@ -1,11 +1,13 @@
 import { useCallback } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Screen } from "@/components/Screen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { NotificationCard } from "@/components/NotificationCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -37,20 +39,13 @@ export default function NotificationsScreen() {
   const unreadCount = items.filter((item) => !isNotificationRead(item, readIds)).length;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
+    <Screen edges={["top"]}>
       <ScrollView className="gg-screen">
         <View className="gg-page gap-4 pt-4" style={{ paddingBottom: tabPad }}>
-          <View className="flex-row items-center justify-between gap-3">
-            <Text className="text-h1 text-text-primary">Notifications</Text>
-            {unreadCount > 0 ? (
-              <StatusChip tone="info" label={`${unreadCount} unread`} icon="clock" />
-            ) : null}
-          </View>
-          <Text className="text-body text-text-secondary">
-            {unreadCount > 0
-              ? "Tap an update to open the job, or swipe it left to mark it read."
-              : "Deadlines and status changes for your print jobs."}
-          </Text>
+          <ScreenHeader title="Notifications" />
+          {unreadCount > 0 ? (
+            <StatusChip tone="info" label={`${unreadCount} unread`} icon="clock" />
+          ) : null}
 
           {/*
             The screen about being told things is where asking to be told them
@@ -107,6 +102,6 @@ export default function NotificationsScreen() {
           ) : null}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

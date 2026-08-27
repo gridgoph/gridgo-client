@@ -2,8 +2,8 @@ import { Minus, Plus } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Screen } from "@/components/Screen";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
 import { SamplePhoto } from "@/components/SamplePhoto";
@@ -158,19 +158,19 @@ export default function ListingScreen() {
 
   if (error) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         <ErrorScreenState
           label="This listing did not open"
           body={error}
           onRetry={() => void load()}
         />
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   if (!item) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+      <Screen edges={["bottom"]}>
         <StepTrailBar current="listing" onStep={goStep} />
         <View
           className="gg-page gap-4 pt-4"
@@ -182,7 +182,7 @@ export default function ListingScreen() {
           <SkeletonLine width="w-1/3" height="h-6" />
           <SkeletonLine width="w-full" />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
@@ -250,7 +250,7 @@ export default function ListingScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       {/* Fixed under the header: the trail is how a client gets back, so it
           must not scroll away with the sheet it is describing. */}
       <StepTrailBar current="listing" onStep={goStep} />
@@ -434,7 +434,7 @@ export default function ListingScreen() {
               : "GRIDGO’s charge and delivery are added at checkout."}
         </Text>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

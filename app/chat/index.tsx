@@ -1,7 +1,7 @@
 import { Bike, Bot, ChevronRight, Store, type LucideIcon } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Screen } from "@/components/Screen";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import {
@@ -38,7 +38,7 @@ export default function ChatListScreen() {
 
   return (
     /* Bottom only — the stack header above has already cleared the status bar. */
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen">
         <View className="gg-page gap-6 pb-12 pt-4">
           <View className="gap-2">
@@ -105,6 +105,6 @@ export default function ChatListScreen() {
           <Text className="text-caption text-text-muted">{CHAT_MEANWHILE}</Text>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

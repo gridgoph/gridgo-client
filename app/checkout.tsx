@@ -312,8 +312,20 @@ export default function CheckoutScreen() {
   };
 
   // Held until the phone has said whether it is carrying a basket at all.
-  // Without this the empty state flashes for a frame on the way to a full one.
-  if (hydrated && !loading && lines.length === 0) {
+  // A loading empty basket must not paint the Pay sheet: that sheet is what
+  // "select cart and it shows then vanishes" was — chrome for an order that
+  // has not arrived, then the empty state a tick later.
+  if (!hydrated || (loading && lines.length === 0)) {
+    return (
+      <FormScreen>
+        <View className="gg-page pt-16">
+          <Text className="text-body text-text-muted">Loading your order…</Text>
+        </View>
+      </FormScreen>
+    );
+  }
+
+  if (lines.length === 0) {
     return (
       <FormScreen>
         <View className="gg-page pt-16">
@@ -802,7 +814,7 @@ function LineRow({
           <View className="flex-row gap-3 p-3">
             <View className="w-16">
               <SamplePhoto
-                url={samplePhotoUri(line.listing?.photos[0])}
+                url={samplePhotoUri(line.listing?.photos?.[0])}
                 altText={name}
                 gutter="tight"
                 emptyLabel="No sample"

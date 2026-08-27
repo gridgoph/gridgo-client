@@ -16,7 +16,7 @@ type Props = {
  * is a reminder.
  *
  * Geometry and the badge live in `HeaderIconButton`, which Chat shares — the
- * two sit side by side in Home's header row and have to be the same object.
+ * two sit side by side in every tab header and have to be the same object.
  * What stays here is the only thing that is Cart's alone: the label, which
  * says what is in the bag rather than what the control is called.
  */

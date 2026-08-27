@@ -1,24 +1,22 @@
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
+import { Screen } from "@/components/Screen";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
-import { useThemeColors } from "@/hooks/useTheme";
 import { staysOnAuthScreen } from "@/lib/authLanding";
 
 export default function WelcomeScreen() {
   const router = useRouter();
-  const colors = useThemeColors();
   const landing = useAuthLanding();
 
   if (!staysOnAuthScreen(landing)) return <AuthLandingRedirect landing={landing} />;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
+    <Screen edges={["top", "bottom"]}>
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         contentInsetAdjustmentBehavior="automatic"
@@ -58,6 +56,6 @@ export default function WelcomeScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

@@ -160,7 +160,14 @@ beforeEach(() => {
   api.getSettings.mockResolvedValue(SETTINGS);
   api.getCart.mockResolvedValue(cart());
   api.getCatalogShop.mockResolvedValue(SHOP);
-  useCart.setState({ cartId: "cart_1", cart: cart(), loading: false, busy: false, error: null });
+  useCart.setState({
+    cartId: "cart_1",
+    cart: cart(),
+    loading: false,
+    busy: false,
+    error: null,
+    hydrated: true,
+  });
 });
 
 describe("CheckoutScreen", () => {
@@ -362,11 +369,53 @@ describe("CheckoutScreen", () => {
 
   it("invites a first order rather than showing an empty sheet", async () => {
     api.getCart.mockResolvedValue(cart({ lines: [] }));
-    useCart.setState({ cart: cart({ lines: [] }), loading: false });
+    useCart.setState({ cart: cart({ lines: [] }), loading: false, hydrated: true });
     await renderInSafeArea(<CheckoutScreen />);
 
     expect(await screen.findByText("Nothing to print yet")).toBeTruthy();
     fireEvent.press(screen.getByText("Start a print job"));
     expect(mockReplace).toHaveBeenCalledWith("/request/category");
+  });
+
+  it("does not paint the Pay sheet while an empty basket is still loading", async () => {
+    api.getCart.mockReturnValue(new Promise(() => {}));
+    useCart.setState({
+      cartId: "cart_1",
+      cart: null,
+      loading: true,
+      hydrated: true,
+    });
+    await renderInSafeArea(<CheckoutScreen />);
+
+    expect(screen.getByText("Loading your order…")).toBeTruthy();
+    expect(screen.queryByText("HOW IT GETS TO YOU")).toBeNull();
+    expect(screen.queryByText("Nothing to print yet")).toBeNull();
+  });
+
+  it("keeps the sheet up when a line only has the compact listing add returned", async () => {
+    // POST /me/carts/:id/lines returns a stub without photos. Reading
+    // listing.photos[0] threw and the screen popped the moment the cart opened.
+    const compact = cart({
+      lines: [
+        line({
+          listing: {
+            id: "sci_flyers",
+            name: "Flyers",
+            supplierId: "user_lovis",
+            fromPriceMinor: 2500,
+            effectivePriceMinor: 4000,
+            selectedOptions: [{ id: "o_a4", label: "A4" }],
+          } as never,
+        }),
+      ],
+    });
+    api.getCart.mockResolvedValue(compact);
+    useCart.setState({ cartId: "cart_1", cart: compact, loading: false, hydrated: true });
+    await renderInSafeArea(<CheckoutScreen />);
+
+    expect(await screen.findByText("WHAT GRIDGO IS PRINTING")).toBeTruthy();
+    expect(screen.getByText("Flyers")).toBeTruthy();
+    expect(screen.getByText("A4")).toBeTruthy();
+    expect(screen.getByText("HOW IT GETS TO YOU")).toBeTruthy();
   });
 });
