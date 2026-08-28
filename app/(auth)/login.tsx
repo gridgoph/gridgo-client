@@ -15,18 +15,29 @@ import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import * as api from "@/lib/api";
 import { shouldPreventAuthLeave, staysOnAuthScreen } from "@/lib/authLanding";
-import { loginVerifyCopy } from "@/lib/verifyCode";
-import { clerkErrorMessage, isAlreadySignedInError, passwordConfirmationError } from "@/lib/clerkAuth";
+import {
+  clerkErrorMessage,
+  isAlreadySignedInError,
+  isStaleSignInError,
+  passwordConfirmationError,
+} from "@/lib/clerkAuth";
 import { completeClerkAuth, withSettledClerkSession } from "@/lib/clerkComplete";
 import {
   clearClerkSessionForNewAttempt,
   clerkSignOutRecoveryMessage,
+  clerkSignOutRetryLabel,
   continuationAfterPassword,
+  projectionForTypedEmail,
   releaseClerkSession,
+  verificationCodeGate,
   type ClerkSecondFactorStrategy,
 } from "@/lib/clerkSignIn";
+import { clerkTokenUnavailableMessage } from "@/lib/clerkSessionBridge";
+import { clientEmailUnavailableMessage } from "@/lib/copy";
 import { completeGoogleSso } from "@/lib/googleSso";
+import { loginVerifyCopy } from "@/lib/verifyCode";
 import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
 
@@ -36,14 +47,22 @@ export default function LoginScreen() {
   const { startSSOFlow } = useSSO();
   const { isSignedIn, getToken, sessionId } = useAuth();
   const { setActive, signOut } = useClerk();
-  const login = useSession((state) => state.login);
-  const localLoading = useSession((state) => state.loading);
   const sessionError = useSession((state) => state.error);
   const landing = useAuthLanding();
   const {
     step,
     code,
     secondFactor,
+    /**
+     * Scoped to a tap and nothing else — raised in the handler, lowered in its
+     * `finally`. It is deliberately not joined to Clerk's `fetchStatus` or to
+     * `session.loading`: either can hang, and a hung one used to leave Sign In
+     * reading "Signing in…" with no attempt in flight to finish it. That was
+     * the dead button. See the note on `busy` in `store/loginFlow.ts` for why
+     * it lives in the store rather than in `useState`.
+     */
+    busy,
+    setBusy,
     enterVerification,
     enterRecovery,
     enterNewPassword,
@@ -56,13 +75,21 @@ export default function LoginScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [socialLoading, setSocialLoading] = useState(false);
 
   useEffect(() => {
+    // Fast Refresh remounts this screen with empty fields while the login
+    // store still thinks a code is in flight. The shop app keeps that state
+    // on the component, so a remount returns to the password form. Do the
+    // same here so a dead code step cannot hide Sign in / Google.
+    resetLoginFlow();
+    // And drop a leftover wait. `session.loading` outlives this screen — it is
+    // a store, so Fast Refresh and a previous visit both carry it back — and
+    // arriving on the password form means nothing is being adopted right now.
+    useSession.getState().endClerkSync();
     return () => {
       useLoginFlow.getState().reset();
     };
-  }, []);
+  }, [resetLoginFlow]);
 
   // Recovery / verification stay on this screen; the platform back (header +
   // Android) would otherwise pop to welcome and lose the in-progress reset.
@@ -74,8 +101,15 @@ export default function LoginScreen() {
 
   if (!staysOnAuthScreen(landing)) return <AuthLandingRedirect landing={landing} />;
 
+  /**
+   * Clerk is still fetching the sign-in resource.
+   *
+   * Worth saying on the button's label, never worth disabling it for: a
+   * `fetchStatus` that never settles is indistinguishable from a dead control,
+   * and `signIn` being missing is now reported as an error rather than
+   * swallowed by a silent `return`.
+   */
   const clerkLoading = fetchStatus === "fetching";
-  const busy = clerkLoading || socialLoading || localLoading;
 
   const adoptGridgoClient = (existingSessionId?: string | null) =>
     completeClerkAuth({
@@ -86,10 +120,45 @@ export default function LoginScreen() {
       setActive: (args) => setActive(args),
     });
 
+  const refuseNonClientEmail = async () => {
+    useSession.getState().failClerkSync(clientEmailUnavailableMessage);
+    await releaseClerkSession(signOut);
+  };
+
   const settleClerkForSignIn = async (alreadySignedIn = Boolean(isSignedIn)) => {
-    // Never adopt here. A leftover Clerk session may belong to a different
-    // person than the email just typed (or the Google account about to be
-    // picked). Sign it out so this attempt is the one that lands.
+    // What GRIDGO already knows about the leftover, using only its live JWT.
+    const typed = email.trim();
+    if (alreadySignedIn && typed) {
+      const leftover = await projectionForTypedEmail({
+        typedEmail: typed,
+        getToken,
+        me: () => api.me({ ignoreUnauthorized: true }),
+      });
+      // A leftover on this phone may already be this email as a rider (or
+      // another non-client). Refuse on the password form — never send a code.
+      if (leftover === "wrong_role") {
+        await refuseNonClientEmail();
+        return "handled" as const;
+      }
+      // The leftover *is* this email, signed in as a client, right now.
+      // Adopt it, the way the Google path does. Signing a good session out
+      // instead buys a sign-out round trip, a fresh password attempt and a
+      // new JWT mint — and leaves `getToken` answering empty in between,
+      // which is exactly when "GRIDGO never received an identity token"
+      // appeared. Anyone holding this phone was already signed in as this
+      // person; adopting exposes nothing a launch restore would not.
+      if (leftover === "same_client") {
+        const adopted = await adoptGridgoClient(sessionId);
+        if (adopted.kind !== "error") return "handled" as const;
+        // It could not be joined after all. Fall through and sign it out so
+        // the password just typed gets its own attempt, and drop the error
+        // that leftover raised — this tap has not failed yet.
+        useSession.getState().clearError();
+      }
+    }
+    // Otherwise never adopt. A leftover Clerk session may belong to a
+    // different person than the email just typed (or the Google account about
+    // to be picked). Sign it out so this attempt is the one that lands.
     const existing = await clearClerkSessionForNewAttempt({
       isSignedIn: alreadySignedIn,
       signOut,
@@ -136,13 +205,25 @@ export default function LoginScreen() {
     }
   };
 
-  const completePasswordSignIn = async (retriedExistingSession = false) => {
+  const submitPasswordAttempt = async () => {
     if (!signIn) return;
     const result = await signIn.password({
-      emailAddress: email.trim().toLowerCase(),
+      identifier: email.trim(),
       password,
     });
     if (result?.error) throw result.error;
+  };
+
+  const completePasswordSignIn = async (retriedExistingSession = false) => {
+    if (!signIn) return;
+    try {
+      await submitPasswordAttempt();
+    } catch (error) {
+      if (!isStaleSignInError(error)) throw error;
+      const created = await signIn.create({ identifier: email.trim().toLowerCase() });
+      if (created?.error) throw created.error;
+      await submitPasswordAttempt();
+    }
     const next = continuationAfterPassword(
       signIn.status,
       signIn.supportedSecondFactors,
@@ -167,17 +248,43 @@ export default function LoginScreen() {
       return;
     }
     if (next.kind === "verification") {
-      enterVerification(next.factor);
+      const gate = await verificationCodeGate({
+        typedEmail: email.trim(),
+        getToken,
+        me: () => api.me({ ignoreUnauthorized: true }),
+        emailAvailable: api.clientEmailAvailable,
+      });
+      if (gate === "wrong_role") {
+        await refuseNonClientEmail();
+        return;
+      }
+      // Only show "Enter the code" after Clerk has actually sent one. A leftover
+      // session that makes send fail must stay on the password form.
       await sendSecondFactor(next.factor);
+      useSession.getState().clearError();
+      enterVerification(next.factor);
       return;
     }
     throw new Error(next.message);
   };
 
+  /** Clerk has not handed us a sign-in resource yet. Say so; never no-op. */
+  const CLERK_NOT_READY =
+    "Sign-in is still starting up. Give it a second and tap Sign In again — if it keeps saying this, check your connection.";
+
   const signInWithPassword = async () => {
-    if (!signIn || !email.trim() || !password) return;
+    if (!email.trim() || !password) return;
+    setBusy(true);
     setError(null);
+    useSession.getState().clearError();
     try {
+      if (!signIn) {
+        // Inside the busy envelope rather than an early `return` above it: a
+        // silent return is a Sign In that does nothing when tapped, which is
+        // exactly what a person reports as a dead button.
+        setError(CLERK_NOT_READY);
+        return;
+      }
       await withSettledClerkSession({
         isSignedIn: Boolean(isSignedIn),
         settle: settleClerkForSignIn,
@@ -188,17 +295,40 @@ export default function LoginScreen() {
         useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
         return;
       }
+      if (isStaleSignInError(caught) && signIn) {
+        try {
+          const created = await signIn.create({ identifier: email.trim().toLowerCase() });
+          if (created?.error) throw created.error;
+          await completePasswordSignIn();
+          return;
+        } catch (retryError) {
+          setError(
+            clerkErrorMessage(
+              retryError,
+              "Could not sign in. Check your details and try again.",
+            ),
+          );
+          return;
+        }
+      }
       setError(clerkErrorMessage(caught, "Could not sign in. Check your details and try again."));
+    } finally {
+      setBusy(false);
     }
   };
 
   const sendRecoveryCode = async () => {
-    if (!signIn || !email.trim()) {
+    if (!email.trim()) {
       setError("Enter your email address first.");
       return;
     }
+    setBusy(true);
     setError(null);
     try {
+      if (!signIn) {
+        setError(CLERK_NOT_READY);
+        return;
+      }
       const created = await signIn.create({ identifier: email.trim().toLowerCase() });
       if (created.error) throw created.error;
       const sent = await signIn.resetPasswordEmailCode.sendCode();
@@ -206,12 +336,20 @@ export default function LoginScreen() {
       enterRecovery();
     } catch (caught) {
       setError(clerkErrorMessage(caught, "Could not send the recovery code. Try again."));
+    } finally {
+      setBusy(false);
     }
   };
 
   const verifySecondFactor = async () => {
     const current = useLoginFlow.getState();
-    if (!signIn || !current.code.trim()) return;
+    if (!current.code.trim()) return;
+    if (!signIn) {
+      setError("That sign-in expired. Go back and enter your password again.");
+      resetLoginFlow();
+      return;
+    }
+    setBusy(true);
     setError(null);
     try {
       const trimmed = current.code.trim();
@@ -231,12 +369,15 @@ export default function LoginScreen() {
       await finalizeCompletedSignIn();
     } catch (caught) {
       setError(clerkErrorMessage(caught, "That code could not be verified."));
+    } finally {
+      setBusy(false);
     }
   };
 
   const verifyRecoveryCode = async () => {
     const current = useLoginFlow.getState();
     if (!signIn || !current.code.trim()) return;
+    setBusy(true);
     setError(null);
     try {
       const result = await signIn.resetPasswordEmailCode.verifyCode({
@@ -246,16 +387,21 @@ export default function LoginScreen() {
       enterNewPassword();
     } catch (caught) {
       setError(clerkErrorMessage(caught, "That code could not be verified."));
+    } finally {
+      setBusy(false);
     }
   };
 
   const resendVerificationCode = async () => {
     const factor = useLoginFlow.getState().secondFactor;
+    setBusy(true);
     setError(null);
     try {
       await sendSecondFactor(factor);
     } catch (caught) {
       setError(clerkErrorMessage(caught, "Could not send a new code. Try again."));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -271,6 +417,7 @@ export default function LoginScreen() {
       setError(mismatch);
       return;
     }
+    setBusy(true);
     setError(null);
     try {
       const result = await signIn.resetPasswordEmailCode.submitPassword({
@@ -283,6 +430,8 @@ export default function LoginScreen() {
       await finalizeCompletedSignIn();
     } catch (caught) {
       setError(clerkErrorMessage(caught, "Could not save the new password."));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -293,39 +442,54 @@ export default function LoginScreen() {
       setActive: (args) => setActive(args),
     });
 
+  const startGoogleSso = async () => {
+    const outcome = await runGoogleSso();
+    if (outcome.status === "activated" || outcome.status === "already_signed_in") {
+      await adoptGridgoClient(
+        outcome.status === "activated" ? outcome.sessionId : undefined,
+      );
+      return;
+    }
+    if (outcome.status === "incomplete") {
+      setError("Google sign-in did not finish. Try again.");
+    }
+  };
+
   const signInWithGoogle = async () => {
-    setSocialLoading(true);
+    setBusy(true);
     setError(null);
+    useSession.getState().clearError();
     try {
-      await withSettledClerkSession({
-        isSignedIn: Boolean(isSignedIn),
-        settle: settleClerkForSignIn,
-        run: async () => {
-          const outcome = await runGoogleSso();
-          // Google's session is activated but not yet a GRIDGO client; the
-          // adopt is what puts a user in the store and leaves this screen.
-          if (outcome.status === "activated" || outcome.status === "already_signed_in") {
-            await adoptGridgoClient(
-              outcome.status === "activated" ? outcome.sessionId : undefined,
-            );
-            return;
-          }
-          if (outcome.status === "incomplete") {
-            setError("Google sign-in did not finish. Try again.");
-          }
-        },
-      });
+      // Same as the shop app: a live Clerk session is the person who just
+      // tapped Google. Adopt it. Only start the browser flow when there is
+      // no usable session — signing that leftover out first is what trapped
+      // people on "Sign in again".
+      if (isSignedIn) {
+        const leftover = await adoptGridgoClient(sessionId);
+        if (leftover.kind === "adopt" || leftover.kind === "needs_profile") return;
+        if (leftover.kind === "wrong_role") return;
+        if (leftover.kind === "error" && leftover.message !== clerkTokenUnavailableMessage) {
+          return;
+        }
+        useSession.getState().clearError();
+        if (!(await releaseClerkSession(signOut))) {
+          useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+          return;
+        }
+      }
+      await startGoogleSso();
     } catch (caught) {
       if (isAlreadySignedInError(caught)) {
-        useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
+        await adoptGridgoClient(sessionId);
         return;
       }
       setError(clerkErrorMessage(caught, "Google sign-in did not finish. Try again."));
     } finally {
-      setSocialLoading(false);
+      setBusy(false);
     }
   };
 
+  const signOutRetry = clerkSignOutRetryLabel(sessionError, error);
   const verifyCopy = loginVerifyCopy(secondFactor, email);
   const heading =
     step === "credentials"
@@ -339,7 +503,11 @@ export default function LoginScreen() {
       : step === "recoveryCode"
         ? `We sent a recovery code to ${email.trim()}.`
         : "Use a strong password you have not used for GRIDGO before.";
-  const codeError = error ?? sessionError;
+  // A refused other-app email must not appear as "could not verify code"
+  // on the next attempt's device-trust step.
+  const identityRefusal =
+    sessionError === clientEmailUnavailableMessage ? null : sessionError;
+  const codeError = error ?? identityRefusal;
 
   return (
     <FormScreen
@@ -371,8 +539,8 @@ export default function LoginScreen() {
                 <ErrorState
                   label="Could not verify code"
                   body={codeError}
-                  retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
-                  onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                  retryLabel={signOutRetry}
+                  onRetry={signOutRetry ? () => void abandonClerkSession() : undefined}
                 />
               ) : null
             }
@@ -420,13 +588,19 @@ export default function LoginScreen() {
               <ErrorState
                 label="Could not sign in"
                 body={(error ?? sessionError)!}
-                retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
-                onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                retryLabel={signOutRetry}
+                onRetry={signOutRetry ? () => void abandonClerkSession() : undefined}
               />
             ) : null}
 
+            {/*
+              Disabled only for an empty form or a tap already in flight.
+              Never for `fetchStatus`, and never for a background Clerk →
+              GRIDGO sync: both can hang, and a hung one used to make this
+              button permanently untappable.
+            */}
             <PrimaryButton
-              label={busy ? "Signing in…" : "Sign In"}
+              label={busy || clerkLoading ? "Signing in…" : "Sign In"}
               disabled={!email.trim() || !password || busy}
               onPress={() => void signInWithPassword()}
             />
@@ -445,18 +619,6 @@ export default function LoginScreen() {
                 <Text className="text-button text-brand">Sign Up</Text>
               </Pressable>
             </View>
-
-            {__DEV__ ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Use local API instead"
-                disabled={!email.trim() || !password || busy}
-                onPress={() => void login(email.trim(), password)}
-                className="gg-touch items-center justify-center"
-              >
-                <Text className="text-caption text-text-muted">Use local API instead</Text>
-              </Pressable>
-            ) : null}
           </>
         ) : step === "recoveryCode" ? (
           <>
@@ -477,8 +639,8 @@ export default function LoginScreen() {
               <ErrorState
                 label="Could not verify code"
                 body={codeError}
-                retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
-                onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                retryLabel={signOutRetry}
+                onRetry={signOutRetry ? () => void abandonClerkSession() : undefined}
               />
             ) : null}
             <PrimaryButton
@@ -511,8 +673,8 @@ export default function LoginScreen() {
             </View>
             {error ? <ErrorState label="Could not reset password" body={error} /> : null}
             <PrimaryButton
-              label={clerkLoading ? "Saving…" : "Save password"}
-              disabled={!newPassword || !confirmPassword || clerkLoading}
+              label={busy ? "Saving…" : "Save password"}
+              disabled={!newPassword || !confirmPassword || busy}
               onPress={() => void saveNewPassword()}
             />
           </>

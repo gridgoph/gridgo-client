@@ -134,7 +134,14 @@ describe("LoginScreen password already-signed-in refusal", () => {
     });
   });
 
-  it("signs the leftover out and retries the typed password when Clerk says already signed in", async () => {
+  /**
+   * Two halves. First: Clerk says "already signed in" and the session it is
+   * holding is this same email as a client — adopt it, land, no sign-out and
+   * no second password attempt. Second: the leftover can no longer mint a JWT
+   * *and* Clerk will not sign it out, which is the only case that really is a
+   * dead end — and the only case that may offer "Sign out and try again".
+   */
+  it("adopts the held session, and only offers sign-out when the leftover is truly stuck", async () => {
     await renderInSafeArea(<LoginScreen />);
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
@@ -146,9 +153,10 @@ describe("LoginScreen password already-signed-in refusal", () => {
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
     expect(useSession.getState().source).toBe("clerk");
-    expect(mockPassword).toHaveBeenCalledTimes(2);
-    expect(mockSignOut).toHaveBeenCalled();
+    expect(mockPassword).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).not.toHaveBeenCalled();
     expect(screen.queryByText("Could not sign in")).toBeNull();
+    expect(screen.queryByText(/never received an identity token/i)).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
 
     mockPassword.mockReset().mockRejectedValue(new Error("You're already signed in."));

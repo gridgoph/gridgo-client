@@ -1,4 +1,4 @@
-import { hostnameFromHostUri, resolveApiBase } from "@/lib/api";
+import { hostnameFromHostUri, notificationImageUrl, resolveApiBase } from "@/lib/api";
 
 describe("resolveApiBase", () => {
   it("prefers a non-empty EXPO_PUBLIC_API_URL and strips a trailing slash", () => {
@@ -77,13 +77,14 @@ describe("resolveApiBase", () => {
     ).toBe("http://192.168.1.55:8787");
   });
 
-  it("maps loopback host on Android to the emulator alias 10.0.2.2", () => {
+  it("maps loopback host on an Android emulator to 10.0.2.2", () => {
     expect(
       resolveApiBase({
         envUrl: undefined,
         envPort: "8787",
         hostUri: "localhost:8081",
         platformOS: "android",
+        isDevice: false,
       }),
     ).toBe("http://10.0.2.2:8787");
 
@@ -93,8 +94,31 @@ describe("resolveApiBase", () => {
         envPort: "8787",
         hostUri: "127.0.0.1:8081",
         platformOS: "android",
+        isDevice: false,
       }),
     ).toBe("http://10.0.2.2:8787");
+  });
+
+  it("keeps USB loopback on a physical Android phone (adb reverse)", () => {
+    expect(
+      resolveApiBase({
+        envUrl: undefined,
+        envPort: "8787",
+        hostUri: "localhost:8081",
+        platformOS: "android",
+        isDevice: true,
+      }),
+    ).toBe("http://127.0.0.1:8787");
+
+    expect(
+      resolveApiBase({
+        envUrl: undefined,
+        envPort: "8787",
+        hostUri: "127.0.0.1:8081",
+        platformOS: "android",
+        isDevice: true,
+      }),
+    ).toBe("http://127.0.0.1:8787");
   });
 
   it("keeps loopback on iOS simulator (no 10.0.2.2 alias)", () => {
@@ -157,5 +181,15 @@ describe("hostnameFromHostUri", () => {
     expect(hostnameFromHostUri("exp://192.168.1.55:8081")).toBe("192.168.1.55");
     expect(hostnameFromHostUri(null)).toBeNull();
     expect(hostnameFromHostUri("")).toBeNull();
+  });
+});
+
+describe("notificationImageUrl", () => {
+  it("leaves a public picture link alone and ignores blanks", () => {
+    expect(notificationImageUrl("https://cdn.gridgo.example/update.png")).toBe(
+      "https://cdn.gridgo.example/update.png",
+    );
+    expect(notificationImageUrl("  ")).toBeNull();
+    expect(notificationImageUrl(undefined)).toBeNull();
   });
 });

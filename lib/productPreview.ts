@@ -23,6 +23,35 @@ export function templateForFamily(family: string | null | undefined): PreviewTem
   }
 }
 
+/**
+ * Which template a shop's listing gets.
+ *
+ * A listing carries the platform's subcategory code rather than a catalog
+ * family, so the mockup is chosen from that. Only the four templates GRIDGO
+ * actually draws are mapped; anything else falls to `generic`, which names the
+ * file instead of pretending to show it on a product that would be the wrong
+ * shape.
+ */
+const SUBCATEGORY_TEMPLATES: Record<string, PreviewTemplate> = {
+  flyers: "flyer",
+  brochures: "flyer",
+  business_cards: "flyer",
+  invitations_greeting_cards: "flyer",
+  menus_price_lists: "flyer",
+  tarpaulins_outdoor_banners: "tarpaulin",
+  posters_standees: "tarpaulin",
+  business_store_signages: "signage",
+  stickers_packaging_labels: "signage",
+  custom_apparel: "tshirt",
+};
+
+export function templateForSubcategory(
+  subcategoryCode: string | null | undefined,
+): PreviewTemplate {
+  if (!subcategoryCode) return "generic";
+  return SUBCATEGORY_TEMPLATES[subcategoryCode] ?? "generic";
+}
+
 export function templateLabel(template: PreviewTemplate): string {
   switch (template) {
     case "flyer":

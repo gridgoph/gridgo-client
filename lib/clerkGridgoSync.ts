@@ -6,7 +6,12 @@
  */
 
 import * as api from "@/lib/api";
-import { awaitClerkSessionToken, type ClerkGetToken } from "@/lib/clerkSignIn";
+import {
+  awaitClerkSessionToken,
+  clerkFreshSessionToken,
+  clerkTokenProvider,
+  type ClerkGetToken,
+} from "@/lib/clerkSignIn";
 import {
   bridgeClerkToGridgo,
   wrongRoleMessage,
@@ -22,22 +27,41 @@ type ActiveClerkSync = {
 
 let activeSync: ActiveClerkSync | null = null;
 
+/**
+ * Abandon whatever sync is in flight.
+ *
+ * Sign-out calls this, and so does a session id changing under us. The
+ * abandoned run will find its generation stale and skip `applyClerkGridgoResult`
+ * — which is right, but that is also the only place `loading` was ever lowered.
+ * Nothing is left to own the flag, so this lowers it here: the moment a sync is
+ * abandoned, the app is no longer waiting on one.
+ *
+ * This is the fix for a dead Sign In after signing out. `useClerkApiSession`
+ * invalidates on the signed-out leg, orphaning a sync that had already raised
+ * `loading`, and the login screen was disabling its button on that flag.
+ */
 export function invalidateClerkGridgoSync(): void {
   currentGeneration += 1;
   activeSync = null;
+  useSession.getState().endClerkSync();
 }
 
 async function loadClerkGridgoUser(getToken: ClerkGetToken): Promise<ClerkBridgeResult> {
-  // Every leg waits for a token rather than probing once: this runs straight
-  // after a Clerk step completes, and Clerk needs a beat to mint the first JWT
-  // of a new session. The wait costs nothing once one exists.
-  api.setTokenProvider(() => awaitClerkSessionToken(getToken));
+  api.setTokenProvider(clerkTokenProvider(getToken));
   useSession.getState().beginClerkSync();
   return bridgeClerkToGridgo({
-    awaitToken: () => awaitClerkSessionToken(getToken),
+    // The one place that waits, and the only one allowed more than a single
+    // mint: this runs straight after a Clerk step completes, and the client
+    // needs a beat to swap the session in before it can mint that session's
+    // first JWT. It is what stops `/auth/me` going out with no Bearer. The
+    // wait costs nothing once a token exists — probe 0 reads the cache — so
+    // only a genuinely empty session pays, and it pays twice, not five times.
+    awaitToken: () => awaitClerkSessionToken(getToken, { attempts: 3, delayMs: 150 }),
     me: () => api.me({ ignoreUnauthorized: true }),
     activate: (input) => api.activateClerkClient(input),
-    refreshToken: () => awaitClerkSessionToken(getToken),
+    // Activate wrote `gridgo_role`; the cached JWT predates that claim, so
+    // this is one of the two places a forced mint is the point.
+    refreshToken: () => clerkFreshSessionToken(getToken),
   });
 }
 
@@ -97,11 +121,21 @@ export function syncClerkToGridgo(deps: {
 
   const generation = ++currentGeneration;
   const run = (async () => {
-    const result = await loadClerkGridgoUser(deps.getToken);
-    if (generation === currentGeneration) {
-      await applyClerkGridgoResult(result, deps.signOut);
+    try {
+      const result = await loadClerkGridgoUser(deps.getToken);
+      if (generation === currentGeneration) {
+        await applyClerkGridgoResult(result, deps.signOut);
+      }
+      return result;
+    } finally {
+      // Whatever happened — a result, a throw, a network that never answered —
+      // this generation is done waiting. Only the *current* generation may
+      // lower the flag: a superseded run must not clear the wait belonging to
+      // the sync that replaced it.
+      if (generation === currentGeneration) {
+        useSession.getState().endClerkSync();
+      }
     }
-    return result;
   })();
   let owner!: ActiveClerkSync;
   const tracked = run.finally(() => {

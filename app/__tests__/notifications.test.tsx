@@ -9,6 +9,7 @@ import { useNotifications } from "@/store/notifications";
 const mockPush = jest.fn();
 
 jest.mock("expo-router", () => ({
+  router: { push: (...args: unknown[]) => mockPush(...args) },
   useRouter: () => ({ push: (...args: unknown[]) => mockPush(...args) }),
   useFocusEffect: (effect: () => void) => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -19,7 +20,13 @@ jest.mock("expo-router", () => ({
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
-  return { ...actual, listNotifications: jest.fn(), listOrders: jest.fn() };
+  return {
+    ...actual,
+    listNotifications: jest.fn(),
+    listOrders: jest.fn(),
+    markNotificationRead: jest.fn(),
+    markAllNotificationsRead: jest.fn(),
+  };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -30,6 +37,8 @@ const assignment: Notification = {
   userId: "user_client",
   type: "supplier_assignment_final_price",
   orderId: "ord_demo_1",
+  orderTitle: "Grand opening tarpaulin",
+  orderState: "production",
   title: "Supplier assigned and final price ready",
   body: "A supplier accepted your order. Review the final price and submit the digital downpayment.",
   read: false,
@@ -82,9 +91,20 @@ function renderInSafeArea(ui: ReactElement) {
 describe("NotificationsScreen", () => {
   beforeEach(() => {
     mockPush.mockClear();
-    useNotifications.setState({ items: [], readIds: [], loading: false, error: null });
-    api.listNotifications.mockResolvedValue([assignment]);
+    useNotifications.setState({
+      items: [],
+      readIds: [],
+      snapshot: null,
+      loading: false,
+      error: null,
+    });
+    api.listNotifications.mockResolvedValue({
+      notifications: [assignment],
+      snapshot: assignment.id,
+    });
     api.listOrders.mockResolvedValue([order]);
+    api.markNotificationRead.mockResolvedValue({ ...assignment, read: true });
+    api.markAllNotificationsRead.mockResolvedValue(1);
   });
 
   it("shows where the job actually is, not only that something changed", async () => {
@@ -112,6 +132,7 @@ describe("NotificationsScreen", () => {
     fireEvent(row, "accessibilityAction", { nativeEvent: { actionName: "markRead" } });
 
     await waitFor(() => expect(useNotifications.getState().readIds).toContain("ntf_1"));
+    expect(api.markNotificationRead).toHaveBeenCalledWith("ntf_1", true);
   });
 
   it("opens the job the update is about", async () => {
@@ -122,10 +143,23 @@ describe("NotificationsScreen", () => {
     expect(mockPush).toHaveBeenCalledWith("/order/ord_demo_1");
   });
 
+  it("paints cached updates on the first frame without waiting on the network", async () => {
+    useNotifications.setState({ items: [assignment], loading: false, error: null });
+    api.listNotifications.mockReturnValue(new Promise(() => {}));
+
+    await renderInSafeArea(<NotificationsScreen />);
+
+    expect(screen.getByText(assignment.title)).toBeTruthy();
+    expect(screen.queryByText("Loading your updates…")).toBeNull();
+    expect(screen.getByLabelText("Stage 2 of 4: Printing")).toBeTruthy();
+    expect(api.listOrders).not.toHaveBeenCalled();
+  });
+
   it("draws no stage rail for an update with no job behind it", async () => {
-    api.listNotifications.mockResolvedValue([
-      { ...assignment, id: "ntf_2", type: undefined, orderId: undefined },
-    ]);
+    api.listNotifications.mockResolvedValue({
+      notifications: [{ ...assignment, id: "ntf_2", type: undefined, orderId: undefined, orderTitle: undefined, orderState: undefined }],
+      snapshot: "ntf_2",
+    });
     await renderInSafeArea(<NotificationsScreen />);
 
     await screen.findByText(assignment.title);
@@ -133,17 +167,35 @@ describe("NotificationsScreen", () => {
   });
 
   it("still lists the updates when the jobs behind them cannot be loaded", async () => {
-    api.listOrders.mockRejectedValue(new Error("Network request failed"));
+    api.listNotifications.mockResolvedValue({
+      notifications: [{ ...assignment, orderTitle: undefined, orderState: undefined }],
+      snapshot: assignment.id,
+    });
     await renderInSafeArea(<NotificationsScreen />);
 
     expect(await screen.findByText(assignment.title)).toBeTruthy();
     expect(screen.queryByText("Dispatch")).toBeNull();
+    expect(api.listOrders).not.toHaveBeenCalled();
   });
 
   it("invites the next action rather than shrugging when there is nothing", async () => {
-    api.listNotifications.mockResolvedValue([]);
+    api.listNotifications.mockResolvedValue({ notifications: [], snapshot: null });
     await renderInSafeArea(<NotificationsScreen />);
 
     expect(await screen.findByText("You are all caught up")).toBeTruthy();
+  });
+
+  it("keeps cart and chat on the header, and drops the helper line", async () => {
+    api.listNotifications.mockResolvedValue({ notifications: [], snapshot: null });
+    await renderInSafeArea(<NotificationsScreen />);
+
+    expect(await screen.findByLabelText("Your order, empty")).toBeTruthy();
+    expect(screen.getByLabelText("Chat")).toBeTruthy();
+    expect(
+      screen.queryByText("Deadlines and status changes for your print jobs."),
+    ).toBeNull();
+    expect(
+      screen.queryByText("Tap an update to open the job, or swipe it left to mark it read."),
+    ).toBeNull();
   });
 });

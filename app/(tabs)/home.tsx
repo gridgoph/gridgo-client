@@ -2,12 +2,14 @@ import { ChevronRight } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { TabScreen } from "@/components/TabScreen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { OrderCard } from "@/components/OrderCard";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
 import { SkeletonList, SkeletonOrderList } from "@/components/Skeleton";
 import { useStartRequest } from "@/hooks/useStartRequest";
@@ -17,6 +19,7 @@ import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { orderNeedsClient } from "@/lib/orderState";
 import { type ProductCategory } from "@/lib/productCategories";
+import { useCart } from "@/store/cart";
 import { useNotifications } from "@/store/notifications";
 import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
@@ -42,35 +45,40 @@ export default function HomeScreen() {
   const draftTitle = useRequestDraft((s) => s.title || s.productName);
   const hasDraft = useRequestDraft(draftHasContent);
   const refreshNotifications = useNotifications((s) => s.refresh);
+  const loadCart = useCart((s) => s.load);
   const { start, pendingLabel, confirmReplace, cancelReplace } = useStartRequest();
 
   const [orders, setOrders] = useState<api.Order[]>([]);
-  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [list, products, tree] = await Promise.all([
+      const [list, products] = await Promise.all([
         api.listOrders(),
         api.listCatalog(),
-        api.getProductCategories(),
       ]);
       setOrders(list);
       setCatalog(products);
-      setCategories(tree);
       setError(null);
     } catch (e) {
       setOrders([]);
       setCatalog([]);
-      setCategories([]);
       setError(userFacingError(e, "Could not load home. Check your connection and try again."));
     } finally {
       setLoading(false);
     }
+    void api.getProductCategories().then(setCategories).catch(() => {
+      // Seed already on screen.
+    });
     void refreshNotifications();
-  }, [refreshNotifications]);
+    // The basket lives on GRIDGO, so the count on the cart control is only
+    // honest if it is re-read. Coming back from checkout is exactly when it
+    // has changed.
+    void loadCart();
+  }, [refreshNotifications, loadCart]);
 
   useFocusEffect(
     useCallback(() => {
@@ -95,22 +103,29 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
+    <TabScreen>
       <ScrollView className="gg-screen">
         <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
-          <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
-          <Text className="mt-5 text-h1 text-text-primary" numberOfLines={2}>
-            {user?.orgName || user?.name || "GRIDGO"}
-          </Text>
+          {/*
+            One header: the mark, and cart and chat as the two ways back into
+            work already in flight. The client's name lives on Account — putting
+            it here split the top of Home into chrome and a greeting, and the
+            browse list starts higher without it.
+
+            No portrait, illustration or photo in this row. The mark is the
+            identity here, and a second image beside it would make the header
+            about the account rather than about the work.
+          */}
+          <ScreenHeader>
+            <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
+          </ScreenHeader>
 
           {/*
-            No "start a request" button here. The tab bar's yellow "+" is that
-            control, it is on every screen, and Home was drawing a second one
-            directly above it — the same action, in the same colour, 60px apart.
-
-            A draft in progress is different: it is a fact the client cannot see
-            anywhere else, and it disappears the moment they start something new.
-            So Home surfaces it, quietly, as a way back into it.
+            No "start a request" button in the page. The yellow "+" floats on
+            the bottom right of every main tab, and a second one in this column
+            would be the same action twice. A draft in progress is different:
+            it is a fact the client cannot see anywhere else, so Home surfaces
+            it as a way back into it.
           */}
           {hasDraft ? (
             <Pressable
@@ -249,6 +264,6 @@ export default function HomeScreen() {
         onConfirm={confirmReplace}
         onCancel={cancelReplace}
       />
-    </SafeAreaView>
+    </TabScreen>
   );
 }

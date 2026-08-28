@@ -12,7 +12,7 @@ import {
   isNetworkFailure,
   type User,
 } from "@/lib/api";
-import { roleAppLabel, userFacingError } from "@/lib/copy";
+import { clientEmailUnavailableMessage, userFacingError } from "@/lib/copy";
 import { needsClientProfile } from "@/lib/signup";
 
 export type ClerkBridgeResult =
@@ -170,9 +170,6 @@ export async function bridgeClerkToGridgo(deps: ClerkBridgeDeps): Promise<ClerkB
   return decideUser(user, provisioned);
 }
 
-export function wrongRoleMessage(role: string): string {
-  if (!role) {
-    return "This account has no Client profile. If you use GRIDGO Supplier, Rider, or Operations, sign in there instead.";
-  }
-  return `This account belongs to ${roleAppLabel(role)}. Sign in there instead — GRIDGO ships one app per role.`;
+export function wrongRoleMessage(_role: string): string {
+  return clientEmailUnavailableMessage;
 }

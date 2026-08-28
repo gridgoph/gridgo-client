@@ -1,17 +1,18 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { TabScreen } from "@/components/TabScreen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { NotificationCard } from "@/components/NotificationCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
-import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { useThemeColors } from "@/hooks/useTheme";
 import { isNotificationRead, useNotifications } from "@/store/notifications";
@@ -19,57 +20,32 @@ import { isNotificationRead, useNotifications } from "@/store/notifications";
 /**
  * Every update on the client's jobs.
  *
- * Modelled on the legacy GRIDGO notification list, which did one thing this
- * app did not: it showed where the job had actually got to, on the row itself.
- * The order behind each update is fetched alongside the list so a row can draw
- * that stage rail from the job's real state rather than from the wording of
- * the message.
- *
- * A row with no job behind it — an update about the account, or one whose job
- * this client can no longer see — simply has no rail. Nothing is invented.
+ * The list paints from cache on the first frame. A background refresh then
+ * replaces it. Stage rails come from `orderTitle` / `orderState` on the
+ * notification itself — this screen does not wait on `GET /orders`.
  */
 export default function NotificationsScreen() {
   const colors = useThemeColors();
   const router = useRouter();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const { items, loading, error, refresh, readIds, markRead, markAllRead } = useNotifications();
-  const [orders, setOrders] = useState<api.Order[]>([]);
-
-  const load = useCallback(async () => {
-    await refresh();
-    // The rail is an enrichment, not the content: a failure here costs the
-    // stage line and nothing else, so the list still renders.
-    try {
-      setOrders(await api.listOrders());
-    } catch {
-      setOrders([]);
-    }
-  }, [refresh]);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
-    }, [load]),
+      void refresh();
+    }, [refresh]),
   );
 
-  const orderById = new Map(orders.map((order) => [order.id, order]));
   const unreadCount = items.filter((item) => !isNotificationRead(item, readIds)).length;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top"]}>
+    <TabScreen>
       <ScrollView className="gg-screen">
         <View className="gg-page gap-4 pt-4" style={{ paddingBottom: tabPad }}>
-          <View className="flex-row items-center justify-between gap-3">
-            <Text className="text-h1 text-text-primary">Notifications</Text>
-            {unreadCount > 0 ? (
-              <StatusChip tone="info" label={`${unreadCount} unread`} icon="clock" />
-            ) : null}
-          </View>
-          <Text className="text-body text-text-secondary">
-            {unreadCount > 0
-              ? "Tap an update to open the job, or swipe it left to mark it read."
-              : "Deadlines and status changes for your print jobs."}
-          </Text>
+          <ScreenHeader title="Notifications" />
+          {unreadCount > 0 ? (
+            <StatusChip tone="info" label={`${unreadCount} unread`} icon="clock" />
+          ) : null}
 
           {/*
             The screen about being told things is where asking to be told them
@@ -86,7 +62,7 @@ export default function NotificationsScreen() {
                 new Error(error),
                 "Could not load your updates. Check your connection and try again.",
               )}
-              onRetry={() => void load()}
+              onRetry={() => void refresh()}
             />
           ) : null}
 
@@ -97,31 +73,25 @@ export default function NotificationsScreen() {
             </>
           ) : null}
 
-          {items.map((notification) => {
-            const order = notification.orderId
-              ? (orderById.get(notification.orderId) ?? null)
-              : null;
-            return (
-              <NotificationCard
-                key={notification.id}
-                notification={notification}
-                read={isNotificationRead(notification, readIds)}
-                order={order}
-                onOpen={
-                  order
-                    ? () => {
-                        markRead(notification.id);
-                        router.push(`/order/${order.id}`);
-                      }
-                    : null
-                }
-                onMarkRead={() => markRead(notification.id)}
-              />
-            );
-          })}
+          {items.map((notification) => (
+            <NotificationCard
+              key={notification.id}
+              notification={notification}
+              read={isNotificationRead(notification, readIds)}
+              onOpen={
+                notification.orderId
+                  ? () => {
+                      void markRead(notification.id);
+                      router.push(`/order/${notification.orderId}`);
+                    }
+                  : null
+              }
+              onMarkRead={() => void markRead(notification.id)}
+            />
+          ))}
 
           {unreadCount > 1 ? (
-            <SecondaryButton label="Mark all as read" onPress={markAllRead} />
+            <SecondaryButton label="Mark all as read" onPress={() => void markAllRead()} />
           ) : null}
 
           {!items.length && !loading && !error ? (
@@ -132,6 +102,6 @@ export default function NotificationsScreen() {
           ) : null}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </TabScreen>
   );
 }

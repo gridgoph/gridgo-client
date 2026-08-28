@@ -112,7 +112,7 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("LoginScreen password already signed in", () => {
+describe("LoginScreen password sign-in with a live session for the same email", () => {
   beforeEach(() => {
     mockPassword.mockReset();
     mockFinalize.mockReset();
@@ -131,7 +131,15 @@ describe("LoginScreen password already signed in", () => {
     });
   });
 
-  it("signs the leftover out and submits the typed password instead of adopting it", async () => {
+  /**
+   * The round-trip budget, not just the outcome. A tap that lands Home must
+   * not spend a Clerk sign-out, a password attempt, a finalize and several
+   * forced JWT mints when the phone already holds a live client session for
+   * this exact email — that pile of round trips is what "authentication takes
+   * too long" was, and the empty `getToken` in the middle of it is what came
+   * out as the token error.
+   */
+  it("adopts without a sign-out, a password round trip, or a forced JWT mint", async () => {
     mockPassword.mockResolvedValue({ error: null });
     mockFinalize.mockResolvedValue({ error: null });
     await renderInSafeArea(<LoginScreen />);
@@ -145,12 +153,12 @@ describe("LoginScreen password already signed in", () => {
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
     expect(useSession.getState().source).toBe("clerk");
-    expect(mockSignOut).toHaveBeenCalled();
-    expect(mockPassword).toHaveBeenCalledWith({
-      emailAddress: "client@gridgo.ph",
-      password: "fixture-password",
-    });
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockPassword).not.toHaveBeenCalled();
+    // Clerk already has a token for this session; nothing here needs a mint.
+    expect(mockGetToken).not.toHaveBeenCalledWith({ skipCache: true });
     expect(screen.queryByText("Could not sign in")).toBeNull();
+    expect(screen.queryByText(/never received an identity token/i)).toBeNull();
     expect(screen.queryByText("You're already signed in.")).toBeNull();
   });
 });

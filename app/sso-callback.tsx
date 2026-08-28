@@ -1,8 +1,8 @@
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, Text } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ActivityIndicator, Text, View } from "react-native";
 
+import { Screen } from "@/components/Screen";
 import { useThemeColors } from "@/hooks/useTheme";
 
 /**
@@ -21,12 +21,11 @@ export default function SsoCallbackScreen() {
   }, [router]);
 
   return (
-    <SafeAreaView
-      className="flex-1 items-center justify-center gap-3 bg-canvas"
-      edges={["top", "bottom"]}
-    >
-      <ActivityIndicator color={colors.textPrimary} />
-      <Text className="text-body text-text-secondary">Signing you in…</Text>
-    </SafeAreaView>
+    <Screen edges={["top", "bottom"]}>
+      <View className="flex-1 items-center justify-center gap-3">
+        <ActivityIndicator color={colors.textPrimary} />
+        <Text className="text-body text-text-secondary">Signing you in…</Text>
+      </View>
+    </Screen>
   );
 }

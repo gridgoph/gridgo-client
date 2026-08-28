@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Screen } from "@/components/Screen";
 import { GridgoLogo } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -172,7 +172,7 @@ export default function DesignSystemScreen() {
       canvas between the header and the masthead. Bottom only, matching every
       other pushed screen.
     */
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen" showsVerticalScrollIndicator={false}>
         <View className="gg-page gap-10 pb-16 pt-6">
           {/* Masthead — the job ticket for the system itself. */}
@@ -340,6 +340,6 @@ export default function DesignSystemScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

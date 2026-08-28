@@ -25,6 +25,21 @@ import {
 /** Picker filter. PDFs plus any image — the server judges the real format. */
 const PICKER_TYPES = ["application/pdf", "image/*"];
 
+/**
+ * Narrowing the picker to one shop's listing.
+ *
+ * A shop says which artwork types its listing takes, and a client who picks a
+ * PDF for a shop that prints from images only should find that out in the
+ * picker, not after a 200 MB upload. `accept` is those MIME types; `check`
+ * answers whether a chosen file is one of them, and `rejection` is the shop's
+ * own words for what to send instead.
+ */
+export type FormatGuard = {
+  accept: string[];
+  check: (fileName: string, mimeType?: string | null) => boolean;
+  rejection: (fileName: string) => string;
+};
+
 export type ArtworkUploadController = {
   state: ArtworkUploadState;
   /** Open the file picker and upload whatever is chosen. */
@@ -41,10 +56,13 @@ export type ArtworkUploadController = {
   adopt: (fileId: string, fileName: string) => void;
 };
 
-export function useArtworkUpload(initial?: {
-  fileId?: string | null;
-  fileName?: string | null;
-}): ArtworkUploadController {
+export function useArtworkUpload(
+  initial?: {
+    fileId?: string | null;
+    fileName?: string | null;
+  },
+  guard?: FormatGuard,
+): ArtworkUploadController {
   const [state, setState] = useState<ArtworkUploadState>(() =>
     initial?.fileId
       ? {
@@ -127,7 +145,9 @@ export function useArtworkUpload(initial?: {
     let result: DocumentPicker.DocumentPickerResult;
     try {
       result = await DocumentPicker.getDocumentAsync({
-        type: PICKER_TYPES,
+        // A listing's own formats when there is one; otherwise everything the
+        // storage API can sniff, and the server decides.
+        type: guard?.accept.length ? guard.accept : PICKER_TYPES,
         multiple: false,
         // Gives a URI the uploader can stream from on both platforms. The
         // bytes are copied on disk, never read into JavaScript.
@@ -153,12 +173,25 @@ export function useArtworkUpload(initial?: {
       return;
     }
 
+    // Some pickers ignore the type filter, so the choice is checked here too.
+    // Said before the bytes move, in the shop's own terms.
+    const chosenName = normalizeFileName(asset.name);
+    if (guard && !guard.check(chosenName, asset.mimeType ?? null)) {
+      setState({
+        ...EMPTY_ARTWORK,
+        phase: "failed",
+        fileName: chosenName,
+        error: guard.rejection(chosenName),
+      });
+      return;
+    }
+
     // Say the limit before spending a client's data on a doomed upload.
     if (typeof asset.size === "number" && asset.size > ARTWORK_MAX_BYTES) {
       setState({
         ...EMPTY_ARTWORK,
         phase: "failed",
-        fileName: normalizeFileName(asset.name),
+        fileName: chosenName,
         error: `Artwork has to be under ${ARTWORK_MAX_MIB} MB, and this file is larger. Flatten the layers or export at a lower resolution, then pick it again.`,
       });
       return;
@@ -166,10 +199,10 @@ export function useArtworkUpload(initial?: {
 
     await send({
       uri: asset.uri,
-      name: normalizeFileName(asset.name),
+      name: chosenName,
       mimeType: asset.mimeType ?? null,
     });
-  }, [send]);
+  }, [send, guard]);
 
   const retry = useCallback(async () => {
     const asset = lastAssetRef.current;

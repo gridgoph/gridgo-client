@@ -1,0 +1,212 @@
+/**
+ * What the basket comes to, before GRIDGO writes the order.
+ *
+ * Checkout is the authority: `POST /me/carts/:id/checkout` groups the lines by
+ * shop, measures each shop's farthest drop-off, prices delivery from the
+ * distance bands, adds the service fee, and returns the figures the order is
+ * written with. This module reproduces that arithmetic so the sheet can show a
+ * total before the client commits to it — the same formulas, from the same
+ * `GET /settings`, so the preview and the invoice agree.
+ *
+ * Where GRIDGO cannot yet know a figure, neither can this. No drop-off means
+ * no delivery leg and no total, and the sheet says so rather than showing a
+ * number that will move.
+ *
+ * The grouping is by supplier because that is what the money does — one press
+ * is one print run, one drop and one delivery charge — but nothing here carries
+ * a shop's name. The client is buying from GRIDGO; a run is "Print run 1", and
+ * the supplier id stays where it belongs, in the calls.
+ */
+
+import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
+import { haversineMetres, type GeoPoint } from "@/lib/tracking";
+
+/**
+ * The platform's rounding, copied exactly.
+ *
+ * `floor((value * bps + 5000) / 10000)` — half up on the centavo. PostgreSQL
+ * recomputes it with exact numeric on the way in, so a different rounding here
+ * would show a total the server then disagrees with by a centavo, which is the
+ * kind of difference nobody can explain at a counter.
+ */
+export function roundBps(amountMinor: number, bps: number): number {
+  return Math.floor((amountMinor * bps + 5000) / 10000);
+}
+
+/** The band a distance falls in. Bands are ordered, and the last has no max. */
+export function deliveryFeeForDistance(
+  settings: Pick<PlatformSettings, "deliveryFeeBands">,
+  metres: number,
+): number | null {
+  for (const band of settings.deliveryFeeBands) {
+    if (band.maxDistanceMeters == null || metres <= band.maxDistanceMeters) {
+      return band.feeMinor;
+    }
+  }
+  return null;
+}
+
+export type PrintRun = {
+  supplierId: string;
+  /** What the client calls this run. Never a shop. */
+  runLabel: string;
+  lines: CartLineRecord[];
+  subtotalMinor: number;
+};
+
+/**
+ * The basket by print run, in the order the runs were first started.
+ *
+ * A run is one press, so the split is what decides delivery: two runs is two
+ * drops and two fees. The client is told that; they are not told whose presses
+ * they are.
+ */
+export function printRuns(lines: CartLineRecord[]): PrintRun[] {
+  const groups = new Map<string, PrintRun>();
+  for (const line of lines) {
+    const existing = groups.get(line.supplierId);
+    const amount = line.lineSubtotalMinor ?? 0;
+    if (existing) {
+      existing.lines.push(line);
+      existing.subtotalMinor += amount;
+      continue;
+    }
+    groups.set(line.supplierId, {
+      supplierId: line.supplierId,
+      runLabel: `Print run ${groups.size + 1}`,
+      lines: [line],
+      subtotalMinor: amount,
+    });
+  }
+  return [...groups.values()];
+}
+
+export type DeliveryLeg = {
+  supplierId: string;
+  runLabel: string;
+  /** To the farthest drop-off this run has to reach, which is what is charged. */
+  distanceMeters: number | null;
+  feeMinor: number | null;
+};
+
+export type BasketTotals = {
+  itemSubtotalMinor: number;
+  serviceFeeRateBps: number;
+  serviceFeeMinor: number;
+  /** One leg per print run. Two runs is two drops and two fees. */
+  legs: DeliveryLeg[];
+  /** Null when any leg is still unpriced — a partial delivery total is a lie. */
+  deliveryFeeMinor: number | null;
+  totalMinor: number | null;
+  /** 75% now, the rest before delivery. Null while the total is. */
+  downpaymentMinor: number | null;
+  balanceMinor: number | null;
+};
+
+/** The share of the total GRIDGO collects up front, per the money model. */
+export const DOWNPAYMENT_RATE_BPS = 7500;
+
+export type TotalsInput = {
+  cart: Cart | null;
+  settings: PlatformSettings | null;
+  /** Where each run starts, so its leg can be measured. Never rendered. */
+  shopPoints: Record<string, GeoPoint | null>;
+};
+
+/**
+ * What the client owes, as far as GRIDGO can honestly say.
+ *
+ * Delivery is measured to the farthest drop-off each run has to reach — the
+ * same rule checkout applies — so a run split across three addresses is priced
+ * on the longest leg and not on the nearest.
+ */
+export function basketTotals({ cart, settings, shopPoints }: TotalsInput): BasketTotals {
+  const lines = cart?.lines ?? [];
+  const groups = printRuns(lines);
+  const itemSubtotalMinor = groups.reduce((sum, group) => sum + group.subtotalMinor, 0);
+  const serviceFeeRateBps = settings?.serviceFeeRateBps ?? 0;
+  const serviceFeeMinor = settings ? roundBps(itemSubtotalMinor, serviceFeeRateBps) : 0;
+
+  const collecting = cart?.fulfillmentMode === "pickup";
+  const legs: DeliveryLeg[] = collecting
+    ? []
+    : groups.map((group) => {
+        const shopPoint = shopPoints[group.supplierId] ?? null;
+        const dropoffs = group.lines.map((line) => line.dropoff ?? cart?.defaultDropoff ?? null);
+        const distances = shopPoint
+          ? dropoffs.map((dropoff) =>
+              dropoff ? Math.round(haversineMetres(shopPoint, dropoff)) : null,
+            )
+          : dropoffs.map(() => null);
+        const known = distances.every((distance) => distance != null) && distances.length > 0;
+        // Checkout charges the farthest drop this run has to reach.
+        const distanceMeters = known ? Math.max(...(distances as number[])) : null;
+        return {
+          supplierId: group.supplierId,
+          runLabel: group.runLabel,
+          distanceMeters,
+          feeMinor:
+            settings && distanceMeters != null
+              ? deliveryFeeForDistance(settings, distanceMeters)
+              : null,
+        };
+      });
+
+  const deliveryKnown = legs.every((leg) => leg.feeMinor != null);
+  const deliveryFeeMinor = deliveryKnown
+    ? legs.reduce((sum, leg) => sum + (leg.feeMinor ?? 0), 0)
+    : null;
+
+  const totalMinor =
+    settings && deliveryFeeMinor != null
+      ? itemSubtotalMinor + serviceFeeMinor + deliveryFeeMinor
+      : null;
+  const downpaymentMinor = totalMinor == null ? null : roundBps(totalMinor, DOWNPAYMENT_RATE_BPS);
+
+  return {
+    itemSubtotalMinor,
+    serviceFeeRateBps,
+    serviceFeeMinor,
+    legs,
+    deliveryFeeMinor,
+    totalMinor,
+    downpaymentMinor,
+    balanceMinor:
+      totalMinor == null || downpaymentMinor == null ? null : totalMinor - downpaymentMinor,
+  };
+}
+
+/** Lines still waiting for a file, so the sheet can name them. */
+export function linesMissingArtwork(lines: CartLineRecord[]): CartLineRecord[] {
+  return lines.filter((line) => !line.artworkFileId);
+}
+
+/** Lines with no drop-off, when the run is being delivered. */
+export function linesMissingDropoff(cart: Cart | null): CartLineRecord[] {
+  if (!cart || cart.fulfillmentMode !== "delivery") return [];
+  return cart.lines.filter((line) => !(line.dropoff ?? cart.defaultDropoff));
+}
+
+/** What one basket line is called, from the listing it came from. */
+export function lineName(line: CartLineRecord): string {
+  return line.listing?.name ?? "This listing";
+}
+
+/** The options answered on a line, as the client picked them. */
+export function lineOptionLabels(line: CartLineRecord): string[] {
+  const listing = line.listing;
+  if (!listing) return [];
+  if (Array.isArray(listing.optionGroups)) {
+    return line.optionIds
+      .map((optionId) => {
+        for (const group of listing.optionGroups) {
+          const option = group.options.find((candidate) => candidate.id === optionId);
+          if (option) return option.label;
+        }
+        return null;
+      })
+      .filter((label): label is string => Boolean(label));
+  }
+  const selected = (listing as { selectedOptions?: { id: string; label: string }[] }).selectedOptions;
+  return Array.isArray(selected) ? selected.map((option) => option.label) : [];
+}

@@ -23,10 +23,17 @@ export type TabDefinition = {
 export const TABS: readonly TabDefinition[] = [
   { name: "home", label: "Home" },
   { name: "orders", label: "Orders" },
-  { name: "new-request", label: "New request" },
   { name: "notifications", label: "Notifications" },
   { name: "account", label: "Account" },
+  { name: "new-request", label: "New request" },
 ];
 
-/** The middle tab is an action, not a destination, and both bars promote it. */
-export const ACTION_TAB: TabName = "new-request";
+/**
+ * The stepper. It stays a tab route so a draft can reopen it, but it is not
+ * in the bar — the yellow "+" on each main screen is the way into a request.
+ *
+ * Typed as the literal, not `TabName`. `Exclude<TabName, typeof ACTION_TAB>`
+ * must stay the four labelled destinations; annotating this as `TabName`
+ * collapses that Exclude to `never` and fails `npx tsc` on the bar.
+ */
+export const ACTION_TAB = "new-request" satisfies TabName;

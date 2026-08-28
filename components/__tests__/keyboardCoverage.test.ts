@@ -87,25 +87,27 @@ describe("keyboard coverage contract", () => {
   });
 
   it("keeps a screen under a header off the top edge", () => {
-    // `FormScreen` passes `edges` straight to SafeAreaView, so the existing
+    // `FormScreen` passes `edges` to `Screen`, so the existing
     // pushed-route rule still has to hold through it. Only screens that own
-    // their top edge — the tab shell, welcome, callback, and full-bleed routes
-    // — may claim it. Login and signup sit under the native stack header.
+    // their top edge — welcome, callback, full-bleed routes, and the stepper
+    // — may claim it on the route itself. Home, Orders, Notifications and
+    // Account go through `TabScreen`, which owns the status-bar inset once
+    // so a first tab or a push cannot paint under it. Login and signup sit
+    // under the native stack header.
     const claiming = routes
       .filter((file) => /edges=\{\[[^\]]*"top"/.test(withoutComments(readFileSync(file, "utf8"))))
       .map((file) => relative(root, file));
 
     expect(claiming.sort()).toEqual([
       "app/(auth)/welcome.tsx",
-      "app/(tabs)/account.tsx",
-      "app/(tabs)/home.tsx",
       "app/(tabs)/new-request.tsx",
-      "app/(tabs)/notifications.tsx",
-      "app/(tabs)/orders.tsx",
       "app/complete-profile.tsx",
       "app/onboarding.tsx",
       "app/sso-callback.tsx",
     ]);
+
+    const tabShell = readFileSync(join(componentsDir, "TabScreen.tsx"), "utf8");
+    expect(withoutComments(tabShell)).toMatch(/edges=\{\[[^\]]*"top"/);
   });
 });
 

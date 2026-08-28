@@ -167,11 +167,14 @@ describe("LoginScreen leftover Clerk session of a different account", () => {
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
     await waitFor(() =>
       expect(mockPassword).toHaveBeenCalledWith({
-        emailAddress: "mddprado00290@usep.edu.ph",
+        identifier: "mddprado00290@usep.edu.ph",
         password: "fixture-password",
       }),
     );
-    await waitFor(() => expect(screen.getByText(/GRIDGO Rider/)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText("This email is not available. Try a different email.")).toBeTruthy(),
+    );
+    expect(screen.queryByRole("button", { name: "Sign out and try again" })).toBeNull();
     expect(useSession.getState().user).toBeNull();
     expect(screen.queryByText("markdavidprado@gmail.com")).toBeNull();
     expect(screen.queryByTestId("redirect")).toBeNull();

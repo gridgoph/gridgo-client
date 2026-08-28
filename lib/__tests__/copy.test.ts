@@ -1,5 +1,6 @@
 import {
   actorLabel,
+  clientEmailUnavailableMessage,
   installmentStatusLabel,
   paymentStatusLabel,
   roleAppLabel,
@@ -107,5 +108,14 @@ describe("roleAppLabel", () => {
     for (const role of ["client", "supplier", "rider", "ops_admin", "super_admin", "nope"]) {
       expect(roleAppLabel(role)).not.toMatch(/_/);
     }
+  });
+});
+
+describe("clientEmailUnavailableMessage", () => {
+  it("does not name another GRIDGO app or role", () => {
+    expect(clientEmailUnavailableMessage).toBe(
+      "This email is not available. Try a different email.",
+    );
+    expect(clientEmailUnavailableMessage).not.toMatch(/rider|supplier|operations|client/i);
   });
 });

@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
+import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
 import type { DevicePlatform } from "@/lib/push";
 
@@ -30,6 +31,12 @@ export type User = {
   accountType?: AccountType;
   orgName?: string;
   supplierName?: string;
+  /**
+   * What the account was at when it was read. Sent back on a correction so a
+   * change Operations made in the meantime is refused rather than overwritten.
+   * Absent from deployments whose `/me` does not version yet.
+   */
+  version?: number;
 };
 
 /** A map point on an order. Absent until the platform knows one. */
@@ -142,6 +149,12 @@ export type Order = {
 export type PlatformSettings = {
   issueWindowHours: number;
   deliveryFeeBands: { maxDistanceMeters: number | null; feeMinor: number }[];
+  /**
+   * GRIDGO's own charge, in basis points of the items subtotal. Never a
+   * constant in the app: Operations changes it without a release, and a stale
+   * copy here would disagree with what the client is billed.
+   */
+  serviceFeeRateBps: number;
 };
 
 /** Platform-defined categories, materials and finishes. */
@@ -214,11 +227,27 @@ export type Notification = {
   type?: string;
   /** Present when the update is about one job, so the row can open it. */
   orderId?: string;
+  /** Job title from the list payload — not a hydrated order. */
+  orderTitle?: string;
+  /** Job state from the list payload, enough for the stage rail. */
+  orderState?: string;
   title: string;
   body: string;
+  /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */
+  imageUrl?: string | null;
   read: boolean;
   at: string;
 };
+
+export type NotificationList = {
+  notifications: Notification[];
+  snapshot: string | null;
+};
+
+/** Recent window for the inbox. The API clamps higher values. */
+export const NOTIFICATION_LIST_LIMIT = 40;
+/** Hung list reads become an error, not an endless skeleton. */
+export const NOTIFICATIONS_TIMEOUT_MS = 8_000;
 
 /** The update that tells a client a supplier accepted, and what it will cost. */
 export const ASSIGNMENT_NOTIFICATION_TYPE = "supplier_assignment_final_price";
@@ -274,7 +303,12 @@ export type ClientSignupInput = {
 };
 
 let tokenMemory: string | null = null;
-type TokenProvider = () => Promise<string | null>;
+/**
+ * `force` asks the identity provider to mint a new token rather than answer
+ * from its cache. Only {@link request} sets it, and only after a `401` on a
+ * token it had already sent — every other read stays on the cheap path.
+ */
+type TokenProvider = (options?: { force?: boolean }) => Promise<string | null>;
 let tokenProvider: TokenProvider | null = null;
 
 /** Fired when a request with a bearer token receives 401 — session must clear. */
@@ -313,6 +347,11 @@ export type ResolveApiBaseInput = {
    */
   hostUri?: string | null;
   platformOS: typeof Platform.OS | string;
+  /**
+   * False on an Android emulator (loopback is 10.0.2.2). True on a physical
+   * phone: USB reverse maps the phone's own 127.0.0.1 to this machine.
+   */
+  isDevice?: boolean | null;
 };
 
 /**
@@ -321,7 +360,8 @@ export type ResolveApiBaseInput = {
  * Precedence:
  * 1. Non-empty `envUrl` (trailing slash stripped)
  * 2. Hostname from Expo dev-server `hostUri` + `apiPort`
- * 3. If that hostname is loopback and platform is Android → `10.0.2.2` (emulator)
+ * 3. If that hostname is loopback and platform is Android:
+ *    emulator → `10.0.2.2`; physical USB phone → `127.0.0.1` (adb reverse)
  * 4. `http://127.0.0.1:<apiPort>`
  */
 export function resolveApiBase({
@@ -329,6 +369,7 @@ export function resolveApiBase({
   envPort,
   hostUri,
   platformOS,
+  isDevice,
 }: ResolveApiBaseInput): string {
   const trimmedUrl = envUrl?.trim().replace(/\/$/, "");
   if (trimmedUrl) return trimmedUrl;
@@ -338,7 +379,11 @@ export function resolveApiBase({
 
   if (hostname) {
     if (isLoopbackHost(hostname) && platformOS === "android") {
-      return `http://10.0.2.2:${port}`;
+      // 10.0.2.2 is only the emulator's path to the host. A USB phone with
+      // adb reverse has GRIDGO on its own loopback; 10.0.2.2 never answers,
+      // and Sign In sits on "Checking…" until the fetch dies.
+      if (isDevice === false) return `http://10.0.2.2:${port}`;
+      return `http://127.0.0.1:${port}`;
     }
     return `http://${hostname}:${port}`;
   }
@@ -413,7 +458,16 @@ export function getApiBase(): string {
     envPort: process.env.EXPO_PUBLIC_API_PORT,
     hostUri: readExpoDevHostUri(),
     platformOS: Platform.OS,
+    isDevice: Constants.isDevice,
   });
+}
+
+/** In-app picture URL. Hosted broadcast paths resolve against this app's API. */
+export function notificationImageUrl(imageUrl?: string | null): string | null {
+  const value = typeof imageUrl === "string" ? imageUrl.trim() : "";
+  if (!value) return null;
+  if (value.startsWith("/")) return `${getApiBase().replace(/\/$/, "")}${value}`;
+  return value;
 }
 
 /** True when fetch failed before an HTTP response (API process down / wrong host). */
@@ -426,7 +480,9 @@ export function isNetworkFailure(error: unknown): boolean {
     msg.includes("network request failed") ||
     msg.includes("failed to fetch") ||
     msg.includes("network error") ||
-    msg.includes("load failed")
+    msg.includes("load failed") ||
+    msg.includes("aborted") ||
+    error.name === "AbortError"
   );
 }
 
@@ -451,9 +507,9 @@ type ResolvedToken = {
   source: "legacy" | "provider" | null;
 };
 
-async function resolveToken(): Promise<ResolvedToken> {
+async function resolveToken(force = false): Promise<ResolvedToken> {
   if (tokenMemory) return { token: tokenMemory, source: "legacy" };
-  const token = (await tokenProvider?.()) ?? null;
+  const token = (await tokenProvider?.({ force })) ?? null;
   return { token, source: token ? "provider" : null };
 }
 
@@ -483,16 +539,37 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
   options: RequestOptions = {},
+  /**
+   * Set once by the `401` retry below, after asking the identity provider for
+   * a freshly minted token. It is only ever true on the second attempt, so a
+   * request can cost at most one extra round trip.
+   */
+  forceFreshToken = false,
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-  const auth = await resolveToken();
+  const auth = await resolveToken(forceFreshToken);
   if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
 
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
+  const timeoutMs = 20_000;
+  const timedOut = !init.signal;
+  const controller = timedOut ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBase()}${path}`, {
+      ...init,
+      headers,
+      signal: init.signal ?? controller?.signal,
+    });
+  } catch (error) {
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const text = await res.text();
   let data: unknown = null;
   if (text) {
@@ -506,6 +583,14 @@ async function request<T>(
     // Only clear when we actually sent a bearer token. Login 401 (wrong password)
     // has no token and must not touch session state.
     if (res.status === 401 && auth.token && !options.ignoreUnauthorized) {
+      // The one place a forced token mint is worth its round trip: the bearer
+      // we sent came from the identity provider's cache and the API refused
+      // it. Ask for a new one and try once. `ignoreUnauthorized` is excluded
+      // deliberately — that 401 is the unmapped-identity probe before
+      // activate, where a fresher token changes nothing.
+      if (auth.source === "provider" && !forceFreshToken && !init.signal) {
+        return request<T>(path, init, options, true);
+      }
       if (auth.source === "legacy") setToken(null);
       notifyUnauthorized();
     }
@@ -665,6 +750,39 @@ export async function me(options?: RequestOptions): Promise<User> {
   return result.user;
 }
 
+/**
+ * Whether this email may continue in the Client app.
+ *
+ * Called after Clerk has accepted the password, before any device-trust code
+ * is sent. Never sends a bearer: a leftover JWT would stall the lookup on a
+ * token wait, and this answer is about the typed address, not the leftover.
+ * A missing route (older API) throws {@link ApiError} so the login gate can
+ * fail open for real clients.
+ */
+export async function clientEmailAvailable(email: string): Promise<boolean> {
+  const res = await fetch(`${getApiBase()}/auth/clerk/client-available`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  });
+  const text = await res.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  if (!res.ok) throw new ApiError(res.status, data);
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "available" in data &&
+    (data as { available: unknown }).available === true
+  );
+}
+
 /** Fields a verified Clerk session may send when creating or completing a client. */
 export type ClerkActivateInput = {
   accountType?: AccountType;
@@ -691,6 +809,191 @@ export async function activateClerkClient(input: ClerkActivateInput = {}): Promi
   return result.user;
 }
 
+// ---------------------------------------------------------------------------
+// Shop boards — the public supplier catalog
+//
+// A shop's board is the listings it wrote itself: a sample, a price, the steps
+// a client answers, and what artwork it takes. `docs/SUPPLIER_CATALOG_API.md`
+// in gridgo-api is the contract. Everything here is public browse — a listing
+// reaches it only when the shop is approved, its service is live, the listing
+// is active and complete, and it has a ready photo. There is nothing to filter
+// on this side; if it is in the payload, a client may order it.
+// ---------------------------------------------------------------------------
+
+/** One artwork type a listing accepts. `inputKind` decides upload vs link. */
+export type AcceptedFormat = {
+  code: string;
+  displayName: string;
+  inputKind: "file" | "url";
+  extensions: string[];
+  mimeTypes: string[];
+  active: boolean;
+};
+
+/**
+ * A sample photo on a listing.
+ *
+ * `downloadUrl` is a short-lived signed link that comes with the payload, so a
+ * board does not cost one round trip per photo. It expires — never store it,
+ * and re-read the listing rather than holding it past `downloadUrlExpiresAt`.
+ */
+export type CatalogPhoto = {
+  fileId: string;
+  sortOrder: number;
+  altText: string | null;
+  url: string;
+  downloadUrl?: string;
+  downloadUrlExpiresAt?: string;
+};
+
+/**
+ * A choice inside one group. `priceModifierMinor` is added to the base price;
+ * `specBinding` is how a shop's own label ("A4") maps onto a governed field the
+ * rest of the platform understands.
+ */
+export type CatalogOption = {
+  id: string;
+  label: string;
+  priceModifierMinor: number;
+  specBinding: { fieldCode: string; value?: string; valueCode?: string } | null;
+  sortOrder: number;
+};
+
+/** `spec` is a step the client must answer; `addon` is one they may skip. */
+export type CatalogOptionGroup = {
+  id: string;
+  name: string;
+  kind: "spec" | "addon";
+  helpText: string | null;
+  required: boolean;
+  selectionMode: "single";
+  sortOrder: number;
+  version: number;
+  options: CatalogOption[];
+};
+
+/** The shop's own before-you-order guide, in its order. */
+export type CatalogPrepStep = {
+  id: string;
+  sortOrder: number;
+  title: string;
+  body: string;
+};
+
+export type CatalogPricingUnit = "per_unit" | "per_package";
+
+/** One listing on a shop's board. */
+export type CatalogItem = {
+  id: string;
+  supplierId: string;
+  supplierServiceId: string;
+  categoryCode: string;
+  subcategoryCode: string;
+  name: string;
+  description: string | null;
+  basePriceMinor: number;
+  /** Base plus the cheapest option of every required group. */
+  fromPriceMinor: number;
+  /** Only present when option ids were sent; null otherwise. */
+  effectivePriceMinor: number | null;
+  pricingUnit: CatalogPricingUnit;
+  packageQty: number | null;
+  pricingBasis: string;
+  turnaroundMode: "inherit" | "override";
+  turnaroundHours: number | null;
+  rush: { turnaroundHours: number; priceMinor: number } | null;
+  acceptedFormats: AcceptedFormat[];
+  photos: CatalogPhoto[];
+  prepSteps: CatalogPrepStep[];
+  optionGroups: CatalogOptionGroup[];
+  version: number;
+  serviceVersion: number;
+};
+
+/** Where a shop is. The same point delivery distance is measured from. */
+export type ShopPoint = { lat: number; lng: number; label: string };
+
+export type ShopMedia = { slot: string; fileId: string; url: string };
+
+/** One live service line, and the listings under it. */
+export type ShopService = {
+  id: string;
+  version: number;
+  categoryCode: string;
+  pricingBasis: string;
+  turnaroundHours: number | null;
+  acceptedFormats: string[];
+  items: CatalogItem[];
+};
+
+/**
+ * A shop in the list, before its board is read.
+ *
+ * `queueAhead` is how many jobs are in front of a new one. GRIDGO does not
+ * publish it yet, so it is optional and usually absent — the matched-shop card
+ * shows the line only when a real number arrives. Never fill it in from
+ * anything else; a made-up position is the one number a client would plan
+ * around.
+ */
+export type ShopSummary = {
+  supplierId: string;
+  shopName: string;
+  shop: ShopPoint | null;
+  media: ShopMedia[];
+  categories: string[];
+  itemCount: number;
+  queueAhead?: number | null;
+};
+
+/** One shop, with every live service line and complete listing on it. */
+export type ShopBoard = {
+  supplierId: string;
+  shopName: string;
+  shop: ShopPoint | null;
+  media: ShopMedia[];
+  categories: string[];
+  services: ShopService[];
+  queueAhead?: number | null;
+};
+
+/** Approved shops with at least one complete listing, newest page first. */
+export async function listCatalogShops(
+  categoryCode?: string | null,
+): Promise<ShopSummary[]> {
+  const query = categoryCode ? `?categoryCode=${encodeURIComponent(categoryCode)}` : "";
+  const result = await request<{ shops: ShopSummary[] }>(`/catalog/shops${query}`);
+  return result.shops;
+}
+
+/** One shop's whole board. */
+export async function getCatalogShop(supplierId: string): Promise<ShopBoard> {
+  const result = await request<{ shop: ShopBoard }>(
+    `/catalog/shops/${encodeURIComponent(supplierId)}`,
+  );
+  return result.shop;
+}
+
+/**
+ * One listing, priced for the options chosen.
+ *
+ * Sending the selected option ids is what turns `effectivePriceMinor` from null
+ * into the price this exact configuration costs. The app computes the same
+ * figure locally while the client is still picking (`lib/listing.ts`); this is
+ * the server's answer, and the server's is the one that counts.
+ */
+export async function getCatalogItem(
+  itemId: string,
+  optionIds: string[] = [],
+): Promise<CatalogItem> {
+  const query = optionIds.length
+    ? `?optionIds=${encodeURIComponent(optionIds.join(","))}`
+    : "";
+  const result = await request<{ item: CatalogItem }>(
+    `/catalog/items/${encodeURIComponent(itemId)}${query}`,
+  );
+  return result.item;
+}
+
 export async function listCatalog(): Promise<CatalogProduct[]> {
   const result = await request<{ catalog: CatalogProduct[] }>("/catalog");
   return result.catalog;
@@ -706,12 +1009,51 @@ export async function getTaxonomy(): Promise<TaxonomyPayload> {
  * The browsable product tree — the four customer-facing categories and their
  * subcategories, normalised.
  *
- * Falls back to the bundled transcription of the captain's chart when this
- * deployment's `/taxonomy` does not publish the tree yet. See
- * `lib/productCategories.ts`.
+ * The bundled seed is already a complete tree, and today's `/taxonomy` still
+ * serves production categories rather than this one. Screens therefore paint
+ * `productCategoriesNow()` on the first frame and treat this call as a
+ * background refresh. A live in-flight request is shared, and a successful
+ * (or seed-fallback) tree is held for a few minutes so home, the picker, and
+ * the match screen do not each wait on the same request.
  */
+const PRODUCT_CATEGORIES_TTL_MS = 5 * 60 * 1000;
+let productCategoryCache: { at: number; value: ProductCategory[] } | null = null;
+let productCategoryInflight: Promise<ProductCategory[]> | null = null;
+
+/** Instant tree for first paint. Never waits on the network. */
+export function productCategoriesNow(): ProductCategory[] {
+  return productCategoryCache?.value ?? PRODUCT_CATEGORY_SEED;
+}
+
+/** Test helper — the live cache must not leak across cases. */
+export function clearProductCategoryCache(): void {
+  productCategoryCache = null;
+  productCategoryInflight = null;
+}
+
 export async function getProductCategories(): Promise<ProductCategory[]> {
-  return adaptProductCategories(await getTaxonomy());
+  const now = Date.now();
+  if (productCategoryCache && now - productCategoryCache.at < PRODUCT_CATEGORIES_TTL_MS) {
+    return productCategoryCache.value;
+  }
+  if (productCategoryInflight) return productCategoryInflight;
+
+  productCategoryInflight = (async () => {
+    try {
+      const tree = adaptProductCategories(await getTaxonomy());
+      productCategoryCache = { at: Date.now(), value: tree };
+      return tree;
+    } catch (error) {
+      const fallback = productCategoryCache?.value ?? PRODUCT_CATEGORY_SEED;
+      productCategoryCache = { at: Date.now(), value: fallback };
+      if (fallback.length) return fallback;
+      throw error;
+    } finally {
+      productCategoryInflight = null;
+    }
+  })();
+
+  return productCategoryInflight;
 }
 
 /** Named parts of Davao, used to locate an address. Fees are not zone-based. */
@@ -780,13 +1122,473 @@ export async function transitionOrder(
   return result.order;
 }
 
-export async function listNotifications(): Promise<Notification[]> {
-  const result = await request<{ notifications: Notification[] }>("/notifications");
-  return result.notifications;
+export async function listNotifications(): Promise<NotificationList> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NOTIFICATIONS_TIMEOUT_MS);
+  try {
+    const result = await request<NotificationList>(
+      `/notifications?limit=${NOTIFICATION_LIST_LIMIT}`,
+      { signal: controller.signal },
+    );
+    return {
+      notifications: Array.isArray(result.notifications) ? result.notifications : [],
+      snapshot: result.snapshot ?? null,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function markNotificationRead(id: string, read = true): Promise<Notification> {
+  const result = await request<{ notification: Notification }>(
+    `/notifications/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ read }),
+    },
+  );
+  return result.notification;
+}
+
+export async function markAllNotificationsRead(snapshot: string): Promise<number> {
+  const result = await request<{ updatedCount: number }>("/notifications/read-all", {
+    method: "PATCH",
+    body: JSON.stringify({ snapshot }),
+  });
+  return result.updatedCount;
 }
 
 export async function health(): Promise<{ ok: boolean }> {
   return request("/health");
+}
+
+// ---------------------------------------------------------------------------
+// Matching, the basket, and checkout
+//
+// GRIDGO matches a client to one shop from the order they put quality, speed
+// and distance in, keeps the basket server-side, and takes the QR payment at
+// checkout. All of it is the platform's: the ranking follows the account, the
+// queue is counted from real jobs in front, and the totals on the sheet are the
+// ones the order is written with.
+// ---------------------------------------------------------------------------
+
+/** The three things a client ranks. The order is the whole preference. */
+export type MatchFactor = "quality" | "speed" | "distance";
+
+export type ClientPreferences = {
+  ranking: MatchFactor[];
+  /** 0 until the client has actually ranked; the ranking shown is the default. */
+  version: number;
+  updatedAt: string | null;
+};
+
+export type ClientAddress = {
+  id: string;
+  label: string;
+  addressLine: string;
+  point: OrderPoint;
+  isDefault: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** How busy the matched shop is, counted from the jobs actually in front. */
+export type MatchQueue = {
+  jobsAhead: number;
+  /** The shop's own turnaround plus everything queued before this job. */
+  estimatedHours: number;
+};
+
+/** One line of why this shop, in the order the client ranked. */
+export type MatchReason = {
+  code: string;
+  factor: MatchFactor | "bundle";
+  /** 1, 2, 3 — or 0 for the same-shop bundle, which outranks the ranking. */
+  rank: number;
+  weight: number;
+  detail: string;
+};
+
+export type MatchResult = {
+  shop: ShopBoard;
+  queue: MatchQueue;
+  reasons: MatchReason[];
+  listings: CatalogItem[];
+  /** How many other shops could have printed it. */
+  alternativesCount: number;
+  score: {
+    total: number;
+    weights: Record<MatchFactor, number>;
+    factors: Record<MatchFactor, number>;
+  };
+};
+
+export type FulfilmentMode = "delivery" | "pickup";
+export type ServiceLevel = "standard" | "scheduled";
+
+export type CartLineRecord = {
+  id: string;
+  supplierId: string;
+  catalogItemId: string;
+  quantity: number;
+  optionIds: string[];
+  structuredSpec: Record<string, unknown>;
+  artworkFileId: string | null;
+  mockupFileId: string | null;
+  /** This line's own drop-off, for a run split across several addresses. */
+  dropoff: OrderPoint | null;
+  sortOrder: number;
+  /** The listing as it stands now, priced for the options on this line. */
+  listing: CatalogItem | null;
+  lineSubtotalMinor: number | null;
+};
+
+export type Cart = {
+  id: string;
+  state: "draft" | "checked_out";
+  version: number;
+  serviceLevel: ServiceLevel;
+  scheduledFor: string | null;
+  fulfillmentMode: FulfilmentMode;
+  defaultDropoff: OrderPoint | null;
+  lines: CartLineRecord[];
+  checkedOutOrderId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** One shop's share of a placed order: its own pickup, drop-off and delivery. */
+export type MatchedJob = {
+  id: string;
+  shop: ShopBoard | null;
+  state: string;
+  fulfillmentMode: FulfilmentMode;
+  pickup: OrderPoint;
+  dropoff: OrderPoint | null;
+  deliveryDistanceMeters: number;
+  deliveryFeeMinor: number;
+  estimatedHours: number;
+  scheduledFor: string | null;
+};
+
+export type MatchedOrder = {
+  id: string;
+  state: string;
+  itemSubtotalMinor: number;
+  serviceFeeRateBps: number;
+  serviceFeeMinor: number;
+  deliveryFeeMinor: number;
+  totalMinor: number;
+  fulfillmentMode: FulfilmentMode;
+  serviceLevel: ServiceLevel;
+  scheduledFor: string | null;
+  paymentPlan: {
+    method: "qr_manual";
+    downpaymentMinor: number;
+    balanceMinor: number;
+    downpaymentStatus: string;
+  };
+  jobs: MatchedJob[];
+  invoiceNumber: string;
+  createdAt: string;
+};
+
+export type Invoice = {
+  invoiceNumber: string;
+  orderId: string;
+  issuedAt: string;
+  currency: string;
+  lines: {
+    id: string;
+    jobId: string;
+    itemName: string;
+    quantity: number;
+    unitPriceMinor: number;
+    amountMinor: number;
+    artworkFileId: string | null;
+    mockupFileId: string | null;
+    dropoff: OrderPoint | null;
+  }[];
+  itemSubtotalMinor: number;
+  serviceFeeRateBps: number;
+  serviceFeeMinor: number;
+  deliveryLines: { jobId: string; shopName: string; amountMinor: number }[];
+  deliveryFeeMinor: number;
+  totalMinor: number;
+  paymentPlan: { method: "qr_manual"; downpaymentMinor: number; balanceMinor: number };
+};
+
+/**
+ * What this client asked GRIDGO to match on.
+ *
+ * `version: 0` means they never answered and the ranking returned is the
+ * platform default — the app treats that as "not yet ranked" and asks, rather
+ * than matching on a preference nobody gave.
+ */
+export async function getPreferences(): Promise<ClientPreferences> {
+  const result = await request<{ preferences: ClientPreferences }>("/me/preferences");
+  return result.preferences;
+}
+
+export async function savePreferences(ranking: MatchFactor[]): Promise<ClientPreferences> {
+  const result = await request<{ preferences: ClientPreferences }>("/me/preferences", {
+    method: "PUT",
+    body: JSON.stringify({ ranking }),
+  });
+  return result.preferences;
+}
+
+export async function listAddresses(): Promise<ClientAddress[]> {
+  const result = await request<{ addresses: ClientAddress[] }>("/me/addresses");
+  return result.addresses;
+}
+
+export async function saveAddress(input: {
+  label: string;
+  addressLine: string;
+  point: OrderPoint;
+  isDefault?: boolean;
+}): Promise<ClientAddress> {
+  const result = await request<{ address: ClientAddress }>("/me/addresses", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.address;
+}
+
+// ---------------------------------------------------------------------------
+// The account itself
+//
+// `GET /me` is the client account as GRIDGO holds it, `PATCH /me` corrects the
+// parts this app is allowed to change, and `POST /me/business-apply` is how a
+// personal account becomes a business one. Everything about the account goes
+// through these three, so the contract lives in one place.
+//
+// A correction carries the version it was read at, and GRIDGO **requires** it:
+// a `PATCH` without `expectedVersion` is refused outright, and one carrying a
+// version that has moved comes back `409 account_version_conflict`. Operations
+// correcting a number while the client is editing it is exactly that case, and
+// the screen offers the latest rather than putting the old value back.
+//
+// Contract: `src/account-profile-routes.js` in gridgo-api. Every response is
+// the `{ user }` envelope, and the user carries `version`.
+// ---------------------------------------------------------------------------
+
+/** The details this app may change. Email and account type are not among them. */
+export type AccountPatch = {
+  name?: string;
+  phone?: string;
+  orgName?: string;
+};
+
+/**
+ * Where orders go, sent whole rather than by id.
+ *
+ * `POST /me/business-apply` takes an address body and matches it against the
+ * ones already saved — same label, line and point is the same address — so
+ * sending a saved one back sets it as the default without making a duplicate.
+ */
+export type BusinessApplyAddress = {
+  label: string;
+  addressLine: string;
+  point: { lat: number; lng: number };
+  isDefault?: boolean;
+};
+
+/** What a personal client sends to trade under a business name. */
+export type BusinessApplyInput = {
+  businessName: string;
+  /** Omitted where the account's own name and number already stand. */
+  contactName?: string;
+  contactPhone?: string;
+  address?: BusinessApplyAddress;
+};
+
+/** The account, re-read. Carries the `version` every correction must quote. */
+export async function getAccount(): Promise<User> {
+  const result = await request<{ user: User }>("/me");
+  return result.user;
+}
+
+export async function patchAccount(
+  patch: AccountPatch,
+  expectedVersion: number,
+): Promise<User> {
+  const result = await request<{ user: User }>("/me", {
+    method: "PATCH",
+    body: JSON.stringify({ expectedVersion, ...patch }),
+  });
+  return result.user;
+}
+
+export async function applyAsBusiness(input: BusinessApplyInput): Promise<User> {
+  const result = await request<{ user: User }>("/me/business-apply", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.user;
+}
+
+export type MatchInput = {
+  subcategoryCode: string;
+  /** Omit to use the ranking saved on the account. */
+  ranking?: MatchFactor[];
+  addressId?: string;
+  dropoff?: OrderPoint | null;
+  /** Lets the matcher keep a basket with one shop in it on that shop. */
+  cartId?: string;
+};
+
+/**
+ * The one shop, and why.
+ *
+ * A drop-off is required when the client ranked distance first — there is no
+ * "nearest" until GRIDGO knows what it is near — and the API refuses without
+ * one rather than quietly matching on the other two.
+ */
+export async function matchShop(input: MatchInput): Promise<MatchResult> {
+  return request<MatchResult>("/me/matches", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** The next-best shop, given every one already seen. */
+export async function matchNextShop(
+  input: MatchInput & { excludedSupplierIds: string[] },
+): Promise<MatchResult> {
+  return request<MatchResult>("/me/matches/next", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export type CartFulfilment = {
+  fulfillmentMode?: FulfilmentMode;
+  serviceLevel?: ServiceLevel;
+  scheduledFor?: string | null;
+  defaultDropoff?: OrderPoint | null;
+};
+
+export async function createCart(input: CartFulfilment = {}): Promise<Cart> {
+  const result = await request<{ cart: Cart }>("/me/carts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.cart;
+}
+
+export async function getCart(cartId: string): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(`/me/carts/${encodeURIComponent(cartId)}`);
+  return result.cart;
+}
+
+export async function setCartFulfilment(
+  cartId: string,
+  input: CartFulfilment,
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/fulfillment`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+  return result.cart;
+}
+
+/** One drop-off for the whole run, or a different one per line. */
+export async function setCartDropoffs(
+  cartId: string,
+  input: {
+    defaultDropoff?: OrderPoint | null;
+    lines?: { lineId: string; dropoff: OrderPoint | null }[];
+  },
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/dropoffs`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+  return result.cart;
+}
+
+export async function addCartLine(
+  cartId: string,
+  input: {
+    catalogItemId: string;
+    optionIds: string[];
+    quantity: number;
+    structuredSpec?: Record<string, unknown>;
+    artworkFileId?: string | null;
+    dropoff?: OrderPoint | null;
+  },
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/lines`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.cart;
+}
+
+export async function updateCartLine(
+  cartId: string,
+  lineId: string,
+  input: {
+    quantity?: number;
+    optionIds?: string[];
+    structuredSpec?: Record<string, unknown>;
+    artworkFileId?: string | null;
+    dropoff?: OrderPoint | null;
+  },
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/lines/${encodeURIComponent(lineId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.cart;
+}
+
+export async function removeCartLine(cartId: string, lineId: string): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/lines/${encodeURIComponent(lineId)}`,
+    { method: "DELETE" },
+  );
+  return result.cart;
+}
+
+/** Bind a stored `mockup` file to a basket line. */
+export async function setCartLineMockup(
+  cartId: string,
+  lineId: string,
+  fileId: string,
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/lines/${encodeURIComponent(lineId)}/mockup`,
+    { method: "PUT", body: JSON.stringify({ fileId }) },
+  );
+  return result.cart;
+}
+
+/**
+ * Place the order.
+ *
+ * QR Ph only, and the reference and the receipt screenshot go with it — the
+ * payment is submitted, never confirmed, because Operations matches it against
+ * the GRIDGO wallet by hand. The order comes back waiting for Operations QA.
+ */
+export async function checkoutCart(
+  cartId: string,
+  payment: { reference: string; proofFileId: string },
+): Promise<{ order: MatchedOrder; invoice: Invoice }> {
+  return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
+    method: "POST",
+    body: JSON.stringify({ payment: { method: "qr_manual", ...payment } }),
+  });
+}
+
+export async function getInvoice(orderId: string): Promise<Invoice> {
+  const result = await request<{ invoice: Invoice }>(
+    `/orders/${encodeURIComponent(orderId)}/invoice`,
+  );
+  return result.invoice;
 }
 
 // ---------------------------------------------------------------------------

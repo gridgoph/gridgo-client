@@ -70,12 +70,15 @@ jest.mock("@clerk/expo/experimental", () => ({
   useSSO: () => ({ startSSOFlow: jest.fn() }),
 }));
 
+const mockClientEmailAvailable = jest.fn(async (..._args: unknown[]) => true);
+
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
   return {
     ...actual,
     me: (...args: unknown[]) => mockMe(...args),
     activateClerkClient: jest.fn(),
+    clientEmailAvailable: (...args: unknown[]) => mockClientEmailAvailable(...args),
   };
 });
 
@@ -156,6 +159,7 @@ describe("LoginScreen password verification code", () => {
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
     mockMe.mockReset().mockResolvedValue(mappedClient);
+    mockClientEmailAvailable.mockReset().mockResolvedValue(true);
     mockPreventRemove.mockClear();
     useLoginFlow.getState().reset();
     useSession.setState({
@@ -191,7 +195,11 @@ describe("LoginScreen password verification code", () => {
   });
 
   it("collects the email code after password, then adopts the client home", async () => {
+    useSession.setState({
+      error: "This email is not available. Try a different email.",
+    });
     await renderInSafeArea(<LoginScreen />);
+    expect(screen.getByText("This email is not available. Try a different email.")).toBeTruthy();
     fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
     fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
     await waitFor(() =>
@@ -205,10 +213,12 @@ describe("LoginScreen password verification code", () => {
     await waitFor(() => expect(screen.getByText("Enter the code")).toBeTruthy());
     expect(mockSendEmailCode).toHaveBeenCalled();
     expect(screen.getByLabelText("Verification code")).toBeTruthy();
+    expect(screen.queryByText("This email is not available. Try a different email.")).toBeNull();
     expect(screen.queryByText("Recovery code")).toBeNull();
     expect(screen.queryByLabelText("Recovery code")).toBeNull();
     expect(screen.queryByText("Check your email")).toBeNull();
     expect(screen.queryByText("Could not sign in")).toBeNull();
+    expect(screen.queryByText("Could not verify code")).toBeNull();
     expect(
       screen.queryByText("This account needs another verification step. Please try again."),
     ).toBeNull();

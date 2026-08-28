@@ -109,6 +109,23 @@ export function SkeletonLine({ width, height = "h-4" }: LineProps) {
   );
 }
 
+/**
+ * A shape of any size — a sample frame, a map card, a photo strip.
+ * Give it the height of what it becomes; a wrong-height placeholder is the
+ * jump this component exists to remove.
+ */
+export function SkeletonBlock({ className = "h-24 w-full" }: { className?: string }) {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      className={`${className} overflow-hidden rounded-sm bg-surface-variant`}
+    >
+      <Sweep />
+    </View>
+  );
+}
+
 /** A pill — a status chip, a filter, a badge. */
 export function SkeletonPill({ width = "w-28" }: { width?: string }) {
   return (

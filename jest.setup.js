@@ -57,3 +57,14 @@ jest.mock("expo-notifications", () => ({
 jest.mock("react-native-keyboard-controller", () =>
   require("react-native-keyboard-controller/jest"),
 );
+
+// Every screen test runs as a client who has already told GRIDGO what to match
+// on. The ranking is a one-off gate on the way in (lib/authLanding.ts), and
+// leaving the store empty would land every one of these tests on the ranking
+// screen instead of the thing it is about. The gate itself is covered directly
+// in lib/__tests__/authLanding.test.ts and app/__tests__/priorities.test.tsx;
+// a test that wants an unranked phone clears this store itself.
+beforeEach(() => {
+  const { usePriorities } = require("@/store/priorities");
+  usePriorities.setState({ ranking: ["quality", "speed", "distance"], loaded: true });
+});

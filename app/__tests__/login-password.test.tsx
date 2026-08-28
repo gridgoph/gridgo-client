@@ -15,6 +15,7 @@ const mappedClient: User = {
   accountType: "individual",
 };
 
+const mockCreate = jest.fn();
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
 const mockGetToken = jest.fn(
@@ -32,7 +33,7 @@ jest.mock("@clerk/expo", () => ({
     signIn: {
       password: (...args: unknown[]) => mockPassword(...args),
       finalize: (...args: unknown[]) => mockFinalize(...args),
-      create: jest.fn(),
+      create: (...args: unknown[]) => mockCreate(...args),
       resetPasswordEmailCode: {
         sendCode: jest.fn(),
         verifyCode: jest.fn(),
@@ -136,6 +137,7 @@ describe("LoginScreen leftover password session", () => {
       mockGetToken.mockResolvedValue("clerk-jwt");
       return { error: null };
     });
+    mockCreate.mockReset().mockResolvedValue({ error: null });
     mockFinalize.mockReset().mockResolvedValue({ error: null });
     mockSetActive.mockReset().mockResolvedValue(undefined);
     mockSignOut.mockReset().mockResolvedValue(undefined);
@@ -163,10 +165,16 @@ describe("LoginScreen leftover password session", () => {
 
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
     await waitFor(() => expect(mockPassword).toHaveBeenCalled());
+    // Identifier-only: the typed address goes on `password()` itself. Opening
+    // with `signIn.create()` is an extra Clerk round trip on every tap, and it
+    // is only ever the recovery for a sign-in resource Clerk has already
+    // staled out from under us.
     expect(mockPassword).toHaveBeenCalledWith({
-      emailAddress: "client@gridgo.ph",
+      identifier: "client@gridgo.ph",
       password: "fixture-password",
     });
+    expect(mockPassword).toHaveBeenCalledTimes(1);
+    expect(mockCreate).not.toHaveBeenCalled();
     expect(mockFinalize).toHaveBeenCalled();
     expect(useSession.getState().clerkSyncNonce).toBe(0);
     // Finalizing is not landing: the completed sign-in has to reach the client.

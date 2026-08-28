@@ -23,6 +23,7 @@ import { completeClerkAuth, withSettledClerkSession } from "@/lib/clerkComplete"
 import {
   clearClerkSessionForNewAttempt,
   clerkSignOutRecoveryMessage,
+  clerkSignOutRetryLabel,
   releaseClerkSession,
 } from "@/lib/clerkSignIn";
 import { continuationAfterSignUp } from "@/lib/clerkSignUp";
@@ -63,6 +64,7 @@ export default function SignupScreen() {
 
   const busy = fetchStatus === "fetching" || adoptLoading;
   const verifyCopy = signupVerifyCopy(email);
+  const signOutRetry = clerkSignOutRetryLabel(sessionError, error);
 
   const settleClerkForSignUp = async (alreadySignedIn: boolean) => {
     const existing = await clearClerkSessionForNewAttempt({
@@ -149,6 +151,7 @@ export default function SignupScreen() {
     }
 
     setError(null);
+    useSession.getState().clearError();
     try {
       await withSettledClerkSession({
         isSignedIn: Boolean(isSignedIn),
@@ -221,8 +224,8 @@ export default function SignupScreen() {
                 <ErrorState
                   label="Could not verify email"
                   body={(error ?? sessionError)!}
-                  retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
-                  onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                  retryLabel={signOutRetry}
+                  onRetry={signOutRetry ? () => void abandonClerkSession() : undefined}
                 />
               ) : null
             }
@@ -295,8 +298,8 @@ export default function SignupScreen() {
               <ErrorState
                 label="Could not create account"
                 body={(error ?? sessionError)!}
-                retryLabel={sessionError && !error ? "Sign out and try again" : undefined}
-                onRetry={sessionError && !error ? () => void abandonClerkSession() : undefined}
+                retryLabel={signOutRetry}
+                onRetry={signOutRetry ? () => void abandonClerkSession() : undefined}
               />
             ) : null}
 

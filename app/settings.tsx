@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Screen } from "@/components/Screen";
 
 import {
   useThemeColors,
@@ -20,9 +20,13 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
 /**
  * Settings — preferences and app help, not identity.
  *
- * Account keeps who is signed in and Sign out. Theme and replaying onboarding
- * live here. No remote load: there is no empty/loading/failed list for this
- * screen; every control is local preference or a navigation destination.
+ * Account keeps who is signed in, what GRIDGO matches on, and Sign out.
+ * Theme and replaying onboarding live here — and only here. The match ranking
+ * used to sit on both screens; two homes for one setting is two places to look
+ * and one of them always showing the older answer.
+ *
+ * No remote load: there is no empty/loading/failed list for this screen; every
+ * control is a local preference or a navigation destination.
  */
 export default function SettingsScreen() {
   const colors = useThemeColors();
@@ -32,7 +36,7 @@ export default function SettingsScreen() {
 
   return (
     /* Bottom only — the stack header above has already cleared the status bar. */
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["bottom"]}>
+    <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen">
         <View className="gg-page gap-6 pb-12 pt-4">
           <View className="gg-card gap-3">
@@ -102,6 +106,6 @@ export default function SettingsScreen() {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

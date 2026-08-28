@@ -1,7 +1,9 @@
-import { Text, View } from "react-native";
+import { Upload } from "lucide-react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
+import { useThemeColors } from "@/hooks/useTheme";
 import {
   ARTWORK_ACCEPTED,
   ARTWORK_MAX_MIB,
@@ -23,6 +25,15 @@ type Props = {
   onCancel: () => void;
   /** Hidden on read-only surfaces such as the review step. */
   readOnly?: boolean;
+  /**
+   * `primary` when choosing a file is the one thing the screen is for.
+   *
+   * The artwork screen has nothing else a client can do until a file lands, so
+   * there the empty card carries the screen's yellow and the card itself is the
+   * button. Inside a longer form — the request stepper, a QA correction — the
+   * card is one field among several and stays quiet.
+   */
+  emphasis?: "primary" | "quiet";
 };
 
 /**
@@ -32,10 +43,22 @@ type Props = {
  * card says so in words until the server confirms it holds the file. Nothing
  * here ever shows a tick before that.
  *
- * Choosing a file is the screen's primary action, so it lives on the screen's
- * one yellow button rather than inside this card.
+ * An empty card is a button. It used to be a paragraph explaining what to send
+ * with no way to send it — the only control on the screen was a yellow
+ * "Go to checkout" that stayed disabled until a file appeared, which is a
+ * screen asking for something and offering no way to give it. So the empty
+ * card takes the tap itself, and the yellow goes back to the checkout button
+ * the moment the file is on the line.
  */
-export function ArtworkUploadCard({ state, onPick, onRetry, onCancel, readOnly }: Props) {
+export function ArtworkUploadCard({
+  state,
+  onPick,
+  onRetry,
+  onCancel,
+  readOnly,
+  emphasis = "quiet",
+}: Props) {
+  const colors = useThemeColors();
   const chip = artworkChip(state);
   const busy = isArtworkBusy(state);
   const facts =
@@ -48,8 +71,13 @@ export function ArtworkUploadCard({ state, onPick, onRetry, onCancel, readOnly }
       : [];
   const thinFile = facts.some((fact) => fact.id === "size" && fact.tone === "warn");
 
-  return (
-    <View className="gg-card gap-4">
+  // Empty and idle is the only state where tapping the card has one obvious
+  // meaning. Once a file is on it the card is a report with its own controls,
+  // and mid-transfer the only sensible action is Cancel.
+  const pickable = !readOnly && !busy && state.phase === "empty";
+
+  const body = (
+    <>
       <View className="flex-row items-start justify-between gap-3">
         <Text className="text-h3 text-text-primary">Artwork</Text>
         <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
@@ -95,7 +123,39 @@ export function ArtworkUploadCard({ state, onPick, onRetry, onCancel, readOnly }
         </View>
       ) : null}
 
-      {!readOnly ? (
+      {pickable ? (
+        /*
+          The card is the control, so this is the plate that says so rather
+          than a second button inside a button. Yellow only where choosing a
+          file is the screen's whole job — see `emphasis`.
+        */
+        <View
+          className={
+            emphasis === "primary"
+              ? "flex-row items-center justify-center gap-2 rounded-field bg-action-yellow px-4 py-3"
+              : "flex-row items-center justify-center gap-2 rounded-field border border-outline bg-surface-variant px-4 py-3"
+          }
+        >
+          <Upload
+            size={16}
+            color={emphasis === "primary" ? colors.actionYellowOn : colors.textPrimary}
+            strokeWidth={2.5}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+          <Text
+            className={
+              emphasis === "primary"
+                ? "text-button text-action-yellow-on"
+                : "text-button text-text-primary"
+            }
+          >
+            Choose a file
+          </Text>
+        </View>
+      ) : null}
+
+      {!readOnly && !pickable ? (
         <View className="gap-3">
           {busy ? (
             <SecondaryButton label="Cancel upload" onPress={onCancel} />
@@ -104,7 +164,7 @@ export function ArtworkUploadCard({ state, onPick, onRetry, onCancel, readOnly }
               <SecondaryButton label="Try that file again" onPress={onRetry} />
               <SecondaryButton label="Choose a different file" onPress={onPick} />
             </>
-          ) : state.phase === "empty" ? null : (
+          ) : (
             <SecondaryButton label="Replace file" onPress={onPick} />
           )}
         </View>
@@ -113,7 +173,24 @@ export function ArtworkUploadCard({ state, onPick, onRetry, onCancel, readOnly }
       {state.phase === "stored" || state.phase === "attached" ? (
         <Text className="text-caption text-text-muted">{ARTWORK_REVIEW_NOTE}</Text>
       ) : null}
-    </View>
+    </>
+  );
+
+  if (!pickable) {
+    return <View className="gg-card gap-4">{body}</View>;
+  }
+
+  return (
+    <Pressable
+      onPress={onPick}
+      accessibilityRole="button"
+      accessibilityLabel="Choose your artwork file"
+      accessibilityHint={`${ARTWORK_ACCEPTED}, up to ${ARTWORK_MAX_MIB} MB`}
+      className="gg-card gg-touch gap-4"
+      style={({ pressed }) => (pressed ? { opacity: 0.9 } : undefined)}
+    >
+      {body}
+    </Pressable>
   );
 }
 

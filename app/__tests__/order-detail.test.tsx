@@ -337,7 +337,8 @@ describe("OrderDetailScreen", () => {
       state: "out_for_delivery",
       riderId: "user_rider",
       dropoff: { lat: 7.0853, lng: 125.6137, label: "Bajada, Davao City" },
-      pickup: { lat: 7.064, lng: 125.6085, label: "PrintRight Davao" },
+      // Client-facing: GRIDGO withholds the press's own pin and sends its own.
+      pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
     });
     await renderInSafeArea(<OrderDetailScreen />);
 
@@ -350,7 +351,8 @@ describe("OrderDetailScreen", () => {
       state: "out_for_delivery",
       riderId: "user_rider",
       dropoff: { lat: 7.0853, lng: 125.6137, label: "Bajada, Davao City" },
-      pickup: { lat: 7.064, lng: 125.6085, label: "PrintRight Davao" },
+      // Client-facing: GRIDGO withholds the press's own pin and sends its own.
+      pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
     });
     api.getRiderLocation.mockResolvedValue({
       id: "ping_1",
@@ -375,7 +377,8 @@ describe("OrderDetailScreen", () => {
       state: "out_for_delivery",
       riderId: "user_rider",
       dropoff: { lat: 7.0853, lng: 125.6137, label: "Bajada, Davao City" },
-      pickup: { lat: 7.064, lng: 125.6085, label: "PrintRight Davao" },
+      // Client-facing: GRIDGO withholds the press's own pin and sends its own.
+      pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
     });
     api.getRiderLocation.mockResolvedValue({
       id: "ping_1",
@@ -397,7 +400,8 @@ describe("OrderDetailScreen", () => {
 
     // Falls back to the straight line, and says which one the client reads.
     expect(await screen.findByText(/in a straight line/i)).toBeTruthy();
-    expect(screen.getByLabelText(/Map showing the print shop/)).toBeTruthy();
+    expect(screen.getByLabelText(/Map showing GRIDGO/)).toBeTruthy();
+    expect(screen.queryByLabelText(/print shop/i)).toBeNull();
   });
 
   it("offers a real issue report while the window is open", async () => {

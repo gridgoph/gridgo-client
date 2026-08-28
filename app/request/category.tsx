@@ -1,23 +1,17 @@
 import { Search, X } from "lucide-react-native";
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, TextInput, View, type TextStyle } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 
-import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
-import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
-import { SkeletonList } from "@/components/Skeleton";
-import { useStartRequest } from "@/hooks/useStartRequest";
+import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { userFacingError } from "@/lib/copy";
 import {
-  productsForSubcategory,
   searchSubcategories,
   type ProductCategory,
   type ProductSubcategory,
 } from "@/lib/productCategories";
-import { useRequestDraft } from "@/store/requestDraft";
 
 /**
  * The front of the print request: what are you printing?
@@ -39,57 +33,35 @@ import { useRequestDraft } from "@/store/requestDraft";
 export default function ChooseCategoryScreen() {
   const router = useRouter();
   const colors = useThemeColors();
-  const { start, pendingLabel, confirmReplace, cancelReplace } = useStartRequest();
+  const startJob = useStartPrintJob();
 
-  const [categories, setCategories] = useState<ProductCategory[] | null>(null);
-  const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const [tree, products] = await Promise.all([
-        api.getProductCategories(),
-        api.listCatalog(),
-      ]);
-      setCategories(tree);
-      setCatalog(products);
-      setError(null);
-    } catch (e) {
-      setCategories(null);
-      setError(
-        userFacingError(
-          e,
-          "Could not load what GRIDGO prints. Check your connection and try again.",
-        ),
-      );
-    }
+  // Seed is already the tree. Refresh in the background; never blank the
+  // picker on a taxonomy blip or refetch it every time this screen is focused.
+  useEffect(() => {
+    let alive = true;
+    void api.getProductCategories().then((tree) => {
+      if (alive) setCategories(tree);
+    }).catch(() => {
+      // Seed already on screen.
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
-
-  const hits = useMemo(
-    () => (categories ? searchSubcategories(categories, query) : []),
-    [categories, query],
-  );
+  const hits = useMemo(() => searchSubcategories(categories, query), [categories, query]);
   const searching = query.trim().length >= 2;
 
-  // A search hit that resolves to exactly one catalog product is the fast path
-  // and goes straight into the request. Anything else — several products, or
-  // nothing priced yet — needs the context the category screen gives it.
+  // A search hit goes straight to the shop that prints it. Whether anyone does
+  // is a question only the boards can answer, and the match screen answers it
+  // in one cheap read — guessing here from the platform catalog would tell a
+  // client "not priced yet" about a thing a shop has on its board today.
   const openSubcategory = (category: ProductCategory, subcategory: ProductSubcategory) => {
-    const products = productsForSubcategory(subcategory, catalog);
-    if (products.length === 1) {
-      const product = products[0];
-      start(product.name, () => useRequestDraft.getState().selectProduct(product));
-      return;
-    }
-    router.push(`/request/${category.code}`);
+    startJob(category.code, subcategory.code);
   };
 
   return (
@@ -103,15 +75,7 @@ export default function ChooseCategoryScreen() {
       once the list is longer than the screen the field has to be scrolled
       clear of the keyboard rather than left underneath it.
     */
-    <FormScreen
-      overlay={
-        <ReplaceDraftDialog
-          label={pendingLabel}
-          onConfirm={confirmReplace}
-          onCancel={cancelReplace}
-        />
-      }
-    >
+    <FormScreen>
       <View className="gg-page pb-16 pt-2">
         {/* The one bold moment on this screen. Everything below stays quiet. */}
         <Text className="text-display text-text-primary">What are you printing?</Text>
@@ -156,34 +120,14 @@ export default function ChooseCategoryScreen() {
           ) : null}
         </View>
 
-        {error ? (
-          <View className="mt-8">
-            <ErrorState
-              label="Could not load"
-              body={error}
-              onRetry={() => void load()}
-            />
-          </View>
-        ) : null}
-
-        {!categories && !error ? (
-          <View className="mt-8 gap-4">
-            <Text className="text-body text-text-muted">Loading what GRIDGO prints…</Text>
-            <SkeletonList count={4} />
-          </View>
-        ) : null}
-
-        {categories && searching ? (
+        {searching ? (
           <SearchResults
             hits={hits}
             query={query.trim()}
-            catalog={catalog}
             onPick={openSubcategory}
             onBrowse={() => setQuery("")}
           />
-        ) : null}
-
-        {categories && !searching ? (
+        ) : (
           <View className="mt-8 gap-3">
             {categories.map((category) => (
               <CategoryCard
@@ -193,7 +137,7 @@ export default function ChooseCategoryScreen() {
               />
             ))}
           </View>
-        ) : null}
+        )}
       </View>
     </FormScreen>
   );
@@ -235,13 +179,11 @@ function CategoryCard({
 function SearchResults({
   hits,
   query,
-  catalog,
   onPick,
   onBrowse,
 }: {
   hits: { category: ProductCategory; subcategory: ProductSubcategory }[];
   query: string;
-  catalog: api.CatalogProduct[];
   onPick: (category: ProductCategory, subcategory: ProductSubcategory) => void;
   onBrowse: () => void;
 }) {
@@ -276,7 +218,6 @@ function SearchResults({
           key={`${category.code}/${subcategory.code}`}
           category={category}
           subcategory={subcategory}
-          orderable={productsForSubcategory(subcategory, catalog).length > 0}
           onPress={() => onPick(category, subcategory)}
         />
       ))}
@@ -287,12 +228,10 @@ function SearchResults({
 function SubcategoryResult({
   category,
   subcategory,
-  orderable,
   onPress,
 }: {
   category: ProductCategory;
   subcategory: ProductSubcategory;
-  orderable: boolean;
   onPress: () => void;
 }) {
   return (
@@ -312,11 +251,6 @@ function SubcategoryResult({
           </Text>
           {subcategory.examples ? (
             <Text className="mt-1 text-caption text-text-muted">{subcategory.examples}</Text>
-          ) : null}
-          {!orderable ? (
-            <Text className="mt-2 text-caption text-text-secondary">
-              Quoted by Operations — not priced in the app yet
-            </Text>
           ) : null}
           {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-card" /> : null}
         </>
