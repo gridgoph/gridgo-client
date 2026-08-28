@@ -31,5 +31,9 @@ export const TABS: readonly TabDefinition[] = [
 /**
  * The stepper. It stays a tab route so a draft can reopen it, but it is not
  * in the bar — the yellow "+" on each main screen is the way into a request.
+ *
+ * Typed as the literal, not `TabName`. `Exclude<TabName, typeof ACTION_TAB>`
+ * must stay the four labelled destinations; annotating this as `TabName`
+ * collapses that Exclude to `never` and fails `npx tsc` on the bar.
  */
-export const ACTION_TAB: TabName = "new-request";
+export const ACTION_TAB = "new-request" satisfies TabName;
