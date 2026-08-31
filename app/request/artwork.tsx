@@ -11,7 +11,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { useArtworkUpload, type FormatGuard } from "@/hooks/useArtworkUpload";
 import { detectedProportions, detectedSummary, pageCountOffer } from "@/lib/artworkUpload";
-import { physicalSizeMilli, printResolution } from "@/lib/printResolution";
+import { measuredSizeMilli, physicalSizeMilli, printResolution } from "@/lib/printResolution";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -233,7 +233,16 @@ export default function ArtworkScreen() {
     detected?.pixelWidth && detected?.pixelHeight
       ? { width: detected.pixelWidth, height: detected.pixelHeight }
       : pixels;
-  const resolution = printResolution(filePixels, physicalSizeMilli(size));
+  /*
+    Two ways a line knows how big it is, and a measured listing has no size
+    label at all: a tarpaulin billed by the square foot was typed as 3 by 5
+    feet, not picked as "A4". Without this the resolution check goes blind on
+    exactly the jobs where it matters most — a banner is the largest thing
+    GRIDGO prints and the easiest to send a screenshot for.
+  */
+  const orderedSize =
+    measuredSizeMilli(line.measurement, item?.measureUnit) ?? physicalSizeMilli(size);
+  const resolution = printResolution(filePixels, orderedSize);
   const pageOffer = pageCountOffer(detected, item?.pricingUnit, line.measurement?.pages);
   const onLine = Boolean(line.artworkFileId);
   const links = item ? linkFormats(item) : [];

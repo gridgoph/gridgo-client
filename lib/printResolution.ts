@@ -171,3 +171,29 @@ export function pixelsNeeded(
     height: Math.round((sizeMilli.height / MILLI / MM_PER_INCH) * target),
   };
 }
+
+
+/**
+ * The physical size a *measured* line was ordered at.
+ *
+ * A tarpaulin billed by the square foot has no size label to read — the client
+ * typed 3 by 5 feet instead of picking "A4" — so the resolution check would
+ * otherwise go blind on exactly the jobs where it matters most. A banner is
+ * the largest thing GRIDGO prints and the easiest to send a screenshot for.
+ *
+ * Converted to thousandths of a millimetre, the scale everything else here
+ * uses, from the thousandths of the listing's own unit that the platform bills
+ * in.
+ */
+export function measuredSizeMilli(
+  measurement: { width?: number; height?: number } | null | undefined,
+  measureUnit: string | null | undefined,
+): { width: number; height: number } | null {
+  if (!measurement?.width || !measurement?.height) return null;
+  const scale = UNIT_MM[String(measureUnit ?? "").toLowerCase()];
+  if (!scale) return null;
+  return {
+    width: Math.round(measurement.width * scale),
+    height: Math.round(measurement.height * scale),
+  };
+}

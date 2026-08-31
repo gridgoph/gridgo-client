@@ -1,4 +1,5 @@
 import {
+  measuredSizeMilli,
   physicalSizeMilli,
   pixelsNeeded,
   printResolution,
@@ -105,5 +106,43 @@ describe("the resolution an upload will actually print at", () => {
 describe("what a better file would have to be", () => {
   it("states the pixels that would reach the target", () => {
     expect(pixelsNeeded(physicalSizeMilli("A5"))).toEqual({ width: 1748, height: 2480 });
+  });
+});
+
+
+describe("a listing the client measured rather than picked a size for", () => {
+  it("reads a 3 by 5 foot banner as its real size", () => {
+    // Billed by the square foot, so there is no "A4" to look up. 3 ft is
+    // 914.4 mm, and the platform stores it as 3000 thousandths of a foot.
+    expect(measuredSizeMilli({ width: 3_000, height: 5_000 }, "ft")).toEqual({
+      width: 914_400,
+      height: 1_524_000,
+    });
+  });
+
+  it("judges a screenshot sent for a banner at the banner's own standard", () => {
+    // The case this exists for. 1080 x 1920 on a 3 x 5 ft tarpaulin is 30 DPI
+    // against large format's 100 — and before this the check said nothing at
+    // all, because the line had no size label to read.
+    const read = printResolution(
+      { width: 1080, height: 1920 },
+      measuredSizeMilli({ width: 3_000, height: 5_000 }, "ft"),
+    );
+    expect(read?.target).toBe(100);
+    expect(read?.verdict).toBe("low");
+  });
+
+  it("works in every unit a shop may price in", () => {
+    expect(measuredSizeMilli({ width: 500, height: 700 }, "m")?.width).toBe(500_000);
+    expect(measuredSizeMilli({ width: 2_000, height: 3_000 }, "in")?.width).toBe(50_800);
+    expect(measuredSizeMilli({ width: 100_000, height: 200_000 }, "mm")?.width).toBe(100_000);
+  });
+
+  it("says nothing rather than guessing a unit", () => {
+    // A width with no unit is not a size, and inventing one produces a
+    // confident warning about a dimension nobody stated.
+    expect(measuredSizeMilli({ width: 3_000, height: 5_000 }, null)).toBeNull();
+    expect(measuredSizeMilli({ width: 3_000, height: 5_000 }, "furlong")).toBeNull();
+    expect(measuredSizeMilli({ width: 3_000 }, "ft")).toBeNull();
   });
 });
