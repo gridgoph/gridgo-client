@@ -74,11 +74,14 @@ describe("PrioritiesScreen", () => {
     fireEvent.press(screen.getByLabelText("Distance"));
     expect(await screen.findByText("So far: speed, then distance.")).toBeTruthy();
 
+    fireEvent.press(screen.getByLabelText("Cost"));
+    expect(await screen.findByText("So far: speed, then distance, then cost.")).toBeTruthy();
+
     fireEvent.press(screen.getByLabelText("Quality"));
     expect(
-      await screen.findByText("GRIDGO matches on speed first, then distance, then quality."),
+      await screen.findByText("GRIDGO matches on speed, then distance, then cost, and last quality."),
     ).toBeTruthy();
-    expect(rankOf("Quality")).toBe("Ranked 3");
+    expect(rankOf("Quality")).toBe("Ranked 4");
   });
 
   it("takes a correction back to the step being corrected", async () => {
@@ -88,8 +91,10 @@ describe("PrioritiesScreen", () => {
     await screen.findByText("So far: speed.");
     fireEvent.press(screen.getByLabelText("Distance"));
     await screen.findByText("So far: speed, then distance.");
+    fireEvent.press(screen.getByLabelText("Cost"));
+    await screen.findByText("So far: speed, then distance, then cost.");
     fireEvent.press(screen.getByLabelText("Quality"));
-    await screen.findByText("GRIDGO matches on speed first, then distance, then quality.");
+    await screen.findByText("GRIDGO matches on speed, then distance, then cost, and last quality.");
 
     // Second place is being reconsidered, so third has not been decided yet.
     fireEvent.press(screen.getByLabelText("Distance"));
@@ -114,7 +119,7 @@ describe("PrioritiesScreen", () => {
   it("says nothing about internal codes", async () => {
     await renderInSafeArea(<PrioritiesScreen />);
 
-    for (const code of ["quality", "speed", "distance"]) {
+    for (const code of ["quality", "speed", "cost", "distance"]) {
       expect(screen.queryByText(code)).toBeNull();
     }
   });
@@ -134,15 +139,17 @@ describe("saving", () => {
     fireEvent.press(screen.getByLabelText("Quality"));
     await screen.findByText("So far: distance, then quality.");
     fireEvent.press(screen.getByLabelText("Speed"));
-    await screen.findByText("GRIDGO matches on distance first, then quality, then speed.");
+    await screen.findByText("So far: distance, then quality, then speed.");
+    fireEvent.press(screen.getByLabelText("Cost"));
+    await screen.findByText("GRIDGO matches on distance, then quality, then speed, and last cost.");
 
     fireEvent.press(screen.getByLabelText("Save and continue"));
 
     // Saving goes to GRIDGO, so the ranking lands a round trip later.
     await waitFor(() =>
-      expect(usePriorities.getState().ranking).toEqual(["distance", "quality", "speed"]),
+      expect(usePriorities.getState().ranking).toEqual(["distance", "quality", "speed", "cost"]),
     );
-    expect(api.savePreferences).toHaveBeenCalledWith(["distance", "quality", "speed"]);
+    expect(api.savePreferences).toHaveBeenCalledWith(["distance", "quality", "speed", "cost"]);
     expect(mockReplace).toHaveBeenCalledWith("/(tabs)/home");
   });
 });

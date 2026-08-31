@@ -9,7 +9,7 @@ import {
 
 describe("isCompleteRanking", () => {
   it("accepts all three, each once", () => {
-    expect(isCompleteRanking(["speed", "quality", "distance"])).toBe(true);
+    expect(isCompleteRanking(["speed", "quality", "cost", "distance"])).toBe(true);
   });
 
   it("refuses a half-made ranking", () => {
@@ -36,11 +36,11 @@ describe("togglePlacement", () => {
   it("takes a placed priority out along with everything after it", () => {
     // Someone correcting second place has not yet decided third. Leaving third
     // where it was would quietly promote it to second.
-    expect(togglePlacement(["speed", "quality", "distance"], "quality")).toEqual(["speed"]);
+    expect(togglePlacement(["speed", "quality", "cost", "distance"], "quality")).toEqual(["speed"]);
   });
 
   it("clears the lot when the first is tapped again", () => {
-    expect(togglePlacement(["speed", "quality", "distance"], "speed")).toEqual([]);
+    expect(togglePlacement(["speed", "quality", "cost", "distance"], "speed")).toEqual([]);
   });
 });
 
@@ -55,8 +55,8 @@ describe("rankOf", () => {
 
 describe("rankingSentence", () => {
   it("reads the finished order back in the order it matches on", () => {
-    expect(rankingSentence(["speed", "distance", "quality"])).toBe(
-      "GRIDGO matches on speed first, then distance, then quality.",
+    expect(rankingSentence(["speed", "distance", "cost", "quality"])).toBe(
+      "GRIDGO matches on speed, then distance, then cost, and last quality.",
     );
   });
 

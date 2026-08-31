@@ -66,5 +66,5 @@ jest.mock("react-native-keyboard-controller", () =>
 // a test that wants an unranked phone clears this store itself.
 beforeEach(() => {
   const { usePriorities } = require("@/store/priorities");
-  usePriorities.setState({ ranking: ["quality", "speed", "distance"], loaded: true });
+  usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
 });

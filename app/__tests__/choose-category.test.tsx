@@ -139,7 +139,7 @@ beforeEach(() => {
   // from a cold read rather than the previous test's shop.
   clearBoardCache();
   useCart.getState().reset();
-  usePriorities.setState({ ranking: ["quality", "speed", "distance"], loaded: true });
+  usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
 });
 
 describe("ChooseCategoryScreen", () => {
@@ -261,7 +261,7 @@ describe("CategoryScreen", () => {
   });
 
   it("asks where the job is going first when the client put distance first", async () => {
-    usePriorities.setState({ ranking: ["distance", "speed", "quality"], loaded: true });
+    usePriorities.setState({ ranking: ["distance", "speed", "cost", "quality"], loaded: true });
     await renderInSafeArea(<CategoryScreen />);
     await screen.findByText("GRIDGO PRINTS THESE NOW");
 

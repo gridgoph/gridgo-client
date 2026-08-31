@@ -48,22 +48,22 @@ describe("changing the ranking from Settings", () => {
       version: 2,
       updatedAt: "2026-08-24T00:00:00.000Z",
     }));
-    usePriorities.setState({ ranking: ["quality", "speed", "distance"], loaded: true });
+    usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
 
     await renderInSafeArea(<PrioritiesScreen />);
 
     // The saved order is already laid out, so swapping two of them does not
     // mean retyping all three.
     expect(
-      screen.getByText("GRIDGO matches on quality first, then speed, then distance."),
+      screen.getByText("GRIDGO matches on quality, then speed, then cost, and last distance."),
     ).toBeTruthy();
     expect(screen.getByLabelText("Quality").props.accessibilityValue.text).toBe("Ranked 1");
 
     fireEvent.press(screen.getByLabelText("Save this order"));
 
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
-    expect(api.savePreferences).toHaveBeenCalledWith(["quality", "speed", "distance"]);
-    expect(usePriorities.getState().ranking).toEqual(["quality", "speed", "distance"]);
+    expect(api.savePreferences).toHaveBeenCalledWith(["quality", "speed", "cost", "distance"]);
+    expect(usePriorities.getState().ranking).toEqual(["quality", "speed", "cost", "distance"]);
     // Never Home: a client who came from Settings is put back in Settings.
     expect(mockReplace).not.toHaveBeenCalled();
   });

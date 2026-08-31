@@ -1175,7 +1175,7 @@ export async function health(): Promise<{ ok: boolean }> {
 // ---------------------------------------------------------------------------
 
 /** The three things a client ranks. The order is the whole preference. */
-export type MatchFactor = "quality" | "speed" | "distance";
+export type MatchFactor = "quality" | "speed" | "cost" | "distance";
 
 export type ClientPreferences = {
   ranking: MatchFactor[];

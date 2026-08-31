@@ -85,8 +85,8 @@ function match(
     alternativesCount: 0,
     score: {
       total: 82,
-      weights: { quality: 0.3, speed: 0.5, distance: 0.2 },
-      factors: { quality: 88, speed: 100, distance: 0 },
+      weights: { quality: 0.3, speed: 0.4, cost: 0.2, distance: 0.1 },
+      factors: { quality: 88, speed: 100, cost: 100, distance: 0 },
     },
     ...overrides,
   };
@@ -116,7 +116,7 @@ beforeEach(() => {
   api.matchNextShop.mockReset();
   clearMatchPrefetch();
   useCart.getState().reset();
-  usePriorities.setState({ ranking: ["speed", "quality", "distance"], loaded: true });
+  usePriorities.setState({ ranking: ["speed", "quality", "cost", "distance"], loaded: true });
 });
 
 describe("MatchScreen", () => {
@@ -165,7 +165,8 @@ describe("MatchScreen", () => {
     expect(screen.getByText("MATCHED ON")).toBeTruthy();
     expect(screen.getByLabelText("1: Speed")).toBeTruthy();
     expect(screen.getByLabelText("2: Quality")).toBeTruthy();
-    expect(screen.getByLabelText("3: Distance")).toBeTruthy();
+    expect(screen.getByLabelText("3: Cost")).toBeTruthy();
+    expect(screen.getByLabelText("4: Distance")).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText("Change what GRIDGO matches on"));
     // Back to this match afterwards, not Home: they came here to read one.
