@@ -119,6 +119,7 @@ export function useArtworkUpload(
         progress: 1,
         size: file.size,
         contentType: file.detectedContentType,
+        detected: file.detected ?? null,
         error: null,
       });
     } catch (error) {

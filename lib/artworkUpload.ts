@@ -8,7 +8,7 @@
  * gridgo-api for the contract these states mirror.
  */
 
-import { ApiError } from "@/lib/api";
+import { ApiError, type DetectedArtwork } from "@/lib/api";
 
 export type ArtworkPhase =
   | "empty"
@@ -35,6 +35,14 @@ export type ArtworkUploadState = {
   /** Bytes and detected format, once the server has told us. */
   size: number | null;
   contentType: string | null;
+  /**
+   * What the file says its own size and page count are.
+   *
+   * Read by GRIDGO from the uploaded bytes rather than by this phone: nothing
+   * here can open a PDF, and the round trip that measured an image by
+   * downloading it again told us pixels and nothing about paper.
+   */
+  detected: DetectedArtwork | null;
   /** What went wrong and what to do about it. */
   error: string | null;
 };
@@ -46,6 +54,7 @@ export const EMPTY_ARTWORK: ArtworkUploadState = {
   progress: null,
   size: null,
   contentType: null,
+  detected: null,
   error: null,
 };
 
@@ -180,4 +189,109 @@ export function artworkErrorMessage(error: unknown): string {
 export function normalizeFileName(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim();
   return trimmed || "artwork";
+}
+
+
+/** Millimetres from the thousandths the platform stores. */
+function mm(milli: number): number {
+  return Math.round(milli / 100) / 10;
+}
+
+/**
+ * What GRIDGO read, in one line a client can check at a glance.
+ *
+ * The point is verification, not decoration: a person who exported the wrong
+ * artboard finds out here, before paying, from the file itself. So it leads
+ * with the name they would recognise — "A4" — and falls back to the
+ * measurement when the size has no name.
+ *
+ * Null when the file said nothing. A screen must then ask rather than showing
+ * an empty confident sentence.
+ */
+export function detectedSummary(detected: DetectedArtwork | null): string | null {
+  if (!detected) return null;
+
+  const parts: string[] = [];
+  if (detected.pageSize) {
+    // Orientation only where it distinguishes something. "A4 square" is not a
+    // thing, and saying "A4 portrait" for every upright page is noise.
+    parts.push(
+      detected.orientation === "landscape" ? `${detected.pageSize} landscape` : detected.pageSize,
+    );
+  } else if (detected.widthMilli && detected.heightMilli) {
+    parts.push(`${mm(detected.widthMilli)} × ${mm(detected.heightMilli)} mm`);
+  } else if (detected.pixelWidth && detected.pixelHeight) {
+    // Pixels are the honest answer when no density was declared, and saying so
+    // is what stops a client assuming GRIDGO knows the printed size.
+    parts.push(`${detected.pixelWidth} × ${detected.pixelHeight} pixels`);
+  }
+
+  if (detected.pageCount && detected.pageCount > 1) {
+    parts.push(`${detected.pageCount} pages`);
+  }
+
+  return parts.length ? parts.join(" · ") : null;
+}
+
+/**
+ * The proportions to judge a size mismatch against.
+ *
+ * Physical size first: it is what gets printed. Pixels are the fallback, and
+ * for a ratio they are just as good — a 2:3 image is 2:3 at any density.
+ */
+export function detectedProportions(
+  detected: DetectedArtwork | null,
+): { width: number; height: number } | null {
+  if (!detected) return null;
+  if (detected.widthMilli && detected.heightMilli) {
+    return { width: detected.widthMilli, height: detected.heightMilli };
+  }
+  if (detected.pixelWidth && detected.pixelHeight) {
+    return { width: detected.pixelWidth, height: detected.pixelHeight };
+  }
+  return null;
+}
+
+/**
+ * How many pages a per-page listing should start at.
+ *
+ * A ten-page PDF priced by the page is ten, and making the client count their
+ * own document is the exact work the upload already did. Only a PDF answers:
+ * an image is one page and does not need saying, and a file that would not
+ * state a count leaves the stepper where it was.
+ */
+export function detectedPageQuantity(detected: DetectedArtwork | null): number | null {
+  if (detected?.kind !== "pdf") return null;
+  const pages = detected.pageCount;
+  return pages && pages > 0 ? pages : null;
+}
+
+
+/**
+ * The offer to set a per-page quantity from the file's own page count.
+ *
+ * A ten-page PDF priced by the page costs ten pages, and a client who left the
+ * quantity at one is about to buy a tenth of their document. GRIDGO knows the
+ * number by the time the file lands, so it says so — as an offer, because the
+ * client may genuinely want two pages of a ten-page file, and silently
+ * rewriting a quantity somebody typed is how a total changes without anyone
+ * choosing it.
+ *
+ * Null when there is nothing to offer: another pricing unit, no page count, or
+ * a quantity that already matches.
+ */
+export function pageQuantityOffer(
+  detected: DetectedArtwork | null,
+  pricingUnit: string | null | undefined,
+  quantity: number,
+): { pages: number; message: string } | null {
+  if (pricingUnit !== "per_page") return null;
+  const pages = detectedPageQuantity(detected);
+  if (!pages || pages === quantity) return null;
+  return {
+    pages,
+    message:
+      `Your file has ${pages} pages and this is priced by the page. ` +
+      `You have ${quantity} ${quantity === 1 ? "page" : "pages"} on this order.`,
+  };
 }

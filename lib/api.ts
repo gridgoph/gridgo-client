@@ -184,6 +184,34 @@ export type Zone = {
 };
 
 /** Public file record from the storage API. `objectKey` is never returned. */
+/**
+ * What the file said about itself, read by GRIDGO when it was uploaded.
+ *
+ * Every field is advisory. A scan at 96 DPI and the same scan at 300 DPI are
+ * the same pixels and different pieces of paper, so the client may overrule
+ * any of it — this fills a field in, it does not decide one.
+ *
+ * Absent entirely when the file said nothing readable, which is a real and
+ * common answer: a PNG with no declared density has a pixel size and no
+ * physical one.
+ */
+export type DetectedArtwork = {
+  kind: "pdf" | "raster";
+  /** Pages in a PDF; 1 for an image; null when the file would not say. */
+  pageCount: number | null;
+  pixelWidth: number | null;
+  pixelHeight: number | null;
+  dpi: number | null;
+  /** Always "mm" when a physical size was read at all. */
+  measureUnit: "mm" | null;
+  /** Thousandths of a millimetre, so no float carries a measurement. */
+  widthMilli: number | null;
+  heightMilli: number | null;
+  /** "A4", "Letter" — null when the size matches no name GRIDGO knows. */
+  pageSize: string | null;
+  orientation: "portrait" | "landscape" | "square" | null;
+};
+
 export type StoredFile = {
   fileId: string;
   purpose: string;
@@ -196,6 +224,8 @@ export type StoredFile = {
   createdAt: string;
   readyAt: string | null;
   references: { type: string; id: string; field: string }[];
+  /** Present only when the bytes carried something worth reading. */
+  detected?: DetectedArtwork;
 };
 
 /** Newest rider position for an order, or null when none has been shared. */
