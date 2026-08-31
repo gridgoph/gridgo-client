@@ -148,13 +148,93 @@ describe("adaptProductCategories", () => {
       productFamilyIds: [],
     });
   });
+
+  it("reads the live GET /taxonomy document from categoryTree", () => {
+    const adapted = adaptProductCategories({
+      taxonomy: {
+        categories: [
+          { code: "corporate_event_merch", name: "Corporate & Event Merchandise", active: true },
+        ],
+        subcategories: [],
+      },
+      categoryTree: [
+        {
+          code: "corporate_event_merch",
+          name: "Corporate & Event Merchandise",
+          bestFor: "Student orgs, HR teams.",
+          subcategories: [
+            {
+              code: "custom_apparel",
+              name: "Custom Apparel",
+              examples: ["T-shirts", "Hoodies"],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(isSeededTree(adapted)).toBe(false);
+    expect(adapted[0].code).toBe("corporate_event_merch");
+    expect(adapted[0].subcategories[0].examples).toBe("T-shirts, Hoodies");
+  });
+
+  it("joins a flat taxonomy when the nested tree is missing", () => {
+    const adapted = adaptProductCategories({
+      taxonomy: {
+        categories: [
+          { code: "marketing_collateral", name: "Marketing", bestFor: "Shops.", active: true },
+        ],
+        subcategories: [
+          {
+            code: "flyers",
+            name: "Flyers",
+            categoryCode: "marketing_collateral",
+            examples: ["Single sheets"],
+            active: true,
+          },
+        ],
+      },
+    });
+
+    expect(adapted[0].code).toBe("marketing_collateral");
+    expect(adapted[0].subcategories.map((s) => s.code)).toEqual(["flyers"]);
+    expect(adapted[0].subcategories[0].examples).toBe("Single sheets");
+  });
 });
 
 describe("the bundled seed", () => {
-  it("carries the captain's four categories and seventeen subcategories", () => {
-    expect(PRODUCT_CATEGORY_SEED).toHaveLength(4);
+  it("carries the captain's five categories and twenty-two subcategories", () => {
+    expect(PRODUCT_CATEGORY_SEED).toHaveLength(5);
     const total = PRODUCT_CATEGORY_SEED.reduce((n, c) => n + c.subcategories.length, 0);
-    expect(total).toBe(17);
+    expect(total).toBe(22);
+  });
+
+  it("has a home for everyday paperwork, which the first four did not", () => {
+    // A thesis, a hundred handouts and a set of ID photographs are not
+    // marketing, merchandise, an award or a prototype, and the largest price
+    // list in the master catalogue is exactly that work.
+    const documents = PRODUCT_CATEGORY_SEED.find((c) => c.code === "document_publication");
+    expect(documents).toBeTruthy();
+    expect(documents!.subcategories.map((s) => s.code)).toEqual([
+      "document_printing",
+      "booklets",
+      "risograph",
+      "binding_hardbound",
+      "id_photos",
+    ]);
+  });
+
+  it("matches the platform's own category codes exactly", () => {
+    // A code the platform does not know is a 400 on the shop list, which the
+    // category screen can only report as "prices not loaded". The seed and
+    // the taxonomy have to agree or browsing breaks on that category alone.
+    expect(PRODUCT_CATEGORY_SEED.map((c) => c.code)).toEqual([
+      "marketing_collateral",
+      "corporate_event_merch",
+      "recognition_awards_signage",
+      "specialized_prototyping",
+      "document_publication",
+    ]);
   });
 
   it("gives every category an audience line and every subcategory examples", () => {
@@ -204,7 +284,7 @@ describe("splitByAvailability", () => {
 
     expect(split.orderable.map((s) => s.code)).toEqual(["custom_apparel"]);
     expect(split.quotedByOperations.map((s) => s.code)).toEqual([
-      "lanyards_id",
+      "lanyards_id_accessories",
       "drinkware",
       "corporate_giveaways",
     ]);
@@ -235,18 +315,20 @@ describe("searchSubcategories", () => {
   it("finds a subcategory by an example nobody would guess the name of", () => {
     expect(searchSubcategories(seed, "tote bag")[0].subcategory.code).toBe("custom_apparel");
     expect(searchSubcategories(seed, "x-stand")[0].subcategory.code).toBe("posters_standees");
-    expect(searchSubcategories(seed, "panaflex")[0].subcategory.code).toBe("store_signages");
+    expect(searchSubcategories(seed, "panaflex")[0].subcategory.code).toBe(
+      "business_store_signages",
+    );
   });
 
   it("ranks a name match above an example match", () => {
     const hits = searchSubcategories(seed, "sticker");
-    expect(hits[0].subcategory.code).toBe("stickers_labels");
+    expect(hits[0].subcategory.code).toBe("stickers_packaging_labels");
   });
 
   it("matches the audience line, so a client who names themselves finds the category", () => {
     const hits = searchSubcategories(seed, "student org");
     expect(hits.map((h) => h.category.code)).toEqual(
-      Array(4).fill("event_merchandise"),
+      Array(4).fill("corporate_event_merch"),
     );
   });
 
@@ -266,9 +348,11 @@ describe("findCategory", () => {
   const seed: ProductCategory[] = PRODUCT_CATEGORY_SEED;
 
   it("finds a category by code", () => {
-    expect(findCategory(seed, "event_merchandise")?.name).toBe(
+    expect(findCategory(seed, "corporate_event_merch")?.name).toBe(
       "Corporate & event merchandise",
     );
+    // Stale Client seed code still finds the live category.
+    expect(findCategory(seed, "event_merchandise")?.code).toBe("corporate_event_merch");
   });
 
   it("returns null for an unknown or missing code", () => {
