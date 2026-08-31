@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Pressable, Text, View, useWindowDimensions } from "react-native";
 import Animated, {
   Easing,
@@ -129,9 +129,48 @@ export function DeadlineCalendar({
   const cell = Math.floor((width - 32) / 7);
   const disc = cell - 3;
 
-  const days = useMemo(() => daysFor(month), [daysFor, month]);
-  const before = useMemo(() => daysFor(shiftMonth(month, -1)), [daysFor, month]);
-  const after = useMemo(() => daysFor(shiftMonth(month, 1)), [daysFor, month]);
+  /*
+    Cells cached by month, and the cache thrown away only when availability
+    itself changes.
+
+    This is what makes a month step cheap. Without it every step handed all
+    three pages brand new arrays, so a hundred and twenty-six day cells
+    re-rendered in the frame the swipe was trying to finish in — which is the
+    stutter at the end of the gesture, not the animation. With it, the month
+    being scrolled towards is the very array that was already on screen beside
+    it, and two of the three pages skip re-rendering entirely.
+  */
+  const cache = useRef(new Map<string, CalendarDay[]>());
+  const cacheKey = useRef(daysFor);
+  if (cacheKey.current !== daysFor) {
+    cacheKey.current = daysFor;
+    cache.current = new Map();
+  }
+  const cachedDays = useCallback(
+    (which: Date) => {
+      const key = `${which.getFullYear()}-${which.getMonth()}`;
+      const held = cache.current.get(key);
+      if (held) return held;
+      const built = daysFor(which);
+      cache.current.set(key, built);
+      return built;
+    },
+    [daysFor],
+  );
+
+  const pages = useMemo(
+    () =>
+      [-1, 0, 1].map((offset) => {
+        const which = shiftMonth(month, offset);
+        return {
+          key: `${which.getFullYear()}-${which.getMonth()}`,
+          days: cachedDays(which),
+          current: offset === 0,
+        };
+      }),
+    [month, cachedDays],
+  );
+  const days = pages[1].days;
 
   const headline = useMemo(() => {
     const selected = days.find((day) => day.dayKey === selectedDayKey);
@@ -327,12 +366,22 @@ export function DeadlineCalendar({
       */}
       <View style={{ width: page, overflow: "hidden" }} {...swipe.panHandlers}>
         <Animated.View style={[{ flexDirection: "row", width: page * 3 }, slide]}>
-          <MonthPage days={before} page={page} cell={cell} disc={disc}
-            selectedDayKey={selectedDayKey} onSelectDay={onSelectDay} interactive={false} />
-          <MonthPage days={days} page={page} cell={cell} disc={disc}
-            selectedDayKey={selectedDayKey} onSelectDay={onSelectDay} interactive />
-          <MonthPage days={after} page={page} cell={cell} disc={disc}
-            selectedDayKey={selectedDayKey} onSelectDay={onSelectDay} interactive={false} />
+          {/*
+            Keyed by month, so React carries two of the three pages across a
+            step instead of tearing all three down and building them again.
+          */}
+          {pages.map((entry) => (
+            <MonthPage
+              key={entry.key}
+              days={entry.days}
+              page={page}
+              cell={cell}
+              disc={disc}
+              selectedDayKey={selectedDayKey}
+              onSelectDay={onSelectDay}
+              interactive={entry.current}
+            />
+          ))}
         </Animated.View>
       </View>
 
@@ -394,7 +443,7 @@ function ShopClock() {
  * Only the middle page takes taps. A day tapped on a neighbour would select a
  * date the masthead is not describing, which is a state nobody asked for.
  */
-function MonthPage({
+const MonthPage = memo(function MonthPage({
   days,
   page,
   cell,
@@ -425,12 +474,14 @@ function MonthPage({
           cell={cell}
           disc={disc}
           selected={day.dayKey === selectedDayKey}
-          onPress={() => onSelectDay(day)}
+          // The day itself, not a closure over it: an arrow made here is a new
+          // function every render and would defeat the cell's own memo.
+          onSelect={onSelectDay}
         />
       ))}
     </View>
   );
-}
+});
 
 function StepButton({
   direction,
@@ -460,18 +511,18 @@ function StepButton({
   );
 }
 
-function DayCell({
+const DayCell = memo(function DayCell({
   day,
   cell,
   disc,
   selected,
-  onPress,
+  onSelect,
 }: {
   day: CalendarDay;
   cell: number;
   disc: number;
   selected: boolean;
-  onPress: () => void;
+  onSelect: (day: CalendarDay) => void;
 }) {
   const colors = useThemeColors();
   const light = useThemeName() !== "dark";
@@ -484,7 +535,7 @@ function DayCell({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onSelect(day)}
       disabled={!day.selectable}
       accessibilityRole="button"
       accessibilityState={{ selected, disabled: !day.selectable }}
@@ -498,6 +549,27 @@ function DayCell({
         opacity: day.inMonth ? (pressed && day.selectable ? 0.7 : 1) : 0.12,
       })}
     >
+      {/*
+        The chosen day wears a halo rather than a border.
+
+        A border would have to sit on the disc, and on a yellow day a yellow
+        border is nothing at all. Held off the edge it reads over every fill,
+        and it is the screen's one spend of the primary yellow — which is what
+        the colour is for: the single thing the client has decided.
+      */}
+      {selected ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            width: cell,
+            height: cell,
+            borderRadius: 999,
+            borderWidth: 2.5,
+            borderColor: colors.actionYellow,
+          }}
+        />
+      ) : null}
       <View
         style={{
           width: disc,
@@ -506,14 +578,9 @@ function DayCell({
           backgroundColor: fill,
           alignItems: "center",
           justifyContent: "center",
-          // Today wears the accent as a ring, the way the reference marks it,
-          // and a chosen day wears the page's ink on top of whatever it means.
-          borderWidth: selected ? 3 : day.isToday ? 2 : needsEdge ? 1.5 : 0,
-          borderColor: selected
-            ? colors.textPrimary
-            : day.isToday
-              ? colors.brand
-              : colors.textPrimary,
+          // Today wears the accent as a ring, the way the reference marks it.
+          borderWidth: day.isToday ? 2 : needsEdge ? 1.5 : 0,
+          borderColor: day.isToday ? colors.brand : colors.textPrimary,
           opacity: day.choice === "past" ? 0.5 : 1,
         }}
       >
@@ -537,4 +604,4 @@ function DayCell({
       </View>
     </Pressable>
   );
-}
+});

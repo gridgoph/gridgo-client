@@ -107,6 +107,20 @@ export default function WhenScreen() {
     [availability],
   );
 
+  // Stable, so the calendar's day cells can skip re-rendering. An arrow made
+  // in the render is a new function every time and defeats their memo, which
+  // is what put a hundred and twenty-six cells through React on every swipe.
+  // A month the client chose stays chosen: a late answer must not yank the
+  // page out from under them.
+  const stepMonth = useCallback((step: number) => {
+    setMonthPinned(true);
+    setMonth((current) => shiftMonth(current, step));
+  }, []);
+
+  const selectDay = useCallback((day: { dayKey: string; selectable: boolean }) => {
+    if (day.selectable) setChosen(day.dayKey);
+  }, []);
+
   const jumpTo = useMemo(
     () => nextMonthWithADay(month, availability ?? [], new Date()),
     [month, availability],
@@ -164,13 +178,8 @@ export default function WhenScreen() {
             daysFor={daysFor}
             month={month}
             selectedDayKey={chosen}
-            onSelectDay={(day) => setChosen(day.selectable ? day.dayKey : chosen)}
-            onStepMonth={(step) => {
-              // A month the client chose stays chosen: a late answer must not
-              // yank the page out from under them.
-              setMonthPinned(true);
-              setMonth((current) => shiftMonth(current, step));
-            }}
+            onSelectDay={selectDay}
+            onStepMonth={stepMonth}
             canStepBack={canStep(month, -1, availability ?? [], new Date())}
             canStepForward={canStep(month, 1, availability ?? [], new Date())}
           />
