@@ -10,7 +10,7 @@ import { ProductPreview } from "@/components/ProductPreview";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { useArtworkUpload, type FormatGuard } from "@/hooks/useArtworkUpload";
-import { detectedProportions, detectedSummary, pageQuantityOffer } from "@/lib/artworkUpload";
+import { detectedProportions, detectedSummary, pageCountOffer } from "@/lib/artworkUpload";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -114,16 +114,23 @@ export default function ArtworkScreen() {
    * lives on GRIDGO, and the response is the basket rather than something to
    * re-read afterwards.
    */
-  const setPageQuantity = useCallback(
+  const setPageCount = useCallback(
     async (pages: number) => {
       if (!line || saving) return;
       setSaving(true);
       setSaveError(null);
       try {
-        adopt(await run((cartId) => api.updateCartLine(cartId, line.id, { quantity: pages })));
+        adopt(
+          await run((cartId) =>
+            // The page count is the measurement, not the quantity: quantity is
+            // how many copies of the document, and writing pages there would
+            // bill ten copies of a one-page job.
+            api.updateCartLine(cartId, line.id, { measurement: { pages } }),
+          ),
+        );
       } catch (error) {
         setSaveError(
-          userFacingError(error, "That quantity did not save. Try again in a moment."),
+          userFacingError(error, "That page count did not save. Try again in a moment."),
         );
       } finally {
         setSaving(false);
@@ -208,7 +215,7 @@ export default function ArtworkScreen() {
   const size = typeof line.structuredSpec.size === "string" ? line.structuredSpec.size : "";
   const warning = artworkFitWarning(size, measured ?? pixels);
   const summary = detectedSummary(detected);
-  const pageOffer = pageQuantityOffer(detected, item?.pricingUnit, line.quantity);
+  const pageOffer = pageCountOffer(detected, item?.pricingUnit, line.measurement?.pages);
   const onLine = Boolean(line.artworkFileId);
   const links = item ? linkFormats(item) : [];
   const uploads = item ? fileFormats(item) : [];
@@ -285,8 +292,8 @@ export default function ArtworkScreen() {
             </Text>
             <Text className="text-caption text-text-secondary">{pageOffer.message}</Text>
             <SecondaryButton
-              label={`Set it to ${pageOffer.pages} pages`}
-              onPress={() => void setPageQuantity(pageOffer.pages)}
+              label={`Use ${pageOffer.pages} pages`}
+              onPress={() => void setPageCount(pageOffer.pages)}
               disabled={saving}
             />
           </View>

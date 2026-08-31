@@ -3,7 +3,7 @@ import {
   detectedPageQuantity,
   detectedProportions,
   detectedSummary,
-  pageQuantityOffer,
+  pageCountOffer,
 } from "@/lib/artworkUpload";
 
 function read(overrides: Partial<DetectedArtwork> = {}): DetectedArtwork {
@@ -87,21 +87,21 @@ describe("proportions for the size warning", () => {
 });
 
 describe("the page-count offer on a per-page listing", () => {
-  it("offers the file's page count when the quantity does not match", () => {
-    const offer = pageQuantityOffer(read({ pageCount: 10 }), "per_page", 1);
+  it("offers the file's page count when the line does not match", () => {
+    const offer = pageCountOffer(read({ pageCount: 10 }), "per_page", 1);
     expect(offer?.pages).toBe(10);
     expect(offer?.message).toContain("10 pages");
   });
 
-  it("stays quiet when the quantity already matches", () => {
-    expect(pageQuantityOffer(read({ pageCount: 10 }), "per_page", 10)).toBeNull();
+  it("stays quiet when the page count already matches", () => {
+    expect(pageCountOffer(read({ pageCount: 10 }), "per_page", 10)).toBeNull();
   });
 
   it("stays quiet on a listing that is not priced by the page", () => {
     // A stack of flyers is not one flyer per page of the artwork, and offering
     // to set 500 flyers to 2 because the PDF has two pages is nonsense.
-    expect(pageQuantityOffer(read({ pageCount: 2 }), "per_unit", 500)).toBeNull();
-    expect(pageQuantityOffer(read({ pageCount: 2 }), "per_package", 5)).toBeNull();
+    expect(pageCountOffer(read({ pageCount: 2 }), "per_unit", 500)).toBeNull();
+    expect(pageCountOffer(read({ pageCount: 2 }), "per_package", 5)).toBeNull();
   });
 
   it("does not count pages for an image", () => {
@@ -110,6 +110,6 @@ describe("the page-count offer on a per-page listing", () => {
   });
 
   it("stays quiet when the file would not say how many pages it has", () => {
-    expect(pageQuantityOffer(read({ pageCount: null }), "per_page", 1)).toBeNull();
+    expect(pageCountOffer(read({ pageCount: null }), "per_page", 1)).toBeNull();
   });
 });

@@ -48,6 +48,7 @@ function cart(lineCount: number): Cart {
       catalogItemId: "sci_flyers",
       quantity: 1,
       optionIds: [],
+      measurement: null,
       structuredSpec: {},
       artworkFileId: null,
       mockupFileId: null,

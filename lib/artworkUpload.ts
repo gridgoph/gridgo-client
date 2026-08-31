@@ -268,30 +268,29 @@ export function detectedPageQuantity(detected: DetectedArtwork | null): number |
 
 
 /**
- * The offer to set a per-page quantity from the file's own page count.
+ * The offer to take the page count from the file itself.
  *
- * A ten-page PDF priced by the page costs ten pages, and a client who left the
- * quantity at one is about to buy a tenth of their document. GRIDGO knows the
- * number by the time the file lands, so it says so — as an offer, because the
- * client may genuinely want two pages of a ten-page file, and silently
- * rewriting a quantity somebody typed is how a total changes without anyone
- * choosing it.
+ * A document priced by the page is billed pages times copies, and those are
+ * two different numbers — a client who left the page count at one is about to
+ * buy a tenth of their own document. GRIDGO knows the real figure by the time
+ * the file lands, so it says so.
  *
- * Null when there is nothing to offer: another pricing unit, no page count, or
- * a quantity that already matches.
+ * An offer rather than a rewrite: somebody may deliberately want two pages of
+ * a ten-page file, and a number that changes itself is a total nobody chose.
+ *
+ * Null when there is nothing to offer — another pricing unit, no page count,
+ * or a page count the line already carries.
  */
-export function pageQuantityOffer(
+export function pageCountOffer(
   detected: DetectedArtwork | null,
   pricingUnit: string | null | undefined,
-  quantity: number,
+  currentPages: number | null | undefined,
 ): { pages: number; message: string } | null {
   if (pricingUnit !== "per_page") return null;
   const pages = detectedPageQuantity(detected);
-  if (!pages || pages === quantity) return null;
-  return {
-    pages,
-    message:
-      `Your file has ${pages} pages and this is priced by the page. ` +
-      `You have ${quantity} ${quantity === 1 ? "page" : "pages"} on this order.`,
-  };
+  if (!pages || pages === currentPages) return null;
+  const has = currentPages
+    ? `This order is set to ${currentPages} ${currentPages === 1 ? "page" : "pages"}.`
+    : "This order has no page count yet.";
+  return { pages, message: `Your file has ${pages} pages. ${has}` };
 }

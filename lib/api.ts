@@ -912,7 +912,42 @@ export type CatalogPrepStep = {
   body: string;
 };
 
-export type CatalogPricingUnit = "per_unit" | "per_package";
+export type CatalogPricingUnit =
+  | "per_unit"
+  | "per_package"
+  | "per_page"
+  | "per_area"
+  | "per_length"
+  | "whole_job";
+
+/** The unit a shop states a measured listing in. Area is that unit squared. */
+export type MeasureUnit = "mm" | "cm" | "in" | "ft" | "m";
+
+/** What a listing has to ask a client before it can be priced at all. */
+export type MeasurementKind = "none" | "pages" | "area" | "length";
+
+/** Thousandths of the listing's own measure unit, so 3.5 ft is 3500. */
+export type LineMeasurement = {
+  pages?: number;
+  width?: number;
+  height?: number;
+  length?: number;
+};
+
+/** A cheaper rate from a quantity up. */
+export type CatalogPriceTier = { minQuantity: number; unitPriceMinor: number };
+
+/**
+ * A speed the shop sells. `priceMinor` replaces the rate outright; the other
+ * shape is a flat `surchargeMinor` on top. Never both.
+ */
+export type CatalogSpeedTier = {
+  id: string;
+  label: string;
+  turnaroundHours: number;
+  priceMinor: number | null;
+  surchargeMinor: number | null;
+};
 
 /** One listing on a shop's board. */
 export type CatalogItem = {
@@ -930,6 +965,20 @@ export type CatalogItem = {
   effectivePriceMinor: number | null;
   pricingUnit: CatalogPricingUnit;
   packageQty: number | null;
+  /** What this listing must ask before it can be priced. */
+  measurementKind: MeasurementKind;
+  measureUnit: MeasureUnit | null;
+  /**
+   * The smallest size the shop will bill for. A small banner wastes the same
+   * sheet as a big one, so under this the minimum is what is charged.
+   */
+  minimumWidthMilli: number | null;
+  minimumHeightMilli: number | null;
+  minimumLengthMilli: number | null;
+  /** The least the shop will run at all. */
+  minimumOrderQuantity: number | null;
+  priceTiers: CatalogPriceTier[];
+  speedTiers: CatalogSpeedTier[];
   pricingBasis: string;
   turnaroundMode: "inherit" | "override";
   turnaroundHours: number | null;
@@ -1265,6 +1314,8 @@ export type CartLineRecord = {
   catalogItemId: string;
   quantity: number;
   optionIds: string[];
+  /** How big it is, for a listing the shop prices by size. */
+  measurement: LineMeasurement | null;
   structuredSpec: Record<string, unknown>;
   artworkFileId: string | null;
   mockupFileId: string | null;
@@ -1554,6 +1605,8 @@ export async function addCartLine(
     catalogItemId: string;
     optionIds: string[];
     quantity: number;
+    /** Required by a listing the shop prices by size; refused by any other. */
+    measurement?: LineMeasurement | null;
     structuredSpec?: Record<string, unknown>;
     artworkFileId?: string | null;
     dropoff?: OrderPoint | null;
@@ -1572,6 +1625,7 @@ export async function updateCartLine(
   input: {
     quantity?: number;
     optionIds?: string[];
+    measurement?: LineMeasurement | null;
     structuredSpec?: Record<string, unknown>;
     artworkFileId?: string | null;
     dropoff?: OrderPoint | null;
