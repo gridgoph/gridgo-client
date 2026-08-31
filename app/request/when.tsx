@@ -14,7 +14,6 @@ import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
 import {
   canStep,
-  chosenLabel,
   deadlineFor,
   monthGrid,
   monthName,
@@ -75,7 +74,7 @@ export default function WhenScreen() {
     if (!subcategory) return;
     let alive = true;
     api
-      .deadlineDays(subcategory, 42)
+      .deadlineDays(subcategory)
       .then((answer) => {
         if (!alive) return;
         setAvailability(answer.days);
@@ -205,7 +204,10 @@ export default function WhenScreen() {
 
       <View className="gg-page gap-3 pb-2 pt-2">
           <PrimaryButton
-            label={chosen ? `Find my printer for ${chosenLabel(chosen)}` : "Pick a date above"}
+            // The date is already the largest thing on the screen. Repeating it
+            // here wrapped the control onto two lines to say what the masthead
+            // had just said.
+            label={chosen ? "Continue" : "Pick a date"}
             onPress={() => go(chosen ? deadlineFor(chosen) : null)}
             disabled={!chosen}
           />

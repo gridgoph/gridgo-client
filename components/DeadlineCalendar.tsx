@@ -1,6 +1,14 @@
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { PanResponder, Pressable, Text, View, useWindowDimensions } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
@@ -32,21 +40,66 @@ const MONTHS = [
 ] as const;
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-/** The captain's yellow, which means the same thing on both grounds. */
-const TIGHT = "#FFDE59";
+/** How far a drag has to travel before it counts as a month. */
+const SWIPE_DISTANCE = 45;
 
 /**
- * What a day is painted.
+ * The month's palette.
  *
- * A day you can have is the page's own ink — near-black on a light page and
- * white on a dark one, which is the captain's `#FFFFFF` where a white disc can
- * actually be seen. A day you cannot is the quiet grey the reference uses for
- * the same thing, because unavailable is not a warning.
+ * Pastels, because forty-two saturated discs is a lot of shouting for a screen
+ * whose job is to be read calmly — and because a page of pure white circles on
+ * black is a glare rather than an invitation. These are the same three
+ * meanings the captain named, softened until the whole month can be looked at
+ * at once.
+ *
+ * Sage carries the days you can have. It is the one hue on the page that is
+ * not the brand gold, which is what lets an available day read as the offer
+ * without competing with the numeral above it, and the two are a long-settled
+ * pair. Butter is the captain's yellow, lifted off its full strength. Blush is
+ * his red at the point where a month of it still reads as information.
+ *
+ * Each ground gets its own value, not its own hue: on white a pastel has to
+ * come down to be seen, on black it has to come up.
  */
-function discColour(choice: DayChoice, colors: ReturnType<typeof useThemeColors>): string {
-  if (choice === "open") return colors.textPrimary;
-  if (choice === "tight") return TIGHT;
-  return colors.surfaceVariant;
+const PALETTE = {
+  light: {
+    open: "#8FA79B",
+    tight: "#EFCE7C",
+    cannot: "#EBD3D3",
+    past: "#E7E7E7",
+    onOpen: "#FFFFFF",
+    onTight: "#1A1A1A",
+    onCannot: "#9A5C5C",
+    onPast: "#9A9A9A",
+  },
+  dark: {
+    open: "#CBDED2",
+    tight: "#E7CE85",
+    cannot: "#553C3C",
+    past: "#1F1F1F",
+    onOpen: "#16211B",
+    onTight: "#1A1A1A",
+    onCannot: "#C79B9B",
+    onPast: "#5A5A5A",
+  },
+} as const;
+
+function paletteFor(light: boolean) {
+  return light ? PALETTE.light : PALETTE.dark;
+}
+
+/** What a day is painted. */
+function discColour(choice: DayChoice, light: boolean): string {
+  return paletteFor(light)[choice];
+}
+
+/** Ink that can be read on a given disc. */
+function numeralColour(choice: DayChoice, light: boolean): string {
+  const palette = paletteFor(light);
+  if (choice === "open") return palette.onOpen;
+  if (choice === "tight") return palette.onTight;
+  if (choice === "past") return palette.onPast;
+  return palette.onCannot;
 }
 
 export function DeadlineCalendar({
@@ -67,6 +120,7 @@ export function DeadlineCalendar({
   canStepForward: boolean;
 }) {
   const colors = useThemeColors();
+  const light = useThemeName() !== "dark";
   const { width } = useWindowDimensions();
 
   // Seven across the page with a hairline between, so the month reads as one
@@ -80,6 +134,50 @@ export function DeadlineCalendar({
   }, [days, selectedDayKey]);
 
   const headlineDate = headline ? new Date(`${headline.dayKey}T12:00:00`) : month;
+
+  /*
+    The month slides in from the side it came from.
+
+    Without it a swipe changes forty-two discs in one frame and reads as a
+    glitch rather than a movement — the hand has told the eye to expect travel
+    and nothing travels. Short, because this is a transition and not an
+    animation anybody should wait through.
+  */
+  const reducedMotion = useReducedMotion();
+  const shift = useSharedValue(0);
+  const fade = useSharedValue(1);
+  const monthKey = `${month.getFullYear()}-${month.getMonth()}`;
+  const previousKey = useRef(monthKey);
+
+  useEffect(() => {
+    if (previousKey.current === monthKey) return;
+    const forward = monthKey > previousKey.current;
+    previousKey.current = monthKey;
+    if (reducedMotion) return;
+    shift.value = forward ? 28 : -28;
+    fade.value = 0.4;
+    shift.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
+    fade.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
+  }, [monthKey, reducedMotion, shift, fade]);
+
+  const slide = useAnimatedStyle(() => ({
+    transform: [{ translateX: shift.value }],
+    opacity: fade.value,
+  }));
+
+  const swipe = useMemo(
+    () =>
+      PanResponder.create({
+        // Only once the drag is clearly sideways, so the page still scrolls.
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          Math.abs(gesture.dx) > 14 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+        onPanResponderRelease: (_event, gesture) => {
+          if (gesture.dx <= -SWIPE_DISTANCE && canStepForward) onStepMonth(1);
+          else if (gesture.dx >= SWIPE_DISTANCE && canStepBack) onStepMonth(-1);
+        },
+      }),
+    [onStepMonth, canStepBack, canStepForward],
+  );
 
   return (
     <View>
@@ -136,7 +234,15 @@ export function DeadlineCalendar({
         ))}
       </View>
 
-      <View className="mt-1 flex-row flex-wrap">
+      {/*
+        The grid answers a horizontal drag as well as the arrows. A swipe is
+        what a calendar teaches people to expect and costs nothing to offer;
+        the arrows stay because a swipe nobody guesses at is not an
+        affordance. PanResponder rather than a gesture library: this sits
+        inside a scroll view, and claiming the touch only once the movement is
+        clearly sideways is what keeps the page scrolling normally.
+      */}
+      <Animated.View className="mt-1 flex-row flex-wrap" style={slide} {...swipe.panHandlers}>
         {days.map((day) => (
           <DayCell
             key={day.dayKey}
@@ -147,7 +253,7 @@ export function DeadlineCalendar({
             onPress={() => onSelectDay(day)}
           />
         ))}
-      </View>
+      </Animated.View>
 
       {/*
         The key. Without words this is a grid of coloured circles, which is
@@ -161,7 +267,7 @@ export function DeadlineCalendar({
                 width: 11,
                 height: 11,
                 borderRadius: 999,
-                backgroundColor: discColour(choice, colors),
+                backgroundColor: discColour(choice, light),
               }}
             />
             <Text className="text-caption text-text-secondary">{choiceLabel(choice)}</Text>
@@ -243,9 +349,11 @@ function DayCell({
   const colors = useThemeColors();
   const light = useThemeName() !== "dark";
 
-  const fill = discColour(day.choice, colors);
-  // A white disc on a white page is not a disc. Nowhere else needs an edge.
-  const needsEdge = day.choice === "open" && !light;
+  const fill = discColour(day.choice, light);
+  const ink = numeralColour(day.choice, light);
+  // A white disc on a black page needs no edge; on a light one the ink disc
+  // needs none either. The edge is only for a fill that meets its own ground.
+  const needsEdge = day.choice === "cannot" && light;
 
   return (
     <Pressable
@@ -260,7 +368,7 @@ function DayCell({
         height: cell,
         alignItems: "center",
         justifyContent: "center",
-        opacity: day.inMonth ? (pressed && day.selectable ? 0.7 : 1) : 0.1,
+        opacity: day.inMonth ? (pressed && day.selectable ? 0.7 : 1) : 0.12,
       })}
     >
       <View
@@ -269,6 +377,8 @@ function DayCell({
           height: disc,
           borderRadius: 999,
           backgroundColor: fill,
+          alignItems: "center",
+          justifyContent: "center",
           // Today wears the accent as a ring, the way the reference marks it,
           // and a chosen day wears the page's ink on top of whatever it means.
           borderWidth: selected ? 3 : day.isToday ? 2 : needsEdge ? 1 : 0,
@@ -277,11 +387,27 @@ function DayCell({
             : day.isToday
               ? colors.brand
               : colors.outline,
-          // Past days recede rather than being marked. They are gone, which is
-          // not a thing to warn somebody about.
-          opacity: day.choice === "past" ? 0.45 : 1,
+          opacity: day.choice === "past" ? 0.5 : 1,
         }}
-      />
+      >
+        {/*
+          The date itself. The reference carries none, but a client picking a
+          deadline has to name a day to somebody later, and counting rows to
+          work out which disc is the twelfth is not a thing to ask of them.
+        */}
+        <Text
+          style={{
+            fontSize: Math.max(11, Math.round(disc * 0.34)),
+            color: ink,
+            fontVariant: ["tabular-nums"],
+          }}
+          allowFontScaling={false}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        >
+          {day.day}
+        </Text>
+      </View>
     </Pressable>
   );
 }

@@ -53,10 +53,10 @@ describe("WhenScreen", () => {
 
   it("will not go looking until a date is chosen, and says so on the control", async () => {
     // The button used to read "Find my printer" while doing nothing, which is
-    // a control that looks broken. It now names what is missing instead.
+    // a control that looks broken. It names what is missing instead.
     await renderInSafeArea(<WhenScreen />);
 
-    fireEvent.press(screen.getByText("Pick a date above"));
+    fireEvent.press(screen.getByText("Pick a date"));
     expect(mockPush).not.toHaveBeenCalled();
   });
 });

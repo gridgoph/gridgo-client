@@ -1668,7 +1668,10 @@ export type DeadlineDay = {
  */
 export async function deadlineDays(
   subcategoryCode: string,
-  days = 42,
+  // Four months. A print deadline is regularly further out than a fortnight,
+  // and a shorter window reads to a client as GRIDGO refusing the date rather
+  // than the calendar simply stopping.
+  days = 120,
 ): Promise<{ days: DeadlineDay[]; earliest: string | null }> {
   const query = `?subcategoryCode=${encodeURIComponent(subcategoryCode)}&days=${days}`;
   return request<{ days: DeadlineDay[]; earliest: string | null }>(`/me/deadline-days${query}`);
