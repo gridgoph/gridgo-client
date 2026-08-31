@@ -45,14 +45,16 @@ const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
 /**
  * The captain's three indicators.
  *
- * White is vacant, his yellow is a queue moving, his red is a queue full — and
- * the red is his, at full strength. A day nobody can make is the one thing on
- * this screen a client must not miss, and a soft one asked to be looked past.
+ * White is vacant and his yellow is a queue moving, both as given. For a queue
+ * that is full the platform already has a red — the one every error in every
+ * GRIDGO app is drawn in — and this uses that rather than inventing a brighter
+ * one. It reads as a stop without the glare of a pure signal red, and it means
+ * the same thing here as it does everywhere else in the product.
  *
- * What keeps a month of them from becoming a siren is not dilution but scope:
- * the month opens where there is something to book, days already gone are
- * neutral rather than red, and so the red marks the boundary of what is
- * possible instead of colouring in the past.
+ * What keeps a month of it from becoming a siren is not the shade but scope:
+ * the month opens where there is something to book, and days already gone are
+ * neutral rather than red, so the red marks the boundary of what is possible
+ * instead of colouring in the past.
  *
  * White needs opposite handling on each ground. On black it fills and
  * dominates, which is right — an open day should be the loudest thing here. On
@@ -63,7 +65,7 @@ const PALETTE = {
   light: {
     open: "#FFFFFF",
     tight: "#FFDE59",
-    cannot: "#FF3B3B",
+    cannot: "#C62828",
     past: "#ECECEC",
     onOpen: "#1A1A1A",
     onTight: "#1A1A1A",
@@ -73,11 +75,11 @@ const PALETTE = {
   dark: {
     open: "#FFFFFF",
     tight: "#FFDE59",
-    cannot: "#FF3B3B",
+    cannot: "#B33A3A",
     past: "#1F1F1F",
     onOpen: "#1A1A1A",
     onTight: "#1A1A1A",
-    onCannot: "#FFFFFF",
+    onCannot: "#FFE0E0",
     onPast: "#585858",
   },
 } as const;
