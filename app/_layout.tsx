@@ -275,6 +275,22 @@ function AppNavigation() {
                     contentStyle: { backgroundColor: token.surface },
                   }}
                 />
+                {/*
+                  Rating a finished job: a short question over an order already
+                  on display, with a keyboard in it. Same sheet treatment as
+                  asking for a proof change, and for the same reasons.
+                */}
+                <Stack.Screen
+                  name="order/rate"
+                  options={{
+                    presentation: "formSheet",
+                    headerShown: false,
+                    sheetAllowedDetents: "fitToContents",
+                    sheetGrabberVisible: true,
+                    sheetCornerRadius: radius.lg,
+                    contentStyle: { backgroundColor: token.surface },
+                  }}
+                />
                 <Stack.Screen
                   name="design-system"
                   options={pushedScreenOptions("Design system")}

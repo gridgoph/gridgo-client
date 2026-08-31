@@ -97,6 +97,8 @@ export type PriceRange = {
  */
 export type Order = {
   id: string;
+  /** Whether this order has already been rated, so a client is asked once. */
+  rated?: boolean;
   clientId: string;
   supplierId: string | null;
   riderId: string | null;
@@ -1636,6 +1638,22 @@ export async function updateCartLine(
     { method: "PATCH", body: JSON.stringify(input) },
   );
   return result.cart;
+}
+
+/**
+ * Rate the shop that ran a finished order.
+ *
+ * Once per order — the platform refuses a second, which is the honest answer
+ * when two devices race rather than something to paper over here.
+ */
+export async function rateOrder(
+  orderId: string,
+  input: { qualityStars: number; speedStars: number; valueStars: number; comment?: string },
+): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/review`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function removeCartLine(cartId: string, lineId: string): Promise<Cart> {
