@@ -13,6 +13,7 @@ import { SamplePhoto } from "@/components/SamplePhoto";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { formatPhp, type CatalogItem, type MatchResult } from "@/lib/api";
+import { formatDeadline } from "@/lib/deadline";
 import { userFacingError } from "@/lib/copy";
 import { readyInLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import { matchDistanceMeters } from "@/lib/match";
@@ -22,6 +23,7 @@ import { rememberOrderFlow } from "@/lib/orderFlow";
 import { PRIORITIES_ROUTE } from "@/lib/priorities";
 import { findCategory } from "@/lib/productCategories";
 import { useCart } from "@/store/cart";
+import { useJobDeadline } from "@/store/jobDeadline";
 import { usePriorities } from "@/store/priorities";
 
 /**
@@ -56,10 +58,13 @@ export default function MatchScreen() {
   const cart = useCart((state) => state.cart);
   const cartId = useCart((state) => state.cartId);
   const dropoff = cart?.defaultDropoff ?? null;
+  const deadline = useJobDeadline((state) => state.by);
 
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** The soonest anyone could do it, when nobody can make the client's date. */
+  const [earliest, setEarliest] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!subcategory) return;
@@ -68,6 +73,7 @@ export default function MatchScreen() {
       const result = await takeMatch({
         subcategoryCode: subcategory,
         dropoff,
+        deadline,
         ...(cartId ? { cartId } : {}),
       });
       setMatch(result);
@@ -75,13 +81,18 @@ export default function MatchScreen() {
     } catch (e) {
       const code =
         e instanceof api.ApiError ? (e.body as { error?: string })?.error : undefined;
+      setEarliest(
+        e instanceof api.ApiError
+          ? ((e.body as { earliestAvailable?: string })?.earliestAvailable ?? null)
+          : null,
+      );
       setMatch(null);
       setError(
         // Distance ranked first with no pin: the matcher cannot answer, and the
         // client needs the address screen rather than an error about it. Held
         // as state and rendered as a redirect, so this loader stays free of the
         // router — depending on it would re-run the match on every render.
-        code === "dropoff_required" || code === "match_not_found"
+        code === "dropoff_required" || code === "match_not_found" || code === "deadline_not_met"
           ? code
           : userFacingError(
               e,
@@ -91,7 +102,7 @@ export default function MatchScreen() {
     } finally {
       setLoading(false);
     }
-  }, [subcategory, dropoff, cartId]);
+  }, [subcategory, dropoff, cartId, deadline]);
 
   // Deliberately not `useFocusEffect`: coming back from a listing sheet must
   // not re-run the match and quietly move the client to a different shop.
@@ -121,6 +132,30 @@ export default function MatchScreen() {
           params: { subcategory: subcategory ?? "", category: category ?? "" },
         }}
       />
+    );
+  }
+
+  /*
+    Nobody can make the date, which is a different answer from nobody printing
+    this at all. A client told "we cannot do this" would go elsewhere; a client
+    told "not by Friday, but by Tuesday" has a decision to make.
+  */
+  if (error === "deadline_not_met") {
+    return (
+      <Screen edges={["bottom"]}>
+        <View className="gg-screen gg-page justify-center">
+          <EmptyState
+            title={`Nobody can finish ${subcategoryName.toLowerCase()} by then`}
+            body={
+              earliest
+                ? `The soonest anyone can do it is ${formatDeadline(earliest)}. Change your date and GRIDGO will look again.`
+                : "Change your date and GRIDGO will look again."
+            }
+            actionLabel="Change my date"
+            onAction={() => router.back()}
+          />
+        </View>
+      </Screen>
     );
   }
 

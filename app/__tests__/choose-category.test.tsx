@@ -247,20 +247,22 @@ describe("CategoryScreen", () => {
     expect(screen.queryByText(/Lovis/i)).toBeNull();
   });
 
-  it("takes the client to GRIDGO's match, not to a platform product", async () => {
+  it("asks when it is needed before choosing a printer, not after", async () => {
     await renderInSafeArea(<CategoryScreen />);
     await screen.findByText("GRIDGO PRINTS THESE NOW");
 
     fireEvent.press(screen.getByLabelText("Custom apparel"));
 
     await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    // The date decides which shops are offered at all, so it is asked before
+    // any of them is chosen rather than after one already has been.
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/request/match",
+      pathname: "/request/when",
       params: { subcategory: "custom_apparel", category: "event_merchandise" },
     });
   });
 
-  it("asks where the job is going first when the client put distance first", async () => {
+  it("still asks the date first, even when distance is the client's first priority", async () => {
     usePriorities.setState({ ranking: ["distance", "speed", "cost", "quality"], loaded: true });
     await renderInSafeArea(<CategoryScreen />);
     await screen.findByText("GRIDGO PRINTS THESE NOW");
@@ -268,8 +270,10 @@ describe("CategoryScreen", () => {
     fireEvent.press(screen.getByLabelText("Custom apparel"));
 
     await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    // The drop-off is still needed, but it is collected on the way to the
+    // match rather than before the date -- one question, then the other.
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/request/where",
+      pathname: "/request/when",
       params: { subcategory: "custom_apparel", category: "event_merchandise" },
     });
   });

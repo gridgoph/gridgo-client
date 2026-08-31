@@ -226,6 +226,15 @@ function AppNavigation() {
                   heading already says what the job is, and repeating it in the
                   header would spend the band saying nothing new.
                 */}
+        {/*
+          The deadline, asked before any shop is chosen. It is the one question
+          that means the same thing at every shop, so the only one that can
+          decide which of them are offered at all.
+        */}
+        <Stack.Screen
+          name="request/when"
+          options={pushedScreenOptions("When you need it")}
+        />
                 <Stack.Screen
                   name="request/match"
                   options={pushedScreenOptions("New request")}

@@ -1440,6 +1440,12 @@ export type MatchInput = {
   dropoff?: OrderPoint | null;
   /** Lets the matcher keep a basket with one shop in it on that shop. */
   cartId?: string;
+  /**
+   * When the client needs it. A filter, not a preference: a shop that cannot
+   * finish by this is not offered rather than ranked lower, because "can you
+   * make Friday" is not something to weigh against a price.
+   */
+  deadline?: string | null;
 };
 
 /**
