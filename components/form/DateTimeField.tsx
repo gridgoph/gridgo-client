@@ -1,7 +1,3 @@
-import DateTimePicker, {
-  DateTimePickerAndroid,
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import { CalendarClock } from "lucide-react-native";
 import { useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
@@ -9,6 +5,7 @@ import { Platform, Pressable, Text, View } from "react-native";
 import { Sheet } from "@/components/Sheet";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { formatDeadline } from "@/lib/deadline";
+import { DEADLINE_PICKER_NEEDS_REBUILD, getDateTimePickerNative } from "@/lib/nativeModules";
 
 type Props = {
   /** ISO instant, or empty when nothing is chosen yet. */
@@ -43,6 +40,10 @@ export function DateTimeField({
   const themeName = useThemeName();
   const [iosOpen, setIosOpen] = useState(false);
   const [iosDraft, setIosDraft] = useState<Date>(suggested);
+  const [rebuildHint, setRebuildHint] = useState(false);
+  const picker = getDateTimePickerNative();
+  const DateTimePicker = picker?.default;
+  const DateTimePickerAndroid = picker?.DateTimePickerAndroid;
 
   const current = value ? new Date(value) : null;
   const startFrom = current && Number.isFinite(current.getTime()) ? current : suggested;
@@ -54,18 +55,22 @@ export function DateTimeField({
   };
 
   const openAndroid = () => {
+    if (!DateTimePickerAndroid) {
+      setRebuildHint(true);
+      return;
+    }
     DateTimePickerAndroid.open({
       value: startFrom,
       mode: "date",
       minimumDate,
       maximumDate,
-      onChange: (event: DateTimePickerEvent, picked?: Date) => {
+      onChange: (event, picked?: Date) => {
         if (event.type !== "set" || !picked) return;
         DateTimePickerAndroid.open({
           value: picked,
           mode: "time",
           is24Hour: false,
-          onChange: (timeEvent: DateTimePickerEvent, time?: Date) => {
+          onChange: (timeEvent, time?: Date) => {
             if (timeEvent.type !== "set" || !time) return;
             const combined = new Date(picked);
             combined.setHours(time.getHours(), time.getMinutes(), 0, 0);
@@ -77,6 +82,10 @@ export function DateTimeField({
   };
 
   const open = () => {
+    if (!picker) {
+      setRebuildHint(true);
+      return;
+    }
     if (Platform.OS === "android") {
       openAndroid();
       return;
@@ -102,8 +111,11 @@ export function DateTimeField({
         </Text>
         <CalendarClock size={18} color={colors.textMuted} strokeWidth={2} />
       </Pressable>
+      {rebuildHint ? (
+        <Text className="text-caption text-text-secondary">{DEADLINE_PICKER_NEEDS_REBUILD}</Text>
+      ) : null}
 
-      {Platform.OS !== "android" ? (
+      {Platform.OS !== "android" && DateTimePicker ? (
         <Sheet
           open={iosOpen}
           onClose={() => setIosOpen(false)}
@@ -119,7 +131,7 @@ export function DateTimeField({
               maximumDate={maximumDate}
               themeVariant={themeName}
               accentColor={colors.textPrimary}
-              onChange={(_event: DateTimePickerEvent, picked?: Date) => {
+              onChange={(_event, picked?: Date) => {
                 if (picked) setIosDraft(picked);
               }}
             />

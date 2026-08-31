@@ -1,9 +1,9 @@
-import * as DocumentPicker from "expo-document-picker";
 import { useCallback, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
 import { artworkErrorMessage, normalizeFileName } from "@/lib/artworkUpload";
 import { PROOF_ACCEPTED, PROOF_MAX_MIB, PROOF_MIME_TYPES } from "@/lib/checkout";
+import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
 
 export type PaymentProofState = {
   phase: "empty" | "sending" | "stored" | "failed";
@@ -40,7 +40,16 @@ export function usePaymentProof() {
   const handleRef = useRef<api.UploadHandle | null>(null);
 
   const pick = useCallback(async () => {
-    let result: DocumentPicker.DocumentPickerResult;
+    const DocumentPicker = getDocumentPickerNative();
+    if (!DocumentPicker) {
+      setState({
+        ...EMPTY,
+        phase: "failed",
+        error: FILE_PICKER_NEEDS_REBUILD,
+      });
+      return;
+    }
+    let result: Awaited<ReturnType<typeof DocumentPicker.getDocumentAsync>>;
     try {
       result = await DocumentPicker.getDocumentAsync({
         type: PROOF_MIME_TYPES,

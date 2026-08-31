@@ -104,6 +104,8 @@ export type Order = {
   productId: string;
   title: string;
   quantity: number;
+  /** Catalog unit for {@link describeQuantity}, when the order has no productId. */
+  unit?: string;
   size: string;
   material: string;
   /** Optional finish from the platform taxonomy. */

@@ -162,7 +162,7 @@ export default function OrderDetailScreen() {
   const meta = getOrderStateMeta(order.state);
   const nextAction = orderNextAction(order);
   const waitingOn = orderWaitingOn(order);
-  const unit = product?.unit ?? "";
+  const unit = order.unit || product?.unit || "";
   const family = product?.family ?? null;
   const artworkFileId = order.artworkFileIds?.[order.artworkFileIds.length - 1] ?? null;
   const materialLabel = taxonomyLabel(taxonomy, order.material);

@@ -1,4 +1,3 @@
-import * as DocumentPicker from "expo-document-picker";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
@@ -11,6 +10,7 @@ import {
   normalizeFileName,
   type ArtworkUploadState,
 } from "@/lib/artworkUpload";
+import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
 
 /**
  * Owns one artwork upload, from picking a file to the server confirming it.
@@ -142,7 +142,16 @@ export function useArtworkUpload(
   }, []);
 
   const pick = useCallback(async () => {
-    let result: DocumentPicker.DocumentPickerResult;
+    const DocumentPicker = getDocumentPickerNative();
+    if (!DocumentPicker) {
+      setState((prev) => ({
+        ...prev,
+        phase: "failed",
+        error: FILE_PICKER_NEEDS_REBUILD,
+      }));
+      return;
+    }
+    let result: Awaited<ReturnType<typeof DocumentPicker.getDocumentAsync>>;
     try {
       result = await DocumentPicker.getDocumentAsync({
         // A listing's own formats when there is one; otherwise everything the

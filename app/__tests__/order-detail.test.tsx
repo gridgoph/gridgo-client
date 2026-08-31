@@ -235,6 +235,24 @@ describe("OrderDetailScreen", () => {
     expect(screen.getByText("Request changes")).toBeTruthy();
   });
 
+  it("does not show undefined items when a checkout order omitted quantity", async () => {
+    setOrder({
+      title: "Flyers",
+      quantity: undefined as unknown as number,
+      size: "",
+      material: "",
+      address: "",
+      artworkName: null,
+      artworkFileIds: [],
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Flyers")).toBeTruthy();
+    expect(screen.queryByText(/undefined items/i)).toBeNull();
+    expect(screen.getByText("Quantity")).toBeTruthy();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
   it("shows the client's money as subtotal, delivery and total — never a commission", async () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
