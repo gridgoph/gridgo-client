@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Pressable, Text, View, useWindowDimensions } from "react-native";
 import Animated, {
   Easing,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -44,43 +45,37 @@ const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
 const SWIPE_DISTANCE = 45;
 
 /**
- * The month's palette.
+ * The captain's three indicators, and the one adjustment each ground needs.
  *
- * Pastels, because forty-two saturated discs is a lot of shouting for a screen
- * whose job is to be read calmly — and because a page of pure white circles on
- * black is a glare rather than an invitation. These are the same three
- * meanings the captain named, softened until the whole month can be looked at
- * at once.
+ * White is vacant, his yellow is a queue moving, his red is a queue full. The
+ * red is carried to a pastel: at full strength forty-two of them is a siren,
+ * and this screen is read all at once. The other two stand as given.
  *
- * Sage carries the days you can have. It is the one hue on the page that is
- * not the brand gold, which is what lets an available day read as the offer
- * without competing with the numeral above it, and the two are a long-settled
- * pair. Butter is the captain's yellow, lifted off its full strength. Blush is
- * his red at the point where a month of it still reads as information.
- *
- * Each ground gets its own value, not its own hue: on white a pastel has to
- * come down to be seen, on black it has to come up.
+ * White needs the opposite treatment on each page. On black it fills and
+ * dominates, which is right — an open day should be the loudest thing here. On
+ * white it would disappear, so it becomes a crisp outlined circle instead,
+ * which is what vacant looks like anyway.
  */
 const PALETTE = {
   light: {
-    open: "#8FA79B",
-    tight: "#EFCE7C",
-    cannot: "#EBD3D3",
-    past: "#E7E7E7",
-    onOpen: "#FFFFFF",
+    open: "#FFFFFF",
+    tight: "#FFDE59",
+    cannot: "#F2CFCF",
+    past: "#ECECEC",
+    onOpen: "#1A1A1A",
     onTight: "#1A1A1A",
-    onCannot: "#9A5C5C",
-    onPast: "#9A9A9A",
+    onCannot: "#A75E5E",
+    onPast: "#B4B4B4",
   },
   dark: {
-    open: "#CBDED2",
-    tight: "#E7CE85",
-    cannot: "#553C3C",
+    open: "#FFFFFF",
+    tight: "#FFDE59",
+    cannot: "#D9A5A5",
     past: "#1F1F1F",
-    onOpen: "#16211B",
+    onOpen: "#1A1A1A",
     onTight: "#1A1A1A",
-    onCannot: "#C79B9B",
-    onPast: "#5A5A5A",
+    onCannot: "#5A2E2E",
+    onPast: "#585858",
   },
 } as const;
 
@@ -136,47 +131,90 @@ export function DeadlineCalendar({
   const headlineDate = headline ? new Date(`${headline.dayKey}T12:00:00`) : month;
 
   /*
-    The month slides in from the side it came from.
+    The month is dragged, not merely replaced.
 
-    Without it a swipe changes forty-two discs in one frame and reads as a
-    glitch rather than a movement — the hand has told the eye to expect travel
-    and nothing travels. Short, because this is a transition and not an
-    animation anybody should wait through.
+    A carousel: the grid follows the finger, and on release either carries on
+    off the edge and brings the next month in from the other side, or returns
+    to where it was. Nothing overshoots — a month is a page being turned, and a
+    page that bounces at the end of the turn reads as a mistake.
+
+    The whole width is the travel, so a month leaves completely before its
+    replacement arrives. Half-measures here look like the grid stuttering.
   */
   const reducedMotion = useReducedMotion();
+  const travel = cell * 7;
   const shift = useSharedValue(0);
-  const fade = useSharedValue(1);
   const monthKey = `${month.getFullYear()}-${month.getMonth()}`;
   const previousKey = useRef(monthKey);
+  const settling = useRef(false);
 
   useEffect(() => {
     if (previousKey.current === monthKey) return;
     const forward = monthKey > previousKey.current;
     previousKey.current = monthKey;
-    if (reducedMotion) return;
-    shift.value = forward ? 28 : -28;
-    fade.value = 0.4;
-    shift.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
-    fade.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
-  }, [monthKey, reducedMotion, shift, fade]);
+    settling.current = false;
+    if (reducedMotion) {
+      shift.value = 0;
+      return;
+    }
+    // In from the far side, at the speed a turned page settles.
+    shift.value = forward ? travel : -travel;
+    shift.value = withTiming(0, { duration: 230, easing: Easing.out(Easing.cubic) });
+  }, [monthKey, reducedMotion, shift, travel]);
 
-  const slide = useAnimatedStyle(() => ({
-    transform: [{ translateX: shift.value }],
-    opacity: fade.value,
-  }));
+  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: shift.value }] }));
+
+  const step = (direction: number) => {
+    settling.current = false;
+    onStepMonth(direction);
+  };
 
   const swipe = useMemo(
     () =>
       PanResponder.create({
         // Only once the drag is clearly sideways, so the page still scrolls.
         onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dx) > 14 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+          Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+        onPanResponderMove: (_event, gesture) => {
+          if (settling.current || reducedMotion) return;
+          const blocked = gesture.dx < 0 ? !canStepForward : !canStepBack;
+          // A month that is not there still moves, but heavily, so the edge of
+          // the window is something the hand meets rather than something that
+          // simply ignores it.
+          shift.value = blocked ? gesture.dx * 0.18 : gesture.dx;
+        },
         onPanResponderRelease: (_event, gesture) => {
-          if (gesture.dx <= -SWIPE_DISTANCE && canStepForward) onStepMonth(1);
-          else if (gesture.dx >= SWIPE_DISTANCE && canStepBack) onStepMonth(-1);
+          const forward = gesture.dx <= -SWIPE_DISTANCE && canStepForward;
+          const back = gesture.dx >= SWIPE_DISTANCE && canStepBack;
+          if (!forward && !back) {
+            if (!reducedMotion) {
+              shift.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+            }
+            return;
+          }
+          if (reducedMotion) {
+            step(forward ? 1 : -1);
+            return;
+          }
+          // Carry it the rest of the way off, then swap. The month arriving
+          // handles its own entrance.
+          settling.current = true;
+          shift.value = withTiming(
+            forward ? -travel : travel,
+            { duration: 150, easing: Easing.out(Easing.quad) },
+            (finished) => {
+              if (finished) runOnJS(step)(forward ? 1 : -1);
+            },
+          );
+        },
+        onPanResponderTerminate: () => {
+          if (!reducedMotion) {
+            shift.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+          }
         },
       }),
-    [onStepMonth, canStepBack, canStepForward],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onStepMonth, canStepBack, canStepForward, reducedMotion, travel],
   );
 
   return (
@@ -268,6 +306,8 @@ export function DeadlineCalendar({
                 height: 11,
                 borderRadius: 999,
                 backgroundColor: discColour(choice, light),
+                borderWidth: choice === "open" && light ? 1 : 0,
+                borderColor: colors.textPrimary,
               }}
             />
             <Text className="text-caption text-text-secondary">{choiceLabel(choice)}</Text>
@@ -351,9 +391,9 @@ function DayCell({
 
   const fill = discColour(day.choice, light);
   const ink = numeralColour(day.choice, light);
-  // A white disc on a black page needs no edge; on a light one the ink disc
-  // needs none either. The edge is only for a fill that meets its own ground.
-  const needsEdge = day.choice === "cannot" && light;
+  // A white disc on a white page is not a disc. It becomes an outlined circle
+  // there instead, which is what vacant looks like anyway.
+  const needsEdge = day.choice === "open" && light;
 
   return (
     <Pressable
@@ -381,12 +421,12 @@ function DayCell({
           justifyContent: "center",
           // Today wears the accent as a ring, the way the reference marks it,
           // and a chosen day wears the page's ink on top of whatever it means.
-          borderWidth: selected ? 3 : day.isToday ? 2 : needsEdge ? 1 : 0,
+          borderWidth: selected ? 3 : day.isToday ? 2 : needsEdge ? 1.5 : 0,
           borderColor: selected
             ? colors.textPrimary
             : day.isToday
               ? colors.brand
-              : colors.outline,
+              : colors.textPrimary,
           opacity: day.choice === "past" ? 0.5 : 1,
         }}
       >
