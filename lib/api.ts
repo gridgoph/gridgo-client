@@ -1646,6 +1646,34 @@ export async function updateCartLine(
  * Once per order — the platform refuses a second, which is the honest answer
  * when two devices race rather than something to paper over here.
  */
+/** One day, and whether GRIDGO could finish this kind of work by the end of it. */
+export type DeadlineDay = {
+  /** Local calendar day, `YYYY-MM-DD`. */
+  day: string;
+  /**
+   * `cannot` — nobody could finish by then.
+   * `tight`  — somebody could, but the choice is narrow.
+   * `open`   — comfortably achievable.
+   *
+   * Never a count. A client is not told how many shops print something.
+   */
+  state: "cannot" | "tight" | "open";
+};
+
+/**
+ * Which days GRIDGO could make, for one kind of work.
+ *
+ * Answered by the platform because the queues and capacities behind it are the
+ * shops' own. `earliest` is null when nobody prints this at all.
+ */
+export async function deadlineDays(
+  subcategoryCode: string,
+  days = 42,
+): Promise<{ days: DeadlineDay[]; earliest: string | null }> {
+  const query = `?subcategoryCode=${encodeURIComponent(subcategoryCode)}&days=${days}`;
+  return request<{ days: DeadlineDay[]; earliest: string | null }>(`/me/deadline-days${query}`);
+}
+
 export async function rateOrder(
   orderId: string,
   input: { qualityStars: number; speedStars: number; valueStars: number; comment?: string },

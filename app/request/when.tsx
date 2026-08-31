@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { DateTimeField } from "@/components/form/DateTimeField";
+import { DeadlineCalendar } from "@/components/DeadlineCalendar";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -12,6 +12,15 @@ import { prefetchMatch } from "@/lib/matchPrefetch";
 import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
+import {
+  canStep,
+  chosenLabel,
+  deadlineFor,
+  monthGrid,
+  openMonth,
+  openingMonth,
+  shiftMonth,
+} from "@/lib/deadlineCalendar";
 
 /**
  * When the client needs it.
@@ -42,18 +51,53 @@ export default function WhenScreen() {
   const cartId = useCart((state) => state.cartId);
   const dropoff = cart?.defaultDropoff ?? null;
 
-  const [chosen, setChosen] = useState("");
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<api.DeadlineDay[] | null>(null);
+  const [availabilityFailed, setAvailabilityFailed] = useState(false);
+  const [month, setMonth] = useState(() => new Date());
+  // Opened on a month that has something in it. A job whose soonest date is
+  // next month otherwise opens on a page of struck days, which reads as
+  // "GRIDGO cannot print this" rather than "not this month".
+  const [monthPinned, setMonthPinned] = useState(false);
 
-  const bounds = useMemo(() => {
-    const now = new Date();
-    return {
-      // Nothing can be printed and delivered in the next hour, and offering it
-      // would only produce a match that fails.
-      minimum: new Date(now.getTime() + 60 * 60 * 1000),
-      suggested: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
-      maximum: new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000),
+  /*
+    Which days GRIDGO could actually make. Asked of the platform because the
+    queues behind the answer are the shops' own, and asked once for the whole
+    month rather than per tap.
+
+    A failure is not a dead end: the screen falls back to letting any future
+    day be chosen, and the match is still the thing that decides. Better a
+    client picks a date GRIDGO then cannot make than cannot pick at all.
+  */
+  useEffect(() => {
+    if (!subcategory) return;
+    let alive = true;
+    api
+      .deadlineDays(subcategory, 42)
+      .then((answer) => {
+        if (!alive) return;
+        setAvailability(answer.days);
+        if (!monthPinned) setMonth(openingMonth(answer.days, new Date()));
+      })
+      .catch(() => {
+        if (alive) setAvailabilityFailed(true);
+      });
+    return () => {
+      alive = false;
     };
-  }, []);
+  }, [subcategory]);
+
+  const days = useMemo(
+    () =>
+      monthGrid({
+        month,
+        // With no answer yet, every future day is offered rather than none:
+        // an empty month reads as "GRIDGO cannot print this at all".
+        availability: availability ?? openMonth(month),
+        now: new Date(),
+      }),
+    [month, availability],
+  );
 
   const thing = useMemo(() => {
     const found = findCategory(api.productCategoriesNow(), category ?? "")?.subcategories.find(
@@ -81,29 +125,57 @@ export default function WhenScreen() {
 
   return (
     <Screen edges={["bottom"]}>
-      <View className="gg-screen gg-page flex-1 pt-2">
-        <Text className="text-h1 text-text-primary">When do you need your {thing}?</Text>
-        <Text className="mt-3 text-body-lg text-text-secondary">
-          GRIDGO only offers you a printer that can actually make it. Nobody who
-          cannot is put in front of you.
+      {/*
+        The month scrolls and the two actions do not. On a short phone six rows
+        of days plus a legend runs past the fold, and a client who has to
+        scroll to reach the control that finishes the screen will scroll back
+        up to check the date and lose the button again.
+      */}
+      <ScrollView
+        className="gg-screen flex-1"
+        contentContainerClassName="gg-page pb-4 pt-2"
+        showsVerticalScrollIndicator={false}
+      >
+        <Text className="text-h2 text-text-primary">When do you need your {thing}?</Text>
+        {/*
+          One line, not three. The old paragraph explained the rule this
+          calendar now simply shows -- a day GRIDGO cannot make is struck
+          through -- and spent a third of the screen saying it.
+        */}
+        <Text className="mt-1 text-body text-text-secondary">
+          Only the days a printer can actually make.
         </Text>
 
-        <View className="mt-8 gap-3">
-          <DateTimeField
-            value={chosen}
-            onChange={setChosen}
-            suggested={bounds.suggested}
-            minimumDate={bounds.minimum}
-            maximumDate={bounds.maximum}
-            placeholder="Pick a date and time"
-            accessibilityLabel="When you need this by"
+        <View className="mt-4">
+          <DeadlineCalendar
+            days={days}
+            month={month}
+            selectedDayKey={chosen}
+            onSelectDay={(day) => setChosen(day.selectable ? day.dayKey : chosen)}
+            onStepMonth={(step) => {
+              // A month the client chose stays chosen: a late answer must not
+              // yank the page out from under them.
+              setMonthPinned(true);
+              setMonth((current) => shiftMonth(current, step));
+            }}
+            canStepBack={canStep(month, -1, availability ?? [], new Date())}
+            canStepForward={canStep(month, 1, availability ?? [], new Date())}
           />
         </View>
 
-        <View className="mt-auto gap-3 pb-2">
+        {availabilityFailed ? (
+          <Text className="mt-4 text-caption text-text-muted">
+            GRIDGO could not check which dates are possible just now. Pick the date you
+            want and we will tell you if nobody can make it.
+          </Text>
+        ) : null}
+
+      </ScrollView>
+
+      <View className="gg-page gap-3 pb-2 pt-2">
           <PrimaryButton
-            label="Find my printer"
-            onPress={() => go(chosen || null)}
+            label={chosen ? `Find my printer for ${chosenLabel(chosen)}` : "Pick a date above"}
+            onPress={() => go(chosen ? deadlineFor(chosen) : null)}
             disabled={!chosen}
           />
           {/*
@@ -111,8 +183,7 @@ export default function WhenScreen() {
             have to invent one, and inventing one would filter out shops that
             could have done the job.
           */}
-          <SecondaryButton label="No rush — show me anyone" onPress={() => go(null)} />
-        </View>
+        <SecondaryButton label="No rush — show me anyone" onPress={() => go(null)} />
       </View>
     </Screen>
   );
