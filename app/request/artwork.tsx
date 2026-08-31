@@ -11,6 +11,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { useArtworkUpload, type FormatGuard } from "@/hooks/useArtworkUpload";
 import { detectedProportions, detectedSummary, pageCountOffer } from "@/lib/artworkUpload";
+import { physicalSizeMilli, printResolution } from "@/lib/printResolution";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -215,6 +216,24 @@ export default function ArtworkScreen() {
   const size = typeof line.structuredSpec.size === "string" ? line.structuredSpec.size : "";
   const warning = artworkFitWarning(size, measured ?? pixels);
   const summary = detectedSummary(detected);
+
+  /*
+    The one thing this screen has been unable to answer.
+
+    It has had the chosen size all along, and now it has the file's real pixel
+    dimensions, so "will this print sharp" stops being a guess from the byte
+    count. 540 x 720 pixels on A5 is 87 DPI whatever the file weighs, and a
+    38 KB warning that happened to be right about it was right by accident.
+
+    Both halves can be unknown — a custom size nobody has measured, or a PDF,
+    which states a physical size rather than a pixel count and has nothing to
+    divide. Then this is null and the byte-count note stands as before.
+  */
+  const filePixels =
+    detected?.pixelWidth && detected?.pixelHeight
+      ? { width: detected.pixelWidth, height: detected.pixelHeight }
+      : pixels;
+  const resolution = printResolution(filePixels, physicalSizeMilli(size));
   const pageOffer = pageCountOffer(detected, item?.pricingUnit, line.measurement?.pages);
   const onLine = Boolean(line.artworkFileId);
   const links = item ? linkFormats(item) : [];
@@ -245,6 +264,7 @@ export default function ArtworkScreen() {
             onRetry={() => void upload.retry()}
             onCancel={upload.cancel}
             emphasis="primary"
+            resolution={resolution}
           />
         </View>
 
