@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { DeadlineCalendar } from "@/components/DeadlineCalendar";
@@ -17,6 +17,8 @@ import {
   chosenLabel,
   deadlineFor,
   monthGrid,
+  monthName,
+  nextMonthWithADay,
   openMonth,
   openingMonth,
   shiftMonth,
@@ -99,6 +101,11 @@ export default function WhenScreen() {
     [month, availability],
   );
 
+  const jumpTo = useMemo(
+    () => nextMonthWithADay(month, availability ?? [], new Date()),
+    [month, availability],
+  );
+
   const thing = useMemo(() => {
     const found = findCategory(api.productCategoriesNow(), category ?? "")?.subcategories.find(
       (entry) => entry.code === subcategory,
@@ -162,6 +169,30 @@ export default function WhenScreen() {
             canStepForward={canStep(month, 1, availability ?? [], new Date())}
           />
         </View>
+
+        {/*
+          A month with nothing in it is honest but unhelpful on its own: it
+          says "not these days" without saying where to look. This is what the
+          captain's screenshot was actually showing — a page of unavailable
+          days with no clue that moving forward would help.
+        */}
+        {jumpTo ? (
+          <Pressable
+            onPress={() => {
+              setMonthPinned(true);
+              setMonth(jumpTo);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Go to ${monthName(jumpTo)}`}
+            className="gg-panel mt-4 flex-row items-center justify-between gap-3 p-3"
+            style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+          >
+            <Text className="min-w-0 flex-1 text-body text-text-secondary">
+              Nothing this month. The soonest is in {monthName(jumpTo)}.
+            </Text>
+            <Text className="text-body font-medium text-text-primary">Go there</Text>
+          </Pressable>
+        ) : null}
 
         {availabilityFailed ? (
           <Text className="mt-4 text-caption text-text-muted">

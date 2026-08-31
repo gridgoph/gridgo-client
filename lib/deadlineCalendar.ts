@@ -100,9 +100,38 @@ export function choiceLabel(choice: DayChoice): string {
     case "tight":
       return "Tight — less choice";
     case "cannot":
-      return "Too soon for this job";
+      return "Not this day";
     case "past":
       return "Gone";
+  }
+}
+
+/**
+ * The clock, in the time the shops actually work in.
+ *
+ * A deadline is a moment in Davao, not on the phone. Somebody ordering from
+ * abroad, or from a handset whose zone drifted, would otherwise read a date
+ * this screen means differently — and "by Friday" is exactly the kind of
+ * promise that goes wrong by a day.
+ */
+export const SHOP_TIME_ZONE = "Asia/Manila";
+
+export function shopClock(now: Date = new Date()): string {
+  try {
+    return new Intl.DateTimeFormat("en-PH", {
+      timeZone: SHOP_TIME_ZONE,
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }).format(now);
+  } catch {
+    // A runtime without the zone data is not a reason to lose the screen.
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    }).format(now);
   }
 }
 
@@ -196,4 +225,33 @@ export function canStep(
   if (step < 0) return monthKeyOf(target) >= monthKeyOf(now);
   const last = availability.at(-1);
   return last ? monthKeyOf(target) <= last.day.slice(0, 7) : false;
+}
+
+
+/**
+ * The soonest month that has a day in it, when the one on screen has none.
+ *
+ * A month of quiet grey is honest but unhelpful on its own: it says "not
+ * these days" without saying where to look. Null when the month on screen
+ * already has something, or when nothing in the answered window does.
+ */
+export function nextMonthWithADay(
+  month: Date,
+  availability: DeadlineDay[],
+  now: Date = new Date(),
+): Date | null {
+  const shown = monthKeyOf(month);
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const usable = availability.filter((entry) => entry.state !== "cannot" && entry.day >= todayKey);
+  if (usable.some((entry) => entry.day.slice(0, 7) === shown)) return null;
+
+  const later = usable.find((entry) => entry.day.slice(0, 7) > shown);
+  if (!later) return null;
+  const [year, monthNumber] = later.day.split("-").map(Number);
+  return new Date(year, monthNumber - 1, 1);
+}
+
+/** "September" — a month named for a control that jumps to it. */
+export function monthName(month: Date): string {
+  return month.toLocaleDateString(undefined, { month: "long" });
 }

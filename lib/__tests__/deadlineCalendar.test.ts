@@ -5,11 +5,15 @@ import {
   choiceLabel,
   deadlineFor,
   firstAvailable,
+  SHOP_TIME_ZONE,
   monthGrid,
   monthKeyOf,
+  monthName,
+  nextMonthWithADay,
   openMonth,
   openingMonth,
   shiftMonth,
+  shopClock,
 } from "@/lib/deadlineCalendar";
 
 const MARCH = new Date(2026, 2, 9);
@@ -158,5 +162,42 @@ describe("stepping between months", () => {
     expect(monthKeyOf(shiftMonth(MARCH, 1))).toBe("2026-04");
     expect(monthKeyOf(shiftMonth(MARCH, -1))).toBe("2026-02");
     expect(monthKeyOf(shiftMonth(new Date(2026, 11, 15), 1))).toBe("2027-01");
+  });
+});
+
+describe("a month with nothing in it", () => {
+  it("names the soonest month that has a day", () => {
+    // What the captain's screenshot was really showing: a page of unavailable
+    // days with no clue that moving forward would help.
+    const spillover = availability({ "2026-03-20": "cannot", "2026-04-02": "open" });
+    expect(monthKeyOf(nextMonthWithADay(MARCH, spillover, NOW)!)).toBe("2026-04");
+    expect(monthName(new Date(2026, 3, 1))).toBe("April");
+  });
+
+  it("says nothing when the month on screen already has a day", () => {
+    const here = availability({ "2026-03-12": "open", "2026-04-02": "open" });
+    expect(nextMonthWithADay(MARCH, here, NOW)).toBeNull();
+  });
+
+  it("says nothing when no month in the window has one", () => {
+    expect(nextMonthWithADay(MARCH, availability({ "2026-03-20": "cannot" }), NOW)).toBeNull();
+    expect(nextMonthWithADay(MARCH, [], NOW)).toBeNull();
+  });
+
+  it("does not point back at a day that has gone", () => {
+    // A past day is available in the answer and useless as a destination.
+    const past = availability({ "2026-03-02": "open", "2026-03-20": "cannot" });
+    expect(nextMonthWithADay(MARCH, past, NOW)).toBeNull();
+  });
+});
+
+describe("the clock", () => {
+  it("reads the time where the presses are, not where the phone is", () => {
+    // A deadline is a moment in Davao. "By Friday" is exactly the kind of
+    // promise that goes wrong by a day when the zones differ.
+    const midnightUtc = new Date("2026-03-09T16:30:00.000Z");
+    // Manila is UTC+8, so this is half past midnight the next day there.
+    expect(shopClock(midnightUtc)).toMatch(/12:30/);
+    expect(SHOP_TIME_ZONE).toBe("Asia/Manila");
   });
 });
