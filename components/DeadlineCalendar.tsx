@@ -560,20 +560,8 @@ const DayCell = memo(function DayCell({
     >
       <View
         style={{
-          // The chosen day is lifted rather than recoloured.
-          //
-          // Every colour on this month already means something — white is a
-          // day you can have, yellow a narrow one, red one you cannot — so a
-          // fourth would have to be read against three that are already
-          // spoken for. A ring in the primary yellow had the same trouble: on
-          // a yellow day it is nothing at all.
-          //
-          // Size and shadow are the two channels nothing else here uses. The
-          // disc grows past its cell and casts, so it reads as picked up off
-          // the grid, and it says the same thing on a white day, a yellow one
-          // and a red one.
-          width: selected ? disc + 6 : disc,
-          height: selected ? disc + 6 : disc,
+          width: disc,
+          height: disc,
           borderRadius: 999,
           backgroundColor: fill,
           alignItems: "center",
@@ -582,15 +570,6 @@ const DayCell = memo(function DayCell({
           borderWidth: day.isToday ? 2 : needsEdge ? 1.5 : 0,
           borderColor: day.isToday ? colors.brand : colors.textPrimary,
           opacity: day.choice === "past" ? 0.5 : 1,
-          ...(selected
-            ? {
-                shadowColor: "#000000",
-                shadowOpacity: 0.35,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 3 },
-                elevation: 6,
-              }
-            : null),
         }}
       >
         {/*
@@ -598,10 +577,39 @@ const DayCell = memo(function DayCell({
           deadline has to name a day to somebody later, and counting rows to
           work out which disc is the twelfth is not a thing to ask of them.
         */}
+        {/*
+          The chosen day is ringed from the inside.
+
+          It cannot grow: a disc bigger than its cell overlaps the days beside
+          it, which is a calendar that looks broken at the one moment the
+          client has just made a decision. It cannot take a new colour either —
+          white, yellow and red are all spoken for here, and a fourth would be
+          read against three meanings that already exist.
+
+          So the mark is drawn in the disc's own ink, inside its own edge. That
+          ink is chosen to be legible on the fill by construction, which makes
+          this the one treatment that reads identically on a white day, a
+          yellow one and a red one.
+        */}
+        {selected ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: 3,
+              left: 3,
+              right: 3,
+              bottom: 3,
+              borderRadius: 999,
+              borderWidth: 2,
+              borderColor: ink,
+            }}
+          />
+        ) : null}
         <Text
           className={selected ? "font-bold" : undefined}
           style={{
-            fontSize: Math.max(11, Math.round((selected ? disc + 6 : disc) * 0.34)),
+            fontSize: Math.max(11, Math.round(disc * 0.34)),
             color: ink,
             fontVariant: ["tabular-nums"],
           }}
@@ -615,3 +623,54 @@ const DayCell = memo(function DayCell({
     </Pressable>
   );
 });
+
+
+/**
+ * The month before GRIDGO has answered for it.
+ *
+ * The screen used to paint every day as available and then repaint most of
+ * them unavailable a moment later, which is a flicker on open and again on
+ * every swipe past what has been answered for. Holding the shape still until
+ * the answer lands is both calmer and more honest: GRIDGO does not yet know,
+ * and a grid of grey discs says exactly that.
+ *
+ * The same geometry as the real month, so nothing moves when it arrives.
+ */
+export function DeadlineCalendarSkeleton() {
+  const colors = useThemeColors();
+  const { width } = useWindowDimensions();
+  const cell = Math.floor((width - 32) / 7);
+  const disc = cell - 4;
+
+  return (
+    <View accessibilityLabel="Loading which dates are possible">
+      <View
+        style={{
+          width: 150,
+          height: 78,
+          borderRadius: 12,
+          backgroundColor: colors.surfaceVariant,
+        }}
+      />
+      <View style={{ marginTop: 8, gap: 6 }}>
+        <View style={{ width: 130, height: 20, borderRadius: 6, backgroundColor: colors.surfaceVariant }} />
+        <View style={{ width: 70, height: 16, borderRadius: 6, backgroundColor: colors.surfaceVariant }} />
+      </View>
+
+      <View style={{ marginTop: 24, flexDirection: "row", flexWrap: "wrap" }}>
+        {Array.from({ length: 42 }, (_, index) => (
+          <View key={index} style={{ width: cell, height: cell, alignItems: "center", justifyContent: "center" }}>
+            <View
+              style={{
+                width: disc,
+                height: disc,
+                borderRadius: 999,
+                backgroundColor: colors.surfaceVariant,
+              }}
+            />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}

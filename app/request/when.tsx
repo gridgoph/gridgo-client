@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { DeadlineCalendar } from "@/components/DeadlineCalendar";
+import { DeadlineCalendar, DeadlineCalendarSkeleton } from "@/components/DeadlineCalendar";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -174,6 +174,12 @@ export default function WhenScreen() {
         </Text>
 
         <View className="mt-4">
+          {/*
+            Held until GRIDGO answers. Painting an optimistic month and then
+            repainting most of it unavailable a moment later is a flicker on
+            open, and again on every swipe past what has been answered for.
+          */}
+          {availability || availabilityFailed ? (
           <DeadlineCalendar
             daysFor={daysFor}
             month={month}
@@ -183,6 +189,9 @@ export default function WhenScreen() {
             canStepBack={canStep(month, -1, availability ?? [], new Date())}
             canStepForward={canStep(month, 1, availability ?? [], new Date())}
           />
+          ) : (
+            <DeadlineCalendarSkeleton />
+          )}
         </View>
 
         {/*
