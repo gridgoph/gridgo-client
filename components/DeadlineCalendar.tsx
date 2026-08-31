@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Pressable, Text, View, useWindowDimensions } from "react-native";
 import Animated, {
   Easing,
@@ -14,6 +14,7 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
   choiceLabel,
+  shiftMonth,
   shopClock,
   type CalendarDay,
   type DayChoice,
@@ -41,40 +42,42 @@ const MONTHS = [
 ] as const;
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-/** How far a drag has to travel before it counts as a month. */
-const SWIPE_DISTANCE = 45;
-
 /**
- * The captain's three indicators, and the one adjustment each ground needs.
+ * The captain's three indicators.
  *
- * White is vacant, his yellow is a queue moving, his red is a queue full. The
- * red is carried to a pastel: at full strength forty-two of them is a siren,
- * and this screen is read all at once. The other two stand as given.
+ * White is vacant, his yellow is a queue moving, his red is a queue full — and
+ * the red is his, at full strength. A day nobody can make is the one thing on
+ * this screen a client must not miss, and a soft one asked to be looked past.
  *
- * White needs the opposite treatment on each page. On black it fills and
+ * What keeps a month of them from becoming a siren is not dilution but scope:
+ * the month opens where there is something to book, days already gone are
+ * neutral rather than red, and so the red marks the boundary of what is
+ * possible instead of colouring in the past.
+ *
+ * White needs opposite handling on each ground. On black it fills and
  * dominates, which is right — an open day should be the loudest thing here. On
- * white it would disappear, so it becomes a crisp outlined circle instead,
- * which is what vacant looks like anyway.
+ * white it would disappear, so it becomes a crisp outlined circle, which is
+ * what vacant looks like anyway.
  */
 const PALETTE = {
   light: {
     open: "#FFFFFF",
     tight: "#FFDE59",
-    cannot: "#F2CFCF",
+    cannot: "#FF3B3B",
     past: "#ECECEC",
     onOpen: "#1A1A1A",
     onTight: "#1A1A1A",
-    onCannot: "#A75E5E",
+    onCannot: "#FFFFFF",
     onPast: "#B4B4B4",
   },
   dark: {
     open: "#FFFFFF",
     tight: "#FFDE59",
-    cannot: "#D9A5A5",
+    cannot: "#FF3B3B",
     past: "#1F1F1F",
     onOpen: "#1A1A1A",
     onTight: "#1A1A1A",
-    onCannot: "#5A2E2E",
+    onCannot: "#FFFFFF",
     onPast: "#585858",
   },
 } as const;
@@ -98,7 +101,7 @@ function numeralColour(choice: DayChoice, light: boolean): string {
 }
 
 export function DeadlineCalendar({
-  days,
+  daysFor,
   month,
   selectedDayKey,
   onSelectDay,
@@ -106,7 +109,8 @@ export function DeadlineCalendar({
   canStepBack,
   canStepForward,
 }: {
-  days: CalendarDay[];
+  /** Builds a month's cells. Called for the month either side as well. */
+  daysFor: (month: Date) => CalendarDay[];
   month: Date;
   selectedDayKey: string | null;
   onSelectDay: (day: CalendarDay) => void;
@@ -123,6 +127,10 @@ export function DeadlineCalendar({
   const cell = Math.floor((width - 32) / 7);
   const disc = cell - 3;
 
+  const days = useMemo(() => daysFor(month), [daysFor, month]);
+  const before = useMemo(() => daysFor(shiftMonth(month, -1)), [daysFor, month]);
+  const after = useMemo(() => daysFor(shiftMonth(month, 1)), [daysFor, month]);
+
   const headline = useMemo(() => {
     const selected = days.find((day) => day.dayKey === selectedDayKey);
     return selected ?? days.find((day) => day.isToday && day.inMonth) ?? null;
@@ -131,42 +139,49 @@ export function DeadlineCalendar({
   const headlineDate = headline ? new Date(`${headline.dayKey}T12:00:00`) : month;
 
   /*
-    The month is dragged, not merely replaced.
+    A carousel, anchored on the middle of a three-month strip.
 
-    A carousel: the grid follows the finger, and on release either carries on
-    off the edge and brings the next month in from the other side, or returns
-    to where it was. Nothing overshoots — a month is a page being turned, and a
-    page that bounces at the end of the turn reads as a mistake.
+    The strip sits at minus one page so the current month is what shows. A drag
+    moves it with the finger and reveals a real neighbour; a release either
+    carries it the rest of the way to that neighbour or returns it.
 
-    The whole width is the travel, so a month leaves completely before its
-    replacement arrives. Half-measures here look like the grid stuttering.
+    The commit is the delicate part. Once the strip has travelled a whole page,
+    the month either side of it becomes the new middle, so the offset has to
+    return to centre in the same paint that the new month arrives in --
+    otherwise there is one frame showing the month after next. A layout effect
+    is what runs early enough to do that.
+
+    Velocity counts as well as distance, which is the difference between a
+    carousel and a threshold: a quick flick travels barely a third of the page
+    and every other app on the phone turns on it.
   */
   const reducedMotion = useReducedMotion();
-  const travel = cell * 7;
+  const page = cell * 7;
   const shift = useSharedValue(0);
   const monthKey = `${month.getFullYear()}-${month.getMonth()}`;
   const previousKey = useRef(monthKey);
   const settling = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (previousKey.current === monthKey) return;
-    const forward = monthKey > previousKey.current;
     previousKey.current = monthKey;
+    // Back to centre before this month is painted. The strip has already
+    // travelled; the new middle page is the one the client is looking at.
+    shift.value = 0;
     settling.current = false;
-    if (reducedMotion) {
-      shift.value = 0;
-      return;
-    }
-    // In from the far side, at the speed a turned page settles.
-    shift.value = forward ? travel : -travel;
-    shift.value = withTiming(0, { duration: 230, easing: Easing.out(Easing.cubic) });
-  }, [monthKey, reducedMotion, shift, travel]);
+  }, [monthKey, shift]);
 
-  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: shift.value }] }));
+  const slide = useAnimatedStyle(() => ({
+    transform: [{ translateX: -page + shift.value }],
+  }));
 
-  const step = (direction: number) => {
-    settling.current = false;
+  const commit = (direction: number) => {
+    settling.current = true;
     onStepMonth(direction);
+  };
+
+  const settle = (to: number, duration: number) => {
+    shift.value = withTiming(to, { duration, easing: Easing.out(Easing.cubic) });
   };
 
   const swipe = useMemo(
@@ -174,48 +189,69 @@ export function DeadlineCalendar({
       PanResponder.create({
         // Only once the drag is clearly sideways, so the page still scrolls.
         onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+          Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
         onPanResponderMove: (_event, gesture) => {
           if (settling.current || reducedMotion) return;
           const blocked = gesture.dx < 0 ? !canStepForward : !canStepBack;
-          // A month that is not there still moves, but heavily, so the edge of
+          // A month that is not there still moves, but heavily, so the end of
           // the window is something the hand meets rather than something that
-          // simply ignores it.
-          shift.value = blocked ? gesture.dx * 0.18 : gesture.dx;
+          // ignores it.
+          shift.value = blocked ? gesture.dx * 0.16 : gesture.dx;
         },
         onPanResponderRelease: (_event, gesture) => {
-          const forward = gesture.dx <= -SWIPE_DISTANCE && canStepForward;
-          const back = gesture.dx >= SWIPE_DISTANCE && canStepBack;
-          if (!forward && !back) {
-            if (!reducedMotion) {
-              shift.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
-            }
+          if (settling.current) return;
+          // Distance or a flick. `vx` is points per millisecond, so 0.3 is the
+          // speed a deliberate flick reaches well before it has travelled far.
+          const flung = Math.abs(gesture.vx) > 0.3;
+          const far = Math.abs(gesture.dx) > page * 0.28;
+          const wantsForward = gesture.dx < 0;
+          const allowed = wantsForward ? canStepForward : canStepBack;
+
+          if (!allowed || !(flung || far)) {
+            if (!reducedMotion) settle(0, 200);
             return;
           }
           if (reducedMotion) {
-            step(forward ? 1 : -1);
+            commit(wantsForward ? 1 : -1);
             return;
           }
-          // Carry it the rest of the way off, then swap. The month arriving
-          // handles its own entrance.
-          settling.current = true;
+          // Finish the throw at something close to the speed it was thrown,
+          // floored so a slow drag still lands rather than crawling.
+          const remaining = page - Math.abs(gesture.dx);
+          const duration = Math.min(
+            260,
+            Math.max(120, Math.round(remaining / Math.max(0.6, Math.abs(gesture.vx)))),
+          );
           shift.value = withTiming(
-            forward ? -travel : travel,
-            { duration: 150, easing: Easing.out(Easing.quad) },
+            wantsForward ? -page : page,
+            { duration, easing: Easing.out(Easing.quad) },
             (finished) => {
-              if (finished) runOnJS(step)(forward ? 1 : -1);
+              if (finished) runOnJS(commit)(wantsForward ? 1 : -1);
             },
           );
         },
         onPanResponderTerminate: () => {
-          if (!reducedMotion) {
-            shift.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
-          }
+          if (!reducedMotion && !settling.current) settle(0, 200);
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onStepMonth, canStepBack, canStepForward, reducedMotion, travel],
+    [onStepMonth, canStepBack, canStepForward, reducedMotion, page],
   );
+
+  /** The arrows travel the same way, so both routes feel like one control. */
+  const stepWithSlide = (direction: number) => {
+    if (reducedMotion || settling.current) {
+      commit(direction);
+      return;
+    }
+    shift.value = withTiming(
+      direction > 0 ? -page : page,
+      { duration: 220, easing: Easing.out(Easing.cubic) },
+      (finished) => {
+        if (finished) runOnJS(commit)(direction);
+      },
+    );
+  };
 
   return (
     <View>
@@ -252,8 +288,8 @@ export function DeadlineCalendar({
             cannot print this" and "not this month".
           */}
           <View className="mt-1 flex-row items-center">
-            <StepButton direction="back" disabled={!canStepBack} onPress={() => onStepMonth(-1)} />
-            <StepButton direction="forward" disabled={!canStepForward} onPress={() => onStepMonth(1)} />
+            <StepButton direction="back" disabled={!canStepBack} onPress={() => stepWithSlide(-1)} />
+            <StepButton direction="forward" disabled={!canStepForward} onPress={() => stepWithSlide(1)} />
           </View>
         </View>
       </View>
@@ -280,18 +316,23 @@ export function DeadlineCalendar({
         inside a scroll view, and claiming the touch only once the movement is
         clearly sideways is what keeps the page scrolling normally.
       */}
-      <Animated.View className="mt-1 flex-row flex-wrap" style={slide} {...swipe.panHandlers}>
-        {days.map((day) => (
-          <DayCell
-            key={day.dayKey}
-            day={day}
-            cell={cell}
-            disc={disc}
-            selected={day.dayKey === selectedDayKey}
-            onPress={() => onSelectDay(day)}
-          />
-        ))}
-      </Animated.View>
+      {/*
+        Three months in a row, and the viewport shows the middle one. The month
+        either side is really there, so a drag reveals where it is going rather
+        than sliding the current one out to nothing — which is what made the
+        old version feel like a transition played at somebody rather than a
+        page being turned by them.
+      */}
+      <View style={{ width: page, overflow: "hidden" }} {...swipe.panHandlers}>
+        <Animated.View style={[{ flexDirection: "row", width: page * 3 }, slide]}>
+          <MonthPage days={before} page={page} cell={cell} disc={disc}
+            selectedDayKey={selectedDayKey} onSelectDay={onSelectDay} interactive={false} />
+          <MonthPage days={days} page={page} cell={cell} disc={disc}
+            selectedDayKey={selectedDayKey} onSelectDay={onSelectDay} interactive />
+          <MonthPage days={after} page={page} cell={cell} disc={disc}
+            selectedDayKey={selectedDayKey} onSelectDay={onSelectDay} interactive={false} />
+        </Animated.View>
+      </View>
 
       {/*
         The key. Without words this is a grid of coloured circles, which is
@@ -342,6 +383,50 @@ function ShopClock() {
     >
       {shopClock(now)} · Davao
     </Text>
+  );
+}
+
+/**
+ * One month of the strip.
+ *
+ * Only the middle page takes taps. A day tapped on a neighbour would select a
+ * date the masthead is not describing, which is a state nobody asked for.
+ */
+function MonthPage({
+  days,
+  page,
+  cell,
+  disc,
+  selectedDayKey,
+  onSelectDay,
+  interactive,
+}: {
+  days: CalendarDay[];
+  page: number;
+  cell: number;
+  disc: number;
+  selectedDayKey: string | null;
+  onSelectDay: (day: CalendarDay) => void;
+  interactive: boolean;
+}) {
+  return (
+    <View
+      style={{ width: page, flexDirection: "row", flexWrap: "wrap" }}
+      pointerEvents={interactive ? "auto" : "none"}
+      accessibilityElementsHidden={!interactive}
+      importantForAccessibility={interactive ? "auto" : "no-hide-descendants"}
+    >
+      {days.map((day) => (
+        <DayCell
+          key={day.dayKey}
+          day={day}
+          cell={cell}
+          disc={disc}
+          selected={day.dayKey === selectedDayKey}
+          onPress={() => onSelectDay(day)}
+        />
+      ))}
+    </View>
   );
 }
 

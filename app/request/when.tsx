@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -86,18 +86,25 @@ export default function WhenScreen() {
     return () => {
       alive = false;
     };
+    // `monthPinned` is deliberately absent: it decides what to do with an
+    // answer, not whether to ask for one, and including it would re-fetch
+    // availability every time the client turned a page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subcategory]);
 
-  const days = useMemo(
-    () =>
+  // Built per month rather than once, because the calendar draws the month
+  // either side of this one as well: a drag has to reveal a real neighbour,
+  // not slide the current month out to nothing.
+  const daysFor = useCallback(
+    (which: Date) =>
       monthGrid({
-        month,
+        month: which,
         // With no answer yet, every future day is offered rather than none:
         // an empty month reads as "GRIDGO cannot print this at all".
-        availability: availability ?? openMonth(month),
+        availability: availability ?? openMonth(which),
         now: new Date(),
       }),
-    [month, availability],
+    [availability],
   );
 
   const jumpTo = useMemo(
@@ -154,7 +161,7 @@ export default function WhenScreen() {
 
         <View className="mt-4">
           <DeadlineCalendar
-            days={days}
+            daysFor={daysFor}
             month={month}
             selectedDayKey={chosen}
             onSelectDay={(day) => setChosen(day.selectable ? day.dayKey : chosen)}
