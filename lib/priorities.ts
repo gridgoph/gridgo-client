@@ -19,7 +19,7 @@
 
 export type Priority = "quality" | "speed" | "cost" | "distance";
 
-/** Ordered best-first. Always all three, never a partial list. */
+/** Ordered best-first. Always every factor, never a partial list. */
 export type PriorityRanking = readonly [Priority, Priority, Priority, Priority];
 
 export const PRIORITIES: readonly Priority[] = ["quality", "speed", "cost", "distance"] as const;
@@ -56,7 +56,7 @@ export function isPriority(value: unknown): value is Priority {
 }
 
 /**
- * A ranking is complete only when it is all three, each exactly once. A
+ * A ranking is complete only when it holds every factor, each exactly once. A
  * half-ranked list cannot match and must never be treated as one.
  */
 export function isCompleteRanking(value: unknown): value is PriorityRanking {

@@ -19,10 +19,10 @@ import { userFacingError } from "@/lib/copy";
 import { usePriorities } from "@/store/priorities";
 
 /**
- * Putting quality, speed and distance in order.
+ * Putting quality, speed, cost and distance in order.
  *
  * Asked once, immediately after the account exists, because it is what every
- * match afterwards is decided on — and asked as an ordering rather than three
+ * match afterwards is decided on — and asked as an ordering rather than as
  * sliders, because nobody can honestly say "quality 0.6" and two shops would
  * tie in ways GRIDGO could not then explain.
  *
@@ -44,7 +44,7 @@ export default function PrioritiesScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Opening the screen to change a saved ranking starts from that ranking, so
-  // a client who only wants to swap two of them does not retype all three.
+  // a client who only wants to swap two of them does not retype the rest.
   const [order, setOrder] = useState<Priority[]>(() => (saved ? [...saved] : []));
   const complete = isCompleteRanking(order);
   const editing = Boolean(saved);
@@ -84,7 +84,7 @@ export default function PrioritiesScreen() {
           What matters most on a print job?
         </Text>
         <Text className="mt-3 text-body-lg text-text-secondary">
-          Put these three in order. GRIDGO puts your job on one printer using this, every
+          Put these in order. GRIDGO puts your job on one printer using this, every
           time, and tells you which one decided it.
         </Text>
 
@@ -94,7 +94,7 @@ export default function PrioritiesScreen() {
               key={priority}
               priority={priority}
               rank={rankOf(order, priority)}
-              // Functional update, not `togglePlacement(order, …)`: three taps
+              // Functional update, not `togglePlacement(order, …)`: several taps
               // in quick succession all read the same render's `order`, so the
               // second would drop what the first had just placed.
               onPress={() => setOrder((current) => togglePlacement(current, priority))}
@@ -103,7 +103,7 @@ export default function PrioritiesScreen() {
         </View>
 
         {/*
-          The order read back in words. Someone who tapped three cards in a
+          The order read back in words. Someone who tapped the cards in a
           hurry checks this line, not the numerals — and it is the same sentence
           the match card will echo.
         */}
