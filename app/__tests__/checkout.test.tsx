@@ -386,6 +386,15 @@ describe("CheckoutScreen", () => {
     expect(mockReplace).toHaveBeenCalledWith("/request/category");
   });
 
+  it("lets an empty basket leave for Home", async () => {
+    api.getCart.mockResolvedValue(cart({ lines: [] }));
+    useCart.setState({ cart: cart({ lines: [] }), loading: false, hydrated: true });
+    await renderInSafeArea(<CheckoutScreen />);
+
+    fireEvent.press(await screen.findByText("Go to Home"));
+    expect(mockReplace).toHaveBeenCalledWith("/(tabs)/home");
+  });
+
   it("does not paint the Pay sheet while an empty basket is still loading", async () => {
     api.getCart.mockReturnValue(new Promise(() => {}));
     useCart.setState({

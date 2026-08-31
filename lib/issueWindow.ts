@@ -104,8 +104,9 @@ export type IssueWindowStatus = {
 
 /** When the order entered the issue window, from its own timeline. */
 export function issueWindowOpenedAt(
-  timeline: { at: string; state: string }[],
+  timeline: { at: string; state: string }[] | null | undefined,
 ): string | null {
+  if (!Array.isArray(timeline) || timeline.length === 0) return null;
   const entry = [...timeline].reverse().find((e) => e.state === "issue_window_open");
   return entry?.at ?? null;
 }

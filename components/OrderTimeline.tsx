@@ -12,7 +12,7 @@ export type TimelineEntry = {
 };
 
 type Props = {
-  timeline: TimelineEntry[];
+  timeline?: TimelineEntry[] | null;
   /** Current order state — that step is the one yellow marker. */
   currentState: string;
 };
@@ -25,7 +25,8 @@ type Props = {
  * actor and the clock time on every entry, not just a status word.
  */
 export function OrderTimeline({ timeline, currentState }: Props) {
-  if (!timeline.length) {
+  const entriesIn = Array.isArray(timeline) ? timeline : [];
+  if (!entriesIn.length) {
     return (
       <Text className="text-body text-text-muted">
         Nothing has happened on this job yet. Every step, and who took it, appears here.
@@ -34,7 +35,7 @@ export function OrderTimeline({ timeline, currentState }: Props) {
   }
 
   // Newest first: what just happened is what a client came to read.
-  const entries = [...timeline].reverse();
+  const entries = [...entriesIn].reverse();
 
   return (
     <View className="gap-0">

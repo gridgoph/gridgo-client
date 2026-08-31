@@ -22,6 +22,11 @@ describe("issueWindowOpenedAt", () => {
   it("returns null when the job never got there", () => {
     expect(issueWindowOpenedAt([{ at: "x", state: "production" }])).toBeNull();
   });
+
+  it("does not throw when the order carried no history", () => {
+    expect(issueWindowOpenedAt(undefined)).toBeNull();
+    expect(issueWindowOpenedAt(null)).toBeNull();
+  });
 });
 
 describe("checkIssueDescription", () => {

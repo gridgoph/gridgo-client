@@ -26,10 +26,10 @@ export default function WelcomeScreen() {
 
           <View className="flex-1 items-center justify-center">
             <Image
-              source={require("@/assets/illustrations/greeting.svg")}
+              source={require("@/assets/illustrations/welcome.png")}
               contentFit="contain"
-              style={{ width: "100%", maxWidth: 480, aspectRatio: 943 / 796, alignSelf: "center" }}
-              accessibilityLabel="A person at a desk waving hello from a bright GRIDGO welcome scene"
+              style={{ width: "100%", maxWidth: 480, aspectRatio: 1, alignSelf: "center" }}
+              accessibilityLabel="A GRIDGO operator checking a printed invoice against the job on screen"
             />
           </View>
 

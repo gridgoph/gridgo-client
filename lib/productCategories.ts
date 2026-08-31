@@ -7,11 +7,12 @@
  * customer-facing categories and their subcategories: the language a business
  * uses to say what it wants made.
  *
- * `GET /taxonomy` owns the tree. `adaptProductCategories` is a deliberately
- * forgiving reader over that payload, because the API's field names are still
- * settling — it accepts the shapes the contract is likely to land in and falls
- * back to `PRODUCT_CATEGORY_SEED` when the payload carries no tree at all. When
- * the contract is published, narrow the aliases here; nothing else changes.
+ * `GET /taxonomy` owns the tree. The live document is `{ taxonomy, categoryTree }`:
+ * `categoryTree` is the nested picker, and `taxonomy` holds the same data flat.
+ * `adaptProductCategories` reads either, plus the older field-name aliases, and
+ * falls back to `PRODUCT_CATEGORY_SEED` only when none of those carry a tree.
+ * Seed codes must match the API's governed codes — a drifted code 400s the
+ * shop list and the category paints "Prices not loaded".
  */
 
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
@@ -74,6 +75,13 @@ function pickStringList(source: Record<string, unknown>, keys: string[]): string
   );
 }
 
+/** Examples arrive as a sentence on the seed and as a list on the API. */
+function pickExamples(source: Record<string, unknown>): string {
+  const asString = pickString(source, EXAMPLES_KEYS);
+  if (asString) return asString;
+  return pickStringList(source, EXAMPLES_KEYS).join(", ");
+}
+
 function isActive(source: Record<string, unknown>): boolean {
   return source.active === undefined || source.active === true;
 }
@@ -94,7 +102,7 @@ function adaptSubcategory(raw: unknown): ProductSubcategory | null {
   return {
     code,
     name,
-    examples: pickString(source, EXAMPLES_KEYS),
+    examples: pickExamples(source),
     productFamilyIds: pickStringList(source, FAMILY_KEYS),
   };
 }
@@ -123,26 +131,95 @@ function adaptCategory(raw: unknown): ProductCategory | null {
   };
 }
 
-/** Payload keys the browsable tree could arrive under. */
-const TREE_KEYS = ["productCategories", "customerCategories", "categories"];
+/** Payload keys a nested tree could arrive under. */
+const TREE_KEYS = ["categoryTree", "productCategories", "customerCategories", "categories"];
 
 /**
- * Normalise `GET /taxonomy` into the browsable tree.
- *
- * Returns the seed when the payload carries no tree — the current API still
- * serves only production categories, which have no subcategory level and would
- * be rejected by `adaptCategory`.
+ * Older Client seed codes that are not governed categories. The shop list 400s
+ * them. First paint and any stale route still have to land on the live code.
  */
-export function adaptProductCategories(payload: unknown): ProductCategory[] {
-  const source = asRecord(payload);
-  if (!source) return PRODUCT_CATEGORY_SEED;
+const CATEGORY_CODE_ALIASES: Record<string, string> = {
+  event_merchandise: "corporate_event_merch",
+  recognition_signage: "recognition_awards_signage",
+};
 
+/** The category code the catalog actually lists shops under. */
+export function canonicalCategoryCode(code: string | null | undefined): string {
+  if (!code) return "";
+  return CATEGORY_CODE_ALIASES[code] ?? code;
+}
+
+function adaptNestedTree(source: Record<string, unknown>): ProductCategory[] {
   for (const key of TREE_KEYS) {
     const adapted = asArray(source[key])
       .map(adaptCategory)
       .filter((entry): entry is ProductCategory => entry !== null);
     if (adapted.length) return adapted;
   }
+  return [];
+}
+
+/**
+ * Join the API's flat `categories` + `subcategories` the way `categoryTree` is
+ * built on the server, for a payload that never nested them.
+ */
+function assembleFromFlat(source: Record<string, unknown>): ProductCategory[] {
+  const byParent = new Map<string, ProductSubcategory[]>();
+  for (const raw of asArray(source.subcategories)) {
+    const record = asRecord(raw);
+    const adapted = adaptSubcategory(raw);
+    const parent = record ? pickString(record, ["categoryCode", "category", "parentCode"]) : "";
+    if (!adapted || !parent) continue;
+    const held = byParent.get(parent);
+    if (held) held.push(adapted);
+    else byParent.set(parent, [adapted]);
+  }
+  if (!byParent.size) return [];
+
+  const assembled: ProductCategory[] = [];
+  for (const raw of asArray(source.categories)) {
+    const record = asRecord(raw);
+    if (!record || !isActive(record)) continue;
+    const code = pickString(record, ["code", "id", "slug"]);
+    const name = pickString(record, ["name", "label", "title"]);
+    if (!code || !name) continue;
+    const children = byParent.get(code) ?? [];
+    if (!children.length) continue;
+    assembled.push({
+      code,
+      name,
+      bestFor: pickString(record, BEST_FOR_KEYS),
+      subcategories: children,
+    });
+  }
+  return assembled;
+}
+
+/**
+ * Normalise `GET /taxonomy` into the browsable tree.
+ *
+ * Accepts the live `{ taxonomy, categoryTree }` document, the inner `taxonomy`
+ * object, a nested tree under the older aliases, or a flat categories +
+ * subcategories pair. Returns the seed when none of those carry a tree —
+ * including a production-only taxonomy with no subcategory level.
+ */
+export function adaptProductCategories(payload: unknown): ProductCategory[] {
+  const source = asRecord(payload);
+  if (!source) return PRODUCT_CATEGORY_SEED;
+
+  const nested = adaptNestedTree(source);
+  if (nested.length) return nested;
+
+  const taxonomy = asRecord(source.taxonomy);
+  if (taxonomy) {
+    const fromTaxonomy = adaptNestedTree(taxonomy);
+    if (fromTaxonomy.length) return fromTaxonomy;
+    const flat = assembleFromFlat(taxonomy);
+    if (flat.length) return flat;
+  }
+
+  const flat = assembleFromFlat(source);
+  if (flat.length) return flat;
 
   return PRODUCT_CATEGORY_SEED;
 }
@@ -161,7 +238,12 @@ export function findCategory(
   code: string | null | undefined,
 ): ProductCategory | null {
   if (!code) return null;
-  return categories.find((category) => category.code === code) ?? null;
+  const wanted = canonicalCategoryCode(code);
+  return (
+    categories.find((category) => category.code === wanted) ??
+    categories.find((category) => category.code === code) ??
+    null
+  );
 }
 
 /** Catalog products that can print this subcategory, in catalog order. */

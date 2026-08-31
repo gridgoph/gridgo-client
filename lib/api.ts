@@ -1092,12 +1092,12 @@ export async function getTaxonomy(): Promise<TaxonomyPayload> {
  * The browsable product tree — the four customer-facing categories and their
  * subcategories, normalised.
  *
- * The bundled seed is already a complete tree, and today's `/taxonomy` still
- * serves production categories rather than this one. Screens therefore paint
- * `productCategoriesNow()` on the first frame and treat this call as a
- * background refresh. A live in-flight request is shared, and a successful
- * (or seed-fallback) tree is held for a few minutes so home, the picker, and
- * the match screen do not each wait on the same request.
+ * The bundled seed is already a complete tree (codes matching the API), so
+ * screens paint `productCategoriesNow()` on the first frame. This call is a
+ * background refresh of the live `{ taxonomy, categoryTree }` document. A
+ * live in-flight request is shared, and a successful (or seed-fallback) tree
+ * is held for a few minutes so home, the picker, and the match screen do not
+ * each wait on the same request.
  */
 const PRODUCT_CATEGORIES_TTL_MS = 5 * 60 * 1000;
 let productCategoryCache: { at: number; value: ProductCategory[] } | null = null;
@@ -1123,7 +1123,7 @@ export async function getProductCategories(): Promise<ProductCategory[]> {
 
   productCategoryInflight = (async () => {
     try {
-      const tree = adaptProductCategories(await getTaxonomy());
+      const tree = adaptProductCategories(await request("/taxonomy"));
       productCategoryCache = { at: Date.now(), value: tree };
       return tree;
     } catch (error) {

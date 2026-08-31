@@ -262,6 +262,11 @@ describe("latestNoteForState", () => {
     expect(latestNoteForState(timeline, "needs_qa")).toBeNull();
     expect(latestNoteForState(timeline, "production")).toBeNull();
   });
+
+  it("does not throw when the order carried no history", () => {
+    expect(latestNoteForState(undefined, "client_correction")).toBeNull();
+    expect(latestNoteForState(null, "client_correction")).toBeNull();
+  });
 });
 
 describe("orderTotalMinor", () => {

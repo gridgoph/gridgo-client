@@ -334,6 +334,8 @@ export default function CheckoutScreen() {
             body="Pick what you are printing and GRIDGO will find a printer for it."
             actionLabel="Start a print job"
             onAction={() => router.replace("/request/category")}
+            altActionLabel="Go to Home"
+            onAltAction={() => router.replace("/(tabs)/home")}
           />
         </View>
       </FormScreen>

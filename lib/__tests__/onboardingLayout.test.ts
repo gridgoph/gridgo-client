@@ -2,28 +2,18 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Regression lock for the full-height swipe surface.
- *
- * The captain bug was a short text-only pager under a non-interactive art
- * stack. The pager must fill the content area (absolute fill), and art must
- * stay outside the pager with pointerEvents none so parallax survives.
+ * Client onboarding uses the same PNG pager as Supplier and Rider:
+ * picture on the page, copy under it — not a short text band under SVG art.
  */
 describe("onboarding layout contract", () => {
   const source = readFileSync(join(__dirname, "../../app/onboarding.tsx"), "utf8");
 
-  it("uses a full-height horizontal pager over the content area", () => {
-    expect(source).toContain("StyleSheet.absoluteFillObject");
+  it("pages full-height slides with the picture on the page", () => {
+    expect(source).toContain("OnboardingMark");
     expect(source).toMatch(/horizontal\s*\n\s*pagingEnabled/);
-    expect(source).toContain('contentContainerStyle={{ height: "100%" }}');
-    expect(source).toContain('height: "100%"');
-    // The short text-band-only pager is the bug; do not reintroduce it.
-    expect(source).not.toMatch(/style=\{\{\s*flexGrow:\s*0\s*\}\}/);
-  });
-
-  it("keeps illustrations outside the pager for parallax drift", () => {
-    expect(source).toContain("transform: [{ translateX: -delta * width * 0.4 }]");
-    expect(source).toContain("pointerEvents=\"none\"");
-    expect(source).toContain("useReducedMotion");
+    expect(source).toContain("estimatePagerHeight");
+    expect(source).not.toContain("StyleSheet.absoluteFillObject");
+    expect(source).not.toContain("translateX: -delta * width * 0.4");
   });
 
   it("exits through the explicit returnTo map, not history alone", () => {

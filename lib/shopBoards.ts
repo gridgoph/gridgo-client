@@ -14,6 +14,7 @@
  */
 
 import * as api from "@/lib/api";
+import { canonicalCategoryCode } from "@/lib/productCategories";
 
 export type CategoryBoards = {
   categoryCode: string;
@@ -56,7 +57,7 @@ export async function loadCategoryBoards(
 }
 
 async function read(categoryCode: string): Promise<CategoryBoards> {
-  const shops = await api.listCatalogShops(categoryCode);
+  const shops = await api.listCatalogShops(canonicalCategoryCode(categoryCode) || categoryCode);
   const page = shops.slice(0, MAX_BOARDS);
 
   const results = await Promise.all(
@@ -107,6 +108,19 @@ export function listingsFor(
     .flatMap((service) => service.items)
     .filter((item) => item.subcategoryCode === subcategoryCode)
     .sort((left, right) => left.fromPriceMinor - right.fromPriceMinor);
+}
+
+/**
+ * The listing a category tile quotes: cheapest first, which is the "From"
+ * price. Same listing as the photo — a cheaper listing with no sample is still
+ * the honest starting price, and the frame says so when it is empty.
+ */
+export function pickListingFor(
+  boards: api.ShopBoard[],
+  subcategoryCode: string,
+): api.CatalogItem | null {
+  const items = boards.flatMap((board) => listingsFor(board, subcategoryCode));
+  return items[0] ?? null;
 }
 
 /** How many shops list one subcategory, for the "see next shop" count. */

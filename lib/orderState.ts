@@ -211,9 +211,10 @@ export function orderWaitingOn(order: Order): string | null {
  * the transition, so the correction screen can show why rather than just that.
  */
 export function latestNoteForState(
-  timeline: { at: string; state: string; note: string }[],
+  timeline: { at: string; state: string; note: string }[] | null | undefined,
   state: string,
 ): string | null {
+  if (!Array.isArray(timeline) || timeline.length === 0) return null;
   for (let index = timeline.length - 1; index >= 0; index -= 1) {
     const entry = timeline[index];
     if (entry.state === state && entry.note?.trim()) return entry.note.trim();

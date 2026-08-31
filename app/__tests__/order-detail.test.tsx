@@ -187,6 +187,14 @@ describe("OrderDetailScreen", () => {
     });
   });
 
+  it("opens a job that never stored a history instead of crashing", async () => {
+    setOrder({ timeline: undefined as never });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Grand opening tarpaulin")).toBeTruthy();
+    expect(screen.getByText(/Nothing has happened on this job yet/)).toBeTruthy();
+  });
+
   it("opens with what is happening, in plain language", async () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
