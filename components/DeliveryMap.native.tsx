@@ -21,9 +21,9 @@ const MAP_HEIGHT = 220;
  *
  * Leaflet over OpenStreetMap tiles inside a WebView — the same stack
  * `components/TripMap.tsx` in **gridgo-rider** runs, so GRIDGO has one map
- * implementation rather than two. No Google Maps and no API key: nothing here
- * needs a billing account, and the map renders the same on every Android
- * phone whether or not Play Services are present.
+ * implementation rather than two. No Google Maps. Dark Carto tiles use the
+ * same token as Rider. The map renders the same on every Android phone
+ * whether or not Play Services are present.
  *
  * The client watches; every gesture that would let them drive the delivery is
  * off. A position the app judges out of date is drawn faded, and the card

@@ -2,8 +2,8 @@
  * Leaflet map HTML for a react-native-webview.
  *
  * OpenStreetMap raster tiles in Light, Carto dark tiles in Dark. No Google
- * Maps and no API key — the same stack `lib/mapHtml.ts` in **gridgo-rider**
- * runs, so the two apps share one map implementation rather than two.
+ * Maps — the same stack `lib/mapHtml.ts` in **gridgo-rider** runs. Dark Carto
+ * tiles take `EXPO_PUBLIC_CARTO_API_KEY` from gitignored env.
  *
  * The client watches a delivery it does not control, so this map differs from
  * the rider's in two deliberate ways: panning and zooming are the only
@@ -13,6 +13,7 @@
  * Attribution is a licence condition — always visible.
  */
 
+import { cartoDarkTileUrl } from "@/lib/cartoTiles";
 import type { GeoPoint, LonLat } from "@/lib/tracking";
 
 export type MapTheme = "light" | "dark";
@@ -55,7 +56,6 @@ export type MapModel = {
 };
 
 const LIGHT_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const DARK_TILES = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 
 /**
  * Build the full HTML document for the WebView.
@@ -197,7 +197,7 @@ export function buildMapHtml(model: MapModel): string {
       }
 
       if (tileLayer) map.removeLayer(tileLayer);
-      var url = isDark ? ${JSON.stringify(DARK_TILES)} : ${JSON.stringify(LIGHT_TILES)};
+      var url = isDark ? ${JSON.stringify(cartoDarkTileUrl())} : ${JSON.stringify(LIGHT_TILES)};
       var attr = isDark
         ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';

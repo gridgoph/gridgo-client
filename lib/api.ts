@@ -1039,13 +1039,28 @@ export type ShopBoard = {
   queueAhead?: number | null;
 };
 
-/** Approved shops with at least one complete listing, newest page first. */
+const CATALOG_SHOP_PAGE_CAP = 25;
+
+/** Approved shops with at least one complete listing. Follows catalog pages. */
 export async function listCatalogShops(
   categoryCode?: string | null,
 ): Promise<ShopSummary[]> {
-  const query = categoryCode ? `?categoryCode=${encodeURIComponent(categoryCode)}` : "";
-  const result = await request<{ shops: ShopSummary[] }>(`/catalog/shops${query}`);
-  return result.shops;
+  const shops: ShopSummary[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < CATALOG_SHOP_PAGE_CAP; page += 1) {
+    const params = new URLSearchParams();
+    if (categoryCode) params.set("categoryCode", categoryCode);
+    if (cursor) params.set("cursor", cursor);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const pageBody = await request<{
+      shops?: ShopSummary[];
+      nextCursor?: string | null;
+    }>(`/catalog/shops${query}`);
+    shops.push(...(pageBody.shops ?? []));
+    if (!pageBody.nextCursor) break;
+    cursor = pageBody.nextCursor;
+  }
+  return shops;
 }
 
 /** One shop's whole board. */
