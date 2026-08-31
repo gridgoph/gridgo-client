@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { PanResponder, Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   runOnJS,
@@ -199,9 +200,11 @@ export function DeadlineCalendar({
   const reducedMotion = useReducedMotion();
   const page = cell * 7;
   const shift = useSharedValue(0);
+  // A shared value rather than a ref, because the gesture reads it from the UI
+  // thread and a React ref does not exist there.
+  const settling = useSharedValue(0);
   const monthKey = `${month.getFullYear()}-${month.getMonth()}`;
   const previousKey = useRef(monthKey);
-  const settling = useRef(false);
 
   useLayoutEffect(() => {
     if (previousKey.current === monthKey) return;
@@ -209,90 +212,94 @@ export function DeadlineCalendar({
     // Back to centre before this month is painted. The strip has already
     // travelled; the new middle page is the one the client is looking at.
     shift.value = 0;
-    settling.current = false;
-  }, [monthKey, shift]);
+    settling.value = 0;
+  }, [monthKey, shift, settling]);
 
   const slide = useAnimatedStyle(() => ({
     transform: [{ translateX: -page + shift.value }],
   }));
 
-  const commit = (direction: number) => {
-    settling.current = true;
-    onStepMonth(direction);
-  };
+  const commit = useCallback((direction: number) => onStepMonth(direction), [onStepMonth]);
 
-  const settle = (to: number, duration: number) => {
-    shift.value = withTiming(to, { duration, easing: Easing.out(Easing.cubic) });
-  };
+  /*
+    The drag, on the UI thread.
 
-  const swipe = useMemo(
+    Every frame of this runs as a worklet, so the strip tracks the finger even
+    while React is busy — which is the whole reason for the gesture root. The
+    same movement driven from JavaScript arrives a frame or two late under any
+    load, and a calendar being dragged is exactly when the JavaScript thread is
+    least free.
+
+    `activeOffsetX` and `failOffsetY` are what keep the page scrolling: this
+    claims the touch only once the movement is decidedly sideways, and gives it
+    up the moment it is not.
+  */
+  const pan = useMemo(
     () =>
-      PanResponder.create({
-        // Only once the drag is clearly sideways, so the page still scrolls.
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
-        onPanResponderMove: (_event, gesture) => {
-          if (settling.current || reducedMotion) return;
-          const blocked = gesture.dx < 0 ? !canStepForward : !canStepBack;
+      Gesture.Pan()
+        .enabled(!reducedMotion)
+        .activeOffsetX([-12, 12])
+        .failOffsetY([-18, 18])
+        .onUpdate((event) => {
+          "worklet";
+          if (settling.value) return;
+          const blocked = event.translationX < 0 ? !canStepForward : !canStepBack;
           // A month that is not there still moves, but heavily, so the end of
           // the window is something the hand meets rather than something that
           // ignores it.
-          shift.value = blocked ? gesture.dx * 0.16 : gesture.dx;
-        },
-        onPanResponderRelease: (_event, gesture) => {
-          if (settling.current) return;
-          // Distance or a flick. `vx` is points per millisecond, so 0.3 is the
-          // speed a deliberate flick reaches well before it has travelled far.
-          const flung = Math.abs(gesture.vx) > 0.3;
-          const far = Math.abs(gesture.dx) > page * 0.28;
-          const wantsForward = gesture.dx < 0;
-          const allowed = wantsForward ? canStepForward : canStepBack;
+          shift.value = blocked ? event.translationX * 0.16 : event.translationX;
+        })
+        .onEnd((event) => {
+          "worklet";
+          if (settling.value) return;
+          // Distance or a flick. `velocityX` is points per second here, so a
+          // deliberate flick clears 400 well before it has travelled far.
+          const flung = Math.abs(event.velocityX) > 400;
+          const far = Math.abs(event.translationX) > page * 0.28;
+          const forward = event.translationX < 0;
+          const allowed = forward ? canStepForward : canStepBack;
 
           if (!allowed || !(flung || far)) {
-            if (!reducedMotion) settle(0, 200);
+            shift.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) });
             return;
           }
-          if (reducedMotion) {
-            commit(wantsForward ? 1 : -1);
-            return;
-          }
-          // Finish the throw at something close to the speed it was thrown,
-          // floored so a slow drag still lands rather than crawling.
-          const remaining = page - Math.abs(gesture.dx);
+          // Finish the throw near the speed it was thrown, floored so a slow
+          // drag still lands rather than crawling.
+          const remaining = page - Math.abs(event.translationX);
           const duration = Math.min(
             260,
-            Math.max(120, Math.round(remaining / Math.max(0.6, Math.abs(gesture.vx)))),
+            Math.max(120, (remaining / Math.max(600, Math.abs(event.velocityX))) * 1000),
           );
+          settling.value = 1;
           shift.value = withTiming(
-            wantsForward ? -page : page,
+            forward ? -page : page,
             { duration, easing: Easing.out(Easing.quad) },
             (finished) => {
-              if (finished) runOnJS(commit)(wantsForward ? 1 : -1);
+              if (finished) runOnJS(commit)(forward ? 1 : -1);
             },
           );
-        },
-        onPanResponderTerminate: () => {
-          if (!reducedMotion && !settling.current) settle(0, 200);
-        },
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onStepMonth, canStepBack, canStepForward, reducedMotion, page],
+        }),
+    [reducedMotion, canStepBack, canStepForward, page, shift, settling, commit],
   );
 
   /** The arrows travel the same way, so both routes feel like one control. */
-  const stepWithSlide = (direction: number) => {
-    if (reducedMotion || settling.current) {
-      commit(direction);
-      return;
-    }
-    shift.value = withTiming(
-      direction > 0 ? -page : page,
-      { duration: 220, easing: Easing.out(Easing.cubic) },
-      (finished) => {
-        if (finished) runOnJS(commit)(direction);
-      },
-    );
-  };
+  const stepWithSlide = useCallback(
+    (direction: number) => {
+      if (reducedMotion || settling.value) {
+        commit(direction);
+        return;
+      }
+      settling.value = 1;
+      shift.value = withTiming(
+        direction > 0 ? -page : page,
+        { duration: 220, easing: Easing.out(Easing.cubic) },
+        (finished) => {
+          if (finished) runOnJS(commit)(direction);
+        },
+      );
+    },
+    [reducedMotion, page, shift, settling, commit],
+  );
 
   return (
     <View>
@@ -353,9 +360,9 @@ export function DeadlineCalendar({
         The grid answers a horizontal drag as well as the arrows. A swipe is
         what a calendar teaches people to expect and costs nothing to offer;
         the arrows stay because a swipe nobody guesses at is not an
-        affordance. PanResponder rather than a gesture library: this sits
-        inside a scroll view, and claiming the touch only once the movement is
-        clearly sideways is what keeps the page scrolling normally.
+        affordance. The drag is tracked on the UI thread, and claims the touch
+        only once the movement is decidedly sideways, which is what keeps the
+        page scrolling normally.
       */}
       {/*
         Three months in a row, and the viewport shows the middle one. The month
@@ -364,8 +371,9 @@ export function DeadlineCalendar({
         old version feel like a transition played at somebody rather than a
         page being turned by them.
       */}
-      <View style={{ width: page, overflow: "hidden" }} {...swipe.panHandlers}>
-        <Animated.View style={[{ flexDirection: "row", width: page * 3 }, slide]}>
+      <GestureDetector gesture={pan}>
+        <View style={{ width: page, overflow: "hidden" }}>
+          <Animated.View style={[{ flexDirection: "row", width: page * 3 }, slide]}>
           {/*
             Keyed by month, so React carries two of the three pages across a
             step instead of tearing all three down and building them again.
@@ -382,8 +390,9 @@ export function DeadlineCalendar({
               interactive={entry.current}
             />
           ))}
-        </Animated.View>
-      </View>
+          </Animated.View>
+        </View>
+      </GestureDetector>
 
       {/*
         The key. Without words this is a grid of coloured circles, which is
@@ -549,31 +558,22 @@ const DayCell = memo(function DayCell({
         opacity: day.inMonth ? (pressed && day.selectable ? 0.7 : 1) : 0.12,
       })}
     >
-      {/*
-        The chosen day wears a halo rather than a border.
-
-        A border would have to sit on the disc, and on a yellow day a yellow
-        border is nothing at all. Held off the edge it reads over every fill,
-        and it is the screen's one spend of the primary yellow — which is what
-        the colour is for: the single thing the client has decided.
-      */}
-      {selected ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            width: cell,
-            height: cell,
-            borderRadius: 999,
-            borderWidth: 2.5,
-            borderColor: colors.actionYellow,
-          }}
-        />
-      ) : null}
       <View
         style={{
-          width: disc,
-          height: disc,
+          // The chosen day is lifted rather than recoloured.
+          //
+          // Every colour on this month already means something — white is a
+          // day you can have, yellow a narrow one, red one you cannot — so a
+          // fourth would have to be read against three that are already
+          // spoken for. A ring in the primary yellow had the same trouble: on
+          // a yellow day it is nothing at all.
+          //
+          // Size and shadow are the two channels nothing else here uses. The
+          // disc grows past its cell and casts, so it reads as picked up off
+          // the grid, and it says the same thing on a white day, a yellow one
+          // and a red one.
+          width: selected ? disc + 6 : disc,
+          height: selected ? disc + 6 : disc,
           borderRadius: 999,
           backgroundColor: fill,
           alignItems: "center",
@@ -582,6 +582,15 @@ const DayCell = memo(function DayCell({
           borderWidth: day.isToday ? 2 : needsEdge ? 1.5 : 0,
           borderColor: day.isToday ? colors.brand : colors.textPrimary,
           opacity: day.choice === "past" ? 0.5 : 1,
+          ...(selected
+            ? {
+                shadowColor: "#000000",
+                shadowOpacity: 0.35,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 3 },
+                elevation: 6,
+              }
+            : null),
         }}
       >
         {/*
@@ -590,8 +599,9 @@ const DayCell = memo(function DayCell({
           work out which disc is the twelfth is not a thing to ask of them.
         */}
         <Text
+          className={selected ? "font-bold" : undefined}
           style={{
-            fontSize: Math.max(11, Math.round(disc * 0.34)),
+            fontSize: Math.max(11, Math.round((selected ? disc + 6 : disc) * 0.34)),
             color: ink,
             fontVariant: ["tabular-nums"],
           }}

@@ -36,9 +36,11 @@ type Props = {
  * is never the only way to do a thing here: tapping opens the job, and the row
  * carries an accessibility action for anyone who cannot swipe.
  *
- * Built on `PanResponder` rather than react-native-gesture-handler, which is
- * the same choice `components/Sheet.tsx` makes and keeps one drag idiom in the
- * app — and avoids mounting a gesture root the rest of the app does not need.
+ * Built on `PanResponder` rather than react-native-gesture-handler, the same
+ * choice `components/Sheet.tsx` makes. A gesture root is mounted now, for the
+ * deadline calendar's month strip, so this could move — but a row that opens
+ * on tap and carries its own accessibility action gains nothing from tracking
+ * a finger off the JavaScript thread, and the change would be churn.
  */
 export function NotificationCard({ notification, read, onOpen, onMarkRead }: Props) {
   const colors = useThemeColors();
