@@ -15,14 +15,20 @@
 import type { GeoPoint } from "@/lib/tracking";
 
 /** The collect-at point, exactly as a map wants it. */
-export const GRIDGO_OFFICE: GeoPoint & { label: string } = {
-  lat: 7.13267,
-  lng: 125.611265,
+export const GRIDGO_OFFICE: GeoPoint & { label: string; locality: string } = {
+  lat: 7.092287234449552,
+  lng: 125.61651084538697,
   label: "GRIDGO Office",
+  locality: "Poblacion District, Davao City",
 };
 
 /** What the office is called anywhere words are needed rather than a pin. */
 export const GRIDGO_OFFICE_LABEL = GRIDGO_OFFICE.label;
+
+/** The pin as six-decimal lat, lng — what the collect card prints. */
+export function gridgoOfficeCoordLine(): string {
+  return `${GRIDGO_OFFICE.lat.toFixed(6)}, ${GRIDGO_OFFICE.lng.toFixed(6)}`;
+}
 
 /**
  * One line saying how a collected job gets here.

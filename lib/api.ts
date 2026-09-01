@@ -274,6 +274,13 @@ export type Notification = {
   orderTitle?: string;
   /** Job state from the list payload, enough for the stage rail. */
   orderState?: string;
+  /** Collect vs door — from the live job, so a pickup is never drawn as a delivery. */
+  fulfillmentMode?: FulfilmentMode | null;
+  /**
+   * True when a collected job is on the counter but the remaining balance is
+   * still unpaid. Absent on deliveries and on collect jobs that are released.
+   */
+  collectHold?: boolean;
   title: string;
   body: string;
   /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */

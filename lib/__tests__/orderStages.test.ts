@@ -1,4 +1,4 @@
-import { ORDER_STAGES, orderStageIndex } from "@/lib/orderStages";
+import { COLLECT_STAGES, ORDER_STAGES, orderStageIndex } from "@/lib/orderStages";
 
 describe("ORDER_STAGES", () => {
   it("is the legacy GRIDGO four, in order", () => {
@@ -37,6 +37,19 @@ describe("orderStageIndex", () => {
     expect(orderStageIndex("delivered")).toBe(3);
     expect(orderStageIndex("issue_window_open")).toBe(3);
     expect(orderStageIndex("completed")).toBe(3);
+  });
+
+  it("puts a collected job on the counter, not at someone's door", () => {
+    expect(COLLECT_STAGES.map((stage) => stage.label)).toEqual([
+      "Order",
+      "Printing",
+      "To office",
+      "Counter",
+    ]);
+    expect(orderStageIndex("out_for_delivery", "pickup")).toBe(2);
+    expect(orderStageIndex("awaiting_collection", "pickup")).toBe(3);
+    expect(orderStageIndex("awaiting_collection")).toBeNull();
+    expect(orderStageIndex("delivered", "pickup")).toBe(3);
   });
 
   it("never guesses a position for a state it does not know", () => {

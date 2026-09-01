@@ -324,7 +324,8 @@ describe("CheckoutScreen", () => {
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
     expect(screen.getByText("GRIDGO Office")).toBeTruthy();
-    expect(screen.getByText("7.132670, 125.611265")).toBeTruthy();
+    expect(screen.getByText("Poblacion District, Davao City")).toBeTruthy();
+    expect(screen.getByText("7.092287, 125.616511")).toBeTruthy();
     expect(
       screen.getByText(/GRIDGO's rider brings your finished job to the office/),
     ).toBeTruthy();
