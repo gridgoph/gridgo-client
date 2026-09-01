@@ -1,11 +1,15 @@
 import type { Order } from "@/lib/api";
 import {
+  DEFAULT_ORDER_SORT,
   ORDER_CONTROLS_MIN,
+  ORDER_SORTS,
   emptyResultBody,
   filterCounts,
   hasPaymentDue,
   isDoneOrder,
   matchesQuery,
+  sortBlurb,
+  sortLabel,
   sortOrders,
   visibleOrders,
 } from "@/lib/orderList";
@@ -124,13 +128,57 @@ describe("matchesQuery", () => {
 });
 
 describe("sortOrders", () => {
-  const older = order({ id: "old", createdAt: "2026-08-01T10:00:00.000Z", totalMinor: 90000 });
-  const newer = order({ id: "new", createdAt: "2026-08-20T10:00:00.000Z", totalMinor: 10000 });
-  const unpriced = order({ id: "none", createdAt: "2026-08-15T10:00:00.000Z", totalMinor: null, subtotalMinor: null });
+  const older = order({
+    id: "old",
+    createdAt: "2026-08-01T10:00:00.000Z",
+    updatedAt: "2026-08-01T10:00:00.000Z",
+    totalMinor: 90000,
+  });
+  const newer = order({
+    id: "new",
+    createdAt: "2026-08-20T10:00:00.000Z",
+    updatedAt: "2026-08-20T10:00:00.000Z",
+    totalMinor: 10000,
+  });
+  const unpriced = order({
+    id: "none",
+    createdAt: "2026-08-15T10:00:00.000Z",
+    updatedAt: "2026-08-15T10:00:00.000Z",
+    totalMinor: null,
+    subtotalMinor: null,
+  });
 
-  it("puts the newest first by default", () => {
+  it("orders by when it was placed, both ways", () => {
     expect(sortOrders([older, newer], "newest").map((o) => o.id)).toEqual(["new", "old"]);
     expect(sortOrders([newer, older], "oldest").map((o) => o.id)).toEqual(["old", "new"]);
+  });
+
+  it("leads by default with whatever moved last, not what was sent last", () => {
+    // The job that matters is the one something just happened to. An order
+    // placed three weeks ago whose supplier accepted this morning was buried
+    // under quieter jobs sent after it.
+    const stirred = order({
+      id: "stirred",
+      createdAt: "2026-07-01T10:00:00.000Z",
+      updatedAt: "2026-08-25T10:00:00.000Z",
+    });
+    expect(DEFAULT_ORDER_SORT).toBe("recent");
+    expect(sortOrders([newer, older, stirred], "recent").map((o) => o.id)).toEqual([
+      "stirred",
+      "new",
+      "old",
+    ]);
+  });
+
+  it("falls back to when a job was placed if it has never been touched", () => {
+    // A missing or unparseable timestamp must not sink a live job to the
+    // bottom of the list it is meant to lead.
+    const untouched = order({
+      id: "untouched",
+      createdAt: "2026-08-30T10:00:00.000Z",
+      updatedAt: "",
+    });
+    expect(sortOrders([newer, untouched], "recent")[0].id).toBe("untouched");
   });
 
   it("sinks an unpriced job rather than reading it as free", () => {
@@ -165,6 +213,26 @@ describe("filterCounts and visibleOrders", () => {
       .toEqual(["owed"]);
     expect(visibleOrders(list, { filter: "all", sort: "oldest", query: "" }).map((o) => o.id))
       .toEqual(["closed", "running", "owed"]);
+  });
+});
+
+describe("sort copy", () => {
+  it("names what each order actually sorts by", () => {
+    // The control was an unmarked pair of arrows, which can only be understood
+    // by pressing it. Every option now says what it does, and none of the four
+    // may read as another.
+    const labels = ORDER_SORTS.map(sortLabel);
+    expect(labels).toEqual([
+      "Recently updated",
+      "Newest first",
+      "Oldest first",
+      "Highest price",
+    ]);
+    expect(new Set(labels).size).toBe(labels.length);
+    for (const sort of ORDER_SORTS) {
+      expect(sortBlurb(sort).length).toBeGreaterThan(0);
+      expect(sortBlurb(sort)).not.toMatch(/_/);
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import { ArrowDownUp, Check, Search, X } from "lucide-react-native";
+import { Check, ChevronDown, Search, X } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View, type TextStyle } from "react-native";
 
@@ -8,6 +8,7 @@ import {
   ORDER_FILTERS,
   ORDER_SORTS,
   filterLabel,
+  sortBlurb,
   sortLabel,
   type OrderFilter,
   type OrderSort,
@@ -21,19 +22,29 @@ type Props = {
   counts: Record<OrderFilter, number>;
   sort: OrderSort;
   onSortChange: (value: OrderSort) => void;
+  /** How many jobs the list is actually showing, after filter and search. */
+  shown: number;
 };
 
 /**
  * The three questions a client arrives at their orders with.
  *
- * What needs me, where is the flyers job, what have I not paid for. Search on
- * top because it is the one that answers itself; the filters below it because
- * they are the ones worth counting.
+ * What needs me, where is the flyers job, what have I not paid for. Each gets
+ * its own line, because they were fighting: the chips and the sort shared a row
+ * and the sort button sat on top of the last chip, so the row read as clipped
+ * and the filters past it looked like the end of the list rather than the edge
+ * of the screen.
  *
- * The counts are the point of the chips. "Payment due 2" is a fact a client
- * wants before they tap, and it is the only decoration here that is really
- * information. Everything else stays in ink — this screen spends its yellow on
- * the job that needs paying, not on its own furniture.
+ * The chips now own their row edge to edge. A row that runs off the screen is
+ * how a phone says "there is more this way", and it can only say it if nothing
+ * is parked over the cut.
+ *
+ * The sort moved down to a line of its own and grew a label. It was an
+ * unmarked pair of arrows, which is a control that can only be understood by
+ * pressing it — and pressing it is exactly what a client will not do to
+ * something they cannot name. Beside it sits the count of what is actually on
+ * screen, which is the one fact the chips cannot give once a search narrows
+ * them further.
  */
 export function OrderFilterBar({
   query,
@@ -43,6 +54,7 @@ export function OrderFilterBar({
   counts,
   sort,
   onSortChange,
+  shown,
 }: Props) {
   const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
@@ -90,32 +102,45 @@ export function OrderFilterBar({
         ) : null}
       </View>
 
-      <View className="flex-row items-center gap-2">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerClassName="gap-2 pr-2"
-          className="min-w-0 flex-1"
-        >
-          {ORDER_FILTERS.map((candidate) => (
-            <FilterChip
-              key={candidate}
-              label={filterLabel(candidate)}
-              count={counts[candidate] ?? 0}
-              selected={candidate === filter}
-              onPress={() => onFilterChange(candidate)}
-            />
-          ))}
-        </ScrollView>
+      {/* Bled to the screen edge: the page's own 16px inset moves onto the
+          scrolling content, so a chip that continues past the edge reads as
+          more to come rather than as a chip somebody cut in half. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        className="-mx-4"
+        contentContainerClassName="gap-2 px-4"
+      >
+        {ORDER_FILTERS.map((candidate) => (
+          <FilterChip
+            key={candidate}
+            label={filterLabel(candidate)}
+            count={counts[candidate] ?? 0}
+            selected={candidate === filter}
+            onPress={() => onFilterChange(candidate)}
+          />
+        ))}
+      </ScrollView>
 
+      <View className="flex-row items-center justify-between gap-3">
+        <Text className="shrink text-caption text-text-muted" numberOfLines={1}>
+          {shown === 1 ? "1 job" : `${shown} jobs`}
+        </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Sort orders. Currently ${sortLabel(sort).toLowerCase()}`}
+          accessibilityLabel={`Sort: ${sortLabel(sort).toLowerCase()}. Change the order.`}
           onPress={() => setSorting(true)}
-          className="gg-touch items-center justify-center rounded-field border border-outline px-3"
+          className="gg-touch -mr-2 flex-row items-center gap-1 px-2"
           style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
         >
-          <ArrowDownUp size={18} color={colors.textPrimary} strokeWidth={2} />
+          <Text className="text-button text-text-primary">{sortLabel(sort)}</Text>
+          <ChevronDown
+            size={16}
+            color={colors.textPrimary}
+            strokeWidth={2}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
         </Pressable>
       </View>
 
@@ -126,7 +151,7 @@ export function OrderFilterBar({
               key={candidate}
               accessibilityRole="button"
               accessibilityState={{ selected: candidate === sort }}
-              accessibilityLabel={sortLabel(candidate)}
+              accessibilityLabel={`${sortLabel(candidate)}. ${sortBlurb(candidate)}.`}
               onPress={() => {
                 onSortChange(candidate);
                 setSorting(false);
@@ -134,7 +159,12 @@ export function OrderFilterBar({
               className="gg-touch flex-row items-center justify-between gap-3 rounded-field px-3 py-3"
               style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
             >
-              <Text className="text-body text-text-primary">{sortLabel(candidate)}</Text>
+              <View className="min-w-0 flex-1">
+                <Text className="text-body text-text-primary">{sortLabel(candidate)}</Text>
+                <Text className="mt-0.5 text-caption text-text-muted">
+                  {sortBlurb(candidate)}
+                </Text>
+              </View>
               {candidate === sort ? (
                 <Check size={18} color={colors.textPrimary} strokeWidth={2} />
               ) : null}
@@ -146,6 +176,14 @@ export function OrderFilterBar({
   );
 }
 
+/**
+ * One filter, and how many jobs are behind it.
+ *
+ * The count is the reason to look before tapping, so it stays legible rather
+ * than becoming a badge. A filter with nothing behind it is dimmed and still
+ * pressable: hiding it would make the row's contents shift under the thumb
+ * every time a job changed state.
+ */
 function FilterChip({
   label,
   count,
@@ -157,6 +195,8 @@ function FilterChip({
   selected: boolean;
   onPress: () => void;
 }) {
+  const empty = count === 0 && !selected;
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -168,7 +208,7 @@ function FilterChip({
           ? "h-9 flex-row items-center gap-2 rounded-pill border border-accent bg-surface-high px-3"
           : "h-9 flex-row items-center gap-2 rounded-pill border border-outline bg-surface px-3"
       }
-      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+      style={({ pressed }) => ({ opacity: pressed ? 0.6 : empty ? 0.45 : 1 })}
     >
       <Text
         className={

@@ -18,6 +18,7 @@ import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
+  DEFAULT_ORDER_SORT,
   ORDER_CONTROLS_MIN,
   emptyResultBody,
   filterCounts,
@@ -52,7 +53,7 @@ export default function OrdersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<OrderFilter>("all");
-  const [sort, setSort] = useState<OrderSort>("newest");
+  const [sort, setSort] = useState<OrderSort>(DEFAULT_ORDER_SORT);
 
   const load = useCallback(async () => {
     try {
@@ -143,6 +144,7 @@ export default function OrdersScreen() {
                 counts={counts}
                 sort={sort}
                 onSortChange={setSort}
+                shown={visible.length}
               />
             </View>
           ) : null}

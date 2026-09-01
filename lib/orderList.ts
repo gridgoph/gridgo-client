@@ -17,7 +17,17 @@ import { orderNeedsClient, orderTotalMinor } from "@/lib/orderState";
 import { balanceDue, downpaymentDue } from "@/lib/payment";
 
 export type OrderFilter = "all" | "needs_you" | "active" | "payment_due" | "done";
-export type OrderSort = "newest" | "oldest" | "price";
+
+/**
+ * How the list is ordered.
+ *
+ * `recent` is the default and the one most people mean by "newest": the job
+ * something last happened to, not the job placed last. An order sent three
+ * weeks ago that a supplier accepted this morning is the one worth seeing
+ * first, and sorting by when it was created buried it under quieter jobs sent
+ * after it. `newest` keeps the other reading for when it is genuinely wanted.
+ */
+export type OrderSort = "recent" | "newest" | "oldest" | "price";
 
 export const ORDER_FILTERS: readonly OrderFilter[] = [
   "all",
@@ -27,7 +37,14 @@ export const ORDER_FILTERS: readonly OrderFilter[] = [
   "done",
 ] as const;
 
-export const ORDER_SORTS: readonly OrderSort[] = ["newest", "oldest", "price"] as const;
+export const ORDER_SORTS: readonly OrderSort[] = [
+  "recent",
+  "newest",
+  "oldest",
+  "price",
+] as const;
+
+export const DEFAULT_ORDER_SORT: OrderSort = "recent";
 
 /**
  * Below this the controls cost more than they give.
@@ -66,12 +83,28 @@ export function filterLabel(filter: OrderFilter): string {
 
 export function sortLabel(sort: OrderSort): string {
   switch (sort) {
+    case "recent":
+      return "Recently updated";
     case "newest":
       return "Newest first";
     case "oldest":
       return "Oldest first";
     case "price":
       return "Highest price";
+  }
+}
+
+/** One line under each option, because two of the four sound alike. */
+export function sortBlurb(sort: OrderSort): string {
+  switch (sort) {
+    case "recent":
+      return "Whatever moved last";
+    case "newest":
+      return "The job you sent most recently";
+    case "oldest":
+      return "The job you have been waiting on longest";
+    case "price":
+      return "Dearest job first";
   }
 }
 
@@ -126,9 +159,24 @@ function createdMs(order: Order): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+/**
+ * When something last happened to this job.
+ *
+ * Falls back to when it was placed, because an order nothing has happened to
+ * yet was last touched when it was sent. Without the fallback a malformed or
+ * missing timestamp would sink a live job to the bottom of the list it is
+ * meant to lead.
+ */
+function updatedMs(order: Order): number {
+  const parsed = Date.parse(order.updatedAt);
+  return Number.isNaN(parsed) ? createdMs(order) : parsed;
+}
+
 export function sortOrders(orders: Order[], sort: OrderSort): Order[] {
   const sorted = [...orders];
   switch (sort) {
+    case "recent":
+      return sorted.sort((a, b) => updatedMs(b) - updatedMs(a) || createdMs(b) - createdMs(a));
     case "newest":
       return sorted.sort((a, b) => createdMs(b) - createdMs(a));
     case "oldest":
@@ -139,7 +187,7 @@ export function sortOrders(orders: Order[], sort: OrderSort): Order[] {
       return sorted.sort((a, b) => {
         const left = orderTotalMinor(a);
         const right = orderTotalMinor(b);
-        if (left == null && right == null) return createdMs(b) - createdMs(a);
+        if (left == null && right == null) return updatedMs(b) - updatedMs(a);
         if (left == null) return 1;
         if (right == null) return -1;
         return right - left;
