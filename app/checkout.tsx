@@ -52,6 +52,7 @@ import {
   GRIDGO_OFFICE,
   GRIDGO_OFFICE_BLURB,
   GRIDGO_OFFICE_LABEL,
+  gridgoOfficeCoordLine,
   gridgoOfficeMapUrl,
 } from "@/lib/gridgoOffice";
 import { earliestDeadline, latestDeadline, suggestedDeadline } from "@/lib/deadline";
@@ -925,9 +926,8 @@ function CollectAtGridgo({ runCount }: { runCount: number }) {
           <Text className="text-body font-medium text-text-primary">
             {GRIDGO_OFFICE_LABEL}
           </Text>
-          <Text className="text-caption text-text-muted">
-            {GRIDGO_OFFICE.lat.toFixed(6)}, {GRIDGO_OFFICE.lng.toFixed(6)}
-          </Text>
+          <Text className="text-caption text-text-muted">{GRIDGO_OFFICE.locality}</Text>
+          <Text className="text-caption text-text-muted">{gridgoOfficeCoordLine()}</Text>
         </View>
       </View>
 

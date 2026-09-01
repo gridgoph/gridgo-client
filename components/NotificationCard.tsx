@@ -7,9 +7,8 @@ import { OrderStageRail } from "@/components/OrderStageRail";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import { notificationImageUrl, type Notification } from "@/lib/api";
+import { presentNotification } from "@/lib/notificationPresentation";
 import { formatTimelineStamp } from "@/lib/relativeTime";
-import { orderStageIndex } from "@/lib/orderStages";
-import { getOrderStateMeta } from "@/lib/orderState";
 
 /** Past this much of a drag, letting go marks the row read. */
 const DISMISS_DISTANCE = 96;
@@ -24,13 +23,11 @@ type Props = {
 };
 
 /**
- * One update, in the shape the legacy GRIDGO app used.
+ * One update, as a counter docket or a door slip.
  *
- * What that shape gets right, and what this keeps: an unread row that is
- * obviously unread, the full date and time rather than "3h ago" alone, and —
- * the part worth carrying over — the job's own stage drawn inline, so the
- * notification says where the work actually is and not merely that something
- * happened.
+ * Collect jobs stamp COLLECT and ride a Counter rail; door jobs stay on
+ * Dispatch / Delivered. Unread is still ink, not gold. The full date and
+ * time stay, because an update about a deadline is worth an exact stamp.
  *
  * Swiping the row left marks it read, which is the legacy gesture. A gesture
  * is never the only way to do a thing here: tapping opens the job, and the row
@@ -46,8 +43,10 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
   const translateX = useRef(new Animated.Value(0)).current;
-  const stageIndex = orderStageIndex(notification.orderState);
+  const presented = presentNotification(notification);
   const picture = notificationImageUrl(notification.imageUrl);
+  const spine =
+    presented.collectReady ? colors.brand : presented.collectHold ? colors.outline : null;
 
   const responder = useMemo(
     () =>
@@ -86,8 +85,6 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
     [read, onMarkRead, translateX],
   );
 
-  const meta = notification.orderState ? getOrderStateMeta(notification.orderState) : null;
-
   return (
     <View className="relative">
       {/*
@@ -120,76 +117,99 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
         <Pressable
           onPress={onOpen ?? undefined}
           accessibilityRole={onOpen ? "button" : undefined}
-          accessibilityLabel={`${read ? "" : "Unread. "}${notification.title}. ${notification.body}`}
-          accessibilityHint={onOpen ? "Opens this job" : undefined}
+          accessibilityLabel={`${read ? "" : "Unread. "}${presented.stamp ? `${presented.stamp}. ` : ""}${presented.title}. ${presented.body}`}
+          accessibilityHint={onOpen ? presented.hint ?? "Opens this job" : undefined}
           accessibilityActions={read ? undefined : [{ name: "markRead", label: "Mark read" }]}
           onAccessibilityAction={(event) => {
             if (event.nativeEvent.actionName === "markRead") onMarkRead();
           }}
           className={
             read
-              ? "gg-card-flush gap-4 p-4"
-              : "gap-4 rounded-card border border-outline bg-surface-high p-4"
+              ? "gg-card-flush"
+              : "overflow-hidden rounded-card border border-outline bg-surface-high"
           }
         >
           {({ pressed }) => (
             <>
-              <View className="flex-row items-start gap-3">
-                <View className="flex-1 gap-1">
-                  <View className="flex-row items-center gap-2">
-                    {/* Ink, not gold. A list can hold ten unread rows, and ten
-                        gold dots would outspend the one yellow this screen is
-                        allowed — which the tab bar's "+" already is. The dot
-                        joins a raised surface and a heavier title, so unread
-                        survives greyscale three times over. */}
-                    {!read ? (
-                      <View
-                        className="h-2 w-2 rounded-pill bg-accent"
-                        accessibilityElementsHidden
-                        importantForAccessibility="no"
-                      />
-                    ) : null}
-                    <Text
-                      className={
-                        read
-                          ? "flex-1 text-body-lg text-text-primary"
-                          : "flex-1 text-body-lg font-medium text-text-primary"
-                      }
-                    >
-                      {notification.title}
-                    </Text>
-                  </View>
-                  <Text className="text-body text-text-secondary">{notification.body}</Text>
-                  {/* Date and time, as the legacy card showed it — an update
-                      about a deadline is worth an exact stamp. */}
-                  <Text className="text-caption text-text-muted">
-                    {formatTimelineStamp(notification.at)}
-                  </Text>
-                </View>
-                {onOpen ? (
-                  <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+              <View className="flex-row">
+                {spine ? (
+                  <View
+                    style={{ width: 3, backgroundColor: spine }}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                  />
                 ) : null}
-              </View>
+                <View className="min-w-0 flex-1 gap-4 p-4">
+                  <View className="flex-row items-start gap-3">
+                    <View className="flex-1 gap-1">
+                      {presented.stamp ? (
+                        <View className="flex-row items-center gap-2">
+                          {!read ? (
+                            <View
+                              className="h-2 w-2 rounded-pill bg-accent"
+                              accessibilityElementsHidden
+                              importantForAccessibility="no"
+                            />
+                          ) : null}
+                          <Text className="flex-1 text-overline text-text-muted" numberOfLines={1}>
+                            {presented.stamp}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <View className="flex-row items-center gap-2">
+                        {!read && !presented.stamp ? (
+                          <View
+                            className="h-2 w-2 rounded-pill bg-accent"
+                            accessibilityElementsHidden
+                            importantForAccessibility="no"
+                          />
+                        ) : null}
+                        <Text
+                          className={
+                            read
+                              ? "flex-1 text-body-lg text-text-primary"
+                              : "flex-1 text-body-lg font-medium text-text-primary"
+                          }
+                        >
+                          {presented.title}
+                        </Text>
+                      </View>
+                      <Text className="text-body text-text-secondary">{presented.body}</Text>
+                      <Text className="text-caption text-text-muted">
+                        {formatTimelineStamp(notification.at)}
+                      </Text>
+                    </View>
+                    {onOpen ? (
+                      <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+                    ) : null}
+                  </View>
 
-              {picture ? (
-                <Image
-                  testID="notification-picture"
-                  source={{ uri: picture }}
-                  style={{ width: "100%", height: 144, borderRadius: 12 }}
-                  contentFit="cover"
-                />
-              ) : null}
+                  {picture ? (
+                    <Image
+                      testID="notification-picture"
+                      source={{ uri: picture }}
+                      style={{ width: "100%", height: 144, borderRadius: 12 }}
+                      contentFit="cover"
+                    />
+                  ) : null}
 
-              {notification.orderState ? (
-                <View className="gap-3 border-t border-outline-subtle pt-4">
-                  <Text className="text-caption text-text-muted" numberOfLines={1}>
-                    {notification.orderTitle
-                      ? `${notification.orderTitle} · ${meta?.label}`
-                      : meta?.label}
-                  </Text>
-                  <OrderStageRail currentIndex={stageIndex} />
+                  {presented.jobLine || presented.railKind ? (
+                    <View className="gap-3 border-t border-outline-subtle pt-4">
+                      {presented.jobLine ? (
+                        <Text className="text-caption text-text-muted" numberOfLines={1}>
+                          {presented.jobLine}
+                        </Text>
+                      ) : null}
+                      {presented.railKind ? (
+                        <OrderStageRail
+                          currentIndex={presented.stageIndex}
+                          kind={presented.railKind}
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
                 </View>
-              ) : null}
+              </View>
 
               {pressed ? (
                 <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-card" />
