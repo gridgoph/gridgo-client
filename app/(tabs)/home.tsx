@@ -8,11 +8,10 @@ import { TabScreen } from "@/components/TabScreen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
-import { OrderCard } from "@/components/OrderCard";
+import { HomeCategoryTile } from "@/components/HomeCategoryTile";
+import { HomeActionRow, HomeJobRow } from "@/components/HomeRow";
 import { ScreenHeader } from "@/components/ScreenHeader";
-import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
-import { SkeletonList, SkeletonOrderList } from "@/components/Skeleton";
-import { useStartRequest } from "@/hooks/useStartRequest";
+import { SkeletonHomeDocket } from "@/components/Skeleton";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
@@ -24,55 +23,57 @@ import { useNotifications } from "@/store/notifications";
 import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
 
+/** Snapshot, not a list. Orders is one tab away. */
+const RECENT_LIMIT = 3;
+
 /**
  * Home answers two questions, in this order: is anything waiting on me, and
  * how do I start something new.
  *
- * It used to answer a third — the Pilot Credits balance — and that line is
- * gone. Credits are no longer a way to pay for anything, so the number bought
- * the client nothing and spent the top of the screen saying so.
+ * It is a summary, not a second orders list. The Orders tab already carries
+ * the full cards, search, filters, sort and reorder. Repeating those cards
+ * here is what stretched a handful of jobs across five or six screens.
  *
- * The flat product list this used to end with is gone too. Five catalog rows
- * was never the catalog — GRIDGO prints seventeen things across four
- * categories, and browsing them is a considered screen of its own now.
+ * Waiting jobs therefore lead with the next verb, grouped as one docket.
+ * Starting is the category tiles — the yellow "+" already owns the primary
+ * start, so nothing else on this screen is yellow. Recent jobs only appear
+ * when nothing needs the client; otherwise they live on Orders.
  */
 export default function HomeScreen() {
   const { user } = useSession();
   const router = useRouter();
   const colors = useThemeColors();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
-  const seedFromOrder = useRequestDraft((s) => s.seedFromOrder);
   const draftTitle = useRequestDraft((s) => s.title || s.productName);
   const hasDraft = useRequestDraft(draftHasContent);
   const refreshNotifications = useNotifications((s) => s.refresh);
   const loadCart = useCart((s) => s.load);
-  const { start, pendingLabel, confirmReplace, cancelReplace } = useStartRequest();
 
   const [orders, setOrders] = useState<api.Order[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
-  const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [list, products] = await Promise.all([
-        api.listOrders(),
-        api.listCatalog(),
-      ]);
+      const list = await api.listOrders();
       setOrders(list);
-      setCatalog(products);
       setError(null);
     } catch (e) {
       setOrders([]);
-      setCatalog([]);
       setError(userFacingError(e, "Could not load home. Check your connection and try again."));
     } finally {
       setLoading(false);
     }
-    void api.getProductCategories().then(setCategories).catch(() => {
-      // Seed already on screen.
-    });
+    void api
+      .getProductCategories()
+      .then((tree) => {
+        // An empty payload must not blank the seed already on screen.
+        if (tree.length) setCategories(tree);
+      })
+      .catch(() => {
+        // Seed already on screen.
+      });
     void refreshNotifications();
     // The basket lives on GRIDGO, so the count on the cart control is only
     // honest if it is re-read. Coming back from checkout is exactly when it
@@ -86,21 +87,8 @@ export default function HomeScreen() {
     }, [load]),
   );
 
-  const productById = new Map(catalog.map((p) => [p.id, p]));
   const needsClient = orders.filter(orderNeedsClient);
-  const recent = orders.filter((o) => !orderNeedsClient(o)).slice(0, 3);
-
-  const reorder = (order: api.Order) => {
-    const meta = productById.get(order.productId);
-    start(order.title, () =>
-      seedFromOrder(order, {
-        name: meta?.name,
-        basePriceMinor: meta?.basePriceMinor,
-        unit: meta?.unit,
-        family: meta?.family,
-      }),
-    );
-  };
+  const recent = needsClient.length === 0 ? orders.slice(0, RECENT_LIMIT) : [];
 
   return (
     <TabScreen>
@@ -110,7 +98,7 @@ export default function HomeScreen() {
             One header: the mark, and cart and chat as the two ways back into
             work already in flight. The client's name lives on Account — putting
             it here split the top of Home into chrome and a greeting, and the
-            browse list starts higher without it.
+            jobs slot starts higher without it.
 
             No portrait, illustration or photo in this row. The mark is the
             identity here, and a second image beside it would make the header
@@ -161,109 +149,92 @@ export default function HomeScreen() {
           ) : null}
 
           {/*
-            The placeholder is the shape of what replaces it — a jobs section
-            and a browse section, in order-card and category-card proportions —
-            so the page keeps its height and the list does not resettle under
-            the client's thumb when the data lands.
+            One jobs slot, so the page does not resettle when the list lands.
+            The placeholder is a flush docket of dense rows — the shape of
+            both the needs-you list and the recent snapshot. Categories paint
+            from seed on the first frame and are not placeholdered.
           */}
           {loading ? (
-            <>
-              <View className="mt-10 gap-3">
-                <Text className="text-overline text-text-muted">YOUR JOBS</Text>
-                <SkeletonOrderList count={2} />
-              </View>
-              <View className="mt-10 gap-3">
-                <Text className="text-overline text-text-muted">
-                  BROWSE WHAT GRIDGO PRINTS
-                </Text>
-                <SkeletonList count={2} />
-              </View>
-            </>
-          ) : null}
-
-          {!loading && needsClient.length ? (
-            <View className="mt-10 gap-3">
-              <Text className="text-overline text-text-muted">WAITING ON YOU</Text>
-              {needsClient.map((o) => (
-                <OrderCard key={o.id} order={o} onPress={() => router.push(`/order/${o.id}`)} />
-              ))}
+            <View className="mt-8 gap-3">
+              <Text className="text-overline text-text-muted">YOUR JOBS</Text>
+              <SkeletonHomeDocket count={2} />
             </View>
           ) : null}
 
-          {!loading && !error ? (
-            <View className="mt-10 gap-3">
-              {/* No "View all" link. Orders is a permanent tab one row below
-                  this, so the link navigated to a place already on screen —
-                  and in Dark its brand gold is the action yellow exactly, so
-                  it spent the screen's attention budget to do nothing. */}
-              <Text className="text-overline text-text-muted">RECENT JOBS</Text>
+          {!loading && !error && needsClient.length ? (
+            <View className="mt-8 gap-3">
+              <Text className="text-overline text-text-muted">NEEDS YOU</Text>
+              <View className="gg-card-flush">
+                {needsClient.map((order, index) => (
+                  <View key={order.id}>
+                    {index > 0 ? <View className="gg-divider" /> : null}
+                    <HomeActionRow order={order} onPress={() => router.push(`/order/${order.id}`)} />
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
 
-              {recent.map((o) => (
-                <OrderCard
-                  key={o.id}
-                  order={o}
-                  onPress={() => router.push(`/order/${o.id}`)}
-                  onReorder={() => reorder(o)}
-                />
-              ))}
+          {!loading && !error && recent.length ? (
+            <View className="mt-8 gap-3">
+              <Text className="text-overline text-text-muted">YOUR JOBS</Text>
+              <View className="gg-card-flush">
+                {recent.map((order, index) => (
+                  <View key={order.id}>
+                    {index > 0 ? <View className="gg-divider" /> : null}
+                    <HomeJobRow order={order} onPress={() => router.push(`/order/${order.id}`)} />
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
 
-              {!orders.length ? (
-                <EmptyState
-                  title="No print jobs yet"
-                  body="Start with what you are printing — flyers, tarpaulins, lanyards, apparel — and GRIDGO takes it from there."
-                  actionLabel="See what GRIDGO prints"
-                  onAction={() => router.push("/request/category")}
-                />
-              ) : null}
-
-              {orders.length && !recent.length ? (
-                <Text className="text-body text-text-muted">
-                  Everything you have sent is waiting on you above.
-                </Text>
-              ) : null}
+          {!loading && !error && !orders.length ? (
+            <View className="mt-8">
+              <EmptyState
+                title="No print jobs yet"
+                body="Start with what you are printing — flyers, tarpaulins, lanyards, apparel — and GRIDGO takes it from there."
+                actionLabel="See what GRIDGO prints"
+                onAction={() => router.push("/request/category")}
+              />
             </View>
           ) : null}
 
           {categories.length ? (
-            <View className="mt-10 gap-3">
-              <Text className="text-overline text-text-muted">BROWSE WHAT GRIDGO PRINTS</Text>
-              {categories.map((category) => (
-                <Pressable
-                  key={category.code}
-                  onPress={() => router.push(`/request/${category.code}`)}
-                  accessibilityRole="button"
-                  accessibilityLabel={category.name}
-                  accessibilityHint={`Best for ${category.bestFor}`}
-                  className="gg-card gg-touch flex-row items-center gap-3"
-                >
-                  {({ pressed }) => (
-                    <>
-                      <View className="flex-1">
-                        <Text className="text-body-lg font-medium text-text-primary">
-                          {category.name}
-                        </Text>
-                        <Text className="mt-1 text-caption text-text-muted" numberOfLines={2}>
-                          {category.subcategories.map((s) => s.name).join(" · ")}
-                        </Text>
-                      </View>
-                      <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
-                      {pressed ? (
-                        <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-card" />
-                      ) : null}
-                    </>
-                  )}
-                </Pressable>
+            <View className="mt-8 gap-3">
+              <Text className="text-overline text-text-muted">START A PRINT</Text>
+              {categoryRows(categories).map((row) => (
+                <View key={row.map((category) => category.code).join("-")} className="flex-row gap-3">
+                  {row.map((category) => (
+                    <View key={category.code} className="flex-1">
+                      <HomeCategoryTile
+                        category={category}
+                        onPress={() => router.push(`/request/${category.code}`)}
+                      />
+                    </View>
+                  ))}
+                  {row.length === 1 ? (
+                    <View
+                      className="flex-1"
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    />
+                  ) : null}
+                </View>
               ))}
             </View>
           ) : null}
         </View>
       </ScrollView>
-
-      <ReplaceDraftDialog
-        label={pendingLabel}
-        onConfirm={confirmReplace}
-        onCancel={cancelReplace}
-      />
     </TabScreen>
   );
+}
+
+/** Two tiles to a row so five categories sit in three short rows, not five tall cards. */
+function categoryRows(categories: ProductCategory[]): ProductCategory[][] {
+  const rows: ProductCategory[][] = [];
+  for (let index = 0; index < categories.length; index += 2) {
+    rows.push(categories.slice(index, index + 2));
+  }
+  return rows;
 }

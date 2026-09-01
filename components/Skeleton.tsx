@@ -169,10 +169,10 @@ export function SkeletonList({ count = 3 }: { count?: number }) {
  * An `OrderCard` that has not arrived yet, shape for shape: state chip, title,
  * specification line, money row.
  *
- * Matching the real card matters more here than anywhere else. Home and Orders
- * are what a client opens the app to see, and a placeholder of the wrong height
- * makes the list visibly resettle when the data lands — which is the "it jumps"
- * feeling, not a screen transition.
+ * Matching the real card matters more here than anywhere else. Orders is what
+ * a client opens the list to see, and a placeholder of the wrong height makes
+ * it visibly resettle when the data lands — which is the "it jumps" feeling,
+ * not a screen transition. Home's jobs slot uses {@link SkeletonHomeDocket}.
  */
 export function SkeletonOrderCard() {
   return (
@@ -204,6 +204,31 @@ export function SkeletonOrderList({ count = 3 }: { count?: number }) {
     <View className="gap-3">
       {Array.from({ length: count }, (_, index) => (
         <SkeletonOrderCard key={index} />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Home's jobs slot while the list is on the way: one flush card of dense
+ * rows, not a stack of order cards. Categories paint from seed on the first
+ * frame, so they are not placeholdered.
+ */
+export function SkeletonHomeDocket({ count = 2 }: { count?: number }) {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      className="gg-card-flush"
+    >
+      {Array.from({ length: count }, (_, index) => (
+        <View key={index}>
+          {index > 0 ? <View className="gg-divider" /> : null}
+          <View className="gap-2 px-4 py-3">
+            <SkeletonLine width="w-2/3" height="h-5" />
+            <SkeletonLine width="w-1/2" height="h-3" />
+          </View>
+        </View>
       ))}
     </View>
   );

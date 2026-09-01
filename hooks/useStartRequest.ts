@@ -13,8 +13,8 @@ type Pending = {
  * Starting a request, without silently throwing away the one in progress.
  *
  * A draft survives the app being killed, so replacing it is a real loss and is
- * always asked about first. Home (reorder) and the category screens both start
- * requests, and both have to ask the same question the same way.
+ * always asked about first. Orders (reorder) and the category screens both
+ * start requests, and both have to ask the same question the same way.
  */
 export function useStartRequest() {
   const router = useRouter();
