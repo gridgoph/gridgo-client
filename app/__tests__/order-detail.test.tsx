@@ -495,4 +495,63 @@ describe("OrderDetailScreen", () => {
       expect(mockBack).not.toHaveBeenCalled();
     });
   });
+
+  /**
+   * Two endings, and the client only sees their own.
+   *
+   * A collected job is carried between two of GRIDGO's own places. Handing the
+   * client a rider to watch dresses an errand of ours up as their delivery, and
+   * sends them out of the door while the package is still on the road.
+   */
+  describe("a collected order", () => {
+    const collecting = {
+      fulfillmentMode: "pickup" as const,
+      pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
+    };
+
+    const settled = {
+      downpayment: { ...baseOrder.payments!.downpayment },
+      balance: { ...baseOrder.payments!.balance, status: "confirmed" as const },
+    };
+
+    it("shows no rider while it is being carried to the office", async () => {
+      setOrder({ ...collecting, state: "out_for_delivery", payments: settled });
+      // Call history carries across tests in this file; only this render counts.
+      api.getRiderLocation.mockClear();
+
+      await renderInSafeArea(<OrderDetailScreen />);
+
+      expect(await screen.findByText("On the way to GRIDGO Office")).toBeTruthy();
+      expect(screen.queryByText(/out for delivery/i)).toBeNull();
+      // Nothing asks the platform where the rider is, so nothing can draw them.
+      expect(api.getRiderLocation).not.toHaveBeenCalled();
+    });
+
+    it("gives the counter and the address once it is on the shelf", async () => {
+      setOrder({
+        ...collecting,
+        state: "awaiting_collection",
+        payments: settled,
+      });
+
+      await renderInSafeArea(<OrderDetailScreen />);
+
+      expect(await screen.findByText("READY AT THE COUNTER")).toBeTruthy();
+      expect(screen.getByText("Open in Maps")).toBeTruthy();
+      // The address they shopped with is not where this job is.
+      expect(screen.getByText("Collect at")).toBeTruthy();
+      expect(screen.queryByText("Deliver to")).toBeNull();
+    });
+
+    it("holds it, rather than calling it ready, while the balance is owed", async () => {
+      setOrder({ ...collecting, state: "awaiting_collection" });
+
+      await renderInSafeArea(<OrderDetailScreen />);
+
+      expect(await screen.findByText("HELD AT THE COUNTER")).toBeTruthy();
+      expect(screen.queryByText("READY AT THE COUNTER")).toBeNull();
+      // The screen's one yellow control is the payment, not the walk.
+      expect(screen.getAllByText(/remaining balance/i).length).toBeGreaterThan(0);
+    });
+  });
 });

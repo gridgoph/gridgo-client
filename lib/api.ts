@@ -139,7 +139,16 @@ export type Order = {
   artworkName: string | null;
   /** Stored artwork ids, newest last. Empty is valid. */
   artworkFileIds?: string[];
-  /** Supplier shop, once a supplier is assigned. */
+  /**
+   * Whether the client collects this order or has it delivered.
+   *
+   * Collecting means the GRIDGO Office counter, not the shop that printed it —
+   * a rider still carries the job there. So the whole travel half of the
+   * vocabulary changes: nothing is ever "out for delivery" to a client who is
+   * coming to fetch it themselves.
+   */
+  fulfillmentMode?: FulfilmentMode | null;
+  /** Supplier shop, once a supplier is assigned. Where the client collects. */
   pickup?: OrderPoint | null;
   /** Delivery destination. */
   dropoff?: OrderPoint | null;

@@ -32,7 +32,7 @@ type Props = {
  */
 export function OrderCard({ order, onPress, onReorder }: Props) {
   const colors = useThemeColors();
-  const meta = getOrderStateMeta(order.state);
+  const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
   // Before a supplier accepts there is no exact price, so the card carries the
   // platform's range and marks it as one. It must never round an estimate into
   // a figure the client could hold GRIDGO to.

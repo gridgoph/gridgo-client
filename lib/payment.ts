@@ -48,14 +48,21 @@ export function isInstallmentSubmitted(installment: PaymentInstallment | undefin
  * States in which the remaining balance is asked for.
  *
  * Not the moment the downpayment clears — that would collect the whole price
- * up front and make the split a fiction. The job is made first; the balance is
- * asked for once it is packed, and delivery is blocked until it is confirmed.
+ * up front and make the split a fiction. It is asked for once the job is on
+ * the press, which is early enough that it is settled by the time the job is
+ * packed. Asking only at the end sent riders to doorsteps to find nobody had
+ * paid, with nothing either of them could do about it: no delivery is offered
+ * to a rider until the balance clears, and no collected order leaves the
+ * counter until it does.
  */
 export const BALANCE_DUE_STATES = [
+  "production",
+  "supplier_self_qc",
   "ready_for_dispatch",
   "rider_assigned",
   "picked_up",
   "out_for_delivery",
+  "awaiting_collection",
 ] as const;
 
 export function downpaymentDue(order: Order): boolean {

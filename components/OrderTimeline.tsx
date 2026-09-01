@@ -15,6 +15,12 @@ type Props = {
   timeline?: TimelineEntry[] | null;
   /** Current order state — that step is the one yellow marker. */
   currentState: string;
+  /**
+   * How the order reaches the client. The travel steps read differently to
+   * somebody collecting: they are never told a job is out for delivery to
+   * them when a rider is only moving it to GRIDGO's own counter.
+   */
+  fulfillmentMode?: string | null;
 };
 
 /**
@@ -24,7 +30,7 @@ type Props = {
  * real meaning — and the accountability this product exists to provide is the
  * actor and the clock time on every entry, not just a status word.
  */
-export function OrderTimeline({ timeline, currentState }: Props) {
+export function OrderTimeline({ timeline, currentState, fulfillmentMode }: Props) {
   const entriesIn = Array.isArray(timeline) ? timeline : [];
   if (!entriesIn.length) {
     return (
@@ -40,7 +46,7 @@ export function OrderTimeline({ timeline, currentState }: Props) {
   return (
     <View className="gap-0">
       {entries.map((entry, index) => {
-        const meta = getOrderStateMeta(entry.state);
+        const meta = getOrderStateMeta(entry.state, fulfillmentMode);
         const isCurrent = index === 0 && entry.state === currentState;
         const isLast = index === entries.length - 1;
 
