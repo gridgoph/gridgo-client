@@ -1,7 +1,7 @@
 /**
  * The captain's product category chart, transcribed.
  *
- * Four categories, seventeen subcategories. Each category carries the audience
+ * Five categories, twenty-two subcategories. Each category carries the audience
  * line a client uses to recognise themselves ("best for student orgs, HR teams,
  * event organizers"); each subcategory carries its examples.
  *
@@ -51,13 +51,13 @@ export const PRODUCT_CATEGORY_SEED: ProductCategory[] = [
         productFamilyIds: ["card"],
       },
       {
-        code: "stickers_labels",
+        code: "stickers_packaging_labels",
         name: "Stickers & packaging labels",
         examples: "Die-cut product labels, vinyl stickers, sheet stickers",
         productFamilyIds: ["sticker"],
       },
       {
-        code: "tarpaulins_banners",
+        code: "tarpaulins_outdoor_banners",
         name: "Tarpaulins & outdoor banners",
         examples: "Event banners, billboards, temporary roadside signs",
         productFamilyIds: ["banner"],
@@ -65,12 +65,12 @@ export const PRODUCT_CATEGORY_SEED: ProductCategory[] = [
     ],
   },
   {
-    code: "event_merchandise",
+    code: "corporate_event_merch",
     name: "Corporate & event merchandise",
     bestFor: "Student orgs, HR teams, event organizers, and corporate branding.",
     subcategories: [
       {
-        code: "lanyards_id",
+        code: "lanyards_id_accessories",
         name: "Lanyards & ID accessories",
         examples: "Sublimation lanyards, custom ID laces, badge holders",
         productFamilyIds: [],
@@ -96,13 +96,13 @@ export const PRODUCT_CATEGORY_SEED: ProductCategory[] = [
     ],
   },
   {
-    code: "recognition_signage",
+    code: "recognition_awards_signage",
     name: "Recognition, awards & signage",
     bestFor:
       "Competitions, graduations, guest speakers, store branding, and office spaces.",
     subcategories: [
       {
-        code: "certificates",
+        code: "certificates_diplomas",
         name: "Certificates & diplomas",
         examples: "Specialty paper, foil-stamped, embossed",
         productFamilyIds: [],
@@ -120,7 +120,7 @@ export const PRODUCT_CATEGORY_SEED: ProductCategory[] = [
         productFamilyIds: [],
       },
       {
-        code: "store_signages",
+        code: "business_store_signages",
         name: "Business & store signages",
         examples: "Acrylic build-up letters, Panaflex lightboxes, LED neon flex",
         productFamilyIds: [],
@@ -134,21 +134,62 @@ export const PRODUCT_CATEGORY_SEED: ProductCategory[] = [
       "Architecture students, engineers, industrial designers, and specialized builds.",
     subcategories: [
       {
-        code: "three_d_printing",
+        code: "three_d_printing_scale_models",
         name: "3D printing & scale models",
         examples: "Rapid prototyping, architectural scale models, custom parts",
         productFamilyIds: [],
       },
       {
-        code: "cad_plotting",
+        code: "blueprint_cad_plotting",
         name: "Blueprint & CAD plotting",
         examples: "Large-format architectural and engineering plans",
         productFamilyIds: [],
       },
       {
-        code: "packaging_boxes",
+        code: "packaging_box_production",
         name: "Packaging & box production",
         examples: "Custom product boxes, mailer boxes, food-grade packaging",
+        productFamilyIds: [],
+      },
+    ],
+  },
+  {
+    // The everyday paperwork the first four had nowhere to put: a thesis, a
+    // hundred handouts, a set of ID photographs. None of it is marketing,
+    // merchandise, an award or a prototype.
+    code: "document_publication",
+    name: "Documents & publications",
+    bestFor:
+      "Students, teachers, offices, and anyone with paperwork to print, bind, or copy.",
+    subcategories: [
+      {
+        code: "document_printing",
+        name: "Document printing",
+        examples: "Black and white or colour, short, A4 and long, back-to-back",
+        productFamilyIds: [],
+      },
+      {
+        code: "booklets",
+        name: "Booklets",
+        examples: "Bifold and trifold, programmes, handouts",
+        productFamilyIds: [],
+      },
+      {
+        code: "risograph",
+        name: "Risograph printing",
+        examples: "High-volume handouts, exam papers, reviewers by the ream",
+        productFamilyIds: [],
+      },
+      {
+        code: "binding_hardbound",
+        name: "Binding & hardbound",
+        examples: "Thesis hardbound, ring and softcover binding, gold or silver spine",
+        productFamilyIds: [],
+      },
+      {
+        code: "id_photos",
+        name: "ID photos",
+        examples: "1x1, 2x2 and passport, wallet and family size, photo paper or PVC",
         productFamilyIds: [],
       },
     ],

@@ -1,9 +1,11 @@
 import { Minus, Plus } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Screen } from "@/components/Screen";
+import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
 import { SamplePhoto } from "@/components/SamplePhoto";
@@ -11,7 +13,22 @@ import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { formatPhp, type CatalogItem } from "@/lib/api";
+import { formatPhp, type CatalogItem, type MeasureUnit, type MeasurementKind } from "@/lib/api";
+import {
+  EMPTY_MEASUREMENT,
+  belowMinimumOrder,
+  fromMilli,
+  isMeasurementComplete,
+  lineTotalMinor,
+  measurementKind,
+  measurementPrompt,
+  measurementSummary,
+  minimumApplies,
+  toDraft,
+  toMeasurement,
+  unitWord,
+  type MeasurementDraft,
+} from "@/lib/measurement";
 import {
   addOnGroups,
   boundValue,
@@ -76,6 +93,9 @@ export default function ListingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<ListingSelection>({});
   const [quantity, setQuantity] = useState(1);
+  // How big it is. Only three of the six pricing units ask for this, and the
+  // listing itself decides which — a client ordering flyers never sees it.
+  const [measured, setMeasured] = useState<MeasurementDraft>(EMPTY_MEASUREMENT);
   const [showMissing, setShowMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -133,6 +153,7 @@ export default function ListingScreen() {
     }
     setSelection(restored);
     setQuantity(editing.quantity);
+    setMeasured(toDraft(editing.measurement));
   }, [editing?.id, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
@@ -191,14 +212,21 @@ export default function ListingScreen() {
   const complete = isSelectionComplete(item, selection);
   const missing = firstMissingGroup(item, selection);
   const unit = unitPriceMinor(item, selection);
-  const total = unit * quantity;
+  const kind = measurementKind(item);
+  const measurement = toMeasurement(kind, measured);
+  // Null while a measured listing has no measurement yet. Drawn as "—" rather
+  // than as zero, because a zero in the price line reads as free.
+  const total = lineTotalMinor(item, quantity, measurement, unit);
+  const sized = isMeasurementComplete(item, measured);
+  const atMinimum = minimumApplies(item, measurement);
+  const runMinimum = belowMinimumOrder(item, quantity);
   const uploads = fileFormats(item);
   const links = linkFormats(item);
   const ready = readyInLine(item.turnaroundHours);
 
   const add = async () => {
     if (busy) return;
-    if (!complete) {
+    if (!complete || !sized) {
       setShowMissing(true);
       return;
     }
@@ -213,7 +241,7 @@ export default function ListingScreen() {
       };
       if (editing) {
         const updated = await run((cartId) =>
-          api.updateCartLine(cartId, editing.id, { optionIds, quantity, structuredSpec }),
+          api.updateCartLine(cartId, editing.id, { optionIds, quantity, structuredSpec, measurement }),
         );
         setBusy(false);
         adopt(updated);
@@ -226,6 +254,7 @@ export default function ListingScreen() {
           optionIds,
           quantity,
           structuredSpec,
+          measurement,
         }),
       );
       const added = updated.lines.at(-1);
@@ -255,7 +284,18 @@ export default function ListingScreen() {
           must not scroll away with the sheet it is describing. */}
       <StepTrailBar current="listing" onStep={goStep} />
 
-      <ScrollView className="gg-screen" contentContainerClassName="pb-8">
+      {/*
+        Keyboard-aware rather than plain, because a measured listing asks the
+        client to type a size. Not `FormScreen`: the commit bar has to stay
+        outside the scroll — it is what shows the running total while the sheet
+        is being filled in, and inside the scroll it would leave with it.
+      */}
+      <KeyboardAwareScrollView
+        className="gg-screen"
+        contentContainerClassName="pb-8"
+        bottomOffset={KEYBOARD_CARET_GAP}
+        keyboardShouldPersistTaps="handled"
+      >
         <View className="bg-surface-variant px-2 pt-2">
           <SamplePhoto
             url={samplePhotoUri(item.photos[0])}
@@ -361,6 +401,45 @@ export default function ListingScreen() {
             </View>
           ) : null}
 
+          {/*
+            How big it is, asked only where the shop prices by size. It sits
+            above the quantity because the two mean different things here and
+            reading them the other way round invites the classic mistake: a
+            client who puts 15 in the quantity because the banner is 15 square
+            feet buys fifteen banners.
+          */}
+          {kind !== "none" ? (
+            <View className="mt-10 gap-3">
+              <Text className="text-overline text-text-muted">
+                {kind === "pages" ? "HOW MANY PAGES" : "HOW BIG"}
+              </Text>
+              <MeasurementFields
+                kind={kind}
+                unit={item.measureUnit}
+                draft={measured}
+                onChange={setMeasured}
+              />
+              {measurement ? (
+                <Text className="text-body text-text-secondary">
+                  {measurementSummary(item, measurement)}
+                </Text>
+              ) : (
+                <Text className="text-body text-text-secondary">
+                  {measurementPrompt(kind, item.measureUnit)}
+                </Text>
+              )}
+              {atMinimum ? (
+                <Text className="text-caption text-text-muted">
+                  This shop charges a minimum of{" "}
+                  {kind === "area"
+                    ? `${fromMilli(item.minimumWidthMilli)} × ${fromMilli(item.minimumHeightMilli)} ${unitWord(item.measureUnit)}`
+                    : `${fromMilli(item.minimumLengthMilli)} ${unitWord(item.measureUnit)}`}
+                  , so that is what this is priced at. A smaller job uses the same material.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
           <View className="mt-10 gap-3">
             <Text className="text-overline text-text-muted">HOW MANY</Text>
             <Stepper
@@ -368,6 +447,11 @@ export default function ListingScreen() {
               onChange={setQuantity}
               caption={quantityLine(item, quantity)}
             />
+            {runMinimum ? (
+              <Text className="text-caption text-text-muted">
+                This shop takes orders of {runMinimum} and up.
+              </Text>
+            ) : null}
           </View>
 
           <View className="mt-10 gap-2">
@@ -390,7 +474,7 @@ export default function ListingScreen() {
             ) : null}
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/*
         The commit bar. It stays on screen because the sheet is longer than a
@@ -403,7 +487,9 @@ export default function ListingScreen() {
           <Text className="text-body text-text-secondary">
             {quantityLine(item, quantity)}
           </Text>
-          <Text className="text-h3 text-text-primary">{formatPhp(total)}</Text>
+          <Text className="text-h3 text-text-primary">
+            {total == null ? "—" : formatPhp(total)}
+          </Text>
         </View>
 
         <Pressable
@@ -445,6 +531,103 @@ export default function ListingScreen() {
  * the shop's — a pack of 100, a piece, a square metre it named itself — and the
  * caption under the buttons is what turns "3" into something a client can check.
  */
+/**
+ * The one or two numbers a measured listing needs.
+ *
+ * Plain numeric fields rather than a stepper: a banner is 3.5 feet as readily
+ * as 3, and a stepper forces a client to guess what one press is worth. The
+ * unit is the shop's own and is stated beside the field rather than offered as
+ * a choice — a shop that prices in feet does not want a number in millimetres,
+ * and converting silently is how a 5-metre banner becomes a 5-foot one.
+ */
+function MeasurementFields({
+  kind,
+  unit,
+  draft,
+  onChange,
+}: {
+  kind: MeasurementKind;
+  unit: MeasureUnit | null;
+  draft: MeasurementDraft;
+  onChange: (next: MeasurementDraft) => void;
+}) {
+  if (kind === "pages") {
+    return (
+      <MeasureInput
+        value={draft.pages}
+        onChange={(pages) => onChange({ ...draft, pages })}
+        suffix="pages"
+        label="How many pages"
+        wholeNumbers
+      />
+    );
+  }
+  if (kind === "length") {
+    return (
+      <MeasureInput
+        value={draft.length}
+        onChange={(length) => onChange({ ...draft, length })}
+        suffix={unitWord(unit)}
+        label="How long it is"
+      />
+    );
+  }
+  return (
+    <View className="flex-row items-center gap-3">
+      <View className="min-w-0 flex-1">
+        <MeasureInput
+          value={draft.width}
+          onChange={(width) => onChange({ ...draft, width })}
+          suffix={unitWord(unit)}
+          label="How wide it is"
+        />
+      </View>
+      <Text className="text-body-lg text-text-muted">×</Text>
+      <View className="min-w-0 flex-1">
+        <MeasureInput
+          value={draft.height}
+          onChange={(height) => onChange({ ...draft, height })}
+          suffix={unitWord(unit)}
+          label="How tall it is"
+        />
+      </View>
+    </View>
+  );
+}
+
+function MeasureInput({
+  value,
+  onChange,
+  suffix,
+  label,
+  wholeNumbers = false,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  suffix: string;
+  label: string;
+  wholeNumbers?: boolean;
+}) {
+  return (
+    <View className="gg-field flex-row items-center">
+      <TextInput
+        value={value}
+        onChangeText={(text) =>
+          // Only what a measurement can be made of. A stray letter here is a
+          // field that silently reads as no size at all.
+          onChange(text.replace(wholeNumbers ? /[^0-9]/g : /[^0-9.]/g, ""))
+        }
+        keyboardType={wholeNumbers ? "number-pad" : "decimal-pad"}
+        placeholder="0"
+        accessibilityLabel={label}
+        className="min-w-0 flex-1 text-body-lg text-text-primary"
+        style={{ paddingStart: 16, paddingEnd: 8, includeFontPadding: false }}
+      />
+      <Text className="pe-4 text-body text-text-muted">{suffix}</Text>
+    </View>
+  );
+}
+
 function Stepper({
   value,
   onChange,

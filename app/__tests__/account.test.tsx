@@ -133,10 +133,10 @@ describe("the identity card", () => {
   });
 
   it("writes the saved ranking on its row, so it reads without opening", async () => {
-    usePriorities.setState({ ranking: ["speed", "quality", "distance"], loaded: true });
+    usePriorities.setState({ ranking: ["speed", "quality", "cost", "distance"], loaded: true });
 
     await renderAccount();
 
-    expect(screen.getByText("Speed · Quality · Distance")).toBeTruthy();
+    expect(screen.getByText("Speed · Quality · Cost · Distance")).toBeTruthy();
   });
 });

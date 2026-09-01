@@ -8,11 +8,13 @@ import { Screen } from "@/components/Screen";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
+import { PickupCounterCard } from "@/components/PickupCounterCard";
 import { FormScreen } from "@/components/FormScreen";
 import { FulfilmentProgress } from "@/components/FulfilmentProgress";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { OrderTimeline } from "@/components/OrderTimeline";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { ProductPreview } from "@/components/ProductPreview";
 import { ProofDecision } from "@/components/ProofDecision";
 import { PushEnableCard } from "@/components/PushEnableCard";
@@ -27,8 +29,10 @@ import { formatPhp } from "@/lib/api";
 import { installmentStatusLabel, userFacingError } from "@/lib/copy";
 import { formatDeadline } from "@/lib/deadline";
 import {
+  collectsAtOffice,
   formatPriceRange,
   getOrderStateMeta,
+  isAwaitingCollectionState,
   isClientCorrectionState,
   isIssueWindowState,
   isProofApprovalState,
@@ -39,6 +43,7 @@ import {
   showsFulfilmentProgress,
 } from "@/lib/orderState";
 import { installmentUnderReview, payableInstallment } from "@/lib/payment";
+import { canRate } from "@/lib/rating";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
@@ -159,10 +164,10 @@ export default function OrderDetailScreen() {
     );
   }
 
-  const meta = getOrderStateMeta(order.state);
+  const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
   const nextAction = orderNextAction(order);
   const waitingOn = orderWaitingOn(order);
-  const unit = product?.unit ?? "";
+  const unit = order.unit || product?.unit || "";
   const family = product?.family ?? null;
   const artworkFileId = order.artworkFileIds?.[order.artworkFileIds.length - 1] ?? null;
   const materialLabel = taxonomyLabel(taxonomy, order.material);
@@ -186,7 +191,9 @@ export default function OrderDetailScreen() {
           ? "review"
           : isIssueWindowState(order.state)
             ? "issue"
-            : null;
+            : canRate(order)
+              ? "rate"
+              : null;
 
   return (
     /*
@@ -236,6 +243,26 @@ export default function OrderDetailScreen() {
               <PaymentPanel order={order} installment={payable} onSubmitted={setOrder} />
             ) : actionZone === "review" && underReview ? (
               <PaymentUnderReviewCard order={order} installment={underReview} />
+            ) : actionZone === "rate" ? (
+              /*
+                The last thing asked, and only once. It sits in the same one
+                action zone as everything else so a finished job still has
+                exactly one thing to do — a rating prompt bolted on beside a
+                payment panel would be the screen's second yellow control.
+              */
+              <View className="gg-card gap-3 p-4">
+                <Text className="text-h3 text-text-primary">How did it go?</Text>
+                <Text className="text-body text-text-secondary">
+                  Rate this job and GRIDGO sends your next one to a shop that did well by
+                  you. Three questions, and it takes a moment.
+                </Text>
+                <PrimaryButton
+                  label="Rate this order"
+                  onPress={() =>
+                    router.push({ pathname: "/order/rate", params: { orderId: order.id } })
+                  }
+                />
+              </View>
             ) : (
               <IssueWindowCard order={order} />
             )}
@@ -251,7 +278,19 @@ export default function OrderDetailScreen() {
         */}
         {!nextAction ? <PushEnableCard /> : null}
 
-        {isTrackingState(order.state) ? <DeliveryTrackingCard order={order} /> : null}
+        {/*
+          Two different endings, two different things to show.
+
+          A delivery is watched: the rider is coming to them, so the map is
+          theirs. A collected job is fetched: the rider only moves it between
+          two of GRIDGO's own places, and what the client needs is not a route
+          but an address and the word that it has arrived.
+        */}
+        {collectsAtOffice(order) ? (
+          isAwaitingCollectionState(order.state) ? <PickupCounterCard order={order} /> : null
+        ) : isTrackingState(order.state) ? (
+          <DeliveryTrackingCard order={order} />
+        ) : null}
 
         {showsFulfilmentProgress(order.state) ? (
           <FulfilmentProgress milestones={order.payoutMilestones} />
@@ -271,7 +310,14 @@ export default function OrderDetailScreen() {
             {order.promisedDate ? (
               <SpecRow label="Supplier promised" value={formatDeadline(order.promisedDate)} />
             ) : null}
-            <SpecRow label="Deliver to" value={order.address || "—"} />
+            {/* A collected job is not going to the address they shopped with.
+                Naming that address here is how a client ends up waiting at home
+                for something sitting on our counter. */}
+            {collectsAtOffice(order) ? (
+              <SpecRow label="Collect at" value="GRIDGO Office" />
+            ) : (
+              <SpecRow label="Deliver to" value={order.address || "—"} />
+            )}
             <SpecRow label="Area" value={zoneName(zones, order.zone)} />
             <SpecRow label="Artwork" value={order.artworkName || "Not uploaded"} />
           </View>
@@ -292,7 +338,11 @@ export default function OrderDetailScreen() {
         <View className="gap-4">
           <Text className="text-overline text-text-muted">HISTORY</Text>
           <View className="gg-card">
-            <OrderTimeline timeline={order.timeline} currentState={order.state} />
+            <OrderTimeline
+              timeline={order.timeline}
+              currentState={order.state}
+              fulfillmentMode={order.fulfillmentMode}
+            />
           </View>
         </View>
       </View>

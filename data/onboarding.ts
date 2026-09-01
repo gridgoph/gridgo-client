@@ -10,7 +10,8 @@
  * location warning — rather than describing features.
  */
 
-import type { IllustrationName } from "@/components/illustrations";
+/** Raster beat, keyed to `images.onboarding`. */
+export type OnboardingArt = "order" | "approve" | "track";
 
 export type OnboardingSlide = {
   id: string;
@@ -20,8 +21,8 @@ export type OnboardingSlide = {
   body: string;
   /** A clear verb. Changes on the last slide, which is the one that starts. */
   cta: string;
-  /** Which piece of art carries this beat. */
-  art: IllustrationName;
+  /** Picture for this beat. */
+  art: OnboardingArt;
 };
 
 export const onboardingSlides: readonly OnboardingSlide[] = [
@@ -31,7 +32,7 @@ export const onboardingSlides: readonly OnboardingSlide[] = [
     title: "Order print the right way",
     body: "Pick the product, size, material and deadline in four steps. No back-and-forth on Messenger.",
     cta: "Next",
-    art: "workstation",
+    art: "order",
   },
   {
     id: "approve",
@@ -39,7 +40,7 @@ export const onboardingSlides: readonly OnboardingSlide[] = [
     title: "Approve before it prints",
     body: "Every file runs a preflight check. You see the proof and approve it, or send it back for changes.",
     cta: "Next",
-    art: "proof",
+    art: "approve",
   },
   {
     id: "track",
@@ -47,6 +48,6 @@ export const onboardingSlides: readonly OnboardingSlide[] = [
     title: "Watch it come to you",
     body: "Track your rider on the map with a live ETA, and an honest note when the location goes stale.",
     cta: "Get Started",
-    art: "scooter",
+    art: "track",
   },
 ] as const;

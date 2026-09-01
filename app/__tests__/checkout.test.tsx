@@ -76,6 +76,14 @@ function listing() {
     effectivePriceMinor: 4000,
     pricingUnit: "per_package" as const,
     packageQty: 100,
+    measurementKind: "none" as const,
+    measureUnit: null,
+    minimumWidthMilli: null,
+    minimumHeightMilli: null,
+    minimumLengthMilli: null,
+    minimumOrderQuantity: null,
+    priceTiers: [],
+    speedTiers: [],
     pricingBasis: "per_unit",
     turnaroundMode: "override" as const,
     turnaroundHours: 48,
@@ -110,6 +118,7 @@ function line(overrides: Partial<CartLineRecord> = {}): CartLineRecord {
     catalogItemId: "sci_flyers",
     quantity: 1,
     optionIds: ["o_a4"],
+    measurement: null,
     structuredSpec: { size: "A4" },
     artworkFileId: "file_art",
     mockupFileId: null,
@@ -375,6 +384,15 @@ describe("CheckoutScreen", () => {
     expect(await screen.findByText("Nothing to print yet")).toBeTruthy();
     fireEvent.press(screen.getByText("Start a print job"));
     expect(mockReplace).toHaveBeenCalledWith("/request/category");
+  });
+
+  it("lets an empty basket leave for Home", async () => {
+    api.getCart.mockResolvedValue(cart({ lines: [] }));
+    useCart.setState({ cart: cart({ lines: [] }), loading: false, hydrated: true });
+    await renderInSafeArea(<CheckoutScreen />);
+
+    fireEvent.press(await screen.findByText("Go to Home"));
+    expect(mockReplace).toHaveBeenCalledWith("/(tabs)/home");
   });
 
   it("does not paint the Pay sheet while an empty basket is still loading", async () => {

@@ -8,9 +8,9 @@ const signup = readFileSync(join(authDir, "signup.tsx"), "utf8");
 
 describe("public Clerk auth layout", () => {
   it("starts with the branded welcome actions and supplied illustration", () => {
-    expect(welcome).toContain("greeting.svg");
+    expect(welcome).toContain("welcome.png");
     expect(welcome).toContain("contentFit=\"contain\"");
-    expect(welcome).toContain("943 / 796");
+    expect(welcome).toContain("aspectRatio: 1");
     expect(welcome).toContain('label="Sign Up"');
     expect(welcome).toContain('label="Already have an account"');
   });

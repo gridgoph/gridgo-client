@@ -31,6 +31,7 @@ function line(overrides: Partial<CartLineRecord> = {}): CartLineRecord {
     catalogItemId: "sci_flyers",
     quantity: 1,
     optionIds: [],
+    measurement: null,
     structuredSpec: {},
     artworkFileId: "file_1",
     mockupFileId: null,

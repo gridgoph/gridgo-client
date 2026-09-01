@@ -34,6 +34,8 @@ export function reasonTag(factor: MatchReason["factor"]): string {
       return "STRONGEST LISTING";
     case "speed":
       return "FASTEST";
+    case "cost":
+      return "BEST PRICE";
     case "distance":
       return "CLOSEST";
     case "bundle":

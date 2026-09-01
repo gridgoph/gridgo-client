@@ -12,13 +12,15 @@
  * option, and a listing with a required group unanswered is not orderable yet.
  */
 
-import type {
-  AcceptedFormat,
-  CatalogItem,
-  CatalogOption,
-  CatalogOptionGroup,
-  CatalogPhoto,
+import {
+  formatPhp,
+  type AcceptedFormat,
+  type CatalogItem,
+  type CatalogOption,
+  type CatalogOptionGroup,
+  type CatalogPhoto,
 } from "@/lib/api";
+import { squareUnitWord, unitWord } from "@/lib/measurement";
 
 /** Chosen option id per group id. One per group — every group is single-select. */
 export type ListingSelection = Record<string, string>;
@@ -116,12 +118,34 @@ export function unitPriceMinor(item: CatalogItem, selection: ListingSelection): 
   return Math.max(0, item.basePriceMinor + modifiers);
 }
 
-/** "per pack of 100", "each" — what the price on the sheet is the price of. */
-export function unitLine(item: CatalogItem): string {
-  if (item.pricingUnit === "per_package") {
-    return item.packageQty ? `per pack of ${item.packageQty}` : "per pack";
+/**
+ * What the price on the sheet is the price of — the listing's own unit, in
+ * the client's words. Mirrors the six `pricingUnit` values the API stores.
+ */
+export function unitLine(
+  item: Pick<CatalogItem, "pricingUnit" | "packageQty" | "measureUnit">,
+): string {
+  switch (item.pricingUnit) {
+    case "per_package":
+      return item.packageQty ? `per pack of ${item.packageQty}` : "per pack";
+    case "per_page":
+      return "per page";
+    case "per_area":
+      return `per ${squareUnitWord(item.measureUnit) || "square"}`;
+    case "per_length":
+      return `per ${unitWord(item.measureUnit, false) || "length"}`;
+    case "whole_job":
+      return "for the job";
+    default:
+      return "each";
   }
-  return "each";
+}
+
+/** "From ₱400.00 per pack of 100" — the starting price on a category row. */
+export function startingPriceLine(
+  item: Pick<CatalogItem, "fromPriceMinor" | "pricingUnit" | "packageQty" | "measureUnit">,
+): string {
+  return `From ${formatPhp(item.fromPriceMinor)} ${unitLine(item)}`;
 }
 
 /**

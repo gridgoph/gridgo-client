@@ -97,6 +97,8 @@ export type PriceRange = {
  */
 export type Order = {
   id: string;
+  /** Whether this order has already been rated, so a client is asked once. */
+  rated?: boolean;
   clientId: string;
   supplierId: string | null;
   riderId: string | null;
@@ -104,6 +106,8 @@ export type Order = {
   productId: string;
   title: string;
   quantity: number;
+  /** Catalog unit for {@link describeQuantity}, when the order has no productId. */
+  unit?: string;
   size: string;
   material: string;
   /** Optional finish from the platform taxonomy. */
@@ -135,7 +139,16 @@ export type Order = {
   artworkName: string | null;
   /** Stored artwork ids, newest last. Empty is valid. */
   artworkFileIds?: string[];
-  /** Supplier shop, once a supplier is assigned. */
+  /**
+   * Whether the client collects this order or has it delivered.
+   *
+   * Collecting means the GRIDGO Office counter, not the shop that printed it —
+   * a rider still carries the job there. So the whole travel half of the
+   * vocabulary changes: nothing is ever "out for delivery" to a client who is
+   * coming to fetch it themselves.
+   */
+  fulfillmentMode?: FulfilmentMode | null;
+  /** Supplier shop, once a supplier is assigned. Where the client collects. */
   pickup?: OrderPoint | null;
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
@@ -182,6 +195,34 @@ export type Zone = {
 };
 
 /** Public file record from the storage API. `objectKey` is never returned. */
+/**
+ * What the file said about itself, read by GRIDGO when it was uploaded.
+ *
+ * Every field is advisory. A scan at 96 DPI and the same scan at 300 DPI are
+ * the same pixels and different pieces of paper, so the client may overrule
+ * any of it — this fills a field in, it does not decide one.
+ *
+ * Absent entirely when the file said nothing readable, which is a real and
+ * common answer: a PNG with no declared density has a pixel size and no
+ * physical one.
+ */
+export type DetectedArtwork = {
+  kind: "pdf" | "raster";
+  /** Pages in a PDF; 1 for an image; null when the file would not say. */
+  pageCount: number | null;
+  pixelWidth: number | null;
+  pixelHeight: number | null;
+  dpi: number | null;
+  /** Always "mm" when a physical size was read at all. */
+  measureUnit: "mm" | null;
+  /** Thousandths of a millimetre, so no float carries a measurement. */
+  widthMilli: number | null;
+  heightMilli: number | null;
+  /** "A4", "Letter" — null when the size matches no name GRIDGO knows. */
+  pageSize: string | null;
+  orientation: "portrait" | "landscape" | "square" | null;
+};
+
 export type StoredFile = {
   fileId: string;
   purpose: string;
@@ -194,6 +235,8 @@ export type StoredFile = {
   createdAt: string;
   readyAt: string | null;
   references: { type: string; id: string; field: string }[];
+  /** Present only when the bytes carried something worth reading. */
+  detected?: DetectedArtwork;
 };
 
 /** Newest rider position for an order, or null when none has been shared. */
@@ -880,7 +923,42 @@ export type CatalogPrepStep = {
   body: string;
 };
 
-export type CatalogPricingUnit = "per_unit" | "per_package";
+export type CatalogPricingUnit =
+  | "per_unit"
+  | "per_package"
+  | "per_page"
+  | "per_area"
+  | "per_length"
+  | "whole_job";
+
+/** The unit a shop states a measured listing in. Area is that unit squared. */
+export type MeasureUnit = "mm" | "cm" | "in" | "ft" | "m";
+
+/** What a listing has to ask a client before it can be priced at all. */
+export type MeasurementKind = "none" | "pages" | "area" | "length";
+
+/** Thousandths of the listing's own measure unit, so 3.5 ft is 3500. */
+export type LineMeasurement = {
+  pages?: number;
+  width?: number;
+  height?: number;
+  length?: number;
+};
+
+/** A cheaper rate from a quantity up. */
+export type CatalogPriceTier = { minQuantity: number; unitPriceMinor: number };
+
+/**
+ * A speed the shop sells. `priceMinor` replaces the rate outright; the other
+ * shape is a flat `surchargeMinor` on top. Never both.
+ */
+export type CatalogSpeedTier = {
+  id: string;
+  label: string;
+  turnaroundHours: number;
+  priceMinor: number | null;
+  surchargeMinor: number | null;
+};
 
 /** One listing on a shop's board. */
 export type CatalogItem = {
@@ -898,6 +976,20 @@ export type CatalogItem = {
   effectivePriceMinor: number | null;
   pricingUnit: CatalogPricingUnit;
   packageQty: number | null;
+  /** What this listing must ask before it can be priced. */
+  measurementKind: MeasurementKind;
+  measureUnit: MeasureUnit | null;
+  /**
+   * The smallest size the shop will bill for. A small banner wastes the same
+   * sheet as a big one, so under this the minimum is what is charged.
+   */
+  minimumWidthMilli: number | null;
+  minimumHeightMilli: number | null;
+  minimumLengthMilli: number | null;
+  /** The least the shop will run at all. */
+  minimumOrderQuantity: number | null;
+  priceTiers: CatalogPriceTier[];
+  speedTiers: CatalogSpeedTier[];
   pricingBasis: string;
   turnaroundMode: "inherit" | "override";
   turnaroundHours: number | null;
@@ -956,13 +1048,28 @@ export type ShopBoard = {
   queueAhead?: number | null;
 };
 
-/** Approved shops with at least one complete listing, newest page first. */
+const CATALOG_SHOP_PAGE_CAP = 25;
+
+/** Approved shops with at least one complete listing. Follows catalog pages. */
 export async function listCatalogShops(
   categoryCode?: string | null,
 ): Promise<ShopSummary[]> {
-  const query = categoryCode ? `?categoryCode=${encodeURIComponent(categoryCode)}` : "";
-  const result = await request<{ shops: ShopSummary[] }>(`/catalog/shops${query}`);
-  return result.shops;
+  const shops: ShopSummary[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < CATALOG_SHOP_PAGE_CAP; page += 1) {
+    const params = new URLSearchParams();
+    if (categoryCode) params.set("categoryCode", categoryCode);
+    if (cursor) params.set("cursor", cursor);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const pageBody = await request<{
+      shops?: ShopSummary[];
+      nextCursor?: string | null;
+    }>(`/catalog/shops${query}`);
+    shops.push(...(pageBody.shops ?? []));
+    if (!pageBody.nextCursor) break;
+    cursor = pageBody.nextCursor;
+  }
+  return shops;
 }
 
 /** One shop's whole board. */
@@ -1009,12 +1116,12 @@ export async function getTaxonomy(): Promise<TaxonomyPayload> {
  * The browsable product tree — the four customer-facing categories and their
  * subcategories, normalised.
  *
- * The bundled seed is already a complete tree, and today's `/taxonomy` still
- * serves production categories rather than this one. Screens therefore paint
- * `productCategoriesNow()` on the first frame and treat this call as a
- * background refresh. A live in-flight request is shared, and a successful
- * (or seed-fallback) tree is held for a few minutes so home, the picker, and
- * the match screen do not each wait on the same request.
+ * The bundled seed is already a complete tree (codes matching the API), so
+ * screens paint `productCategoriesNow()` on the first frame. This call is a
+ * background refresh of the live `{ taxonomy, categoryTree }` document. A
+ * live in-flight request is shared, and a successful (or seed-fallback) tree
+ * is held for a few minutes so home, the picker, and the match screen do not
+ * each wait on the same request.
  */
 const PRODUCT_CATEGORIES_TTL_MS = 5 * 60 * 1000;
 let productCategoryCache: { at: number; value: ProductCategory[] } | null = null;
@@ -1040,7 +1147,7 @@ export async function getProductCategories(): Promise<ProductCategory[]> {
 
   productCategoryInflight = (async () => {
     try {
-      const tree = adaptProductCategories(await getTaxonomy());
+      const tree = adaptProductCategories(await request("/taxonomy"));
       productCategoryCache = { at: Date.now(), value: tree };
       return tree;
     } catch (error) {
@@ -1173,7 +1280,7 @@ export async function health(): Promise<{ ok: boolean }> {
 // ---------------------------------------------------------------------------
 
 /** The three things a client ranks. The order is the whole preference. */
-export type MatchFactor = "quality" | "speed" | "distance";
+export type MatchFactor = "quality" | "speed" | "cost" | "distance";
 
 export type ClientPreferences = {
   ranking: MatchFactor[];
@@ -1233,6 +1340,8 @@ export type CartLineRecord = {
   catalogItemId: string;
   quantity: number;
   optionIds: string[];
+  /** How big it is, for a listing the shop prices by size. */
+  measurement: LineMeasurement | null;
   structuredSpec: Record<string, unknown>;
   artworkFileId: string | null;
   mockupFileId: string | null;
@@ -1438,6 +1547,12 @@ export type MatchInput = {
   dropoff?: OrderPoint | null;
   /** Lets the matcher keep a basket with one shop in it on that shop. */
   cartId?: string;
+  /**
+   * When the client needs it. A filter, not a preference: a shop that cannot
+   * finish by this is not offered rather than ranked lower, because "can you
+   * make Friday" is not something to weigh against a price.
+   */
+  deadline?: string | null;
 };
 
 /**
@@ -1516,6 +1631,8 @@ export async function addCartLine(
     catalogItemId: string;
     optionIds: string[];
     quantity: number;
+    /** Required by a listing the shop prices by size; refused by any other. */
+    measurement?: LineMeasurement | null;
     structuredSpec?: Record<string, unknown>;
     artworkFileId?: string | null;
     dropoff?: OrderPoint | null;
@@ -1534,6 +1651,7 @@ export async function updateCartLine(
   input: {
     quantity?: number;
     optionIds?: string[];
+    measurement?: LineMeasurement | null;
     structuredSpec?: Record<string, unknown>;
     artworkFileId?: string | null;
     dropoff?: OrderPoint | null;
@@ -1544,6 +1662,53 @@ export async function updateCartLine(
     { method: "PATCH", body: JSON.stringify(input) },
   );
   return result.cart;
+}
+
+/**
+ * Rate the shop that ran a finished order.
+ *
+ * Once per order — the platform refuses a second, which is the honest answer
+ * when two devices race rather than something to paper over here.
+ */
+/** One day, and whether GRIDGO could finish this kind of work by the end of it. */
+export type DeadlineDay = {
+  /** Local calendar day, `YYYY-MM-DD`. */
+  day: string;
+  /**
+   * `cannot` — nobody could finish by then.
+   * `tight`  — somebody could, but the choice is narrow.
+   * `open`   — comfortably achievable.
+   *
+   * Never a count. A client is not told how many shops print something.
+   */
+  state: "cannot" | "tight" | "open";
+};
+
+/**
+ * Which days GRIDGO could make, for one kind of work.
+ *
+ * Answered by the platform because the queues and capacities behind it are the
+ * shops' own. `earliest` is null when nobody prints this at all.
+ */
+export async function deadlineDays(
+  subcategoryCode: string,
+  // Four months. A print deadline is regularly further out than a fortnight,
+  // and a shorter window reads to a client as GRIDGO refusing the date rather
+  // than the calendar simply stopping.
+  days = 120,
+): Promise<{ days: DeadlineDay[]; earliest: string | null }> {
+  const query = `?subcategoryCode=${encodeURIComponent(subcategoryCode)}&days=${days}`;
+  return request<{ days: DeadlineDay[]; earliest: string | null }>(`/me/deadline-days${query}`);
+}
+
+export async function rateOrder(
+  orderId: string,
+  input: { qualityStars: number; speedStars: number; valueStars: number; comment?: string },
+): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/review`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function removeCartLine(cartId: string, lineId: string): Promise<Cart> {

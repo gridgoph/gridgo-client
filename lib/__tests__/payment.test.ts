@@ -89,12 +89,11 @@ describe("downpaymentDue", () => {
 });
 
 describe("balanceDue", () => {
-  it("waits until the job is packed, not until the downpayment clears", () => {
+  it("waits until the job is on the press, not until the downpayment clears", () => {
     // Asking for both back to back would collect the whole price up front and
-    // make the split a fiction.
+    // make the split a fiction. It opens once the job is actually being made,
+    // which is early enough to be settled before a rider is ever sent for it.
     expect(balanceDue(order("payment_authorized", "confirmed"))).toBe(false);
-    expect(balanceDue(order("production", "confirmed"))).toBe(false);
-    expect(balanceDue(order("supplier_self_qc", "confirmed"))).toBe(false);
     for (const state of BALANCE_DUE_STATES) {
       expect(balanceDue(order(state, "confirmed"))).toBe(true);
     }

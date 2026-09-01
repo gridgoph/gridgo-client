@@ -13,7 +13,7 @@ import { usePriorities } from "@/store/priorities";
 const mockPush = jest.fn();
 
 /** Which category `[category].tsx` is rendering. Reset in beforeEach. */
-let mockOpenCategory = "event_merchandise";
+let mockOpenCategory = "corporate_event_merch";
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({
@@ -65,7 +65,7 @@ function listing(subcategoryCode: string, fromPriceMinor: number) {
     id: `sci_${subcategoryCode}`,
     supplierId: "user_shop",
     supplierServiceId: "svc_merch",
-    categoryCode: "event_merchandise",
+    categoryCode: "corporate_event_merch",
     subcategoryCode,
     name: "Custom apparel",
     description: null,
@@ -92,7 +92,7 @@ const SHOP = {
   shopName: "Lovis Printshop",
   shop: { lat: 7.0731, lng: 125.6128, label: "Bajada, Davao City" },
   media: [],
-  categories: ["event_merchandise"],
+  categories: ["corporate_event_merch"],
   itemCount: 1,
 };
 
@@ -102,7 +102,7 @@ const BOARD = {
     {
       id: "svc_merch",
       version: 1,
-      categoryCode: "event_merchandise",
+      categoryCode: "corporate_event_merch",
       pricingBasis: "per_unit",
       turnaroundHours: 72,
       acceptedFormats: ["png"],
@@ -128,7 +128,9 @@ function renderInSafeArea(ui: ReactElement) {
 
 beforeEach(() => {
   mockPush.mockClear();
-  mockOpenCategory = "event_merchandise";
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("@react-native-async-storage/async-storage").clear();
+  mockOpenCategory = "corporate_event_merch";
   api.getProductCategories.mockResolvedValue(PRODUCT_CATEGORY_SEED);
   api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
   clearProductCategoryCache();
@@ -139,16 +141,17 @@ beforeEach(() => {
   // from a cold read rather than the previous test's shop.
   clearBoardCache();
   useCart.getState().reset();
-  usePriorities.setState({ ranking: ["quality", "speed", "distance"], loaded: true });
+  usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
 });
 
 describe("ChooseCategoryScreen", () => {
-  it("shows the four categories without waiting on the network", async () => {
+  it("shows the categories without waiting on the network", async () => {
     api.getProductCategories.mockReturnValue(new Promise(() => {}));
     await renderInSafeArea(<ChooseCategoryScreen />);
 
     expect(screen.getByText("Marketing & promotional collateral")).toBeTruthy();
     expect(screen.getByText("Corporate & event merchandise")).toBeTruthy();
+    expect(screen.getByText("Documents & publications")).toBeTruthy();
     expect(screen.queryByText("Loading what GRIDGO prints…")).toBeNull();
   });
 
@@ -229,7 +232,7 @@ describe("CategoryScreen", () => {
     await screen.findByText("GRIDGO PRINTS THESE NOW");
 
     // A shop has custom apparel on its board, so it is tappable.
-    expect(screen.getByLabelText("Custom apparel")).toBeTruthy();
+    expect(screen.getByLabelText(/Custom apparel/)).toBeTruthy();
     // Nobody lists drinkware, so it is shown as information and never as a
     // button that leads to a screen saying there is no shop for it.
     expect(screen.getByText("Drinkware")).toBeTruthy();
@@ -241,36 +244,41 @@ describe("CategoryScreen", () => {
     await screen.findByText("GRIDGO PRINTS THESE NOW");
 
     expect(screen.getByText("From ₱280.00")).toBeTruthy();
+    expect(screen.getByText("each")).toBeTruthy();
     // A shop count is a number nobody can act on, and it makes GRIDGO read as
     // a directory rather than the counter the client is buying from.
     expect(screen.queryByText(/\d+ shops?/)).toBeNull();
     expect(screen.queryByText(/Lovis/i)).toBeNull();
   });
 
-  it("takes the client to GRIDGO's match, not to a platform product", async () => {
+  it("asks when it is needed before choosing a printer, not after", async () => {
     await renderInSafeArea(<CategoryScreen />);
     await screen.findByText("GRIDGO PRINTS THESE NOW");
 
-    fireEvent.press(screen.getByLabelText("Custom apparel"));
+    fireEvent.press(screen.getByLabelText(/Custom apparel/));
 
     await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    // The date decides which shops are offered at all, so it is asked before
+    // any of them is chosen rather than after one already has been.
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/request/match",
-      params: { subcategory: "custom_apparel", category: "event_merchandise" },
+      pathname: "/request/when",
+      params: { subcategory: "custom_apparel", category: "corporate_event_merch" },
     });
   });
 
-  it("asks where the job is going first when the client put distance first", async () => {
-    usePriorities.setState({ ranking: ["distance", "speed", "quality"], loaded: true });
+  it("still asks the date first, even when distance is the client's first priority", async () => {
+    usePriorities.setState({ ranking: ["distance", "speed", "cost", "quality"], loaded: true });
     await renderInSafeArea(<CategoryScreen />);
     await screen.findByText("GRIDGO PRINTS THESE NOW");
 
-    fireEvent.press(screen.getByLabelText("Custom apparel"));
+    fireEvent.press(screen.getByLabelText(/Custom apparel/));
 
     await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    // The drop-off is still needed, but it is collected on the way to the
+    // match rather than before the date -- one question, then the other.
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/request/where",
-      params: { subcategory: "custom_apparel", category: "event_merchandise" },
+      pathname: "/request/when",
+      params: { subcategory: "custom_apparel", category: "corporate_event_merch" },
     });
   });
 

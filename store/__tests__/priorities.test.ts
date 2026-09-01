@@ -17,14 +17,14 @@ beforeEach(() => {
 describe("loading this account's ranking", () => {
   it("adopts a ranking the client actually gave", async () => {
     api.getPreferences.mockResolvedValue({
-      ranking: ["speed", "distance", "quality"],
+      ranking: ["speed", "distance", "cost", "quality"],
       version: 3,
       updatedAt: "2026-08-24T00:00:00.000Z",
     });
 
     await usePriorities.getState().load();
 
-    expect(usePriorities.getState().ranking).toEqual(["speed", "distance", "quality"]);
+    expect(usePriorities.getState().ranking).toEqual(["speed", "distance", "cost", "quality"]);
     expect(hasRanked(usePriorities.getState())).toBe(true);
   });
 
@@ -33,7 +33,7 @@ describe("loading this account's ranking", () => {
     // did. Matching on that and calling it their choice is the one thing this
     // whole flow exists to avoid.
     api.getPreferences.mockResolvedValue({
-      ranking: ["quality", "speed", "distance"],
+      ranking: ["quality", "speed", "cost", "distance"],
       version: 0,
       updatedAt: null,
     });
@@ -73,7 +73,7 @@ describe("loading this account's ranking", () => {
     api.getPreferences.mockImplementation(
       () =>
         new Promise((resolve) =>
-          setTimeout(() => resolve({ ranking: ["speed", "quality", "distance"], version: 1, updatedAt: null }), 5),
+          setTimeout(() => resolve({ ranking: ["speed", "quality", "cost", "distance"], version: 1, updatedAt: null }), 5),
         ),
     );
 
@@ -86,15 +86,15 @@ describe("loading this account's ranking", () => {
 describe("saving", () => {
   it("keeps what GRIDGO stored, not what was sent", async () => {
     api.savePreferences.mockResolvedValue({
-      ranking: ["distance", "quality", "speed"],
+      ranking: ["distance", "quality", "cost", "speed"],
       version: 1,
       updatedAt: "2026-08-24T00:00:00.000Z",
     });
 
-    await usePriorities.getState().save(["distance", "quality", "speed"]);
+    await usePriorities.getState().save(["distance", "quality", "cost", "speed"]);
 
-    expect(api.savePreferences).toHaveBeenCalledWith(["distance", "quality", "speed"]);
-    expect(usePriorities.getState().ranking).toEqual(["distance", "quality", "speed"]);
+    expect(api.savePreferences).toHaveBeenCalledWith(["distance", "quality", "cost", "speed"]);
+    expect(usePriorities.getState().ranking).toEqual(["distance", "quality", "cost", "speed"]);
     expect(usePriorities.getState().loaded).toBe(true);
   });
 
@@ -102,7 +102,7 @@ describe("saving", () => {
     api.savePreferences.mockRejectedValue(new Error("Network request failed"));
 
     await expect(
-      usePriorities.getState().save(["speed", "quality", "distance"]),
+      usePriorities.getState().save(["speed", "quality", "cost", "distance"]),
     ).rejects.toThrow("Network request failed");
     expect(usePriorities.getState().ranking).toBeNull();
   });
@@ -111,7 +111,7 @@ describe("saving", () => {
 describe("signing out", () => {
   it("forgets this account's answer without asking the next one", async () => {
     api.getPreferences.mockResolvedValue({
-      ranking: ["speed", "quality", "distance"],
+      ranking: ["speed", "quality", "cost", "distance"],
       version: 1,
       updatedAt: null,
     });

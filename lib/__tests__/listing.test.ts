@@ -15,6 +15,7 @@ import {
   samplePhotoUri,
   specGroups,
   trimRatio,
+  startingPriceLine,
   unitLine,
   unitPriceMinor,
 } from "@/lib/listing";
@@ -99,6 +100,14 @@ const FLYERS: CatalogItem = {
   effectivePriceMinor: null,
   pricingUnit: "per_package",
   packageQty: 100,
+  measurementKind: "none" as const,
+  measureUnit: null,
+  minimumWidthMilli: null,
+  minimumHeightMilli: null,
+  minimumLengthMilli: null,
+  minimumOrderQuantity: null,
+  priceTiers: [],
+  speedTiers: [],
   pricingBasis: "per_unit",
   turnaroundMode: "override",
   turnaroundHours: 48,
@@ -194,6 +203,30 @@ describe("what a quantity means", () => {
     expect(unitLine(perUnit)).toBe("each");
     expect(quantityLine(perUnit, 1)).toBe("1 piece");
     expect(quantityLine(perUnit, 5)).toBe("5 pieces");
+  });
+
+  it("names every pricing unit the API stores, in the client's words", () => {
+    expect(unitLine({ ...FLYERS, pricingUnit: "per_page" })).toBe("per page");
+    expect(unitLine({ ...FLYERS, pricingUnit: "per_area", measureUnit: "ft" })).toBe("per sq ft");
+    expect(unitLine({ ...FLYERS, pricingUnit: "per_length", measureUnit: "in" })).toBe(
+      "per inch",
+    );
+    expect(unitLine({ ...FLYERS, pricingUnit: "per_length", measureUnit: "m" })).toBe(
+      "per metre",
+    );
+    expect(unitLine({ ...FLYERS, pricingUnit: "whole_job" })).toBe("for the job");
+  });
+
+  it("puts the unit on the category starting price", () => {
+    expect(startingPriceLine(FLYERS)).toBe("From ₱25.00 per pack of 100");
+    expect(
+      startingPriceLine({
+        ...FLYERS,
+        fromPriceMinor: 4000,
+        pricingUnit: "per_area",
+        measureUnit: "ft",
+      }),
+    ).toBe("From ₱40.00 per sq ft");
   });
 });
 

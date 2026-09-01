@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 
 import { prefetchMatch } from "@/lib/matchPrefetch";
 import { useCart } from "@/store/cart";
+import { useJobDeadline } from "@/store/jobDeadline";
 import { usePriorities } from "@/store/priorities";
 
 /**
@@ -27,16 +28,12 @@ export function useStartPrintJob() {
       const dropoff = cart?.defaultDropoff ?? null;
       const needsDropoff = needsDropoffFirst(dropoff);
 
-      if (!needsDropoff) {
-        prefetchMatch({
-          subcategoryCode,
-          dropoff,
-          ...(cartId ? { cartId } : {}),
-        });
-      }
-
+      // The deadline comes before the match, because it decides which shops are
+      // offered at all rather than how they are ranked. Nothing is prefetched
+      // here: a match run without the date would be a different match.
+      useJobDeadline.getState().clear();
       router.push({
-        pathname: needsDropoff ? "/request/where" : "/request/match",
+        pathname: "/request/when",
         params: { subcategory: subcategoryCode, category: categoryCode },
       });
     },

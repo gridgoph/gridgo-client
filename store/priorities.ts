@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
-import { isCompleteRanking, type PriorityRanking } from "@/lib/priorities";
+import { completeRanking, isCompleteRanking, type PriorityRanking } from "@/lib/priorities";
 
 /**
  * How this client wants GRIDGO to match.
@@ -46,10 +46,10 @@ export const usePriorities = create<PrioritiesState>()((set, get) => ({
       const preferences = await api.getPreferences();
       set({
         // An unanswered account carries the default ranking and version 0.
-        ranking:
-          preferences.version > 0 && isCompleteRanking(preferences.ranking)
-            ? (preferences.ranking as PriorityRanking)
-            : null,
+        // An order saved before cost existed is a real choice, kept and
+        // completed rather than thrown away -- being sent back to redo a screen
+        // you already finished is the worst possible answer to a new factor.
+        ranking: preferences.version > 0 ? completeRanking(preferences.ranking) : null,
         loaded: true,
         error: null,
       });
@@ -75,9 +75,7 @@ export const usePriorities = create<PrioritiesState>()((set, get) => ({
   save: async (ranking) => {
     const saved = await api.savePreferences([...ranking]);
     set({
-      ranking: isCompleteRanking(saved.ranking)
-        ? (saved.ranking as PriorityRanking)
-        : ranking,
+      ranking: completeRanking(saved.ranking) ?? ranking,
       loaded: true,
       error: null,
     });
@@ -86,7 +84,7 @@ export const usePriorities = create<PrioritiesState>()((set, get) => ({
   reset: () => set({ ranking: null, loaded: false, loading: false, error: null }),
 }));
 
-/** True once the client has actually put all three in order. */
+/** True once the client has actually put every factor in order. */
 export function hasRanked(state: Pick<PrioritiesState, "ranking">): boolean {
   return isCompleteRanking(state.ranking);
 }

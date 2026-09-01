@@ -1,4 +1,4 @@
-import { TriangleAlert } from "lucide-react-native";
+import { FileCheck, TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -7,8 +7,11 @@ import { Screen } from "@/components/Screen";
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { ProductPreview } from "@/components/ProductPreview";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { useArtworkUpload, type FormatGuard } from "@/hooks/useArtworkUpload";
+import { detectedProportions, detectedSummary, pageCountOffer } from "@/lib/artworkUpload";
+import { measuredSizeMilli, physicalSizeMilli, printResolution } from "@/lib/printResolution";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -106,12 +109,52 @@ export default function ArtworkScreen() {
   }, [stored, line?.id, line?.artworkFileId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * The artwork's own proportions, read from the stored file.
+   * Take the file's page count as the quantity, when the client asks for it.
    *
-   * Only images answer. A PDF fails here and simply produces no warning, which
-   * is right — GRIDGO has not seen inside it and must not claim it is the wrong
-   * shape.
+   * The same save path the artwork itself takes, for the same reason: the cart
+   * lives on GRIDGO, and the response is the basket rather than something to
+   * re-read afterwards.
    */
+  const setPageCount = useCallback(
+    async (pages: number) => {
+      if (!line || saving) return;
+      setSaving(true);
+      setSaveError(null);
+      try {
+        adopt(
+          await run((cartId) =>
+            // The page count is the measurement, not the quantity: quantity is
+            // how many copies of the document, and writing pages there would
+            // bill ten copies of a one-page job.
+            api.updateCartLine(cartId, line.id, { measurement: { pages } }),
+          ),
+        );
+      } catch (error) {
+        setSaveError(
+          userFacingError(error, "That page count did not save. Try again in a moment."),
+        );
+      } finally {
+        setSaving(false);
+      }
+    },
+    [line?.id, saving], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  /**
+   * The artwork's own proportions.
+   *
+   * GRIDGO reads these out of the bytes as they are uploaded, which is both
+   * better and cheaper than what this screen used to do: a PDF now answers
+   * (nothing on this phone can open one), the answer is the printed size
+   * rather than a pixel count, and it costs no round trip.
+   *
+   * Downloading the file to measure it is kept only for the case the server
+   * cannot answer — a raster that declared no density. Its pixels still settle
+   * a proportion even though they settle no physical size.
+   */
+  const detected = upload.state.detected;
+  const measured = detectedProportions(detected);
+
   const measure = useCallback((fileId: string | null) => {
     setPixels(null);
     if (!fileId) return;
@@ -128,8 +171,12 @@ export default function ArtworkScreen() {
   }, []);
 
   useEffect(() => {
+    if (measured) {
+      setPixels(null);
+      return;
+    }
     measure(stored ?? null);
-  }, [stored, measure]);
+  }, [stored, measure, measured]);
 
   /** Back to the shop board, or to the sheet this file belongs to. */
   const goStep = (step: OrderStepId) => {
@@ -167,7 +214,36 @@ export default function ArtworkScreen() {
   }
 
   const size = typeof line.structuredSpec.size === "string" ? line.structuredSpec.size : "";
-  const warning = artworkFitWarning(size, pixels);
+  const warning = artworkFitWarning(size, measured ?? pixels);
+  const summary = detectedSummary(detected);
+
+  /*
+    The one thing this screen has been unable to answer.
+
+    It has had the chosen size all along, and now it has the file's real pixel
+    dimensions, so "will this print sharp" stops being a guess from the byte
+    count. 540 x 720 pixels on A5 is 87 DPI whatever the file weighs, and a
+    38 KB warning that happened to be right about it was right by accident.
+
+    Both halves can be unknown — a custom size nobody has measured, or a PDF,
+    which states a physical size rather than a pixel count and has nothing to
+    divide. Then this is null and the byte-count note stands as before.
+  */
+  const filePixels =
+    detected?.pixelWidth && detected?.pixelHeight
+      ? { width: detected.pixelWidth, height: detected.pixelHeight }
+      : pixels;
+  /*
+    Two ways a line knows how big it is, and a measured listing has no size
+    label at all: a tarpaulin billed by the square foot was typed as 3 by 5
+    feet, not picked as "A4". Without this the resolution check goes blind on
+    exactly the jobs where it matters most — a banner is the largest thing
+    GRIDGO prints and the easiest to send a screenshot for.
+  */
+  const orderedSize =
+    measuredSizeMilli(line.measurement, item?.measureUnit) ?? physicalSizeMilli(size);
+  const resolution = printResolution(filePixels, orderedSize);
+  const pageOffer = pageCountOffer(detected, item?.pricingUnit, line.measurement?.pages);
   const onLine = Boolean(line.artworkFileId);
   const links = item ? linkFormats(item) : [];
   const uploads = item ? fileFormats(item) : [];
@@ -197,10 +273,60 @@ export default function ArtworkScreen() {
             onRetry={() => void upload.retry()}
             onCancel={upload.cancel}
             emphasis="primary"
+            resolution={resolution}
           />
         </View>
 
         {saveError ? <Text className="mt-3 text-body text-error">{saveError}</Text> : null}
+
+        {/*
+          What the file itself says it is. This is a verification line, not a
+          decoration: a client who exported the wrong artboard finds out here,
+          before paying, rather than when the job comes back the wrong size.
+          It is deliberately quiet — it confirms rather than asks — and it is
+          absent entirely when the file said nothing, because an empty
+          confident sentence is worse than no sentence.
+        */}
+        {summary ? (
+          <View className="mt-3 flex-row items-start gap-2">
+            <View className="pt-0.5">
+              <FileCheck
+                size={14}
+                color={colors.textMuted}
+                strokeWidth={2}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              />
+            </View>
+            <Text className="min-w-0 flex-1 text-caption text-text-muted">
+              We read this as {summary}.
+            </Text>
+          </View>
+        ) : null}
+
+        {/*
+          A ten-page document priced by the page, ordered as one page. GRIDGO
+          knows the number by the time the file lands, so it offers it — as an
+          offer, because a client may deliberately want two pages of a ten-page
+          file, and a quantity that rewrites itself is a total nobody chose.
+
+          The offer is a quiet control, not the screen's yellow: the yellow
+          belongs to the upload card until there is a file and to checkout
+          after, and a third loud thing here would make all three quiet.
+        */}
+        {pageOffer ? (
+          <View className="mt-4 gap-2 rounded-field border border-outline bg-surface p-3">
+            <Text className="text-body font-medium text-text-primary">
+              Print all {pageOffer.pages} pages?
+            </Text>
+            <Text className="text-caption text-text-secondary">{pageOffer.message}</Text>
+            <SecondaryButton
+              label={`Use ${pageOffer.pages} pages`}
+              onPress={() => void setPageCount(pageOffer.pages)}
+              disabled={saving}
+            />
+          </View>
+        ) : null}
 
         {item && !uploads.length && links.length ? (
           <Text className="mt-3 text-body text-text-secondary">

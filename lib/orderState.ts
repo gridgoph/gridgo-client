@@ -47,11 +47,34 @@ const STATE_META: Record<string, OrderStateMeta> = {
   rider_assigned: { label: "Rider assigned", tone: "info", icon: "clock" },
   picked_up: { label: "Picked up", tone: "info", icon: "clock" },
   out_for_delivery: { label: "Out for delivery", tone: "info", icon: "clock" },
+  awaiting_collection: { label: "Ready for pickup", tone: "success", icon: "circle-check" },
   delivered: { label: "Delivered", tone: "success", icon: "circle-check" },
   issue_window_open: { label: "Check your delivery", tone: "warning", icon: "triangle-alert" },
   completed: { label: "Completed", tone: "success", icon: "circle-check" },
   payout_released: { label: "Completed", tone: "success", icon: "circle-check" },
 };
+
+/**
+ * A collecting client is not being delivered to.
+ *
+ * A rider does carry the job, but only from the shop to the GRIDGO Office
+ * counter — two of GRIDGO's own places. Telling the client it is "out for
+ * delivery" describes an errand of ours as their delivery, and sends them
+ * looking out of a window instead of to the counter. Only the states where
+ * something travels differ; everything before that is the same job.
+ */
+const COLLECT_META: Record<string, OrderStateMeta> = {
+  rider_assigned: { label: "Being collected from the shop", tone: "info", icon: "clock" },
+  picked_up: { label: "On the way to GRIDGO Office", tone: "info", icon: "clock" },
+  out_for_delivery: { label: "On the way to GRIDGO Office", tone: "info", icon: "clock" },
+  delivered: { label: "Collected", tone: "success", icon: "circle-check" },
+  issue_window_open: { label: "Check your order", tone: "warning", icon: "triangle-alert" },
+};
+
+/** True when the client fetches this order from the GRIDGO Office counter. */
+export function collectsAtOffice(order: Pick<Order, "fulfillmentMode">): boolean {
+  return order.fulfillmentMode === "pickup";
+}
 
 const FALLBACK: OrderStateMeta = {
   label: "In progress",
@@ -59,8 +82,9 @@ const FALLBACK: OrderStateMeta = {
   icon: "clock",
 };
 
-export function getOrderStateMeta(state: string): OrderStateMeta {
+export function getOrderStateMeta(state: string, fulfillmentMode?: string | null): OrderStateMeta {
   // Never surface snake_case API states. Unknown → neutral "In progress".
+  if (fulfillmentMode === "pickup" && COLLECT_META[state]) return COLLECT_META[state];
   return STATE_META[state] ?? FALLBACK;
 }
 
@@ -69,6 +93,11 @@ export const TRACKING_STATES = ["rider_assigned", "picked_up", "out_for_delivery
 
 export function isTrackingState(state: string): boolean {
   return (TRACKING_STATES as readonly string[]).includes(state);
+}
+
+/** True while the job is waiting on the GRIDGO Office counter to be claimed. */
+export function isAwaitingCollectionState(state: string): boolean {
+  return state === "awaiting_collection";
 }
 
 /**
@@ -97,6 +126,7 @@ const PRODUCTION_ONWARD = [
   "rider_assigned",
   "picked_up",
   "out_for_delivery",
+  "awaiting_collection",
   "delivered",
   "issue_window_open",
   "completed",
@@ -137,6 +167,18 @@ const STATE_ACTIONS: Record<string, OrderNextAction> = {
   },
 };
 
+/** The same two moments, for a client who is coming to fetch the job. */
+const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
+  awaiting_collection: {
+    title: "Collect at GRIDGO Office",
+    body: "Your order is on the counter, paid for and ready. Bring the name you ordered under.",
+  },
+  issue_window_open: {
+    title: "Check your order",
+    body: "Tell Operations while the issue window is open if anything is wrong with what you collected.",
+  },
+};
+
 export function orderNextAction(order: Order): OrderNextAction | null {
   if (downpaymentDue(order)) {
     const amount = order.payments?.downpayment.amountMinor;
@@ -149,13 +191,22 @@ export function orderNextAction(order: Order): OrderNextAction | null {
   }
   if (balanceDue(order)) {
     const amount = order.payments?.balance.amountMinor;
+    if (collectsAtOffice(order)) {
+      return {
+        title: "Pay the remaining 25%",
+        body: amount
+          ? `Settle the last ${formatPhp(amount)} before you come for this. The GRIDGO Office counter releases it once Operations confirms your payment.`
+          : "Settle the remaining balance before you come for this. The GRIDGO Office counter releases it once Operations confirms your payment.",
+      };
+    }
     return {
       title: "Pay the remaining 25%",
       body: amount
-        ? `Your job is finished and waiting to travel. GRIDGO delivers once the last ${formatPhp(amount)} is confirmed.`
-        : "Your job is finished and waiting to travel. GRIDGO delivers once the remaining balance is confirmed.",
+        ? `Your job is on the press. GRIDGO sends a rider once the last ${formatPhp(amount)} is confirmed.`
+        : "Your job is on the press. GRIDGO sends a rider once the remaining balance is confirmed.",
     };
   }
+  if (collectsAtOffice(order)) return COLLECT_STATE_ACTIONS[order.state] ?? STATE_ACTIONS[order.state] ?? null;
   return STATE_ACTIONS[order.state] ?? null;
 }
 
@@ -189,8 +240,18 @@ const WAITING_ON: Record<string, string> = {
   picked_up: "The rider has collected your order.",
   out_for_delivery: "Your order is out for delivery.",
   delivered: "Delivered. Operations closes the job once the issue window passes.",
+  awaiting_collection: "Your order is waiting at the GRIDGO Office counter.",
   completed: "This job is closed.",
   payout_released: "This job is closed.",
+};
+
+/** The travel half of the wait, for a job the client is coming to fetch. */
+const COLLECT_WAITING_ON: Record<string, string> = {
+  ready_for_dispatch: "The job is packed and waiting for a rider to bring it to the office.",
+  rider_assigned: "A rider is collecting this from the shop.",
+  picked_up: "The rider has your order and is bringing it to GRIDGO Office.",
+  out_for_delivery: "Your order is on its way to GRIDGO Office.",
+  delivered: "Collected. Operations closes the job once the issue window passes.",
 };
 
 export function orderWaitingOn(order: Order): string | null {
@@ -201,6 +262,7 @@ export function orderWaitingOn(order: Order): string | null {
   if (underReview === "balance") {
     return "We are checking your balance payment. Your order goes out for delivery once Operations confirms it.";
   }
+  if (collectsAtOffice(order) && COLLECT_WAITING_ON[order.state]) return COLLECT_WAITING_ON[order.state];
   return WAITING_ON[order.state] ?? null;
 }
 
@@ -211,9 +273,10 @@ export function orderWaitingOn(order: Order): string | null {
  * the transition, so the correction screen can show why rather than just that.
  */
 export function latestNoteForState(
-  timeline: { at: string; state: string; note: string }[],
+  timeline: { at: string; state: string; note: string }[] | null | undefined,
   state: string,
 ): string | null {
+  if (!Array.isArray(timeline) || timeline.length === 0) return null;
   for (let index = timeline.length - 1; index >= 0; index -= 1) {
     const entry = timeline[index];
     if (entry.state === state && entry.note?.trim()) return entry.note.trim();

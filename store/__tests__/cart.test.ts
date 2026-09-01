@@ -147,6 +147,7 @@ describe("after checkout and after sign-out", () => {
               catalogItemId: "i",
               quantity: 1,
               optionIds: [],
+              measurement: null,
               structuredSpec: {},
               artworkFileId: null,
               mockupFileId: null,

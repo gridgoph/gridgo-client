@@ -36,6 +36,11 @@ describe("describeQuantity", () => {
     expect(describeQuantity(1, "pack100")).toBe("1 pack of 100");
     expect(describeQuantity(3, "sqm")).toBe("3 sqm");
   });
+
+  it("does not print undefined when quantity has not been projected yet", () => {
+    expect(describeQuantity(undefined as unknown as number, "piece")).toBe("—");
+    expect(describeQuantity(Number.NaN, "piece")).toBe("—");
+  });
 });
 
 describe("quantityLimitNote", () => {

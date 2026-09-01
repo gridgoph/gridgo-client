@@ -48,9 +48,11 @@ export function describeQuantity(
   value: number,
   unit: string | null | undefined,
 ): string {
+  const count = Number(value);
+  if (!Number.isFinite(count)) return "—";
   const bounds = quantityBounds(unit);
-  const noun = value === 1 ? bounds.one : bounds.many;
-  return `${value} ${noun}`;
+  const noun = count === 1 ? bounds.one : bounds.many;
+  return `${count} ${noun}`;
 }
 
 /** Why the stepper stopped, so a disabled control is never silent. */

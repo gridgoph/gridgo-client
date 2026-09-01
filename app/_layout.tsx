@@ -15,6 +15,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
@@ -106,6 +107,17 @@ function AppNavigation() {
       lays out once at the wrong size and again a frame later. On a phone that
       is a visible settle as content drops under the status bar.
     */
+    /*
+      The gesture root. Nothing built on react-native-gesture-handler responds
+      on Android without it, and the deadline calendar's month strip is
+      dragged: tracking a finger from the UI thread is the difference between
+      a page being turned and an animation being played afterwards.
+
+      `Sheet` and `NotificationCard` deliberately stay on PanResponder — a
+      React Native `Modal` renders outside this tree, so a gesture detector in
+      one never fires. Mounting this changes neither.
+    */
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       {/*
         Every input in the app reads the keyboard through this.
@@ -226,6 +238,15 @@ function AppNavigation() {
                   heading already says what the job is, and repeating it in the
                   header would spend the band saying nothing new.
                 */}
+        {/*
+          The deadline, asked before any shop is chosen. It is the one question
+          that means the same thing at every shop, so the only one that can
+          decide which of them are offered at all.
+        */}
+        <Stack.Screen
+          name="request/when"
+          options={pushedScreenOptions("When you need it")}
+        />
                 <Stack.Screen
                   name="request/match"
                   options={pushedScreenOptions("New request")}
@@ -257,6 +278,22 @@ function AppNavigation() {
                 */}
                 <Stack.Screen
                   name="order/request-changes"
+                  options={{
+                    presentation: "formSheet",
+                    headerShown: false,
+                    sheetAllowedDetents: "fitToContents",
+                    sheetGrabberVisible: true,
+                    sheetCornerRadius: radius.lg,
+                    contentStyle: { backgroundColor: token.surface },
+                  }}
+                />
+                {/*
+                  Rating a finished job: a short question over an order already
+                  on display, with a keyboard in it. Same sheet treatment as
+                  asking for a proof change, and for the same reasons.
+                */}
+                <Stack.Screen
+                  name="order/rate"
                   options={{
                     presentation: "formSheet",
                     headerShown: false,
@@ -309,5 +346,6 @@ function AppNavigation() {
         </ThemeProvider>
       </KeyboardProvider>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

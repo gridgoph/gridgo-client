@@ -4,6 +4,7 @@ import { Pressable, Text, View } from "react-native";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
+import type { PrintResolution } from "@/lib/printResolution";
 import {
   ARTWORK_ACCEPTED,
   ARTWORK_MAX_MIB,
@@ -34,6 +35,14 @@ type Props = {
    * card is one field among several and stays quiet.
    */
   emphasis?: "primary" | "quiet";
+  /**
+   * What this file will actually print at, at the size the client chose.
+   *
+   * Passed in rather than computed here, because it needs the chosen size and
+   * this card only knows the file. Null where either number is unknown — a
+   * custom size nobody has measured, or a file that stated no dimensions.
+   */
+  resolution?: PrintResolution | null;
 };
 
 /**
@@ -57,6 +66,7 @@ export function ArtworkUploadCard({
   onCancel,
   readOnly,
   emphasis = "quiet",
+  resolution = null,
 }: Props) {
   const colors = useThemeColors();
   const chip = artworkChip(state);
@@ -69,7 +79,15 @@ export function ArtworkUploadCard({
           size: state.size,
         })
       : [];
-  const thinFile = facts.some((fact) => fact.id === "size" && fact.tone === "warn");
+  /*
+    The byte count is a proxy, and only worth showing while there is nothing
+    better. Once GRIDGO has read the real pixel dimensions and the client has
+    chosen a size, the resolution is a measurement rather than a guess — and a
+    measured warning beside a guessed one about the same file is one warning
+    too many. So the guess stands down.
+  */
+  const thinFile =
+    !resolution && facts.some((fact) => fact.id === "size" && fact.tone === "warn");
 
   // Empty and idle is the only state where tapping the card has one obvious
   // meaning. Once a file is on it the card is a report with its own controls,
@@ -120,6 +138,17 @@ export function ArtworkUploadCard({
             </View>
           ))}
           {thinFile ? <Text className="text-caption text-warning">{THIN_FILE_NOTE}</Text> : null}
+          {resolution ? (
+            <Text
+              className={
+                resolution.verdict === "low"
+                  ? "text-caption text-warning"
+                  : "text-caption text-text-muted"
+              }
+            >
+              {resolution.message}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 

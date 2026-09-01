@@ -1,7 +1,9 @@
 import type { Order } from "@/lib/api";
 import {
+  collectsAtOffice,
   formatPriceRange,
   getOrderStateMeta,
+  isAwaitingCollectionState,
   isClientCorrectionState,
   isProofApprovalState,
   isTrackingState,
@@ -180,12 +182,14 @@ describe("orderNextAction", () => {
     expect(body).not.toContain("₱100.00");
   });
 
-  it("asks for the balance only once the job is ready to travel", () => {
+  it("asks for the balance once the job is on the press, not at the door", () => {
     const confirmed = (state: string) =>
       withPayments(pricedOrder({ state }), "confirmed", "not_submitted");
 
-    expect(orderNextAction(confirmed("production"))).toBeNull();
-    expect(orderNextAction(confirmed("supplier_self_qc"))).toBeNull();
+    // A rider must never be sent to a door that has not paid, so the ask comes
+    // early enough to clear before the job is ever packed.
+    expect(orderNextAction(confirmed("payment_authorized"))).toBeNull();
+    expect(orderNextAction(confirmed("production"))?.title).toBe("Pay the remaining 25%");
     expect(orderNextAction(confirmed("ready_for_dispatch"))?.title).toBe(
       "Pay the remaining 25%",
     );
@@ -219,14 +223,14 @@ describe("orderNextAction", () => {
     );
   });
 
-  it("is null where the job is with someone else", () => {
-    const inProduction = withPayments(
+  it("is null where the job is with someone else and nothing is owed", () => {
+    const settled = withPayments(
       pricedOrder({ state: "production" }),
       "confirmed",
-      "not_submitted",
+      "confirmed",
     );
-    expect(orderNextAction(inProduction)).toBeNull();
-    expect(orderWaitingOn(inProduction)).toMatch(/press/i);
+    expect(orderNextAction(settled)).toBeNull();
+    expect(orderWaitingOn(settled)).toMatch(/press/i);
   });
 
   it("never leaks a state string into the copy", () => {
@@ -261,6 +265,11 @@ describe("latestNoteForState", () => {
   it("returns null when the note was left blank", () => {
     expect(latestNoteForState(timeline, "needs_qa")).toBeNull();
     expect(latestNoteForState(timeline, "production")).toBeNull();
+  });
+
+  it("does not throw when the order carried no history", () => {
+    expect(latestNoteForState(undefined, "client_correction")).toBeNull();
+    expect(latestNoteForState(null, "client_correction")).toBeNull();
   });
 });
 
@@ -317,5 +326,63 @@ describe("orderNeedsClient", () => {
 
   it("is false for a state this app has never heard of", () => {
     expect(orderNeedsClient(order({ state: "some_new_state" }))).toBe(false);
+  });
+});
+
+/**
+ * A client who is collecting is not being delivered to.
+ *
+ * A rider does carry the job, but only between two of GRIDGO's own places — the
+ * shop that printed it and the office counter. Told it is "out for delivery",
+ * a client waits at home for something sitting on our shelf.
+ */
+describe("a collected order speaks its own language", () => {
+  const collecting = (state: string) => order({ state, fulfillmentMode: "pickup" });
+  const collectingPriced = (state: string) =>
+    pricedOrder({ state, fulfillmentMode: "pickup" });
+
+  it("never says delivery to somebody coming to fetch it", () => {
+    for (const state of ["rider_assigned", "picked_up", "out_for_delivery"]) {
+      expect(getOrderStateMeta(state, "pickup").label).not.toMatch(/deliver/i);
+      expect(orderWaitingOn(collecting(state))).not.toMatch(/out for delivery/i);
+    }
+    // And a delivery is untouched by any of it.
+    expect(getOrderStateMeta("out_for_delivery").label).toBe("Out for delivery");
+  });
+
+  it("names the office as the destination", () => {
+    expect(getOrderStateMeta("picked_up", "pickup").label).toMatch(/GRIDGO Office/);
+    expect(getOrderStateMeta("awaiting_collection", "pickup").label).toBe("Ready for pickup");
+    expect(getOrderStateMeta("delivered", "pickup").label).toBe("Collected");
+  });
+
+  it("waiting on the counter is something the client must act on", () => {
+    expect(isAwaitingCollectionState("awaiting_collection")).toBe(true);
+    expect(collectsAtOffice(collecting("awaiting_collection"))).toBe(true);
+    expect(collectsAtOffice(order({ state: "out_for_delivery" }))).toBe(false);
+
+    const ready = withPayments(
+      collectingPriced("awaiting_collection"),
+      "confirmed",
+      "confirmed",
+    );
+    expect(orderNextAction(ready)?.title).toBe("Collect at GRIDGO Office");
+    expect(orderNeedsClient(ready)).toBe(true);
+  });
+
+  it("asks for the balance before the walk, not after it", () => {
+    const owing = withPayments(
+      collectingPriced("awaiting_collection"),
+      "confirmed",
+      "not_submitted",
+    );
+    // The money comes first: a client who travels for a package we will not
+    // release has made the trip for nothing.
+    expect(orderNextAction(owing)?.title).toBe("Pay the remaining 25%");
+    expect(orderNextAction(owing)?.body).toMatch(/counter/i);
+  });
+
+  it("still shows the job as being fulfilled while it waits on the shelf", () => {
+    expect(showsFulfilmentProgress("awaiting_collection")).toBe(true);
   });
 });
