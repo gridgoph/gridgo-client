@@ -8,8 +8,14 @@
  * The native redirect (`gridgoclient://sso-callback`) is a different moment:
  * the browser is already gone. `finishGoogleSsoReturn` activates or adopts
  * without opening Google again. Bouncing that route to login before adopt is
- * how a successful return landed on Welcome.
+ * how a successful return landed on Welcome. A first token miss is not a
+ * dead session — retry `/auth/me` until Home, or a definitive refusal.
  */
+
+import {
+  clerkTokenUnavailableMessage,
+  type ClerkBridgeResult,
+} from "@/lib/clerkSessionBridge";
 
 export type GoogleSsoFlowResult = {
   createdSessionId: string | null;
@@ -130,6 +136,45 @@ export async function createdSessionIdFromSsoReload(
 }
 
 /** Native Clerk client reload used to finish SSO when Expo Router ate the redirect URL. */
+export const GOOGLE_SSO_ADOPT_RETRIES = 3;
+export const GOOGLE_SSO_ADOPT_RETRY_MS = 400;
+
+/** Transient GRIDGO join failures — keep the spinner and try token / `/auth/me` again. */
+export function googleSsoAdoptShouldRetry(result: ClerkBridgeResult): boolean {
+  return result.kind === "error";
+}
+
+/**
+ * Join the Google session to GRIDGO, retrying token and `/auth/me` misses.
+ *
+ * Wrong-role, a complete profile lockup, and a successful adopt all stop.
+ * Everything else stays in flight until the retries are spent — only then
+ * is the session confirmed dead.
+ */
+export async function adoptGoogleSsoClient(deps: {
+  adopt: () => Promise<ClerkBridgeResult>;
+  retries?: number;
+  delayMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  cancelled?: () => boolean;
+}): Promise<ClerkBridgeResult> {
+  const retries = deps.retries ?? GOOGLE_SSO_ADOPT_RETRIES;
+  const delayMs = deps.delayMs ?? GOOGLE_SSO_ADOPT_RETRY_MS;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let last: ClerkBridgeResult = {
+    kind: "error",
+    message: clerkTokenUnavailableMessage,
+    signOut: false,
+  };
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    if (deps.cancelled?.()) return last;
+    last = await deps.adopt();
+    if (!googleSsoAdoptShouldRetry(last)) return last;
+    if (attempt < retries) await sleep(delayMs);
+  }
+  return last;
+}
+
 export async function reloadClerkSignInForSso(
   clerk: unknown,
   rotatingTokenNonce: string,

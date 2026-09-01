@@ -119,6 +119,22 @@ describe("awaitClerkSessionToken", () => {
     ).resolves.toBeNull();
     expect(getToken).toHaveBeenCalledTimes(3);
   });
+
+  it("keeps reading the cache before minting when mintFrom is raised", async () => {
+    const getToken = jest.fn<Promise<string | null>, [unknown?]>().mockResolvedValue(null);
+    await expect(
+      awaitClerkSessionToken(getToken, {
+        attempts: 4,
+        delayMs: 0,
+        mintFrom: 3,
+        sleep: noSleep,
+      }),
+    ).resolves.toBeNull();
+    expect(getToken).toHaveBeenNthCalledWith(1, undefined);
+    expect(getToken).toHaveBeenNthCalledWith(2, undefined);
+    expect(getToken).toHaveBeenNthCalledWith(3, undefined);
+    expect(getToken).toHaveBeenNthCalledWith(4, { skipCache: true });
+  });
 });
 
 describe("isClerkSignedOutError", () => {

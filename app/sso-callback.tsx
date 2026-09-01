@@ -8,13 +8,16 @@ import { Screen } from "@/components/Screen";
 import { useThemeColors } from "@/hooks/useTheme";
 import { staysOnAuthScreen } from "@/lib/authLanding";
 import { completeClerkAuth } from "@/lib/clerkComplete";
+import { CLERK_SSO_TOKEN_WAIT } from "@/lib/clerkSignIn";
 import {
+  adoptGoogleSsoClient,
   createdSessionIdFromSsoReload,
   finishGoogleSsoReturn,
   googleSsoCreatedSessionId,
   googleSsoRotatingTokenNonce,
   reloadClerkSignInForSso,
 } from "@/lib/googleSso";
+import { useSession } from "@/store/session";
 
 const login = "/(auth)/login" as Href;
 
@@ -23,8 +26,10 @@ const login = "/(auth)/login" as Href;
  *
  * The browser is already gone. Activate the created session if Clerk handed
  * one over, or adopt the one that is already signed in — never start Google
- * again, and never replace to login or `/` until that adopt has failed.
- * Login's `startSSOFlow` may still be finishing; a spinner here is the wait.
+ * again, and never replace to login, welcome, or `/` while adopt is still
+ * in flight. A missing JWT on the first probe is normal after Google; retry
+ * token and `/auth/me` and keep "Signing you in…" until Home, complete-profile,
+ * a wrong-role refusal, or a session that is still dead after that wait.
  */
 export default function SsoCallbackScreen() {
   const params = useLocalSearchParams();
@@ -46,6 +51,9 @@ export default function SsoCallbackScreen() {
     if (!canFinish) return;
     if (attempted.current) return;
     attempted.current = true;
+    // Raise this before any await so the root Clerk bridge will not treat a
+    // still-empty JWT as a dead leftover and sign the Google session out.
+    useSession.getState().beginClerkSync();
 
     let cancelled = false;
     void (async () => {
@@ -78,19 +86,30 @@ export default function SsoCallbackScreen() {
         if (outcome.status !== "activated" && outcome.status !== "already_signed_in") {
           // Login's startSSOFlow may still be activating. Wait for isSignedIn.
           attempted.current = false;
+          useSession.getState().endClerkSync();
           return;
         }
 
-        const result = await completeClerkAuth({
-          existingSessionId:
-            outcome.status === "activated" ? outcome.sessionId : sessionId,
-          getToken,
-          signOut,
-          sessionId,
-          setActive: (args) => setActive(args),
+        const result = await adoptGoogleSsoClient({
+          cancelled: () => cancelled,
+          adopt: () =>
+            completeClerkAuth({
+              existingSessionId:
+                outcome.status === "activated" ? outcome.sessionId : sessionId,
+              getToken,
+              signOut,
+              sessionId,
+              setActive: (args) => setActive(args),
+              tokenWait: CLERK_SSO_TOKEN_WAIT,
+            }),
         });
         if (cancelled) return;
-        if (result.kind === "wrong_role" || result.kind === "error") {
+        if (result.kind === "wrong_role") {
+          setFailed(true);
+          return;
+        }
+        if (result.kind === "error") {
+          // Retries spent and still no client — confirmed dead, not a first miss.
           setFailed(true);
         }
       } catch {

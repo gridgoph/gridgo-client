@@ -12,7 +12,7 @@
 import { isAlreadySignedInError } from "@/lib/clerkAuth";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import type { ClerkBridgeResult } from "@/lib/clerkSessionBridge";
-import type { ClerkGetToken } from "@/lib/clerkSignIn";
+import type { ClerkGetToken, ClerkTokenWait } from "@/lib/clerkSignIn";
 
 /** Clerk's flow methods answer with an error rather than throwing. */
 export type ClerkFlowResult = { error?: unknown } | void | null;
@@ -27,6 +27,8 @@ export type CompleteClerkAuthDeps = {
   signOut: () => Promise<unknown>;
   /** Known Clerk session id, when the caller has one that is still current. */
   sessionId?: string | null;
+  /** Override the short JWT wait. Google's native return needs a longer one. */
+  tokenWait?: ClerkTokenWait;
 };
 
 export async function completeClerkAuth(
@@ -54,6 +56,7 @@ export async function completeClerkAuth(
     getToken: deps.getToken,
     signOut: deps.signOut,
     sessionId: deps.existingSessionId ?? deps.sessionId ?? null,
+    tokenWait: deps.tokenWait,
   });
 }
 

@@ -1,7 +1,10 @@
+import type { User } from "@/lib/api";
 import {
+  adoptGoogleSsoClient,
   completeGoogleSso,
   createdSessionIdFromSsoReload,
   finishGoogleSsoReturn,
+  googleSsoAdoptShouldRetry,
   googleSsoCreatedSessionId,
   googleSsoRotatingTokenNonce,
   reloadClerkSignInForSso,
@@ -181,5 +184,43 @@ describe("Google SSO native return", () => {
     ).resolves.toEqual({ createdSessionId: "sess_google" });
 
     expect(reload).toHaveBeenCalledWith({ rotatingTokenNonce: "nonce_1" });
+  });
+});
+
+describe("adoptGoogleSsoClient", () => {
+  const client: User = {
+    id: "u-client",
+    email: "client@gridgo.ph",
+    name: "Ana Santos",
+    role: "client",
+    accountType: "individual",
+  };
+  const noSleep = async () => undefined;
+
+  it("retries a delayed token / me miss and does not treat it as failed", async () => {
+    const adopt = jest
+      .fn()
+      .mockResolvedValueOnce({
+        kind: "error",
+        message: "Clerk signed you in, but GRIDGO never received an identity token for that session. Sign out and try again.",
+        signOut: false,
+      })
+      .mockResolvedValueOnce({ kind: "adopt", user: client, provisioned: false });
+
+    await expect(
+      adoptGoogleSsoClient({ adopt, sleep: noSleep }),
+    ).resolves.toEqual({ kind: "adopt", user: client, provisioned: false });
+    expect(adopt).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a wrong-role refusal", async () => {
+    const adopt = jest.fn().mockResolvedValue({ kind: "wrong_role", role: "supplier" });
+
+    await expect(adoptGoogleSsoClient({ adopt, sleep: noSleep })).resolves.toEqual({
+      kind: "wrong_role",
+      role: "supplier",
+    });
+    expect(adopt).toHaveBeenCalledTimes(1);
+    expect(googleSsoAdoptShouldRetry({ kind: "wrong_role", role: "supplier" })).toBe(false);
   });
 });

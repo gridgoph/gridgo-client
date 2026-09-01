@@ -5,6 +5,7 @@ import * as api from "@/lib/api";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import {
   awaitClerkSessionToken,
+  CLERK_SSO_TOKEN_WAIT,
   clerkTokenProvider,
   releaseClerkSession,
 } from "@/lib/clerkSignIn";
@@ -103,9 +104,13 @@ export function useClerkApiSession(): void {
         // would throw away a session that was about to work. This runs once
         // per launch / session change, not per request, so it can afford to
         // be more patient than the bearer path.
-        const token = await awaitClerkSessionToken(getToken, { attempts: 3, delayMs: 150 });
+        const token = await awaitClerkSessionToken(getToken, CLERK_SSO_TOKEN_WAIT);
         if (cancelled) return;
         if (!token) {
+          // A Google return is signed in at Clerk before a JWT is cached.
+          // Signing out here is what dumped a successful callback onto login.
+          // If GRIDGO is already joining that session, leave it alone.
+          if (useSession.getState().loading) return;
           // Dead leftover (failed Google, expired cache): drop it quietly so
           // login can accept the password or Google tap the person just made.
           await releaseClerkSession(signOut);

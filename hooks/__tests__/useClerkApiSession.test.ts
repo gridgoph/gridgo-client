@@ -108,7 +108,7 @@ describe("useClerkApiSession", () => {
 
     renderHook(() => useClerkApiSession());
 
-    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalled(), { timeout: 8000 });
     expect(mockMe).not.toHaveBeenCalled();
     expect(mockActivate).not.toHaveBeenCalled();
     expect(useSession.getState().user).toBeNull();
