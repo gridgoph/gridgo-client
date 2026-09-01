@@ -183,6 +183,63 @@ describe("NotificationsScreen", () => {
     await renderInSafeArea(<NotificationsScreen />);
 
     expect(await screen.findByText("You are all caught up")).toBeTruthy();
+    expect(screen.getByText(/GRIDGO Office counter/)).toBeTruthy();
+  });
+
+  it("draws a collect job as a counter docket, not a door delivery", async () => {
+    api.listNotifications.mockResolvedValue({
+      notifications: [
+        {
+          ...assignment,
+          id: "ntf_pick",
+          type: "order_ready_for_pickup",
+          orderTitle: "Seminar handouts",
+          orderState: "awaiting_collection",
+          fulfillmentMode: "pickup",
+          collectHold: false,
+          title: "Ready for pickup",
+          body: "Your order is waiting for you at the GRIDGO Office counter.",
+        },
+      ],
+      snapshot: "ntf_pick",
+    });
+
+    await renderInSafeArea(<NotificationsScreen />);
+
+    expect(await screen.findByText("COLLECT AT THE COUNTER")).toBeTruthy();
+    expect(screen.getByText("Waiting at the counter")).toBeTruthy();
+    expect(screen.getByText("Seminar handouts")).toBeTruthy();
+    expect(screen.getByText("NEEDS YOU")).toBeTruthy();
+    expect(screen.getByText("Counter")).toBeTruthy();
+    expect(screen.getByText("To office")).toBeTruthy();
+    expect(screen.queryByText("Dispatch")).toBeNull();
+    expect(screen.queryByText("Delivered")).toBeNull();
+    expect(screen.getByLabelText("Stage 4 of 4: Counter")).toBeTruthy();
+  });
+
+  it("does not call a pickup on the way to the office a door delivery", async () => {
+    api.listNotifications.mockResolvedValue({
+      notifications: [
+        {
+          ...assignment,
+          id: "ntf_office",
+          type: "order_out_for_delivery",
+          orderTitle: "Flyers",
+          orderState: "out_for_delivery",
+          fulfillmentMode: "pickup",
+          title: "Out for delivery",
+          body: "Your order is on the way.",
+        },
+      ],
+      snapshot: "ntf_office",
+    });
+
+    await renderInSafeArea(<NotificationsScreen />);
+
+    expect(await screen.findByText("On the way to GRIDGO Office")).toBeTruthy();
+    expect(screen.getByText("COLLECT AT GRIDGO OFFICE")).toBeTruthy();
+    expect(screen.queryByText("Out for delivery")).toBeNull();
+    expect(screen.getByLabelText("Stage 3 of 4: To office")).toBeTruthy();
   });
 
   it("keeps cart and chat on the header, and drops the helper line", async () => {

@@ -14,18 +14,19 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
 import { userFacingError } from "@/lib/copy";
-import { useThemeColors } from "@/hooks/useTheme";
+import type { Notification } from "@/lib/api";
+import { partitionInbox } from "@/lib/notificationPresentation";
 import { isNotificationRead, useNotifications } from "@/store/notifications";
 
 /**
  * Every update on the client's jobs.
  *
  * The list paints from cache on the first frame. A background refresh then
- * replaces it. Stage rails come from `orderTitle` / `orderState` on the
- * notification itself — this screen does not wait on `GET /orders`.
+ * replaces it. Stage rails come from `orderTitle` / `orderState` /
+ * `fulfillmentMode` on the notification itself — this screen does not wait
+ * on `GET /orders`.
  */
 export default function NotificationsScreen() {
-  const colors = useThemeColors();
   const router = useRouter();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const { items, loading, error, refresh, readIds, markRead, markAllRead } = useNotifications();
@@ -37,6 +38,27 @@ export default function NotificationsScreen() {
   );
 
   const unreadCount = items.filter((item) => !isNotificationRead(item, readIds)).length;
+  const { needYou, updates } = partitionInbox(items);
+  const splitInbox = needYou.length > 0 && updates.length > 0;
+
+  function renderRow(notification: Notification) {
+    return (
+      <NotificationCard
+        key={notification.id}
+        notification={notification}
+        read={isNotificationRead(notification, readIds)}
+        onOpen={
+          notification.orderId
+            ? () => {
+                void markRead(notification.id);
+                router.push(`/order/${notification.orderId}`);
+              }
+            : null
+        }
+        onMarkRead={() => void markRead(notification.id)}
+      />
+    );
+  }
 
   return (
     <TabScreen>
@@ -73,22 +95,21 @@ export default function NotificationsScreen() {
             </>
           ) : null}
 
-          {items.map((notification) => (
-            <NotificationCard
-              key={notification.id}
-              notification={notification}
-              read={isNotificationRead(notification, readIds)}
-              onOpen={
-                notification.orderId
-                  ? () => {
-                      void markRead(notification.id);
-                      router.push(`/order/${notification.orderId}`);
-                    }
-                  : null
-              }
-              onMarkRead={() => void markRead(notification.id)}
-            />
-          ))}
+          {needYou.length ? (
+            <View className="gap-3">
+              <Text className="text-overline text-text-muted">NEEDS YOU</Text>
+              {needYou.map(renderRow)}
+            </View>
+          ) : null}
+
+          {updates.length ? (
+            <View className="gap-3">
+              {splitInbox ? (
+                <Text className="text-overline text-text-muted">UPDATES</Text>
+              ) : null}
+              {updates.map(renderRow)}
+            </View>
+          ) : null}
 
           {unreadCount > 1 ? (
             <SecondaryButton label="Mark all as read" onPress={() => void markAllRead()} />
@@ -97,7 +118,7 @@ export default function NotificationsScreen() {
           {!items.length && !loading && !error ? (
             <EmptyState
               title="You are all caught up"
-              body="When Operations needs your artwork approved, a supplier sets your final price, or your order is out for delivery, the update lands here."
+              body="When Operations needs your artwork, a job is ready at the GRIDGO Office counter, or a rider is bringing one to your door, the update lands here."
             />
           ) : null}
         </View>

@@ -1,23 +1,39 @@
-import { MapPin, Printer, ShoppingBag, Truck, type LucideIcon } from "lucide-react-native";
+import {
+  MapPin,
+  Printer,
+  ShoppingBag,
+  Store,
+  Truck,
+  type LucideIcon,
+} from "lucide-react-native";
 import { Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
-import { ORDER_STAGES, type OrderStageKey } from "@/lib/orderStages";
+import {
+  stagesForRail,
+  type FulfilmentRailKind,
+  type OrderStageKey,
+} from "@/lib/orderStages";
 
 const ICONS: Record<OrderStageKey, LucideIcon> = {
   order: ShoppingBag,
   printing: Printer,
   dispatch: Truck,
   delivered: MapPin,
+  to_office: Truck,
+  counter: Store,
 };
 
 type Props = {
-  /** Index into `ORDER_STAGES`. Nothing renders for null. */
+  /** Index into the rail for `kind`. Nothing renders for null. */
   currentIndex: number | null;
+  /** Collect jobs use Counter, not Delivered. */
+  kind?: FulfilmentRailKind;
 };
 
 /**
- * Where a job has got to: order, printing, dispatch, delivered.
+ * Where a job has got to — delivery (Order · Printing · Dispatch · Delivered)
+ * or collect (Order · Printing · To office · Counter).
  *
  * Carried over from the legacy GRIDGO notification, which is where the idea
  * earns its place — a notification that shows the job's position tells you
@@ -31,19 +47,20 @@ type Props = {
  * unreached one is an outline with a muted label, so the rail reads the same
  * in greyscale as in colour.
  */
-export function OrderStageRail({ currentIndex }: Props) {
+export function OrderStageRail({ currentIndex, kind = "delivery" }: Props) {
   const colors = useThemeColors();
+  const stages = stagesForRail(kind);
   if (currentIndex == null) return null;
+  const current = stages[currentIndex];
+  if (!current) return null;
 
   return (
     <View
       className="flex-row"
       accessibilityRole="progressbar"
-      accessibilityLabel={`Stage ${currentIndex + 1} of ${ORDER_STAGES.length}: ${
-        ORDER_STAGES[currentIndex].label
-      }`}
+      accessibilityLabel={`Stage ${currentIndex + 1} of ${stages.length}: ${current.label}`}
     >
-      {ORDER_STAGES.map((stage, index) => {
+      {stages.map((stage, index) => {
         const reached = index <= currentIndex;
         const current = index === currentIndex;
         const Icon = ICONS[stage.key];
@@ -62,7 +79,7 @@ export function OrderStageRail({ currentIndex }: Props) {
                   }
                 />
               ) : null}
-              {index < ORDER_STAGES.length - 1 ? (
+              {index < stages.length - 1 ? (
                 <View
                   className={
                     index < currentIndex
