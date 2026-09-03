@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, within } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -92,11 +92,12 @@ describe("Home's header controls", () => {
 
   it("puts no unread badge on chat, because there is no count to show", async () => {
     // The cart's badge is data; a dot on chat would be decoration wearing
-    // data's clothes. Nothing numeric may appear on the row with an empty cart.
+    // data's clothes. Scoped to the control, because Home carries other
+    // numerals of its own — the how-it-works rail counts its steps.
     await renderInSafeArea(<HomeScreen />);
 
-    await screen.findByLabelText("Chat");
-    expect(screen.queryByText("1")).toBeNull();
-    expect(screen.queryByText("9+")).toBeNull();
+    const chat = within(await screen.findByLabelText("Chat"));
+    expect(chat.queryByText("1")).toBeNull();
+    expect(chat.queryByText("9+")).toBeNull();
   });
 });

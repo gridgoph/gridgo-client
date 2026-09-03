@@ -29,6 +29,12 @@ type Props = {
   currentIndex: number | null;
   /** Collect jobs use Counter, not Delivered. */
   kind?: FulfilmentRailKind;
+  /**
+   * `full` is the notification rail — icon discs and a connector.
+   * `compact` is the same four stages as segments under a summary row, where
+   * a 56pt rail three times over would push the rest of Home off the screen.
+   */
+  variant?: "full" | "compact";
 };
 
 /**
@@ -47,18 +53,53 @@ type Props = {
  * unreached one is an outline with a muted label, so the rail reads the same
  * in greyscale as in colour.
  */
-export function OrderStageRail({ currentIndex, kind = "delivery" }: Props) {
+export function OrderStageRail({ currentIndex, kind = "delivery", variant = "full" }: Props) {
   const colors = useThemeColors();
   const stages = stagesForRail(kind);
   if (currentIndex == null) return null;
   const current = stages[currentIndex];
   if (!current) return null;
 
+  const label = `Stage ${currentIndex + 1} of ${stages.length}: ${current.label}`;
+
+  if (variant === "compact") {
+    return (
+      <View className="flex-row gap-1.5" accessibilityRole="progressbar" accessibilityLabel={label}>
+        {stages.map((stage, index) => {
+          const reached = index <= currentIndex;
+          const here = index === currentIndex;
+
+          return (
+            <View key={stage.key} className="flex-1 gap-1.5">
+              {/* Segments carry the position; the labels under them say what
+                  the position means. Filled versus outlined, never colour
+                  alone, so the bar reads the same in greyscale. */}
+              <View className={reached ? "h-1 rounded-pill bg-accent" : "h-1 rounded-pill bg-outline"} />
+              <Text
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.3}
+                className={
+                  here
+                    ? "text-caption font-medium text-text-primary"
+                    : reached
+                      ? "text-caption text-text-secondary"
+                      : "text-caption text-text-muted"
+                }
+              >
+                {stage.label}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
+
   return (
     <View
       className="flex-row"
       accessibilityRole="progressbar"
-      accessibilityLabel={`Stage ${currentIndex + 1} of ${stages.length}: ${current.label}`}
+      accessibilityLabel={label}
     >
       {stages.map((stage, index) => {
         const reached = index <= currentIndex;

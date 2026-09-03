@@ -58,7 +58,41 @@ describe("HomeJobRow", () => {
     expect(screen.getByText("In production")).toBeTruthy();
     expect(screen.queryByText("production")).toBeNull();
     expect(screen.queryByText(/₱/)).toBeNull();
+    expect(screen.queryByText(/Qty/)).toBeNull();
     expect(screen.getByLabelText("Grand opening tarpaulin, In production")).toBeTruthy();
+  });
+
+  /**
+   * The one question a job that needs nothing has to answer: where is it.
+   * Coarse on purpose — the chip beside it still carries the precise state.
+   */
+  it("shows how far along the job is, on the delivery rail", async () => {
+    await render(<HomeJobRow order={order({ state: "production" })} onPress={() => undefined} />);
+
+    expect(screen.getByLabelText("Stage 2 of 4: Printing")).toBeTruthy();
+    expect(screen.getByText("Delivered")).toBeTruthy();
+    expect(screen.queryByText("Counter")).toBeNull();
+  });
+
+  it("sends a collecting client to the counter, not out for delivery", async () => {
+    await render(
+      <HomeJobRow
+        order={order({ state: "picked_up", fulfillmentMode: "pickup" })}
+        onPress={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText("Stage 3 of 4: To office")).toBeTruthy();
+    expect(screen.getByText("Counter")).toBeTruthy();
+    expect(screen.queryByText("Delivered")).toBeNull();
+  });
+
+  /** An invented position is worse than none. */
+  it("draws no rail for a state this app does not know", async () => {
+    await render(<HomeJobRow order={order({ state: "on_hold" })} onPress={() => undefined} />);
+
+    expect(screen.getByText("Grand opening tarpaulin")).toBeTruthy();
+    expect(screen.queryByText("Printing")).toBeNull();
   });
 });
 

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -30,9 +30,6 @@ jest.mock("@/lib/api", () => {
   };
 });
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const api = require("@/lib/api");
-
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
     wrapper: ({ children }) => (
@@ -50,8 +47,6 @@ function renderInSafeArea(ui: ReactElement) {
 
 beforeEach(() => {
   mockPush.mockClear();
-  api.listOrders.mockReset();
-  api.listOrders.mockResolvedValue([]);
   useCart.getState().reset();
   useRequestDraft.getState().reset();
   useSession.setState({
@@ -67,20 +62,16 @@ beforeEach(() => {
   } as never);
 });
 
-/**
- * Home is a summary: anything waiting on the client, then how to start
- * something new. It is not a second orders list — that is the tab below.
- */
-describe("Home as a summary", () => {
-  it("shows the start menu, searchable, when there are no jobs", async () => {
+describe("searching from Home", () => {
+  /**
+   * A client who came to order a tarpaulin should not have to work out which
+   * of five families a tarpaulin belongs to. The picker owns the real search —
+   * over examples as well as names — so this is a way into it.
+   */
+  it("opens the picker, where the real search lives", async () => {
     await renderInSafeArea(<HomeScreen />);
 
-    expect(await screen.findByText("START A PRINT")).toBeTruthy();
-    expect(screen.getByLabelText("Search what GRIDGO prints")).toBeTruthy();
-    expect(screen.getByLabelText("Marketing & promotional collateral")).toBeTruthy();
-    expect(screen.getByLabelText("Documents & publications")).toBeTruthy();
-    expect(screen.queryByText("NEEDS YOU")).toBeNull();
-    expect(screen.queryByText("YOUR JOBS")).toBeNull();
-    expect(screen.queryByText("No print jobs yet")).toBeNull();
+    fireEvent.press(await screen.findByLabelText("Search what GRIDGO prints"));
+    expect(mockPush).toHaveBeenCalledWith("/request/category");
   });
 });
