@@ -8,12 +8,19 @@ import { GridgoLogo } from "@/components/GridgoLogo";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { staysOnAuthScreen } from "@/lib/authLanding";
+import { useSession } from "@/store/session";
+
+const login = "/(auth)/login" as const;
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const landing = useAuthLanding();
+  const error = useSession((state) => state.error);
 
   if (!staysOnAuthScreen(landing)) return <AuthLandingRedirect landing={landing} />;
+  if (error) {
+    return <AuthLandingRedirect landing={landing} whenSignedOut={login} />;
+  }
 
   return (
     <Screen edges={["top", "bottom"]}>

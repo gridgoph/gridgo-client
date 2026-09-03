@@ -12,12 +12,63 @@ describe("session store", () => {
       pendingClerkProfile: false,
       justProvisioned: false,
       signingOut: false,
+      ssoInFlight: false,
+      sessionWait: null,
       clerkSyncNonce: 0,
     });
     useSession.getState().registerIdentityLogout(null);
     api.setToken(null);
     jest.restoreAllMocks();
     jest.useRealTimers();
+  });
+
+  it("does not restore a Clerk client while signing out", () => {
+    useSession.setState({ signingOut: true });
+    useSession.getState().adoptClerkUser({
+      id: "u1",
+      email: "client@gridgo.local",
+      name: "Client",
+      role: "client",
+    });
+    expect(useSession.getState().user).toBeNull();
+    expect(useSession.getState().signingOut).toBe(true);
+  });
+
+  it("does not clear the sign-out latch when a Clerk sync starts", () => {
+    useSession.setState({ signingOut: true, loading: false });
+    useSession.getState().beginClerkSync();
+    expect(useSession.getState().signingOut).toBe(true);
+    expect(useSession.getState().loading).toBe(false);
+  });
+
+  it("marks Google in flight so Welcome cannot paint before the callback", () => {
+    useSession.getState().beginClerkSync({ google: true });
+    expect(useSession.getState().ssoInFlight).toBe(true);
+    useSession.getState().endClerkSync();
+    expect(useSession.getState().loading).toBe(false);
+    expect(useSession.getState().ssoInFlight).toBe(true);
+  });
+
+  it("logout drops the user and keeps the sign-out latch", async () => {
+    jest.spyOn(api, "logout").mockResolvedValue(undefined);
+    useSession.setState({
+      user: {
+        id: "u1",
+        email: "client@gridgo.local",
+        name: "Client",
+        role: "client",
+      },
+      source: "clerk",
+      ssoInFlight: true,
+    });
+    await useSession.getState().logout();
+    expect(useSession.getState()).toMatchObject({
+      user: null,
+      signingOut: true,
+      ssoInFlight: false,
+      sessionWait: null,
+    });
+    expect(useSession.getState().sessionWait).toBeNull();
   });
 
   it("adopts a Clerk-authenticated client without storing its token", () => {

@@ -1,3 +1,29 @@
+const GRIDGO_ROLES = [
+  "client",
+  "supplier",
+  "rider",
+  "ops_admin",
+  "super_admin",
+] as const;
+
+export type GridgoRole = (typeof GRIDGO_ROLES)[number];
+
+/** Read the server-owned GRIDGO role off Clerk metadata or session claims. */
+export function readGridgoRole(metadata: unknown): GridgoRole | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const value =
+    (metadata as Record<string, unknown>).gridgoRole ??
+    (metadata as Record<string, unknown>).gridgo_role;
+  return typeof value === "string" && GRIDGO_ROLES.includes(value as GridgoRole)
+    ? (value as GridgoRole)
+    : null;
+}
+
+/** A Clerk session that belongs in another GRIDGO app. */
+export function isNonClientClerkRole(role: GridgoRole | null): boolean {
+  return role != null && role !== "client";
+}
+
 type ClerkErrorShape = {
   errors?: {
     code?: string;

@@ -201,7 +201,10 @@ export default function AccountScreen() {
         tone="destructive"
         onConfirm={() => {
           setConfirmingSignOut(false);
+          // `logout` drops the user synchronously. Replace immediately so the
+          // ranking screen cannot paint while Clerk is still leaving.
           void logout();
+          router.replace("/(auth)/welcome");
         }}
         onCancel={() => setConfirmingSignOut(false)}
       />

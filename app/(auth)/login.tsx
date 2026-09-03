@@ -11,12 +11,13 @@ import { OtpCodeStep } from "@/components/auth/OtpCodeStep";
 import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
+import { SessionWait } from "@/components/SessionWait";
 import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import * as api from "@/lib/api";
-import { shouldPreventAuthLeave, staysOnAuthScreen } from "@/lib/authLanding";
+import { shouldPreventAuthLeave } from "@/lib/authLanding";
 import {
   clerkErrorMessage,
   isAlreadySignedInError,
@@ -48,6 +49,7 @@ export default function LoginScreen() {
   const { isSignedIn, getToken, sessionId } = useAuth();
   const { setActive, signOut } = useClerk();
   const sessionError = useSession((state) => state.error);
+  const sessionWait = useSession((state) => state.sessionWait);
   const landing = useAuthLanding();
   const {
     step,
@@ -82,10 +84,15 @@ export default function LoginScreen() {
     // on the component, so a remount returns to the password form. Do the
     // same here so a dead code step cannot hide Sign in / Google.
     resetLoginFlow();
-    // And drop a leftover wait. `session.loading` outlives this screen — it is
-    // a store, so Fast Refresh and a previous visit both carry it back — and
-    // arriving on the password form means nothing is being adopted right now.
-    useSession.getState().endClerkSync();
+    // Drop a leftover wait from Fast Refresh / a previous visit so Sign In is
+    // tappable. Do not clear a Google return that is still coming back through
+    // sso-callback — that is how Welcome flashed before Home.
+    if (!useSession.getState().ssoInFlight) {
+      useSession.getState().endClerkSync();
+      if (useSession.getState().sessionWait === "in") {
+        useSession.getState().clearSessionWait();
+      }
+    }
     return () => {
       useLoginFlow.getState().reset();
     };
@@ -99,7 +106,16 @@ export default function LoginScreen() {
     setError(null);
   });
 
-  if (!staysOnAuthScreen(landing)) return <AuthLandingRedirect landing={landing} />;
+  // Home / profile / ranking leave. Signing you in does not replace this form
+  // until Google (or password) has actually joined — the tap that opens the
+  // account picker is not that moment.
+  if (landing.kind === "signing_out") return <SessionWait tone="out" role="client" />;
+  if (landing.kind !== "signed_out" && landing.kind !== "signing_in") {
+    return <AuthLandingRedirect landing={landing} />;
+  }
+  if (sessionWait === "in" && !sessionError) {
+    return <SessionWait tone="in" role="client" />;
+  }
 
   /**
    * Clerk is still fetching the sign-in resource.
@@ -276,6 +292,7 @@ export default function LoginScreen() {
     if (!email.trim() || !password) return;
     setBusy(true);
     setError(null);
+    useSession.getState().finishSigningOut();
     useSession.getState().clearError();
     try {
       if (!signIn) {
@@ -445,19 +462,25 @@ export default function LoginScreen() {
   const startGoogleSso = async () => {
     const outcome = await runGoogleSso();
     if (outcome.status === "activated" || outcome.status === "already_signed_in") {
+      useSession.getState().beginClerkSync({ google: true });
       await adoptGridgoClient(
         outcome.status === "activated" ? outcome.sessionId : undefined,
       );
       return;
     }
-    if (outcome.status === "incomplete") {
-      setError("Google sign-in did not finish. Try again.");
+    if (outcome.status === "cancelled") {
+      useSession.getState().endClerkSync();
+      useSession.getState().clearSsoInFlight();
     }
+    // `incomplete` is the usual Android return: the custom tab closed and the
+    // native `sso-callback` is about to adopt. Clearing the wait here is what
+    // dumped a successful Google onto Welcome.
   };
 
   const signInWithGoogle = async () => {
     setBusy(true);
     setError(null);
+    useSession.getState().finishSigningOut();
     useSession.getState().clearError();
     try {
       // Same as the shop app: a live Clerk session is the person who just
@@ -465,10 +488,17 @@ export default function LoginScreen() {
       // no usable session — signing that leftover out first is what trapped
       // people on "Sign in again".
       if (isSignedIn) {
+        // Clerk already has a session. Join it without painting wait on the
+        // tap itself — syncClerkToGridgo raises the wait once the Gmail
+        // session is actually being adopted.
         const leftover = await adoptGridgoClient(sessionId);
         if (leftover.kind === "adopt" || leftover.kind === "needs_profile") return;
-        if (leftover.kind === "wrong_role") return;
+        if (leftover.kind === "wrong_role") {
+          useSession.getState().clearSsoInFlight();
+          return;
+        }
         if (leftover.kind === "error" && leftover.message !== clerkTokenUnavailableMessage) {
+          useSession.getState().clearSsoInFlight();
           return;
         }
         useSession.getState().clearError();
@@ -483,6 +513,8 @@ export default function LoginScreen() {
         await adoptGridgoClient(sessionId);
         return;
       }
+      useSession.getState().endClerkSync();
+      useSession.getState().clearSsoInFlight();
       setError(clerkErrorMessage(caught, "Google sign-in did not finish. Try again."));
     } finally {
       setBusy(false);

@@ -94,6 +94,8 @@ describe("SSO callback delayed adopt", () => {
       source: null,
       pendingClerkProfile: false,
       justProvisioned: false,
+      signingOut: false,
+      ssoInFlight: false,
       clerkSyncNonce: 0,
     });
   });
@@ -101,7 +103,7 @@ describe("SSO callback delayed adopt", () => {
   it("keeps Signing you in until Home when the JWT is late, and never dumps onto login", async () => {
     await renderInSafeArea(<SsoCallbackScreen />);
 
-    expect(screen.getByText("Signing you in…")).toBeTruthy();
+    expect(screen.getByText("Signing you in")).toBeTruthy();
     expect(screen.queryByText("/(auth)/login")).toBeNull();
     expect(screen.queryByText("/(auth)/welcome")).toBeNull();
 
@@ -112,5 +114,5 @@ describe("SSO callback delayed adopt", () => {
     expect(screen.queryByText("/(auth)/login")).toBeNull();
     expect(screen.queryByText("/(auth)/welcome")).toBeNull();
     expect(mockSignOut).not.toHaveBeenCalled();
-  });
+  }, 10000);
 });

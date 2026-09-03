@@ -90,6 +90,8 @@ describe("SSO callback wrong role", () => {
       source: null,
       pendingClerkProfile: false,
       justProvisioned: false,
+      signingOut: false,
+      ssoInFlight: false,
       clerkSyncNonce: 0,
     });
   });

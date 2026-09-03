@@ -7,16 +7,20 @@ import { usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
 
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 
 jest.mock("@clerk/expo", () => ({
   useUser: () => ({ user: null, isLoaded: true }),
 }));
 
 jest.mock("expo-router", () => ({
-  router: { push: (...args: unknown[]) => mockPush(...args) },
+  router: {
+    push: (...args: unknown[]) => mockPush(...args),
+    replace: (...args: unknown[]) => mockReplace(...args),
+  },
   useRouter: () => ({
     push: (...args: unknown[]) => mockPush(...args),
-    replace: jest.fn(),
+    replace: (...args: unknown[]) => mockReplace(...args),
     back: jest.fn(),
   }),
   // The real hook needs a navigation container. What matters to this screen is
@@ -69,6 +73,7 @@ async function renderAccount() {
 
 function signedIn(user: typeof CLIENT | Record<string, unknown> = CLIENT) {
   mockPush.mockClear();
+  mockReplace.mockClear();
   api.getAccount.mockReset();
   api.getAccount.mockResolvedValue(user);
   usePriorities.setState({ ranking: null, loaded: true, loading: false, error: null });
@@ -112,5 +117,8 @@ describe("signing out", () => {
     fireEvent.press(screen.getByLabelText("Sign out"));
 
     await waitFor(() => expect(useSession.getState().user).toBeNull());
+    expect(mockReplace).toHaveBeenCalledWith("/(auth)/welcome");
+    expect(useSession.getState().signingOut).toBe(true);
+    expect(useSession.getState().sessionWait).toBe("out");
   });
 });

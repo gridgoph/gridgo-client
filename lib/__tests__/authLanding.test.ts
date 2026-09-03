@@ -111,6 +111,120 @@ describe("the ranking rung", () => {
       }),
     ).toEqual({ kind: "signed_out" });
   });
+
+  it("sends a signing-out client to Welcome, not ranking", () => {
+    expect(
+      authLanding({
+        user: client,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+        prioritiesReady: true,
+        hasRanked: false,
+        signingOut: true,
+      }),
+    ).toEqual({ kind: "signed_out" });
+  });
+
+  it("shows Signing you out while the sign-out beat is on screen", () => {
+    expect(
+      authLanding({
+        user: null,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+        prioritiesReady: false,
+        hasRanked: false,
+        signingOut: true,
+        sessionWait: "out",
+      }),
+    ).toEqual({ kind: "signing_out" });
+  });
+
+  it("does not dump onto Welcome while Google is still joining", () => {
+    expect(
+      authLanding({
+        user: null,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+        prioritiesReady: false,
+        hasRanked: false,
+        sessionWait: "in",
+      }),
+    ).toEqual({ kind: "signing_in" });
+  });
+
+  it("stops Signing you in when the identity is refused", () => {
+    expect(
+      authLanding({
+        user: null,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+        prioritiesReady: false,
+        hasRanked: false,
+        loading: true,
+        ssoInFlight: true,
+        sessionWait: "in",
+        error: "This email is not available. Try a different email.",
+      }),
+    ).toEqual({ kind: "signed_out" });
+  });
+
+  it("holds Welcome off after Google's browser returns incomplete", () => {
+    expect(
+      authLanding({
+        user: null,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+        prioritiesReady: false,
+        hasRanked: false,
+        loading: false,
+        ssoInFlight: true,
+      }),
+    ).toEqual({ kind: "signing_in" });
+  });
+
+  it("does not show Signing you in for a leftover Clerk session alone", () => {
+    expect(
+      authLanding({
+        user: null,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+        prioritiesReady: false,
+        hasRanked: false,
+        clerkJoined: true,
+        loading: true,
+      }),
+    ).toEqual({ kind: "signed_out" });
+  });
+
+  it("does not treat the Google tap itself as Signing you in", () => {
+    expect(
+      authLanding({
+        user: null,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+        prioritiesReady: false,
+        hasRanked: false,
+        clerkJoined: false,
+        ssoInFlight: false,
+        sessionWait: null,
+        loading: false,
+      }),
+    ).toEqual({ kind: "signed_out" });
+  });
+
+  it("sign-out still wins over a leftover Google wait", () => {
+    expect(
+      authLanding({
+        user: client,
+        pendingClerkProfile: false,
+        justProvisioned: false,
+        prioritiesReady: true,
+        hasRanked: false,
+        signingOut: true,
+        ssoInFlight: true,
+      }),
+    ).toEqual({ kind: "signed_out" });
+  });
 });
 
 describe("shouldPreventAuthLeave", () => {

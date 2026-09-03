@@ -100,6 +100,8 @@ describe("SSO callback route", () => {
       source: null,
       pendingClerkProfile: false,
       justProvisioned: false,
+      signingOut: false,
+      ssoInFlight: false,
       clerkSyncNonce: 0,
     });
   });
@@ -107,7 +109,7 @@ describe("SSO callback route", () => {
   it("keeps a spinner and does not dump a Google return onto login or welcome", async () => {
     await renderInSafeArea(<SsoCallbackScreen />);
 
-    expect(screen.getByText("Signing you in…")).toBeTruthy();
+    expect(screen.getByText("Signing you in")).toBeTruthy();
     expect(screen.queryByTestId("redirect")).toBeNull();
     expect(mockReplace).not.toHaveBeenCalled();
     expect(mockReload).not.toHaveBeenCalled();

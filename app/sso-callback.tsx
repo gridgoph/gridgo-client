@@ -1,14 +1,13 @@
 import { useAuth, useClerk, useSignUp } from "@clerk/expo";
 import { useLocalSearchParams, type Href } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
 
 import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
-import { Screen } from "@/components/Screen";
-import { useThemeColors } from "@/hooks/useTheme";
+import { SessionWait } from "@/components/SessionWait";
 import { staysOnAuthScreen } from "@/lib/authLanding";
 import { completeClerkAuth } from "@/lib/clerkComplete";
 import { CLERK_SSO_TOKEN_WAIT } from "@/lib/clerkSignIn";
+import { clientEmailUnavailableMessage } from "@/lib/copy";
 import {
   adoptGoogleSsoClient,
   createdSessionIdFromSsoReload,
@@ -38,9 +37,19 @@ export default function SsoCallbackScreen() {
   const { setActive, signOut } = clerk;
   const { signUp } = useSignUp();
   const landing = useAuthLanding();
-  const colors = useThemeColors();
+  const sessionError = useSession((state) => state.error);
   const attempted = useRef(false);
   const [failed, setFailed] = useState(false);
+  const clerkRef = useRef(clerk);
+  const getTokenRef = useRef(getToken);
+  const setActiveRef = useRef(setActive);
+  const signOutRef = useRef(signOut);
+  const signUpRef = useRef(signUp);
+  clerkRef.current = clerk;
+  getTokenRef.current = getToken;
+  setActiveRef.current = setActive;
+  signOutRef.current = signOut;
+  signUpRef.current = signUp;
 
   const createdSessionId = googleSsoCreatedSessionId(params);
   const rotatingTokenNonce = googleSsoRotatingTokenNonce(params);
@@ -53,17 +62,18 @@ export default function SsoCallbackScreen() {
     attempted.current = true;
     // Raise this before any await so the root Clerk bridge will not treat a
     // still-empty JWT as a dead leftover and sign the Google session out.
-    useSession.getState().beginClerkSync();
+    useSession.getState().beginClerkSync({ google: true });
 
     let cancelled = false;
     void (async () => {
       try {
         let sessionFromNonce: string | null = null;
         if (!isSignedIn && !createdSessionId && rotatingTokenNonce) {
-          const reloaded = await reloadClerkSignInForSso(clerk, rotatingTokenNonce);
+          const reloaded = await reloadClerkSignInForSso(clerkRef.current, rotatingTokenNonce);
           sessionFromNonce = await createdSessionIdFromSsoReload(reloaded, async () => {
-            if (!signUp) return null;
-            const transferred = await signUp.create({ transfer: true });
+            const currentSignUp = signUpRef.current;
+            if (!currentSignUp) return null;
+            const transferred = await currentSignUp.create({ transfer: true });
             if (
               transferred &&
               typeof transferred === "object" &&
@@ -72,21 +82,21 @@ export default function SsoCallbackScreen() {
             ) {
               throw transferred.error;
             }
-            return signUp;
+            return currentSignUp;
           });
         }
 
         const outcome = await finishGoogleSsoReturn({
           alreadySignedIn: Boolean(isSignedIn),
           createdSessionId: createdSessionId ?? sessionFromNonce,
-          setActive: (args) => setActive(args),
+          setActive: (args) => setActiveRef.current(args),
         });
         if (cancelled) return;
 
         if (outcome.status !== "activated" && outcome.status !== "already_signed_in") {
           // Login's startSSOFlow may still be activating. Wait for isSignedIn.
+          // Keep the Google wait — clearing it here dumps onto Welcome.
           attempted.current = false;
-          useSession.getState().endClerkSync();
           return;
         }
 
@@ -96,69 +106,54 @@ export default function SsoCallbackScreen() {
             completeClerkAuth({
               existingSessionId:
                 outcome.status === "activated" ? outcome.sessionId : sessionId,
-              getToken,
-              signOut,
+              getToken: getTokenRef.current,
+              signOut: signOutRef.current,
               sessionId,
-              setActive: (args) => setActive(args),
+              setActive: (args) => setActiveRef.current(args),
               tokenWait: CLERK_SSO_TOKEN_WAIT,
             }),
         });
         if (cancelled) return;
         if (result.kind === "wrong_role") {
+          if (!useSession.getState().error) {
+            useSession.getState().failClerkSync(clientEmailUnavailableMessage);
+          } else {
+            useSession.getState().endClerkSync();
+            useSession.getState().clearSsoInFlight();
+          }
           setFailed(true);
           return;
         }
         if (result.kind === "error") {
           // Retries spent and still no client — confirmed dead, not a first miss.
+          useSession.getState().endClerkSync();
+          useSession.getState().clearSsoInFlight();
           setFailed(true);
         }
       } catch {
-        if (!cancelled) setFailed(true);
+        if (!cancelled) {
+          useSession.getState().endClerkSync();
+          useSession.getState().clearSsoInFlight();
+          setFailed(true);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [
-    clerk,
-    createdSessionId,
-    getToken,
-    isLoaded,
-    isSignedIn,
-    rotatingTokenNonce,
-    sessionId,
-    setActive,
-    signOut,
-    signUp,
-  ]);
+  }, [createdSessionId, isLoaded, isSignedIn, rotatingTokenNonce, sessionId]);
 
-  const spinner = (
-    <Screen edges={["top", "bottom"]}>
-      <View className="flex-1 items-center justify-center gap-3">
-        <ActivityIndicator color={colors.textPrimary} />
-        <Text className="text-body text-text-secondary">Signing you in…</Text>
-      </View>
-    </Screen>
-  );
+  // A refused Google account (rider, shop, ops) must reach login even if
+  // Clerk is still signed in. failClerkSync can land before this screen
+  // sets `failed`, and staying on the wait is the stuck "Taking your seat."
+  if (failed || sessionError) {
+    return <AuthLandingRedirect landing={{ kind: "signed_out" }} whenSignedOut={login} />;
+  }
 
   if (!staysOnAuthScreen(landing)) {
-    return (
-      <>
-        <AuthLandingRedirect landing={landing} />
-        {spinner}
-      </>
-    );
+    return <AuthLandingRedirect landing={landing} />;
   }
 
-  if (failed) {
-    return (
-      <>
-        <AuthLandingRedirect landing={landing} whenSignedOut={login} />
-        {spinner}
-      </>
-    );
-  }
-
-  return spinner;
+  return <SessionWait tone="in" role="client" />;
 }
