@@ -9,7 +9,7 @@ describe("composeAddress", () => {
   it("reads in the order a rider reads it", () => {
     expect(
       composeAddress({ line1: "12 J.P. Laurel Ave", barangay: "Bajada", landmark: "" }),
-    ).toBe(`12 J.P. Laurel Ave, Bajada, ${DELIVERY_CITY}`);
+    ).toBe(`12 J.P. Laurel Ave, ${DELIVERY_CITY}`);
   });
 
   it("keeps a landmark distinct from the address itself", () => {
@@ -19,20 +19,32 @@ describe("composeAddress", () => {
         barangay: "Bajada",
         landmark: "beside the blue gate",
       }),
-    ).toBe(`12 J.P. Laurel Ave, Bajada, ${DELIVERY_CITY} (beside the blue gate)`);
+    ).toBe(`12 J.P. Laurel Ave, ${DELIVERY_CITY} (beside the blue gate)`);
+  });
+
+  it("does not write a barangay onto a new address", () => {
+    expect(composeAddress({ line1: "12 Recto St", barangay: "Poblacion", landmark: "" })).toBe(
+      `12 Recto St, ${DELIVERY_CITY}`,
+    );
   });
 
   it("drops empty parts instead of leaving stray commas", () => {
-    expect(composeAddress({ line1: "", barangay: "Bajada", landmark: "" })).toBe(
-      `Bajada, ${DELIVERY_CITY}`,
-    );
+    expect(composeAddress({ line1: "", barangay: "Bajada", landmark: "" })).toBe(DELIVERY_CITY);
   });
 });
 
 describe("parseAddress", () => {
   it("round-trips an address this app composed", () => {
-    const parts = { line1: "12 J.P. Laurel Ave", barangay: "Bajada", landmark: "blue gate" };
+    const parts = { line1: "12 J.P. Laurel Ave", barangay: "", landmark: "blue gate" };
     expect(parseAddress(composeAddress(parts))).toEqual(parts);
+  });
+
+  it("still reads a barangay off an old stored string so reorders keep the line", () => {
+    expect(parseAddress(`12 J.P. Laurel Ave, Bajada, ${DELIVERY_CITY} (blue gate)`)).toEqual({
+      line1: "12 J.P. Laurel Ave",
+      barangay: "Bajada",
+      landmark: "blue gate",
+    });
   });
 
   it("keeps unplaceable text on the street line where it can be corrected", () => {
@@ -57,16 +69,16 @@ describe("parseAddress", () => {
 });
 
 describe("checkAddress", () => {
-  it("points at the field that needs fixing", () => {
+  it("points at the street when it is missing", () => {
     expect(checkAddress({ line1: "", barangay: "Bajada", landmark: "" }).field).toBe("line1");
-    expect(checkAddress({ line1: "12 Recto St", barangay: " ", landmark: "" }).field).toBe(
-      "barangay",
-    );
   });
 
-  it("explains why the barangay matters", () => {
-    const result = checkAddress({ line1: "12 Recto St", barangay: "", landmark: "" });
-    expect(result.reason).toMatch(/repeat across barangays/i);
+  it("does not require a barangay", () => {
+    expect(checkAddress({ line1: "12 Recto St", barangay: "", landmark: "" })).toEqual({
+      ok: true,
+      field: null,
+      reason: null,
+    });
   });
 
   it("accepts a complete address without a landmark", () => {

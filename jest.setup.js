@@ -21,6 +21,21 @@ jest.mock("react-native-webview", () => {
   return { __esModule: true, WebView, default: WebView };
 });
 
+jest.mock("expo-location", () => ({
+  Accuracy: { Balanced: 3, Low: 1, Lowest: 1, High: 4, Highest: 5, BestForNavigation: 6 },
+  getForegroundPermissionsAsync: jest.fn(async () => ({
+    status: "undetermined",
+    granted: false,
+    canAskAgain: true,
+  })),
+  requestForegroundPermissionsAsync: jest.fn(async () => ({
+    status: "undetermined",
+    granted: false,
+    canAskAgain: true,
+  })),
+  getCurrentPositionAsync: jest.fn(),
+}));
+
 // Push is FCM through a native module, so there is nothing to exercise in Jest:
 // the module's own surface is mocked to inert, and every rule the app applies to
 // it lives in lib/push.ts and is unit-tested there directly. Permission is

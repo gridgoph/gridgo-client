@@ -52,10 +52,9 @@ describe("validateDetailsStep", () => {
     expect(result.reason).toMatch(/earliest deadline/i);
   });
 
-  it("asks for the barangay before the street line is accepted alone", () => {
+  it("accepts a street without a barangay", () => {
     const result = validateDetailsStep({ ...completeDraft, barangay: " " }, NOW);
-    expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/barangay/i);
+    expect(result.ok).toBe(true);
   });
 
   it("never leaks an internal field name into the reason", () => {

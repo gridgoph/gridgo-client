@@ -1,15 +1,21 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 import type { PinPickerProps } from "@/components/PinPicker";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
-import { buildMapHtml, type MapModel } from "@/lib/mapHtml";
+import { buildMapHtml, externalPinScript, type MapModel } from "@/lib/mapHtml";
+import type { GeoPoint } from "@/lib/tracking";
 
 const MAP_HEIGHT = 260;
 
+function samePoint(a: GeoPoint | null, b: GeoPoint | null): boolean {
+  if (!a || !b) return false;
+  return a.lat === b.lat && a.lng === b.lng;
+}
+
 /**
- * Where the job goes, put down by hand.
+ * Where the job goes, put down by hand — or by search / Use my location.
  *
  * The same Leaflet-over-OSM document the delivery map uses, with tapping turned
  * on — one map stack in this app, not two, and no Google Maps key or billing
@@ -18,11 +24,17 @@ const MAP_HEIGHT = 260;
  * A pin is what delivery is actually priced from: GRIDGO charges by the
  * distance band between the shop and this point, so an address with no pin has
  * no delivery figure and the checkout sheet says so rather than guessing one.
+ *
+ * Taps post `{ type: "pin" }` back. An externally set point is injected into
+ * the live document so the marker moves and the map pans without reloading
+ * tiles.
  */
 export function PinPicker({ point, onPick }: PinPickerProps) {
   const theme = useThemeName();
   const colors = useThemeColors();
   const webRef = useRef<WebView>(null);
+  const readyRef = useRef(false);
+  const lastTap = useRef<GeoPoint | null>(null);
   const [dropped, setDropped] = useState(Boolean(point));
 
   const model: MapModel = useMemo(
@@ -47,6 +59,20 @@ export function PinPicker({ point, onPick }: PinPickerProps) {
   // here, and rebuilding the document on every tap would reload the tiles.
   const html = useMemo(() => buildMapHtml(model), [model.theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const applyExternal = (next: GeoPoint) => {
+    webRef.current?.injectJavaScript(externalPinScript(next));
+  };
+
+  useEffect(() => {
+    if (!point) return;
+    setDropped(true);
+    if (!readyRef.current) return;
+    // A tap already placed the marker; injecting again would pan the map
+    // out from under the finger.
+    if (samePoint(lastTap.current, point)) return;
+    applyExternal(point);
+  }, [point]);
+
   const receive = (event: WebViewMessageEvent) => {
     try {
       const message = JSON.parse(event.nativeEvent.data) as {
@@ -56,8 +82,10 @@ export function PinPicker({ point, onPick }: PinPickerProps) {
       };
       if (message.type !== "pin") return;
       if (typeof message.lat !== "number" || typeof message.lng !== "number") return;
+      const next = { lat: message.lat, lng: message.lng };
+      lastTap.current = next;
       setDropped(true);
-      onPick({ lat: message.lat, lng: message.lng });
+      onPick(next);
     } catch {
       // A message this component does not understand is not an error worth
       // showing anyone — the pin simply has not moved.
@@ -71,6 +99,10 @@ export function PinPicker({ point, onPick }: PinPickerProps) {
           ref={webRef}
           originWhitelist={["*"]}
           source={{ html, baseUrl: "https://localhost" }}
+          onLoadEnd={() => {
+            readyRef.current = true;
+            if (point) applyExternal(point);
+          }}
           onMessage={receive}
           javaScriptEnabled
           domStorageEnabled={false}

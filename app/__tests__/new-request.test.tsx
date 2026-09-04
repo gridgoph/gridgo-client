@@ -210,7 +210,7 @@ describe("NewRequestScreen", () => {
     // Formatted for a reader — the exact wording is the device locale's.
     expect(screen.getByText(/Aug.*2026 · /)).toBeTruthy();
     expect(
-      screen.getByText("12 J.P. Laurel Ave, Bajada, Davao City (beside the blue gate)"),
+      screen.getByText("12 J.P. Laurel Ave, Davao City (beside the blue gate)"),
     ).toBeTruthy();
     expect(screen.getByText("Davao Central (Bajada / JP Laurel)")).toBeTruthy();
     // Never the raw instant the order actually stores.

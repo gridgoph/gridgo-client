@@ -23,7 +23,14 @@ describe("sessionGuard", () => {
 
   it("requires root-stack siblings outside (tabs) so logout cannot leave them open", () => {
     expect(AUTHENTICATED_ROOT_SCREENS).toEqual(
-      expect.arrayContaining(["(tabs)", "order/[id]", "design-system", "settings"]),
+      expect.arrayContaining([
+        "(tabs)",
+        "order/[id]",
+        "design-system",
+        "settings",
+        "saved-places",
+        "saved-place",
+      ]),
     );
     expect(SIGNED_OUT_ROOT_SCREENS).toContain("(auth)/login");
   });

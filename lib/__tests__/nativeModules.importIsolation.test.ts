@@ -31,6 +31,21 @@ describe("file and deadline pickers must not load at import time", () => {
       );
       expect(source).not.toMatch(/import\s+[^;]*from\s+["']expo-media-library["']/);
       expect(source).not.toMatch(/import\s+[^;]*from\s+["']expo-file-system(\/legacy)?["']/);
+      expect(source).not.toMatch(/import\s+[^;]*from\s+["']expo-location["']/);
+    }
+  });
+
+  it("drop-off location is probed, never imported at load", () => {
+    for (const relative of [
+      "../deviceLocation.ts",
+      "../nativeModules.ts",
+      "../../hooks/useDropoffEditor.ts",
+      "../../app/request/where.tsx",
+      "../../app/saved-place.tsx",
+      "../../app/saved-places.tsx",
+    ]) {
+      const source = readFileSync(join(__dirname, relative), "utf8");
+      expect(source).not.toMatch(/import\s+[^;]*from\s+["']expo-location["']/);
     }
   });
 
@@ -41,6 +56,7 @@ describe("file and deadline pickers must not load at import time", () => {
     expect(source).toContain("RNCDatePicker");
     expect(source).toContain("ExponentFileSystem");
     expect(source).toContain("ExpoMediaLibrary");
+    expect(source).toContain("ExpoLocation");
   });
 
   it("importing the order screen does not throw when the pickers are absent", () => {

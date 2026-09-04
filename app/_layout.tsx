@@ -325,6 +325,19 @@ function AppNavigation() {
                   options={pushedScreenOptions("Your details")}
                 />
                 {/*
+                  Grab-shaped list of Home / Work / named drop-offs. The band
+                  names the list; Add home / Add work are the rows, and the
+                  editor they open carries its own heading.
+                */}
+                <Stack.Screen
+                  name="saved-places"
+                  options={pushedScreenOptions("Saved Places")}
+                />
+                <Stack.Screen
+                  name="saved-place"
+                  options={pushedScreenOptions("Saved Places")}
+                />
+                {/*
                   The two halves of the sign-in that take steps rather than
                   keystrokes. The band names the thing being changed, because
                   each screen's own heading says what is being done to it —

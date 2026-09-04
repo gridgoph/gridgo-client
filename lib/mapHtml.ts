@@ -5,6 +5,10 @@
  * Maps — the same stack `lib/mapHtml.ts` in **gridgo-rider** runs. Dark Carto
  * tiles take `EXPO_PUBLIC_CARTO_API_KEY` from gitignored env.
  *
+ * Destination pins use the rider's teardrop (`PIN_PATH`, tip on the coordinate,
+ * contact shadow so it stands on the street). Drop-off is the client skin:
+ * white fill, charcoal stroke. Yellow stays on the route, not on this pin.
+ *
  * The client watches a delivery it does not control, so this map differs from
  * the rider's in two deliberate ways: panning and zooming are the only
  * interactions, and a position the app considers out of date is drawn faded
@@ -58,6 +62,13 @@ export type MapModel = {
 const LIGHT_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 /**
+ * Injected into the live Leaflet page so an external pin pans without a reload.
+ */
+export function externalPinScript(point: GeoPoint): string {
+  return `try { setExternalPin(${Number(point.lat)}, ${Number(point.lng)}); } catch (e) {} true;`;
+}
+
+/**
  * Build the full HTML document for the WebView.
  * Leaflet is loaded from unpkg (the same connectivity bar as the OSM tiles).
  */
@@ -103,44 +114,61 @@ export function buildMapHtml(model: MapModel): string {
       background: rgba(20,20,20,0.9) !important;
       color: #f0f0f0 !important;
     }
+    .leaflet-div-icon { background: transparent; border: 0; }
+    /*
+      A destination is a pin, not a plate.
+
+      Same teardrop as gridgo-rider: the tip is the coordinate, and a blurred
+      contact shadow makes it stand on the street. Drop-off is paper (the
+      client's door). Pickup is ink. Yellow is the route, not these pins.
+    */
     .pin {
       display: flex; flex-direction: column; align-items: center;
-      transform: translateY(-4px);
+      width: 34px;
     }
-    .pin-mark {
-      width: 26px; height: 26px;
-      display: flex; align-items: center; justify-content: center;
-      font: 700 11px/1 system-ui, sans-serif;
-      border: 2px solid #1a1a1a;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    .pin-stack { position: relative; width: 34px; height: 48px; }
+    .pin-head {
+      position: relative; z-index: 3;
+      display: block; width: 34px; height: 48px;
+      filter: drop-shadow(0 2px 3px rgba(0,0,0,0.30));
+      transform-origin: 50% 94%;
     }
-    /*
-      Pins stay monochrome. Yellow is a finite attention budget and on this
-      screen it is already spent on the route line.
-    */
-    .pin-pickup .pin-mark {
-      background: #ffffff; color: #1a1a1a;
-      border-radius: 4px; /* square — the print shop */
+    .dark-attr .pin-head {
+      filter: drop-shadow(0 0 1.5px rgba(255,255,255,0.45))
+              drop-shadow(0 2px 4px rgba(0,0,0,0.6));
     }
-    .pin-dropoff .pin-mark {
-      background: #1a1a1a; color: #ffffff;
-      border-radius: 999px; /* circle — where it is going */
+    .pin-tip {
+      position: absolute; z-index: 1;
+      left: 50%; bottom: 1px;
+      width: 16px; height: 5px; margin-left: -8px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.32);
+      filter: blur(2px);
+    }
+    .dark-attr .pin-tip { background: rgba(0,0,0,0.6); }
+    .pin-rider {
+      position: relative;
+      width: 16px; height: 16px;
     }
     .pin-rider .pin-mark {
       width: 16px; height: 16px; border-radius: 999px;
       background: #1565C0; border: 3px solid #fff;
     }
-    /* Faded, and never the only signal — the card says "out of date" in words. */
     .pin-rider.is-stale { opacity: 0.4; }
+    /* Names a place, never an address — the street lines are on the form. */
     .pin-label {
-      margin-top: 2px; padding: 1px 4px;
-      font: 600 9px/1.2 system-ui, sans-serif;
-      background: rgba(255,255,255,0.92); color: #1a1a1a;
-      border-radius: 3px; white-space: nowrap;
-      max-width: 96px; overflow: hidden; text-overflow: ellipsis;
+      margin-top: 6px; padding: 3px 7px;
+      font: 700 10px/1.25 system-ui, -apple-system, sans-serif;
+      background: rgba(255,255,255,0.96); color: #1a1a1a;
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 7px; white-space: nowrap;
+      max-width: 132px; overflow: hidden; text-overflow: ellipsis;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.20);
     }
     .dark-attr .pin-label {
-      background: rgba(20,20,20,0.92); color: #f0f0f0;
+      background: rgba(18,18,18,0.94); color: #f0f0f0;
+      border-color: rgba(255,255,255,0.14);
+      box-shadow: 0 3px 10px rgba(0,0,0,0.5);
     }
     .route-banner {
       position: absolute; top: 8px; left: 8px; right: 8px; z-index: 1000;
@@ -171,16 +199,76 @@ export function buildMapHtml(model: MapModel): string {
       markers = [];
     }
 
-    function pinIcon(kind, shortLabel, stale) {
-      var cls = kind === 'pickup' ? 'pin-pickup' : kind === 'rider' ? 'pin-rider' : 'pin-dropoff';
-      if (kind === 'rider' && stale) cls += ' is-stale';
-      var mark = kind === 'rider' ? '' : shortLabel;
-      var labelHtml = kind === 'rider' ? '' : '<div class="pin-label">' + shortLabel + '</div>';
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    var PIN_SKIN = {
+      pickup: { cls: 'pin-pickup', fill: '#1a1a1a', stroke: '#ffffff', ink: '#ffffff', width: 2 },
+      client: { cls: 'pin-client', fill: '#FFFFFF', stroke: '#1a1a1a', ink: '#1a1a1a', width: 2 }
+    };
+
+    var PIN_PATH = 'M17 45.6C17 45.6 3.2 27.9 3.2 17.6A13.8 13.8 0 1 1 30.8 17.6C30.8 27.9 17 45.6 17 45.6Z';
+
+    function pinSkinFor(kind) {
+      if (kind === 'client' || kind === 'dropoff') return 'client';
+      return 'pickup';
+    }
+
+    /** A pin names a place; the street lines belong on the card below it. */
+    function pinCaption(value) {
+      var text = String(value == null ? '' : value).trim();
+      if (!text) return '';
+      var comma = text.indexOf(',');
+      return comma > 0 ? text.slice(0, comma).trim() : text;
+    }
+
+    function pinHead(skin, glyph) {
+      var wide = glyph.length > 1;
+      var glyphHtml = glyph
+        ? '<text x="17" y="17" dy="0.35em" text-anchor="middle"'
+          + ' font-family="system-ui, -apple-system, sans-serif"'
+          + ' font-size="' + (wide ? 11 : 14) + '" font-weight="800"'
+          + ' letter-spacing="' + (wide ? '0.3' : '0') + '"'
+          + ' fill="' + skin.ink + '">' + escapeHtml(glyph) + '</text>'
+        : '';
+      return '<svg class="pin-head" viewBox="0 0 34 48" xmlns="http://www.w3.org/2000/svg">'
+        + '<path d="' + PIN_PATH + '" fill="' + skin.fill + '" stroke="' + skin.stroke
+        + '" stroke-width="' + skin.width + '" stroke-linejoin="round"/>'
+        + glyphHtml
+        + '</svg>';
+    }
+
+    function pinIcon(kind, shortLabel, stale, longLabel) {
+      if (kind === 'rider') {
+        var cls = 'pin pin-rider' + (stale ? ' is-stale' : '');
+        return L.divIcon({
+          className: '',
+          html: '<div class="' + cls + '"><div class="pin-mark"></div></div>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        });
+      }
+
+      var skin = PIN_SKIN[pinSkinFor(kind)];
+      var cls = 'pin ' + skin.cls;
+      var caption = pinCaption(longLabel === '' ? '' : (longLabel || shortLabel));
+      var labelHtml = caption ? '<div class="pin-label">' + escapeHtml(caption) + '</div>' : '';
       return L.divIcon({
         className: '',
-        html: '<div class="pin ' + cls + '"><div class="pin-mark">' + mark + '</div>' + labelHtml + '</div>',
-        iconSize: [40, 44],
-        iconAnchor: [20, 36]
+        html: '<div class="' + cls + '">'
+          + '<div class="pin-stack">'
+          + '<div class="pin-tip"></div>'
+          + pinHead(skin, String(shortLabel == null ? '' : shortLabel))
+          + '</div>'
+          + labelHtml
+          + '</div>',
+        iconSize: [34, 48],
+        iconAnchor: [17, 45]
       });
     }
 
@@ -196,12 +284,16 @@ export function buildMapHtml(model: MapModel): string {
         L.control.zoom({ position: 'bottomright' }).addTo(map);
       }
 
-      if (tileLayer) map.removeLayer(tileLayer);
       var url = isDark ? ${JSON.stringify(cartoDarkTileUrl())} : ${JSON.stringify(LIGHT_TILES)};
       var attr = isDark
         ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-      tileLayer = L.tileLayer(url, { maxZoom: 19, attribution: attr }).addTo(map);
+      // Rebuild tiles only when the URL actually changes (a theme flip). A
+      // pin update from search / Use my location must not reload the set.
+      if (!tileLayer || tileLayer._url !== url) {
+        if (tileLayer) map.removeLayer(tileLayer);
+        tileLayer = L.tileLayer(url, { maxZoom: 19, attribution: attr }).addTo(map);
+      }
 
       if (routeLayer) map.removeLayer(routeLayer);
       routeLayer = null;
@@ -221,21 +313,21 @@ export function buildMapHtml(model: MapModel): string {
       var bounds = [];
       if (m.pickup) {
         markers.push(L.marker([m.pickup.lat, m.pickup.lng], {
-          icon: pinIcon('pickup', m.pickupMark || 'Shop', false),
+          icon: pinIcon('pickup', m.pickupMark || 'Shop', false, m.pickupLabel || ''),
           title: m.pickupLabel || m.pickupMark || 'Shop'
         }).addTo(map));
         bounds.push([m.pickup.lat, m.pickup.lng]);
       }
       if (m.dropoff) {
         markers.push(L.marker([m.dropoff.lat, m.dropoff.lng], {
-          icon: pinIcon('dropoff', 'You', false),
+          icon: pinIcon('dropoff', '', false, m.pickable ? '' : (m.dropoffLabel || '')),
           title: m.dropoffLabel || 'Your delivery address'
         }).addTo(map));
         bounds.push([m.dropoff.lat, m.dropoff.lng]);
       }
       if (m.rider) {
         markers.push(L.marker([m.rider.lat, m.rider.lng], {
-          icon: pinIcon('rider', '', m.riderStale),
+          icon: pinIcon('rider', '', m.riderStale, ''),
           title: m.riderStale ? 'Rider — last known position' : 'Rider'
         }).addTo(map));
         bounds.push([m.rider.lat, m.rider.lng]);
@@ -278,6 +370,16 @@ export function buildMapHtml(model: MapModel): string {
 
     applyModel(MODEL);
     bindPicking();
+
+    // Search / Use my location set the pin from JS. Clear the tap-guard so
+    // the map pans to the new point; a finger-tap still skips that pan.
+    function setExternalPin(lat, lng) {
+      if (typeof lat !== 'number' || typeof lng !== 'number') return;
+      if (!isFinite(lat) || !isFinite(lng)) return;
+      MODEL.dropoff = { lat: lat, lng: lng };
+      if (map) map.__ggPicked = false;
+      applyModel(MODEL);
+    }
 
     // Host can push updates without a full HTML reload.
     document.addEventListener('message', function (e) {
