@@ -55,6 +55,13 @@
         {
           "photosPermission": "GRIDGO needs your photos so you can set a picture on your account."
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "GRIDGO needs photo access so you can save the payment QR.",
+          "savePhotosPermission": "GRIDGO needs to save the payment QR to your photos."
+        }
       ]
     ],
     "experiments": {

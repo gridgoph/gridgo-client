@@ -1,5 +1,5 @@
 import { Check, ChevronRight, MapPin, Minus, Plus, QrCode, Trash2 } from "lucide-react-native";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 
@@ -8,8 +8,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { paymentQrFromSettings, QrPaySheet } from "@/components/QrPaySheet";
+import { ReceiptOcrHost } from "@/components/ReceiptOcrHost";
 import { FormField } from "@/components/form/FormField";
-import { DateTimeField } from "@/components/form/DateTimeField";
 import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { SpecRow } from "@/components/SpecRow";
@@ -18,7 +18,7 @@ import { SwipeToRemove } from "@/components/SwipeToRemove";
 import { useThemeColors } from "@/hooks/useTheme";
 import { usePaymentProof } from "@/hooks/usePaymentProof";
 import * as api from "@/lib/api";
-import { formatPhp, type CartLineRecord, type ServiceLevel } from "@/lib/api";
+import { formatPhp, type CartLineRecord } from "@/lib/api";
 import {
   basketTotals,
   lineName,
@@ -31,20 +31,16 @@ import {
   blockerLine,
   fulfilmentModeFor,
   INVOICE_NOTE,
-  isTimingAvailable,
   PAYMENT_CHOICE_BLURB,
   PAYMENT_CHOICE_LABEL,
   PAYMENT_SPLIT_NOTE,
   placeOrderBlockers,
-  timingBlurb,
-  timingLabel,
-  TIMINGS,
+  SWIPE_TO_DELETE_HINT,
   travelBlurb,
   travelCaveat,
   travelChoiceOf,
   travelLabel,
   TRAVEL_CHOICES,
-  type Timing,
   type TravelChoice,
 } from "@/lib/checkout";
 import { userFacingError } from "@/lib/copy";
@@ -55,11 +51,15 @@ import {
   gridgoOfficeCoordLine,
   gridgoOfficeMapUrl,
 } from "@/lib/gridgoOffice";
-import { earliestDeadline, latestDeadline, suggestedDeadline } from "@/lib/deadline";
-import { readyInShort, samplePhotoUri } from "@/lib/listing";
+import { samplePhotoUri } from "@/lib/listing";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { checkPaymentReference, DIGITAL_ONLY_NOTICE } from "@/lib/payment";
+import {
+  OCR_READING,
+  OCR_UNREADABLE,
+  nextReferenceFromOcr,
+} from "@/lib/receiptOcr";
 import { formatDistance, type GeoPoint } from "@/lib/tracking";
 import { useCart } from "@/store/cart";
 
@@ -67,8 +67,9 @@ import { useCart } from "@/store/cart";
  * The checkout sheet.
  *
  * Everything the client has chosen, in the order they need to check it: what is
- * being printed, how it travels, where and when, how it is paid for, and what
- * it comes to. One screen rather than a wizard, because none of these decisions
+ * being printed, how it travels, where, how it is paid for, and what it comes
+ * to. When the job is wanted was asked before matching; this sheet does not
+ * ask again. One screen rather than a wizard, because none of these decisions
  * depends on the one before it — a client changing the address should not have
  * to walk back through their basket to do it.
  *
@@ -108,6 +109,11 @@ export default function CheckoutScreen() {
   const [removing, setRemoving] = useState<CartLineRecord | null>(null);
 
   const proof = usePaymentProof();
+
+  useEffect(() => {
+    if (proof.ocr.status === "idle" || proof.ocr.status === "reading") return;
+    setReference((current) => nextReferenceFromOcr(current, proof.ocr));
+  }, [proof.ocr]);
 
   const load = useCallback(async () => {
     await loadCart();
@@ -185,22 +191,16 @@ export default function CheckoutScreen() {
   );
 
   const travel = travelChoiceOf(cart);
-  const timing: Timing = cart?.serviceLevel ?? "standard";
   const missingArtwork = linesMissingArtwork(lines);
   const referenceCheck = checkPaymentReference(reference);
   const blockers = placeOrderBlockers({
     lineCount: lines.length,
     linesMissingArtwork: missingArtwork.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
-    scheduledFor: cart?.scheduledFor ?? null,
-    timing,
     referenceOk: referenceCheck.ok,
     hasProof: Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
   });
-  const wait = readyInShort(
-    Math.max(0, ...lines.map((line) => line.listing?.turnaroundHours ?? 0)),
-  );
 
   /** Every basket change goes through GRIDGO and stores what comes back. */
   const change = async (work: (id: string) => Promise<api.Cart>) => {
@@ -228,21 +228,6 @@ export default function CheckoutScreen() {
       }
       return cartAfter;
     });
-
-  const setTiming = (next: Timing) => {
-    if (!isTimingAvailable(next)) return;
-    void change((id) =>
-      api.setCartFulfilment(id, {
-        serviceLevel: next as ServiceLevel,
-        // Scheduled is refused without a date, so choosing it lands on the
-        // soonest GRIDGO would accept and the picker below moves it from there.
-        scheduledFor:
-          next === "standard"
-            ? null
-            : (cart?.scheduledFor ?? suggestedDeadline().toISOString()),
-      }),
-    );
-  };
 
   /**
    * The step trail's destinations from here.
@@ -294,6 +279,11 @@ export default function CheckoutScreen() {
     setPlacing(true);
     setPlaceError(null);
     try {
+      // The cart already carries when the job is wanted. Checkout does not
+      // ask again. A basket with no level at all is the platform default.
+      if (!cart?.serviceLevel) {
+        await api.setCartFulfilment(cartId, { serviceLevel: "standard" });
+      }
       const { order } = await api.checkoutCart(cartId, {
         reference: reference.trim(),
         proofFileId: proof.state.fileId,
@@ -354,6 +344,7 @@ export default function CheckoutScreen() {
             downpaymentMinor={totals.downpaymentMinor}
             imageUrl={paymentQrFromSettings(settings)?.imageUrl ?? null}
           />
+          <ReceiptOcrHost />
 
           {/*
             Swiping a row does not remove it; it asks. A basket line carries an
@@ -448,6 +439,8 @@ export default function CheckoutScreen() {
             </View>
           ))}
 
+          <Text className="text-caption text-text-muted">{SWIPE_TO_DELETE_HINT}</Text>
+
           <Pressable
             onPress={() => router.push("/request/category")}
             accessibilityRole="button"
@@ -505,48 +498,6 @@ export default function CheckoutScreen() {
               />
             </>
           )}
-        </Section>
-
-        {/* ---- When ------------------------------------------------------- */}
-        <Section title="WHEN YOU WANT IT">
-          <Segmented
-            options={TIMINGS.map((entry) => ({
-              value: entry,
-              label: timingLabel(entry),
-              disabled: !isTimingAvailable(entry),
-            }))}
-            value={timing}
-            onChange={(next) => setTiming(next as Timing)}
-            disabled={busy}
-            accessibilityLabel="When you want your order"
-          />
-          <Text className="text-body text-text-secondary">{timingBlurb(timing)}</Text>
-          {wait ? (
-            <Text className="text-caption text-text-muted">
-              GRIDGO needs about {wait} to print it once your artwork is approved.
-            </Text>
-          ) : null}
-
-          {timing === "scheduled" ? (
-            <FormField label="Day and time" helper="GRIDGO holds the finished job until then.">
-              <DateTimeField
-                value={cart?.scheduledFor ?? ""}
-                onChange={(iso) =>
-                  void change((id) =>
-                    api.setCartFulfilment(id, {
-                      serviceLevel: "scheduled",
-                      scheduledFor: iso || null,
-                    }),
-                  )
-                }
-                suggested={suggestedDeadline()}
-                minimumDate={earliestDeadline()}
-                maximumDate={latestDeadline()}
-                placeholder="Choose a day and time"
-                accessibilityLabel="Day and time you want it"
-              />
-            </FormField>
-          ) : null}
         </Section>
 
         {/* ---- Paying ----------------------------------------------------- */}
@@ -619,7 +570,13 @@ export default function CheckoutScreen() {
           <FormField
             label="Payment reference"
             error={referenceTouched && !referenceCheck.ok ? referenceCheck.reason : null}
-            helper="The reference number on the receipt from your wallet app."
+            helper={
+              proof.ocr.status === "reading"
+                ? OCR_READING
+                : proof.ocr.status === "unreadable"
+                  ? OCR_UNREADABLE
+                  : "The reference number on the receipt from your wallet app."
+            }
           >
             <TextField
               value={reference}
@@ -671,13 +628,6 @@ export default function CheckoutScreen() {
                 }
               />
             )}
-
-            <SpecRow
-              label={`GRIDGO service fee${
-                settings ? ` · ${(settings.serviceFeeRateBps / 100).toFixed(0)}%` : ""
-              }`}
-              value={settings ? formatPhp(totals.serviceFeeMinor) : "—"}
-            />
 
             <View className="gg-divider my-2" />
 

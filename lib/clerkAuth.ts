@@ -20,7 +20,9 @@ export function readGridgoRole(metadata: unknown): GridgoRole | null {
 }
 
 /** A Clerk session that belongs in another GRIDGO app. */
-export function isNonClientClerkRole(role: GridgoRole | null): boolean {
+export function isNonClientClerkRole(
+  role: GridgoRole | null,
+): role is Exclude<GridgoRole, "client"> {
   return role != null && role !== "client";
 }
 

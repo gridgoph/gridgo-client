@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -13,6 +13,20 @@ import {
 } from "@/components/QrPaySheet";
 import { images } from "@/constants/images";
 import { notificationImageUrl } from "@/lib/api";
+import { SAVE_QR_DENIED, SAVE_QR_LABEL } from "@/lib/savePaymentQr";
+
+jest.mock("@/lib/savePaymentQr", () => {
+  const actual = jest.requireActual("@/lib/savePaymentQr") as typeof import("@/lib/savePaymentQr");
+  return {
+    ...actual,
+    savePaymentQrToPhotos: jest.fn(),
+  };
+});
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const savePaymentQr = require("@/lib/savePaymentQr") as {
+  savePaymentQrToPhotos: jest.Mock;
+};
 
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
@@ -140,6 +154,8 @@ describe("QrPaySheet", () => {
     expect((style.width as number) / (style.height as number)).toBeCloseTo(GCASH_QR_ASPECT_RATIO);
     expect(style.overflow).not.toBe("hidden");
     expect(image.props.source).toBe(images.gcashQr);
+    expect(screen.getByText(SAVE_QR_LABEL)).toBeTruthy();
+    expect(screen.getByLabelText("Save to photos")).toBeTruthy();
   });
 
   it("uses the uploaded plate when settings carry imageUrl", async () => {
@@ -161,5 +177,22 @@ describe("QrPaySheet", () => {
     expect(typeof style.width).toBe("number");
     expect(typeof style.height).toBe("number");
     expect(style.aspectRatio).not.toBe(1);
+    expect(screen.getByText(SAVE_QR_LABEL)).toBeTruthy();
   });
 });
+
+describe("saving the QR", () => {
+  it("says what to do when photos permission is denied", async () => {
+    savePaymentQr.savePaymentQrToPhotos.mockResolvedValue({
+      ok: false,
+      reason: "denied",
+    });
+    await renderInSafeArea(
+      <QrPaySheet open onClose={() => {}} downpaymentMinor={5175} />,
+    );
+
+    fireEvent.press(screen.getByLabelText("Save to photos"));
+    expect(await screen.findByText(SAVE_QR_DENIED)).toBeTruthy();
+  });
+});
+

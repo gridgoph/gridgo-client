@@ -18,7 +18,6 @@ jest.mock("expo-router", () => ({
     back: jest.fn(),
   }),
   useFocusEffect: (effect: () => void) => {
-    // Required inside the factory: jest.mock is hoisted above imports.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useEffect } = require("react");
     useEffect(effect, [effect]);
@@ -40,6 +39,21 @@ jest.mock("@/lib/api", () => {
   };
 });
 
+jest.mock("@/hooks/usePaymentProof", () => ({
+  usePaymentProof: () => ({
+    state: {
+      phase: "stored",
+      fileName: "receipt.jpg",
+      fileId: "file_proof",
+      progress: 1,
+      error: null,
+    },
+    ocr: { status: "idle", reference: null },
+    pick: jest.fn(),
+    reset: jest.fn(),
+  }),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
 
@@ -51,15 +65,6 @@ const SETTINGS: PlatformSettings = {
     { maxDistanceMeters: 10000, feeMinor: 5000 },
     { maxDistanceMeters: null, feeMinor: 7500 },
   ],
-};
-
-const SHOP = {
-  supplierId: "user_lovis",
-  shopName: "Lovis Printshop",
-  shop: { lat: 7.0731, lng: 125.6128, label: "Bajada, Davao City" },
-  media: [],
-  categories: ["marketing_collateral"],
-  services: [],
 };
 
 function listing() {
@@ -162,50 +167,54 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-beforeEach(() => {
-  mockPush.mockClear();
-  mockReplace.mockClear();
-  mockNavigate.mockClear();
-  api.getSettings.mockResolvedValue(SETTINGS);
-  api.getCart.mockResolvedValue(cart());
-  api.getCatalogShop.mockResolvedValue(SHOP);
-  useCart.setState({ cartId: "cart_1", cart: cart(), loading: false, busy: false, error: null });
-});
-
 /**
- * Removing a basket line.
- *
- * Its own file on purpose: the flow drives an async store update through a
- * press, and on @testing-library/react-native 14 with React 19 that leaves
- * every later `render` in the same file returning an empty tree.
+ * Placing the order. Its own file because the flow is a changeText plus a
+ * press, which spends the React 19 testing budget for later renders.
  */
-describe("removing an item from the order", () => {
-  it("asks before it removes anything", async () => {
+describe("placing the order", () => {
+  it("places with the cart's existing service level and the QR receipt", async () => {
+    api.getSettings.mockResolvedValue(SETTINGS);
+    api.getCart.mockResolvedValue(cart());
+    api.getCatalogShop.mockResolvedValue({
+      supplierId: "user_lovis",
+      shopName: "Lovis Printshop",
+      shop: { lat: 7.0731, lng: 125.6128, label: "Bajada, Davao City" },
+      media: [],
+      categories: ["marketing_collateral"],
+      services: [],
+    });
+    api.checkoutCart.mockResolvedValue({
+      order: { id: "ord_1" },
+      invoice: { id: "inv_1" },
+    });
+    useCart.setState({
+      cartId: "cart_1",
+      cart: cart(),
+      loading: false,
+      busy: false,
+      error: null,
+      hydrated: true,
+    });
+
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    // The swipe uncovers this control; a screen reader reaches the same one
-    // through the row's Remove action. Neither removes anything on its own.
-    fireEvent.press(screen.getByLabelText("Remove Flyers"));
+    fireEvent.changeText(screen.getByLabelText("Payment reference"), "1234567890123");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Payment reference").props.value).toBe("1234567890123"),
+    );
+    fireEvent.press(screen.getByLabelText("Place this order"));
 
-    expect(await screen.findByText("Remove Flyers?")).toBeTruthy();
-    expect(screen.getByText("Keep it")).toBeTruthy();
-    expect(screen.getByText("Swipe left to delete")).toBeTruthy();
-    expect(api.removeCartLine).not.toHaveBeenCalled();
-  });
-});
-
-describe("confirming the removal", () => {
-  it("takes the line out only once the question is answered", async () => {
-    api.removeCartLine.mockResolvedValue(cart({ lines: [] }));
-    await renderInSafeArea(<CheckoutScreen />);
-    await screen.findByText("WHAT GRIDGO IS PRINTING");
-
-    fireEvent.press(screen.getByLabelText("Remove Flyers"));
-    await screen.findByText("Remove Flyers?");
-    // The dialog's own answer, not the control on the row behind it.
-    fireEvent.press(screen.getByLabelText("Remove"));
-
-    await waitFor(() => expect(api.removeCartLine).toHaveBeenCalledWith("cart_1", "cline_1"));
+    await waitFor(() =>
+      expect(api.checkoutCart).toHaveBeenCalledWith("cart_1", {
+        reference: "1234567890123",
+        proofFileId: "file_proof",
+      }),
+    );
+    expect(api.setCartFulfilment).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith({
+      pathname: "/order/[id]",
+      params: { id: "ord_1" },
+    });
   });
 });

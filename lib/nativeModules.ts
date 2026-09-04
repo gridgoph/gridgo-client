@@ -12,9 +12,13 @@
 
 type DocumentPickerNative = typeof import("expo-document-picker");
 type DateTimePickerNative = typeof import("@react-native-community/datetimepicker");
+type FileSystemLegacyNative = typeof import("expo-file-system/legacy");
+type MediaLibraryNative = typeof import("expo-media-library");
 
 let documentPickerNative: DocumentPickerNative | null | undefined;
 let dateTimePickerNative: DateTimePickerNative | null | undefined;
+let fileSystemLegacyNative: FileSystemLegacyNative | null | undefined;
+let mediaLibraryNative: MediaLibraryNative | null | undefined;
 
 export const FILE_PICKER_NEEDS_REBUILD =
   "Choosing a file needs a rebuilt GRIDGO app on this phone. Everything else on this screen still works.";
@@ -88,6 +92,38 @@ export function getDateTimePickerNative(): DateTimePickerNative | null {
     return dateTimePickerNative;
   } catch {
     dateTimePickerNative = null;
+    return null;
+  }
+}
+
+export function getFileSystemLegacyNative(): FileSystemLegacyNative | null {
+  if (fileSystemLegacyNative !== undefined) return fileSystemLegacyNative;
+  if (!inJest() && !optionalNative("ExponentFileSystem")) {
+    fileSystemLegacyNative = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    fileSystemLegacyNative = require("expo-file-system/legacy") as FileSystemLegacyNative;
+    return fileSystemLegacyNative;
+  } catch {
+    fileSystemLegacyNative = null;
+    return null;
+  }
+}
+
+export function getMediaLibraryNative(): MediaLibraryNative | null {
+  if (mediaLibraryNative !== undefined) return mediaLibraryNative;
+  if (!inJest() && !optionalNative("ExpoMediaLibrary")) {
+    mediaLibraryNative = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    mediaLibraryNative = require("expo-media-library") as MediaLibraryNative;
+    return mediaLibraryNative;
+  } catch {
+    mediaLibraryNative = null;
     return null;
   }
 }

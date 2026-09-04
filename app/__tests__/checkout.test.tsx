@@ -195,15 +195,15 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText("Add more to this run")).toBeTruthy();
   });
 
-  it("shows GRIDGO's charge and the total the order will be written with", async () => {
+  it("shows the payable total without naming GRIDGO's service fee", async () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    // ₱40 items + 10% service fee + the under-5km delivery band. The items
-    // figure shows twice on purpose: once under the shop, once in the details.
+    // ₱40 items + 10% service fee + the under-5km delivery band. The fee is
+    // still inside the QR 75/25 and the total; it is not a row a client sees.
     expect(screen.getAllByText("₱40.00").length).toBeGreaterThan(0);
-    expect(screen.getByText("GRIDGO service fee · 10%")).toBeTruthy();
-    expect(screen.getByText("₱4.00")).toBeTruthy();
+    expect(screen.queryByText(/GRIDGO service fee/i)).toBeNull();
+    expect(screen.queryByText(/10%/)).toBeNull();
     expect(screen.getByText("₱25.00")).toBeTruthy();
     expect(screen.getByText("₱69.00")).toBeTruthy();
   });
@@ -233,13 +233,22 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText(/There is no cash on delivery/)).toBeTruthy();
   });
 
-  it("lists express and refuses it, rather than hiding it", async () => {
+  it("does not re-ask when the job is wanted", async () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    const express = screen.getByLabelText("Express");
-    expect(express.props.accessibilityState.disabled).toBe(true);
-    expect(screen.getByLabelText("Standard").props.accessibilityState.selected).toBe(true);
+    expect(screen.queryByText("WHEN YOU WANT IT")).toBeNull();
+    expect(screen.queryByLabelText("Standard")).toBeNull();
+    expect(screen.queryByLabelText("Scheduled")).toBeNull();
+    expect(screen.queryByLabelText("Express")).toBeNull();
+    expect(screen.queryByText("Express")).toBeNull();
+  });
+
+  it("says swipe left to delete on the order", async () => {
+    await renderInSafeArea(<CheckoutScreen />);
+    await screen.findByText("WHAT GRIDGO IS PRINTING");
+
+    expect(screen.getByText("Swipe left to delete")).toBeTruthy();
   });
 
   it("asks for the receipt and the reference before it will place anything", async () => {

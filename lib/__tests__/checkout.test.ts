@@ -76,13 +76,16 @@ describe("placeOrderBlockers", () => {
     expect(placeOrderBlockers({ ...READY, linesMissingDropoff: 1 })).toContain("address");
   });
 
-  it("asks for a day only once the client has chosen to schedule", () => {
-    expect(placeOrderBlockers({ ...READY, timing: "scheduled" })).toContain("schedule");
+  it("does not block on a missing checkout timing picker", () => {
+    // When the job is wanted was asked on the when screen. Checkout no longer
+    // carries Standard / Scheduled / Express, so a missing date here cannot
+    // stand between the basket and Place order.
+    expect(placeOrderBlockers({ ...READY, timing: "scheduled" })).toEqual([]);
     expect(
       placeOrderBlockers({
         ...READY,
         timing: "scheduled",
-        scheduledFor: "2026-09-01T02:00:00Z",
+        scheduledFor: null,
       }),
     ).toEqual([]);
   });
