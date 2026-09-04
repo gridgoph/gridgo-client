@@ -29,7 +29,7 @@ function samePoint(a: GeoPoint | null, b: GeoPoint | null): boolean {
  * the live document so the marker moves and the map pans without reloading
  * tiles.
  */
-export function PinPicker({ point, onPick }: PinPickerProps) {
+export function PinPicker({ point, onPick, caption }: PinPickerProps) {
   const theme = useThemeName();
   const colors = useThemeColors();
   const webRef = useRef<WebView>(null);
@@ -112,10 +112,11 @@ export function PinPicker({ point, onPick }: PinPickerProps) {
           accessibilityLabel="Map of Davao. Tap to set your drop-off."
         />
       </View>
-      <Text className="text-caption text-text-muted">
-        {dropped
-          ? "Tap again anywhere to move the pin."
-          : "Tap the map where the job should go. GRIDGO prices delivery from this point."}
+      <Text className={caption ? "text-caption text-text-secondary" : "text-caption text-text-muted"}>
+        {caption ||
+          (dropped
+            ? "Tap again anywhere to move the pin."
+            : "Tap the map where the job should go. GRIDGO prices delivery from this point.")}
       </Text>
     </View>
   );

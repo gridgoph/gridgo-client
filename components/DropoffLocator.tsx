@@ -89,10 +89,8 @@ export function DropoffLocator({ editor }: { editor: Editor }) {
 
       <PinPicker
         point={editor.point}
-        onPick={(next) => {
-          editor.setPoint(next);
-          if (!editor.line1.trim()) void editor.runReverse(next, true);
-        }}
+        onPick={editor.pickPin}
+        caption={editor.pinCaption}
       />
     </View>
   );

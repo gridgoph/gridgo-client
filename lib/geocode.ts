@@ -38,6 +38,8 @@ export const GEOCODE_FAILED =
 export const STREET_UNREAD =
   "Could not read the street here. Type it, or search.";
 
+export const READING_PLACE = "Reading this place…";
+
 const NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search";
 const NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse";
 
@@ -76,6 +78,12 @@ export type DropoffSuggestion = {
   label: string;
   line1: string;
   landmark: string;
+  /**
+   * Quiet caption under the pin — house + road + suburb + Davao City when
+   * OSM has them, else a display_name trimmed at the city. Never dumped
+   * into the search box.
+   */
+  completeAddress?: string;
   point: GeoPoint;
 };
 
@@ -163,7 +171,29 @@ export function line1FromNominatim(hit: NominatimHit): string {
   if (named && road) return `${named}, ${road}`;
   if (road) return road;
   if (named) return named;
-  return firstText(addr.neighbourhood, addr.suburb);
+  // A suburb or barangay is not a street. Reverse must not invent line1.
+  return "";
+}
+
+/**
+ * Complete address a client can read under the pin. Prefers Nominatim's
+ * `display_name` cut at Davao City; otherwise house + road + suburb + city.
+ * Never invents a house number.
+ */
+export function completeAddressFromNominatim(hit: NominatimHit): string {
+  const display = typeof hit.display_name === "string" ? hit.display_name.trim() : "";
+  if (display) {
+    const cut = display.match(/^(.*?\bDavao City\b)/i);
+    if (cut?.[1]) return cut[1].trim();
+  }
+
+  const addr = hit.address ?? {};
+  const road = firstText(addr.road, addr.pedestrian, addr.footway);
+  const house = firstText(addr.house_number);
+  const street = house && road ? `${house} ${road}` : firstText(road, addr.building);
+  if (!street) return "";
+  const suburb = firstText(addr.suburb);
+  return [street, suburb, DELIVERY_CITY].filter(Boolean).join(", ");
 }
 
 export function landmarkFromNominatim(hit: NominatimHit, line1: string): string {
@@ -196,6 +226,7 @@ export function suggestionFromNominatim(hit: NominatimHit): GeocodeResult {
 
   const landmark = landmarkFromNominatim(hit, line1);
   const label = firstText(hit.name, line1);
+  const completeAddress = completeAddressFromNominatim(hit);
   return {
     status: "ok",
     suggestion: {
@@ -203,6 +234,7 @@ export function suggestionFromNominatim(hit: NominatimHit): GeocodeResult {
       label,
       line1,
       landmark,
+      completeAddress,
       point,
     },
   };
@@ -307,7 +339,7 @@ export async function reverseNominatim(
   }
   try {
     const url =
-      `${NOMINATIM_REVERSE}?format=jsonv2&addressdetails=1` +
+      `${NOMINATIM_REVERSE}?format=jsonv2&addressdetails=1&zoom=18` +
       `&lat=${encodeURIComponent(String(point.lat))}` +
       `&lon=${encodeURIComponent(String(point.lng))}`;
     const body = await enqueue(() => nominatimGet(url, version, fetchImpl));

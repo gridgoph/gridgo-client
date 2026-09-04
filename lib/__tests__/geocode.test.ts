@@ -2,6 +2,8 @@ import {
   DAVAO_VIEWBOX,
   GEOCODE_FAILED,
   OUTSIDE_DAVAO,
+  STREET_UNREAD,
+  completeAddressFromNominatim,
   isDavaoCityHit,
   line1FromNominatim,
   nominatimHeaders,
@@ -66,8 +68,43 @@ describe("suggestionFromNominatim", () => {
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
     expect(result.suggestion.line1).toBe("12 J.P. Laurel Avenue");
+    expect(result.suggestion.completeAddress).toBe("12 J.P. Laurel Avenue, Bajada, Davao City");
     expect(result.suggestion.point).toEqual({ lat: 7.0731, lng: 125.6128 });
     expect(result.suggestion.line1.toLowerCase()).not.toMatch(/barangay/);
+  });
+
+  it("does not invent a house number when OSM has only a road", () => {
+    const roadOnly: NominatimHit = {
+      place_id: 3,
+      lat: "7.0494",
+      lon: "125.5880",
+      display_name: "Quimpo Boulevard, Matina, Davao City, Philippines",
+      address: { road: "Quimpo Boulevard", suburb: "Matina", city: "Davao City" },
+    };
+    expect(line1FromNominatim(roadOnly)).toBe("Quimpo Boulevard");
+    expect(line1FromNominatim(roadOnly)).not.toMatch(/\d/);
+  });
+
+  it("does not invent a street from a suburb", () => {
+    const suburbOnly: NominatimHit = {
+      place_id: 4,
+      lat: "7.05",
+      lon: "125.58",
+      display_name: "Talomo, Davao City, Philippines",
+      address: { suburb: "Talomo", city: "Davao City" },
+    };
+    expect(line1FromNominatim(suburbOnly)).toBe("");
+    expect(suggestionFromNominatim(suburbOnly)).toEqual({
+      status: "empty",
+      message: STREET_UNREAD,
+    });
+  });
+
+  it("writes a complete address from display_name cut at Davao City", () => {
+    expect(completeAddressFromNominatim(HOUSE)).toBe("12 J.P. Laurel Avenue, Bajada, Davao City");
+    expect(completeAddressFromNominatim(SM_DAVAO)).toBe(
+      "SM City Davao, Quimpo Boulevard, Matina, Davao City",
+    );
   });
 
   it("uses a named building on a road, and keeps the name as a landmark when it is not the street", () => {
@@ -176,7 +213,41 @@ describe("reverseNominatim", () => {
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
     expect(result.suggestion.line1).toBe("12 J.P. Laurel Avenue");
+    expect(result.suggestion.completeAddress).toBe("12 J.P. Laurel Avenue, Bajada, Davao City");
     expect(result.suggestion.point).toEqual(point);
+    const called = fetchImpl.mock.calls[0] as unknown as [string] | undefined;
+    expect(String(called?.[0])).toContain("zoom=18");
+    expect(String(called?.[0])).toContain("addressdetails=1");
+  });
+
+  it("asks Nominatim for building/street detail", async () => {
+    const fetchImpl = jest.fn(async () => ({
+      ok: true,
+      json: async () => HOUSE,
+    }));
+    await reverseNominatim({ lat: 7.0731, lng: 125.6128 }, "1.0.0", fetchImpl as unknown as typeof fetch);
+    const url = String((fetchImpl.mock.calls[0] as unknown as [string] | undefined)?.[0]);
+    expect(url).toContain("nominatim.openstreetmap.org/reverse");
+    expect(url).toContain("zoom=18");
+  });
+
+  it("does not invent a street when OSM has no road or building", async () => {
+    const fetchImpl = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        place_id: 1,
+        lat: "7.073",
+        lon: "125.613",
+        display_name: "Talomo, Davao City, Philippines",
+        address: { suburb: "Talomo", city: "Davao City" },
+      }),
+    }));
+    const result = await reverseNominatim(
+      { lat: 7.073, lng: 125.613 },
+      "1.0.0",
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(result).toEqual({ status: "empty", message: STREET_UNREAD });
   });
 
   it("refuses a pin outside Davao without calling Nominatim", async () => {
