@@ -48,6 +48,25 @@ describe("HomeActionRow", () => {
       screen.getByLabelText("Approve your artwork proof, Grand opening tarpaulin"),
     ).toBeTruthy();
   });
+
+  /**
+   * The mark is the third signal, after the verb and its colour — never a
+   * replacement for either, and never a second thing to announce. The row is
+   * one button saying one sentence.
+   */
+  it("marks the row without giving the screen reader a second element", async () => {
+    await render(
+      <HomeActionRow order={order({ state: "client_correction" })} onPress={() => undefined} />,
+    );
+
+    // Hidden from the accessibility tree, which is why the default query — the
+    // one that walks what a screen reader would — cannot see it at all.
+    expect(screen.queryByTestId("home-action-mark")).toBeNull();
+    expect(
+      screen.getByTestId("home-action-mark", { includeHiddenElements: true }),
+    ).toBeTruthy();
+    expect(screen.getByText("Replace the artwork")).toBeTruthy();
+  });
 });
 
 describe("HomeJobRow", () => {

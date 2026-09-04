@@ -224,9 +224,24 @@ export function SkeletonHomeDocket({ count = 2 }: { count?: number }) {
       {Array.from({ length: count }, (_, index) => (
         <View key={index}>
           {index > 0 ? <View className="gg-divider" /> : null}
-          <View className="gap-2 px-4 py-3">
-            <SkeletonLine width="w-2/3" height="h-5" />
-            <SkeletonLine width="w-1/2" height="h-3" />
+          {/*
+            The real row leads with a tone mark, so the placeholder does too —
+            a docket that grows a column of discs when the data lands is the
+            jump this component exists to remove.
+          */}
+          <View className="flex-row items-center gap-3 px-4 py-3">
+            {/*
+              Clipped to a disc by the wrapper: two radius utilities on one
+              element resolve by stylesheet order, not by the order they are
+              written in, so the shape is not `SkeletonBlock`'s to argue with.
+            */}
+            <View className="overflow-hidden rounded-pill">
+              <SkeletonBlock className="h-10 w-10" />
+            </View>
+            <View className="flex-1 gap-1">
+              <SkeletonLine width="w-2/3" height="h-6" />
+              <SkeletonLine width="w-1/2" height="h-4" />
+            </View>
           </View>
         </View>
       ))}

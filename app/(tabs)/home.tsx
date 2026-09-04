@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react-native";
-import { useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -226,14 +226,14 @@ export default function HomeScreen() {
           */}
           {loading ? (
             <View className="mt-8 gap-3">
-              <Text className="text-overline text-text-muted">YOUR JOBS</Text>
+              <SectionHead label="YOUR JOBS" />
               <SkeletonHomeDocket count={2} />
             </View>
           ) : null}
 
           {!loading && !error && needsClient.length ? (
             <View className="mt-8 gap-3">
-              <Text className="text-overline text-text-muted">NEEDS YOU</Text>
+              <SectionHead label="NEEDS YOU" count={needsClient.length} />
               <View className="gg-card-flush">
                 {needsClient.map((order, index) => (
                   <View key={order.id}>
@@ -253,20 +253,22 @@ export default function HomeScreen() {
                 at three — "View all" is the one place the design system spends
                 the brand token, and it is a small link, not a fill.
               */}
-              <View className="flex-row items-center justify-between gap-3">
-                <Text className="text-overline text-text-muted">YOUR JOBS</Text>
-                {orders.length > recent.length ? (
-                  <Pressable
-                    onPress={() => router.navigate("/(tabs)/orders")}
-                    accessibilityRole="button"
-                    accessibilityLabel={`View all ${orders.length} jobs`}
-                    className="gg-touch justify-center"
-                    style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-                  >
-                    <Text className="text-button text-brand">View all</Text>
-                  </Pressable>
-                ) : null}
-              </View>
+              <SectionHead
+                label="YOUR JOBS"
+                action={
+                  orders.length > recent.length ? (
+                    <Pressable
+                      onPress={() => router.navigate("/(tabs)/orders")}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View all ${orders.length} jobs`}
+                      className="gg-touch justify-center"
+                      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+                    >
+                      <Text className="text-button text-brand">View all</Text>
+                    </Pressable>
+                  ) : null
+                }
+              />
               <View className="gap-3">
                 {recent.map((order) => (
                   <HomeJobRow
@@ -287,7 +289,7 @@ export default function HomeScreen() {
           */}
           {showSamples ? (
             <View className="mt-8 gap-3">
-              <Text className="text-overline text-text-muted">ON PRESS TODAY</Text>
+              <SectionHead label="ON PRESS TODAY" />
               <HomeSampleStrip
                 samples={samples}
                 loading={boardsLoading && samples.length === 0}
@@ -298,7 +300,7 @@ export default function HomeScreen() {
 
           {categories.length ? (
             <View className="mt-8 gap-3">
-              <Text className="text-overline text-text-muted">START A PRINT</Text>
+              <SectionHead label="START A PRINT" />
               <HomeSearchEntry onPress={() => router.push("/request/category")} />
               {/*
                 One board, not a grid. Five families in two columns left the
@@ -325,6 +327,46 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
     </TabScreen>
+  );
+}
+
+/**
+ * One section eyebrow on Home.
+ *
+ * Every section on this screen used to open with a bare grey overline, and
+ * four of them in a column is what made the page read as three identical
+ * slabs. The eyebrow itself stays exactly that — quiet, uppercase, ink — but
+ * it now carries the two things a section head is actually for.
+ *
+ * A count, where the number is the point: "is anything waiting on me" is
+ * answered by "three" before a word of the docket is read, and the pill is
+ * neutral ink rather than a colour, because three jobs waiting is a fact and
+ * not an alarm. And the way out, where there is one — "View all" is the single
+ * place on Home that spends the brand token, and it is a small link.
+ *
+ * The label is its own text node on purpose: a count concatenated into it
+ * would make "NEEDS YOU" a string that changes with the data.
+ */
+function SectionHead({
+  label,
+  count,
+  action,
+}: {
+  label: string;
+  count?: number;
+  action?: ReactNode;
+}) {
+  return (
+    <View className="flex-row items-center gap-2">
+      <Text className="text-overline text-text-muted">{label}</Text>
+      {count != null && count > 0 ? (
+        <View className="rounded-pill border border-outline bg-surface px-2 py-0.5">
+          <Text className="text-caption text-text-secondary">{count}</Text>
+        </View>
+      ) : null}
+      <View className="flex-1" />
+      {action}
+    </View>
   );
 }
 

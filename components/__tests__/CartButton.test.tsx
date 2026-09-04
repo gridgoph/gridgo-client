@@ -10,10 +10,15 @@ describe("CartButton", () => {
     expect(screen.getByLabelText("Your order, 3 items")).toBeTruthy();
     const numeral = screen.getByText("3");
     expect(numeral).toBeTruthy();
+    // The count is the reason the control exists, so it is set at the type
+    // scale's floor (12) rather than the 10 it shipped at, with tabular
+    // figures so 1, 3 and 9+ hold one width.
     expect(numeral.props.style).toEqual(
       expect.objectContaining({
-        fontSize: 10,
+        fontSize: 12,
+        lineHeight: 12,
         includeFontPadding: false,
+        fontVariant: ["tabular-nums"],
         color: colors.light.accentOn,
       }),
     );
