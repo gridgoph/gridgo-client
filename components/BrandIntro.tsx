@@ -2,6 +2,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import Animated, {
+  cancelAnimation,
   Easing,
   runOnJS,
   useAnimatedStyle,
@@ -208,6 +209,10 @@ export function BrandIntro({ onDone }: Props) {
       const endAt = setTimeout(finish, REDUCED_HOLD + FADE_MS);
       return () => {
         clearTimeout(endAt);
+        cancelAnimation(cascade);
+        cancelAnimation(engulf);
+        cancelAnimation(wordmark);
+        cancelAnimation(shell);
         stingsRef.current = null;
         arrival?.release();
       };
@@ -249,6 +254,10 @@ export function BrandIntro({ onDone }: Props) {
     return () => {
       for (const cue of cues) clearTimeout(cue);
       clearTimeout(endAt);
+      cancelAnimation(cascade);
+      cancelAnimation(engulf);
+      cancelAnimation(wordmark);
+      cancelAnimation(shell);
       stingsRef.current = null;
       // A skip cuts the sound with the picture.
       stings?.release();

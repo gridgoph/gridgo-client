@@ -73,6 +73,16 @@ jest.mock("react-native-keyboard-controller", () =>
   require("react-native-keyboard-controller/jest"),
 );
 
+// A stray Nominatim / OSRM / API fetch is how the suite finished then sat
+// until GitHub cancelled the job (run 34213849490). Tests that need a
+// response spy on `global.fetch` themselves.
+global.fetch = jest.fn(async () => ({
+  ok: false,
+  status: 599,
+  json: async () => ({}),
+  text: async () => "",
+}));
+
 // Every screen test runs as a client who has already told GRIDGO what to match
 // on. The ranking is a one-off gate on the way in (lib/authLanding.ts), and
 // leaving the store empty would land every one of these tests on the ranking
@@ -82,4 +92,13 @@ jest.mock("react-native-keyboard-controller", () =>
 beforeEach(() => {
   const { usePriorities } = require("@/store/priorities");
   usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
+  if (jest.isMockFunction(global.fetch)) {
+    global.fetch.mockReset();
+    global.fetch.mockImplementation(async () => ({
+      ok: false,
+      status: 599,
+      json: async () => ({}),
+      text: async () => "",
+    }));
+  }
 });
