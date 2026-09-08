@@ -10,10 +10,17 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ph.gridgo.client"
+      "bundleIdentifier": "ph.gridgo.client",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "GRIDGO needs the phone's location to pin the delivery drop-off."
+      }
     },
     "android": {
       "package": "ph.gridgo.client",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#111111",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -54,6 +61,21 @@
         "expo-image-picker",
         {
           "photosPermission": "GRIDGO needs your photos so you can set a picture on your account."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "GRIDGO needs photo access so you can save the payment QR.",
+          "savePhotosPermission": "GRIDGO needs to save the payment QR to your photos."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GRIDGO needs the phone's location to pin the delivery drop-off.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
         }
       ]
     ],

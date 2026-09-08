@@ -170,18 +170,23 @@ export type PlaceOrderBlocker =
   | "proof"
   | "settings";
 
+/** Quiet helper on the basket lines. Swipe is not the only remove path. */
+export const SWIPE_TO_DELETE_HINT = "Swipe left to delete";
+
 /**
  * What still stands between the basket and a placed order.
  *
  * In the order the client should fix them, so the helper line under the button
  * names one thing at a time rather than a list of everything wrong.
+ *
+ * Timing is not a checkout question — `app/request/when.tsx` already asked —
+ * so a missing Standard/Scheduled picker here is never a blocker. The cart
+ * keeps whatever `serviceLevel` / `scheduledFor` it already has.
  */
 export function placeOrderBlockers({
   lineCount,
   linesMissingArtwork,
   linesMissingDropoff,
-  scheduledFor,
-  timing,
   referenceOk,
   hasProof,
   hasSettings,
@@ -189,8 +194,8 @@ export function placeOrderBlockers({
   lineCount: number;
   linesMissingArtwork: number;
   linesMissingDropoff: number;
-  scheduledFor: string | null;
-  timing: Timing;
+  scheduledFor?: string | null;
+  timing?: Timing;
   referenceOk: boolean;
   hasProof: boolean;
   hasSettings: boolean;
@@ -199,7 +204,6 @@ export function placeOrderBlockers({
   if (lineCount === 0) blockers.push("empty");
   if (linesMissingArtwork > 0) blockers.push("artwork");
   if (linesMissingDropoff > 0) blockers.push("address");
-  if (timing === "scheduled" && !scheduledFor) blockers.push("schedule");
   if (!hasProof) blockers.push("proof");
   if (!referenceOk) blockers.push("reference");
   if (!hasSettings) blockers.push("settings");

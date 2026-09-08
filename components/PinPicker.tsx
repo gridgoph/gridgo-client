@@ -8,6 +8,11 @@ export type PinPickerProps = {
   /** Where the pin is now. Null until the client puts one down. */
   point: GeoPoint | null;
   onPick: (point: GeoPoint) => void;
+  /**
+   * Caption under the map: complete address, "Reading this place…", or
+   * STREET_UNREAD. When omitted, the pin helper is shown.
+   */
+  caption?: string | null;
 };
 
 /**
@@ -18,7 +23,7 @@ export type PinPickerProps = {
  * never reach a client. The client can still type an address; only the pin
  * needs a device.
  */
-export function PinPicker(_: PinPickerProps) {
+export function PinPicker({ caption }: PinPickerProps) {
   const colors = useThemeColors();
 
   return (
@@ -34,7 +39,8 @@ export function PinPicker(_: PinPickerProps) {
         The map needs the GRIDGO app on your phone.
       </Text>
       <Text className="text-center text-caption text-text-muted">
-        Type the address below and GRIDGO will confirm the exact spot with you.
+        {caption ||
+          "Type the address below and GRIDGO will confirm the exact spot with you."}
       </Text>
     </View>
   );

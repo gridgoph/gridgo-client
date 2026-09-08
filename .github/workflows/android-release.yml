@@ -49,8 +49,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      # Reanimated loops and a leftover fetch keep the event loop alive after
+      # the suite has reported. Without --forceExit the job sits until
+      # timeout-minutes and GitHub records a cancellation, not the real result.
       - name: Unit tests
-        run: npm test -- --ci
+        run: npm test -- --ci --forceExit
 
   apk:
     name: Signed release APK

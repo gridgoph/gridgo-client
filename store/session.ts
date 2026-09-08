@@ -4,6 +4,7 @@ import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
 import { CLERK_SIGNOUT_TIMEOUT_MS, withTimeout } from "@/lib/clerkSignIn";
 import { clientEmailUnavailableMessage, userFacingError } from "@/lib/copy";
+import { sessionWaitHold } from "@/lib/sessionWait";
 import { signupInput, type SignupFields } from "@/lib/signup";
 import { usePush } from "@/store/push";
 
@@ -25,8 +26,17 @@ type SessionState = {
   /**
    * Local session is gone and Clerk sign-out may still be in flight.
    * The Clerk→GRIDGO bridge must not restore the previous person.
+   * Cleared only by the next Sign in / Google / Sign up tap, never by Clerk
+   * reporting signed-out — that flicker is how ranking flashed before Welcome.
    */
   signingOut: boolean;
+  /**
+   * Google browser-SSO has started and the native callback may still adopt.
+   * Independent of `loading` so `endClerkSync` cannot dump onto Welcome.
+   */
+  ssoInFlight: boolean;
+  /** Designed identity wait. Independent of the adopt latch. */
+  sessionWait: "in" | "out" | null;
   /** Bump to retry the Clerk → API bridge without starting SSO again. */
   clerkSyncNonce: number;
   login: (email: string, password: string) => Promise<void>;
@@ -50,7 +60,10 @@ type SessionState = {
    * where a wrong one gets noticed.
    */
   refresh: () => Promise<void>;
-  beginClerkSync: () => void;
+  beginClerkSync: (options?: { google?: boolean }) => void;
+  /** Google cancelled, failed, or adopted — Welcome may show again. */
+  clearSsoInFlight: () => void;
+  clearSessionWait: () => void;
   /**
    * The Clerk → GRIDGO sync that owned `loading` is no longer running.
    *
@@ -85,7 +98,11 @@ export const useSession = create<SessionState>((set) => ({
   pendingClerkProfile: false,
   justProvisioned: false,
   signingOut: false,
+  ssoInFlight: false,
+  sessionWait: null,
   clerkSyncNonce: 0,
+  clearSsoInFlight: () => set({ ssoInFlight: false, sessionWait: null }),
+  clearSessionWait: () => set({ sessionWait: null }),
   clearError: () => set({ error: null }),
   finishSigningOut: () => set({ signingOut: false }),
   clearSession: () =>
@@ -100,18 +117,26 @@ export const useSession = create<SessionState>((set) => ({
         pendingClerkProfile: false,
         justProvisioned: false,
         signingOut: false,
+        ssoInFlight: false,
+        sessionWait: null,
       };
     }),
   adoptClerkUser: (user, options) =>
-    set({
-      user,
-      source: "clerk",
-      loading: false,
-      error: null,
-      pendingClerkProfile: false,
-      justProvisioned: Boolean(options?.provisioned),
-      signingOut: false,
-    }),
+    set((state) =>
+      state.signingOut
+        ? {}
+        : {
+            user,
+            source: "clerk",
+            loading: false,
+            error: null,
+            pendingClerkProfile: false,
+            justProvisioned: Boolean(options?.provisioned),
+            signingOut: false,
+            ssoInFlight: false,
+            sessionWait: null,
+          },
+    ),
   setUser: (user) =>
     set((state) => (state.user ? { user } : {})),
   refresh: async () => {
@@ -127,7 +152,17 @@ export const useSession = create<SessionState>((set) => ({
       // the card because one request did not land.
     }
   },
-  beginClerkSync: () => set({ loading: true, error: null, signingOut: false }),
+  beginClerkSync: (options) =>
+    set((state) =>
+      state.signingOut
+        ? {}
+        : {
+            loading: true,
+            error: null,
+            sessionWait: "in",
+            ...(options?.google ? { ssoInFlight: true } : {}),
+          },
+    ),
   endClerkSync: () => set((state) => (state.loading ? { loading: false } : {})),
   failClerkSync: (message) =>
     set({
@@ -137,9 +172,21 @@ export const useSession = create<SessionState>((set) => ({
       error: message,
       pendingClerkProfile: false,
       signingOut: false,
+      ssoInFlight: false,
+      sessionWait: null,
     }),
   needClerkProfile: () =>
-    set({ pendingClerkProfile: true, loading: false, error: null }),
+    set((state) =>
+      state.signingOut
+        ? {}
+        : {
+            pendingClerkProfile: true,
+            loading: false,
+            error: null,
+            ssoInFlight: false,
+            sessionWait: null,
+          },
+    ),
   requestClerkSync: () =>
     set((state) => ({ clerkSyncNonce: state.clerkSyncNonce + 1, error: null })),
   clearJustProvisioned: () => set({ justProvisioned: false }),
@@ -147,7 +194,7 @@ export const useSession = create<SessionState>((set) => ({
     identityLogout = logout;
   },
   login: async (email, password) => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, signingOut: false, sessionWait: "in" });
     try {
       const { user } = await api.login(email, password);
       if (user.role !== APP_ROLE) {
@@ -158,10 +205,11 @@ export const useSession = create<SessionState>((set) => ({
           user: null,
           loading: false,
           error: clientEmailUnavailableMessage,
+          sessionWait: null,
         });
         return;
       }
-      set({ user, source: "legacy", loading: false });
+      set({ user, source: "legacy", loading: false, sessionWait: null });
     } catch (e) {
       let message: string;
       if (e instanceof api.ApiError && e.status === 401) {
@@ -173,20 +221,21 @@ export const useSession = create<SessionState>((set) => ({
       } else {
         message = "Could not sign in. Check your connection and try again.";
       }
-      set({ loading: false, error: message });
+      set({ loading: false, error: message, sessionWait: null });
     }
   },
   signUp: async (fields) => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, signingOut: false, sessionWait: "in" });
     try {
       // The API returns a live token, so a new client lands inside the app
       // rather than being asked to type the password they just chose. Role is
       // always `client` here: this binary offers no other kind of account.
       const { user } = await api.signupClient(signupInput(fields));
-      set({ user, source: "legacy", loading: false });
+      set({ user, source: "legacy", loading: false, sessionWait: null });
     } catch (e) {
       set({
         loading: false,
+        sessionWait: null,
         error: api.isNetworkFailure(e)
           ? `Cannot reach the backend at ${api.getApiBase()}. Check your connection and try again.`
           : userFacingError(e, "Could not create the account. Check your details and try again."),
@@ -200,6 +249,7 @@ export const useSession = create<SessionState>((set) => ({
     // whoever signed in last — not the next email typed.
     const deviceToken = usePush.getState().token;
     const identity = identityLogout;
+    const startedAt = Date.now();
     set({
       user: null,
       source: null,
@@ -207,6 +257,8 @@ export const useSession = create<SessionState>((set) => ({
       pendingClerkProfile: false,
       justProvisioned: false,
       signingOut: true,
+      ssoInFlight: false,
+      sessionWait: "out",
       error: null,
     });
     void usePush.getState().release();
@@ -216,6 +268,8 @@ export const useSession = create<SessionState>((set) => ({
         () => undefined,
       ),
     ]);
+    await sessionWaitHold(startedAt);
+    useSession.setState({ sessionWait: null });
   },
 }));
 
@@ -235,6 +289,8 @@ api.onUnauthorized(() => {
     pendingClerkProfile: false,
     justProvisioned: false,
     signingOut: false,
+    ssoInFlight: false,
+    sessionWait: null,
     error: null,
     clerkSyncNonce: state.clerkSyncNonce + 1,
   }));

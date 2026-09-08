@@ -23,8 +23,10 @@ jest.mock("@clerk/expo", () => ({
     isLoaded: true,
     isSignedIn: mockIsSignedIn,
     sessionId: mockSessionId,
+    sessionClaims: null,
   }),
   useClerk: () => ({ signOut: mockSignOut }),
+  useUser: () => ({ user: null, isLoaded: true }),
 }));
 
 jest.mock("@/lib/api", () => {
@@ -69,6 +71,22 @@ describe("useClerkApiSession", () => {
     useSession.getState().registerIdentityLogout(null);
   });
 
+  it("does not re-join a refused identity and keep Signing you in", async () => {
+    mockMe.mockResolvedValue(supplier);
+    useSession.setState({
+      error: "This email is not available. Try a different email.",
+    });
+
+    renderHook(() => useClerkApiSession());
+
+    await waitFor(() => {
+      expect(useSession.getState().loading).toBe(false);
+    });
+    expect(mockMe).not.toHaveBeenCalled();
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(useSession.getState().sessionWait).not.toBe("in");
+  });
+
   it("signs out of Clerk when the mapped identity is the wrong role", async () => {
     mockMe.mockResolvedValue(supplier);
 
@@ -108,7 +126,7 @@ describe("useClerkApiSession", () => {
 
     renderHook(() => useClerkApiSession());
 
-    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalled(), { timeout: 8000 });
     expect(mockMe).not.toHaveBeenCalled();
     expect(mockActivate).not.toHaveBeenCalled();
     expect(useSession.getState().user).toBeNull();
@@ -202,6 +220,21 @@ describe("useClerkApiSession", () => {
     expect(mockMe).not.toHaveBeenCalled();
     expect(useSession.getState().user).toBeNull();
     expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it("keeps the sign-out latch after Clerk has left so ranking cannot flash", async () => {
+    mockIsSignedIn = false;
+    mockSessionId = null;
+    useSession.setState({ signingOut: true, user: null });
+
+    renderHook(() => useClerkApiSession());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(useSession.getState().signingOut).toBe(true);
+    expect(useSession.getState().user).toBeNull();
+    expect(mockMe).not.toHaveBeenCalled();
   });
 
   it("preserves an adopted client while Clerk still exposes the session ID", async () => {

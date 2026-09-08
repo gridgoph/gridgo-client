@@ -131,6 +131,9 @@ describe("LoginScreen Google SSO", () => {
       source: null,
       pendingClerkProfile: false,
       justProvisioned: false,
+      signingOut: false,
+      ssoInFlight: false,
+      sessionWait: null,
       clerkSyncNonce: 0,
     });
   });
@@ -182,5 +185,22 @@ describe("LoginScreen Google SSO", () => {
       expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_google" }),
     );
     expect(screen.queryByText("Could not sign in")).toBeNull();
+  });
+
+  it("does not show Signing you in until Google has authenticated", async () => {
+    mockStartSSOFlow.mockResolvedValue({
+      createdSessionId: null,
+      authSessionResult: { type: "success" },
+    });
+    await renderInSafeArea(<LoginScreen />);
+
+    fireEvent.press(screen.getByLabelText("Continue with Google"));
+
+    await waitFor(() => expect(mockStartSSOFlow).toHaveBeenCalled());
+    expect(useSession.getState().ssoInFlight).toBe(false);
+    expect(useSession.getState().sessionWait).toBeNull();
+    expect(screen.queryByText("Google sign-in did not finish. Try again.")).toBeNull();
+    expect(screen.queryByText("Signing you in")).toBeNull();
+    expect(screen.getByLabelText("Continue with Google")).toBeTruthy();
   });
 });

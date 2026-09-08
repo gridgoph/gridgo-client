@@ -4,6 +4,12 @@ import * as api from "@/lib/api";
 import { artworkErrorMessage, normalizeFileName } from "@/lib/artworkUpload";
 import { PROOF_ACCEPTED, PROOF_MAX_MIB, PROOF_MIME_TYPES } from "@/lib/checkout";
 import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
+import {
+  OCR_IDLE,
+  referenceFromOcr,
+  type ReceiptOcrState,
+} from "@/lib/receiptOcr";
+import { recognizeReceiptFromUri } from "@/lib/receiptOcrRecognize";
 
 export type PaymentProofState = {
   phase: "empty" | "sending" | "stored" | "failed";
@@ -37,7 +43,29 @@ const EMPTY: PaymentProofState = {
  */
 export function usePaymentProof() {
   const [state, setState] = useState<PaymentProofState>(EMPTY);
+  const [ocr, setOcr] = useState<ReceiptOcrState>(OCR_IDLE);
   const handleRef = useRef<api.UploadHandle | null>(null);
+  const ocrGen = useRef(0);
+
+  const readReference = useCallback((uri: string) => {
+    const gen = (ocrGen.current += 1);
+    setOcr({ status: "reading", reference: null });
+    void (async () => {
+      try {
+        const raw = await recognizeReceiptFromUri(uri);
+        if (gen !== ocrGen.current) return;
+        const reference = referenceFromOcr(raw);
+        setOcr(
+          reference
+            ? { status: "filled", reference }
+            : { status: "unreadable", reference: null },
+        );
+      } catch {
+        if (gen !== ocrGen.current) return;
+        setOcr({ status: "unreadable", reference: null });
+      }
+    })();
+  }, []);
 
   const pick = useCallback(async () => {
     const DocumentPicker = getDocumentPickerNative();
@@ -89,6 +117,7 @@ export function usePaymentProof() {
     }
 
     setState({ phase: "sending", fileName, fileId: null, progress: 0, error: null });
+    readReference(asset.uri);
     const handle = api.uploadFile(
       { uri: asset.uri, name: fileName, mimeType: asset.mimeType ?? null },
       "payment_proof",
@@ -117,13 +146,15 @@ export function usePaymentProof() {
     } finally {
       handleRef.current = null;
     }
-  }, []);
+  }, [readReference]);
 
   const reset = useCallback(() => {
+    ocrGen.current += 1;
     handleRef.current?.cancel();
     handleRef.current = null;
     setState(EMPTY);
+    setOcr(OCR_IDLE);
   }, []);
 
-  return { state, pick, reset };
+  return { state, ocr, pick, reset };
 }

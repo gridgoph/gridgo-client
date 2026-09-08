@@ -190,6 +190,7 @@ describe("removing an item from the order", () => {
 
     expect(await screen.findByText("Remove Flyers?")).toBeTruthy();
     expect(screen.getByText("Keep it")).toBeTruthy();
+    expect(screen.getByText("Swipe left to delete")).toBeTruthy();
     expect(api.removeCartLine).not.toHaveBeenCalled();
   });
 });

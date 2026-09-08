@@ -1,6 +1,7 @@
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, View, useWindowDimensions } from "react-native";
 
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { spacing, typography } from "@/constants/theme";
 import { formatPhp } from "@/lib/api";
 import type { CatalogItem } from "@/lib/api";
 import { readyInLine, samplePhotoUri, unitLine } from "@/lib/listing";
@@ -10,6 +11,17 @@ type Props = {
   subcategory: ProductSubcategory;
   listing: CatalogItem | null;
   onPress: () => void;
+};
+
+type CardProps = Props & {
+  /** Square on the wall, where the card is the page. Wide in a strip. */
+  photoRatio?: "square" | "wide";
+  /**
+   * The contents line. On the category wall it is what separates two
+   * neighbouring families; in Home's strip the board underneath already lists
+   * them, so the card is a photograph and a price and nothing else.
+   */
+  showExamples?: boolean;
 };
 
 function moneyLine(listing: CatalogItem | null): { amount: string; unit: string } | null {
@@ -88,16 +100,80 @@ export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
 }
 
 /**
+ * Two lines of room for the name, whether or not the name needs them.
+ *
+ * These cards stand side by side — in a row on the wall, in a strip on Home —
+ * and the only part of them that changes height is the name. Left to size
+ * itself, "Flyers" made a card one line shorter than "Corporate giveaways"
+ * beside it, so the two prices sat at different heights and the bottom edges
+ * were ragged.
+ *
+ * Android ignores `minHeight` on `Text` (it sizes to the glyphs, then the
+ * next line stacks against that). A wrapping name also grows past the token
+ * line-height because Android adds font padding. So the reservations are
+ * `View`s with a fixed `height`, and the text inside has font padding off.
+ *
+ * The block under the photo is reserved as well as the name, because a
+ * subcategory without an example line, or a listing with no price, would drop
+ * a line and start the ragged edge again.
+ *
+ * **The reservation is in the phone's text size, not in the design's.** React
+ * Native multiplies both `fontSize` and `lineHeight` by the OS font scale, and
+ * these boxes were raw numbers that did not move with it — so a client who had
+ * turned text up got "per pack of 100" sliced through the middle and the second
+ * line of a wrapped name shaved off, while the same card is perfect at 1x. The
+ * clip is a guard against a tight line-box painting into the photo above, and
+ * it must never be what decides how much of a sentence a person reads.
+ */
+const NAME_LINES = 2;
+const EXAMPLE_LINES = 2;
+
+/**
+ * The card's reserved slots at this phone's text size.
+ *
+ * Never scales below 1: a client who has turned text *down* gets the design's
+ * rhythm rather than a card squeezed tighter than it was drawn.
+ */
+export function sampleCardSlots(fontScale: number, withExamples: boolean) {
+  const scale = Number.isFinite(fontScale) ? Math.max(1, fontScale) : 1;
+  const name = typography.body.lineHeight * NAME_LINES * scale;
+  const examples = withExamples ? typography.caption.lineHeight * EXAMPLE_LINES * scale : 0;
+  const price = (typography.body.lineHeight + typography.caption.lineHeight) * scale;
+  const gaps = spacing.xs * (withExamples ? 2 : 1);
+  return { name, examples, price, copy: name + examples + price + gaps };
+}
+
+const textSlot = {
+  includeFontPadding: false,
+  fontSize: typography.body.fontSize,
+  lineHeight: typography.body.lineHeight,
+} as const;
+
+const captionSlot = {
+  includeFontPadding: false,
+  fontSize: typography.caption.fontSize,
+  lineHeight: typography.caption.lineHeight,
+} as const;
+
+/**
  * One thing GRIDGO can print, as a sample tile.
  *
  * The photo leads because that is what a client picks with. Under it, the name
  * and the starting price — the two facts that decide a tap.
  */
-export function CategorySampleCard({ subcategory, listing, onPress }: Props) {
+export function CategorySampleCard({
+  subcategory,
+  listing,
+  onPress,
+  photoRatio = "square",
+  showExamples = true,
+}: CardProps) {
+  const { fontScale } = useWindowDimensions();
+  const slots = sampleCardSlots(fontScale, showExamples);
   const money = moneyLine(listing);
 
   return (
-    <View className="rounded-card border border-outline bg-surface">
+    <View className="overflow-hidden rounded-card border border-outline bg-surface">
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -113,21 +189,51 @@ export function CategorySampleCard({ subcategory, listing, onPress }: Props) {
           url={sampleUrl(listing)}
           altText={listing?.photos[0]?.altText ?? subcategory.name}
           emptyLabel="No sample"
+          ratio={photoRatio}
         />
-        <View className="gap-1 px-3 pb-3">
-          <Text className="text-body font-medium text-text-primary" numberOfLines={2}>
-            {subcategory.name}
-          </Text>
-          {subcategory.examples ? (
-            <Text className="text-caption text-text-muted" numberOfLines={1}>
-              {subcategory.examples}
-            </Text>
-          ) : null}
-          {money ? (
-            <Text className="text-body text-text-primary" numberOfLines={1}>
-              {money.amount} {money.unit}
-            </Text>
-          ) : null}
+        <View className="px-3 pb-3">
+          <View
+            testID="sample-card-copy"
+            style={{ height: slots.copy, gap: spacing.xs, overflow: "hidden" }}
+          >
+            <View
+              testID="sample-card-name"
+              style={{ height: slots.name, overflow: "hidden" }}
+            >
+              <Text
+                className="font-medium text-text-primary"
+                numberOfLines={NAME_LINES}
+                style={textSlot}
+              >
+                {subcategory.name}
+              </Text>
+            </View>
+            {showExamples ? (
+              <View style={{ height: slots.examples, overflow: "hidden" }}>
+                {subcategory.examples ? (
+                  <Text
+                    className="text-text-muted"
+                    numberOfLines={EXAMPLE_LINES}
+                    style={captionSlot}
+                  >
+                    {subcategory.examples}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+            <View style={{ height: slots.price, overflow: "hidden" }}>
+              {money ? (
+                <>
+                  <Text className="text-text-primary" numberOfLines={1} style={textSlot}>
+                    {money.amount}
+                  </Text>
+                  <Text className="text-text-muted" numberOfLines={1} style={captionSlot}>
+                    {money.unit}
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          </View>
         </View>
       </Pressable>
     </View>

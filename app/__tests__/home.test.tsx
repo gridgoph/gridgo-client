@@ -72,16 +72,15 @@ beforeEach(() => {
  * something new. It is not a second orders list — that is the tab below.
  */
 describe("Home as a summary", () => {
-  it("invites a first print and shows the start tiles when there are no jobs", async () => {
+  it("shows the start menu, searchable, when there are no jobs", async () => {
     await renderInSafeArea(<HomeScreen />);
 
-    expect(await screen.findByText("No print jobs yet")).toBeTruthy();
-    expect(screen.getByText("See what GRIDGO prints")).toBeTruthy();
-    expect(screen.getByText("START A PRINT")).toBeTruthy();
+    expect(await screen.findByText("START A PRINT")).toBeTruthy();
+    expect(screen.getByLabelText("Search what GRIDGO prints")).toBeTruthy();
     expect(screen.getByLabelText("Marketing & promotional collateral")).toBeTruthy();
     expect(screen.getByLabelText("Documents & publications")).toBeTruthy();
-    expect(screen.queryByText("WAITING ON YOU")).toBeNull();
-    expect(screen.queryByText("RECENT JOBS")).toBeNull();
-    expect(screen.queryByText("BROWSE WHAT GRIDGO PRINTS")).toBeNull();
+    expect(screen.queryByText("NEEDS YOU")).toBeNull();
+    expect(screen.queryByText("YOUR JOBS")).toBeNull();
+    expect(screen.queryByText("No print jobs yet")).toBeNull();
   });
 });

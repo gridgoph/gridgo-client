@@ -198,6 +198,38 @@ describe("orderNextAction", () => {
     );
   });
 
+  /**
+   * Home's docket draws a mark from the action, and the action is not the
+   * state. The balance is asked for from `ready_for_dispatch` onward, whose
+   * own chip is an info-blue clock — and a blue clock over "Pay the remaining
+   * 25%" tells a client to wait for the very thing waiting on them.
+   */
+  it("cues money as attention even from a state that reads as informational", () => {
+    const owing = withPayments(
+      pricedOrder({ state: "ready_for_dispatch" }),
+      "confirmed",
+      "not_submitted",
+    );
+
+    expect(getOrderStateMeta("ready_for_dispatch").tone).toBe("info");
+    expect(orderNextAction(owing)?.tone).toBe("warning");
+    expect(orderNextAction(owing)?.icon).toBe("wallet");
+  });
+
+  it("cues a finished job as done and a returned one as attention", () => {
+    const counter = withPayments(
+      pricedOrder({ state: "awaiting_collection", fulfillmentMode: "pickup" }),
+      "confirmed",
+      "confirmed",
+    );
+    expect(orderNextAction(counter)?.tone).toBe("success");
+    expect(orderNextAction(counter)?.icon).toBe("package-check");
+
+    const back = orderNextAction(order({ state: "client_correction" }));
+    expect(back?.tone).toBe("warning");
+    expect(back?.icon).toBe("upload");
+  });
+
   it("never asks for the balance before the downpayment has cleared", () => {
     const pending = withPayments(
       pricedOrder({ state: "ready_for_dispatch" }),

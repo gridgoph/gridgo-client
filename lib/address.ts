@@ -2,19 +2,27 @@
  * Structured delivery address.
  *
  * The order record keeps one `address` string, so the app composes it from
- * parts a rider can actually use: street line, barangay, and an optional
- * landmark. City is fixed — GRIDGO delivers inside Davao City only — and the
- * delivery zone is chosen separately from the list the API serves.
+ * the street line a rider can actually use, an optional landmark, and the
+ * city. City is fixed — GRIDGO delivers inside Davao City only. Barangay is
+ * not asked for: a pin plus a street is enough to price the drop-off, and
+ * Davao riders already work from that.
  *
- * Street lines, barangay names and landmarks are genuinely free text; the
- * structure is what makes them useful, not a picker.
+ * Street lines and landmarks are genuinely free text; the structure is what
+ * makes them useful, not a picker.
  */
 
 export const DELIVERY_CITY = "Davao City";
 
+/** `POST /me/addresses` refuses a label longer than this. */
+export const ADDRESS_LABEL_MAX = 80;
+
 export type AddressParts = {
   /** House / building number and street. */
   line1: string;
+  /**
+   * Kept so an old stored string can still be split on reorder. Nothing in
+   * the app requires one, and new addresses do not write one.
+   */
   barangay: string;
   /** Optional: "beside the blue gate", "2nd floor, Insular Building". */
   landmark: string;
@@ -24,9 +32,7 @@ export const EMPTY_ADDRESS: AddressParts = { line1: "", barangay: "", landmark: 
 
 /** One line, in the order a rider reads it. */
 export function composeAddress(parts: AddressParts): string {
-  const core = [parts.line1.trim(), parts.barangay.trim(), DELIVERY_CITY]
-    .filter(Boolean)
-    .join(", ");
+  const core = [parts.line1.trim(), DELIVERY_CITY].filter(Boolean).join(", ");
   const landmark = parts.landmark.trim();
   return landmark ? `${core} (${landmark})` : core;
 }
@@ -36,6 +42,9 @@ export function composeAddress(parts: AddressParts): string {
  * job pre-fills the structured fields instead of dropping the client into a
  * blank form. Anything it cannot place stays on the street line, where the
  * client can see and correct it.
+ *
+ * A trailing barangay segment is still read — older jobs wrote one — but it
+ * is never required to save.
  */
 export function parseAddress(stored: string | null | undefined): AddressParts {
   const raw = (stored ?? "").trim();
@@ -79,13 +88,6 @@ export function checkAddress(parts: AddressParts): AddressCheck {
       ok: false,
       field: "line1",
       reason: "Add the street and number so the rider can find the drop-off.",
-    };
-  }
-  if (!parts.barangay.trim()) {
-    return {
-      ok: false,
-      field: "barangay",
-      reason: "Add the barangay — Davao street names repeat across barangays.",
     };
   }
   return { ok: true, field: null, reason: null };

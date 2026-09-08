@@ -189,7 +189,25 @@ export type ClerkTokenWait = {
   /** Total probes: the first is the cache, the rest force a mint. */
   attempts?: number;
   delayMs?: number;
+  /**
+   * Attempt index at which probes start forcing a mint. 1 is the default
+   * (cache, then mint). Browser SSO often has a live session whose JWT is
+   * not in cache yet — cache-only probes must outlast that gap or we mint
+   * (and throttle) while the token is about to appear.
+   */
+  mintFrom?: number;
   sleep?: (ms: number) => Promise<void>;
+};
+
+/**
+ * After Google returns, Clerk is signed in before a JWT is cached.
+ * Password login stays on the short default wait; this is the one-shot
+ * native redirect, so it can afford to re-read the cache.
+ */
+export const CLERK_SSO_TOKEN_WAIT: ClerkTokenWait = {
+  attempts: 10,
+  delayMs: 400,
+  mintFrom: 8,
 };
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -242,10 +260,11 @@ export async function awaitClerkSessionToken(
 ): Promise<string | null> {
   const attempts = Math.max(1, wait.attempts ?? 2);
   const delayMs = wait.delayMs ?? 120;
+  const mintFrom = Math.max(1, wait.mintFrom ?? 1);
   const sleep = wait.sleep ?? defaultSleep;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const token =
-      attempt === 0
+      attempt < mintFrom
         ? await clerkCachedSessionToken(getToken)
         : await clerkFreshSessionToken(getToken);
     if (token) return token;

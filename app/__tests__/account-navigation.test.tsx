@@ -104,6 +104,9 @@ describe("Account destinations", () => {
     fireEvent.press(screen.getByLabelText("Your details"));
     expect(mockPush).toHaveBeenCalledWith("/account-details");
 
+    fireEvent.press(screen.getByLabelText("Saved Places"));
+    expect(mockPush).toHaveBeenCalledWith("/saved-places");
+
     fireEvent.press(screen.getByLabelText("Apply as a business"));
     expect(mockPush).toHaveBeenCalledWith("/business-apply");
 

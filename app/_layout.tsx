@@ -13,11 +13,12 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 
+import { BrandIntro } from "@/components/BrandIntro";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
@@ -69,7 +70,7 @@ export default function RootLayout() {
 function AppNavigation() {
   const scheme = useThemeName();
   const token = useThemeColors();
-  const fontsReady = useAppFonts();
+  useAppFonts();
   // Session drives Stack.Protected so sign-out / 401 / rejected role all leave
   // the signed-in area from anywhere (tabs + root stack siblings), not only at launch.
   const user = useSession((s) => s.user);
@@ -93,11 +94,17 @@ function AppNavigation() {
     SystemUI.setBackgroundColorAsync(token.canvas);
   }, [token.canvas]);
 
+  // The opening matches the legacy splash: start on the first frame, do not
+  // wait for fonts. Satoshi has ~1.8s before the wordmark, and the overlay
+  // covers any fallback under it.
   useEffect(() => {
-    if (fontsReady) SplashScreen.hideAsync();
-  }, [fontsReady]);
+    void SplashScreen.hideAsync();
+  }, []);
 
-  if (!fontsReady) return null;
+  // The opening plays once per launch, over everything. This layout mounts
+  // once, so the flag is the whole gate — no route, no back-stack entry, and
+  // nothing about where the launch lands is decided here.
+  const [introPlaying, setIntroPlaying] = useState(true);
 
   return (
     /*
@@ -318,6 +325,19 @@ function AppNavigation() {
                   options={pushedScreenOptions("Your details")}
                 />
                 {/*
+                  Grab-shaped list of Home / Work / named drop-offs. The band
+                  names the list; Add home / Add work are the rows, and the
+                  editor they open carries its own heading.
+                */}
+                <Stack.Screen
+                  name="saved-places"
+                  options={pushedScreenOptions("Saved Places")}
+                />
+                <Stack.Screen
+                  name="saved-place"
+                  options={pushedScreenOptions("Saved Places")}
+                />
+                {/*
                   The two halves of the sign-in that take steps rather than
                   keystrokes. The band names the thing being changed, because
                   each screen's own heading says what is being done to it —
@@ -343,6 +363,7 @@ function AppNavigation() {
               </Stack.Protected>
             </Stack>
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+            {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}
         </ThemeProvider>
       </KeyboardProvider>
     </SafeAreaProvider>

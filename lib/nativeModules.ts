@@ -12,15 +12,24 @@
 
 type DocumentPickerNative = typeof import("expo-document-picker");
 type DateTimePickerNative = typeof import("@react-native-community/datetimepicker");
+type FileSystemLegacyNative = typeof import("expo-file-system/legacy");
+type MediaLibraryNative = typeof import("expo-media-library");
+type LocationNative = typeof import("expo-location");
 
 let documentPickerNative: DocumentPickerNative | null | undefined;
 let dateTimePickerNative: DateTimePickerNative | null | undefined;
+let fileSystemLegacyNative: FileSystemLegacyNative | null | undefined;
+let mediaLibraryNative: MediaLibraryNative | null | undefined;
+let locationNative: LocationNative | null | undefined;
 
 export const FILE_PICKER_NEEDS_REBUILD =
   "Choosing a file needs a rebuilt GRIDGO app on this phone. Everything else on this screen still works.";
 
 export const DEADLINE_PICKER_NEEDS_REBUILD =
   "Setting a deadline needs a rebuilt GRIDGO app on this phone. Everything else on this screen still works.";
+
+export const LOCATION_NEEDS_REBUILD =
+  "Pinning your location needs a rebuilt GRIDGO app on this phone. Search for the place, or tap the map.";
 
 function optionalNative(name: string): unknown {
   try {
@@ -88,6 +97,54 @@ export function getDateTimePickerNative(): DateTimePickerNative | null {
     return dateTimePickerNative;
   } catch {
     dateTimePickerNative = null;
+    return null;
+  }
+}
+
+export function getFileSystemLegacyNative(): FileSystemLegacyNative | null {
+  if (fileSystemLegacyNative !== undefined) return fileSystemLegacyNative;
+  if (!inJest() && !optionalNative("ExponentFileSystem")) {
+    fileSystemLegacyNative = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    fileSystemLegacyNative = require("expo-file-system/legacy") as FileSystemLegacyNative;
+    return fileSystemLegacyNative;
+  } catch {
+    fileSystemLegacyNative = null;
+    return null;
+  }
+}
+
+export function getMediaLibraryNative(): MediaLibraryNative | null {
+  if (mediaLibraryNative !== undefined) return mediaLibraryNative;
+  if (!inJest() && !optionalNative("ExpoMediaLibrary")) {
+    mediaLibraryNative = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    mediaLibraryNative = require("expo-media-library") as MediaLibraryNative;
+    return mediaLibraryNative;
+  } catch {
+    mediaLibraryNative = null;
+    return null;
+  }
+}
+
+export function getLocationNative(): LocationNative | null {
+  if (locationNative !== undefined) return locationNative;
+  if (!inJest() && !optionalNative("ExpoLocation")) {
+    locationNative = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    locationNative = require("expo-location") as LocationNative;
+    return locationNative;
+  } catch {
+    locationNative = null;
     return null;
   }
 }

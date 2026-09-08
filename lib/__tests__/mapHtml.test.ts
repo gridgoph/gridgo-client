@@ -1,4 +1,4 @@
-import { buildMapHtml, type MapModel } from "@/lib/mapHtml";
+import { buildMapHtml, externalPinScript, type MapModel } from "@/lib/mapHtml";
 
 const model: MapModel = {
   theme: "light",
@@ -64,5 +64,22 @@ describe("buildMapHtml", () => {
     // Yellow is a finite budget; on this screen the route line spends it.
     expect(html).toContain('"routeColor":"#FFDE58"');
     expect(html).not.toContain("background: #FFDE58");
+  });
+
+  it("can move a pin from the host without rebuilding the document", () => {
+    const html = buildMapHtml(model);
+    expect(html).toContain("function setExternalPin");
+    expect(externalPinScript({ lat: 7.073, lng: 125.613 })).toContain("7.073");
+    expect(externalPinScript({ lat: 7.073, lng: 125.613 })).toContain("125.613");
+  });
+
+  it("draws the drop-off as the rider's teardrop, client skin, standing on the street", () => {
+    const html = buildMapHtml(model);
+    expect(html).toContain("M17 45.6C17 45.6 3.2 27.9 3.2 17.6A13.8 13.8 0 1 1 30.8 17.6C30.8 27.9 17 45.6 17 45.6Z");
+    expect(html).toContain("fill: '#FFFFFF'");
+    expect(html).toContain("stroke: '#1a1a1a'");
+    expect(html).toContain("iconAnchor: [17, 45]");
+    expect(html).toContain("pin-tip");
+    expect(html).not.toMatch(/\.pin-dropoff \.pin-mark/);
   });
 });

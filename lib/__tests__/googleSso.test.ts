@@ -1,4 +1,14 @@
-import { completeGoogleSso } from "@/lib/googleSso";
+import type { User } from "@/lib/api";
+import {
+  adoptGoogleSsoClient,
+  completeGoogleSso,
+  createdSessionIdFromSsoReload,
+  finishGoogleSsoReturn,
+  googleSsoAdoptShouldRetry,
+  googleSsoCreatedSessionId,
+  googleSsoRotatingTokenNonce,
+  reloadClerkSignInForSso,
+} from "@/lib/googleSso";
 
 describe("completeGoogleSso", () => {
   it("does not start SSO again when Clerk is already signed in", async () => {
@@ -65,5 +75,152 @@ describe("completeGoogleSso", () => {
     ).resolves.toEqual({ status: "cancelled" });
 
     expect(setActive).not.toHaveBeenCalled();
+  });
+});
+
+describe("Google SSO native return", () => {
+  it("reads createdSessionId from either callback spelling", () => {
+    expect(googleSsoCreatedSessionId({ createdSessionId: "sess_google" })).toBe("sess_google");
+    expect(googleSsoCreatedSessionId({ created_session_id: ["sess_google"] })).toBe("sess_google");
+    expect(googleSsoCreatedSessionId({})).toBeNull();
+  });
+
+  it("reads the rotating token nonce Clerk puts on the native redirect", () => {
+    expect(googleSsoRotatingTokenNonce({ rotating_token_nonce: "nonce_1" })).toBe("nonce_1");
+    expect(googleSsoRotatingTokenNonce({ rotatingTokenNonce: ["nonce_1"] })).toBe("nonce_1");
+    expect(googleSsoRotatingTokenNonce({})).toBeNull();
+  });
+
+  it("does not start SSO when Clerk is already signed in on the callback", async () => {
+    const setActive = jest.fn();
+
+    await expect(
+      finishGoogleSsoReturn({
+        alreadySignedIn: true,
+        createdSessionId: "sess_google",
+        setActive,
+      }),
+    ).resolves.toEqual({ status: "already_signed_in" });
+
+    expect(setActive).not.toHaveBeenCalled();
+  });
+
+  it("calls setActive when the callback carries a created session", async () => {
+    const setActive = jest.fn(async () => undefined);
+
+    await expect(
+      finishGoogleSsoReturn({
+        alreadySignedIn: false,
+        createdSessionId: "sess_google",
+        setActive,
+      }),
+    ).resolves.toEqual({ status: "activated", sessionId: "sess_google" });
+
+    expect(setActive).toHaveBeenCalledWith({ session: "sess_google" });
+  });
+
+  it("stays incomplete until Clerk is signed in or a session id appears", async () => {
+    const setActive = jest.fn();
+
+    await expect(
+      finishGoogleSsoReturn({
+        alreadySignedIn: false,
+        createdSessionId: null,
+        setActive,
+      }),
+    ).resolves.toEqual({ status: "incomplete" });
+
+    expect(setActive).not.toHaveBeenCalled();
+  });
+
+  it("activates the session created by a nonce reload", async () => {
+    const finalize = jest.fn(async () => ({ error: null }));
+
+    await expect(
+      createdSessionIdFromSsoReload(
+        {
+          __internal_future: {
+            createdSessionId: "sess_google",
+            firstFactorVerification: { status: "verified" },
+            finalize,
+          },
+        },
+        jest.fn(),
+      ),
+    ).resolves.toBe("sess_google");
+
+    expect(finalize).toHaveBeenCalled();
+  });
+
+  it("transfers a new Google account then finalizes that session", async () => {
+    const signInFinalize = jest.fn();
+    const signUpFinalize = jest.fn(async () => ({ error: null }));
+    const transfer = jest.fn(async () => ({
+      createdSessionId: "sess_new",
+      finalize: signUpFinalize,
+    }));
+
+    await expect(
+      createdSessionIdFromSsoReload(
+        {
+          createdSessionId: null,
+          firstFactorVerification: { status: "transferable" },
+          finalize: signInFinalize,
+        },
+        transfer,
+      ),
+    ).resolves.toBe("sess_new");
+
+    expect(transfer).toHaveBeenCalled();
+    expect(signInFinalize).not.toHaveBeenCalled();
+    expect(signUpFinalize).toHaveBeenCalled();
+  });
+
+  it("reloads Clerk's sign-in with the rotating token nonce", async () => {
+    const reload = jest.fn(async () => ({ createdSessionId: "sess_google" }));
+
+    await expect(
+      reloadClerkSignInForSso({ client: { signIn: { reload } } }, "nonce_1"),
+    ).resolves.toEqual({ createdSessionId: "sess_google" });
+
+    expect(reload).toHaveBeenCalledWith({ rotatingTokenNonce: "nonce_1" });
+  });
+});
+
+describe("adoptGoogleSsoClient", () => {
+  const client: User = {
+    id: "u-client",
+    email: "client@gridgo.ph",
+    name: "Ana Santos",
+    role: "client",
+    accountType: "individual",
+  };
+  const noSleep = async () => undefined;
+
+  it("retries a delayed token / me miss and does not treat it as failed", async () => {
+    const adopt = jest
+      .fn()
+      .mockResolvedValueOnce({
+        kind: "error",
+        message: "Clerk signed you in, but GRIDGO never received an identity token for that session. Sign out and try again.",
+        signOut: false,
+      })
+      .mockResolvedValueOnce({ kind: "adopt", user: client, provisioned: false });
+
+    await expect(
+      adoptGoogleSsoClient({ adopt, sleep: noSleep }),
+    ).resolves.toEqual({ kind: "adopt", user: client, provisioned: false });
+    expect(adopt).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a wrong-role refusal", async () => {
+    const adopt = jest.fn().mockResolvedValue({ kind: "wrong_role", role: "supplier" });
+
+    await expect(adoptGoogleSsoClient({ adopt, sleep: noSleep })).resolves.toEqual({
+      kind: "wrong_role",
+      role: "supplier",
+    });
+    expect(adopt).toHaveBeenCalledTimes(1);
+    expect(googleSsoAdoptShouldRetry({ kind: "wrong_role", role: "supplier" })).toBe(false);
   });
 });

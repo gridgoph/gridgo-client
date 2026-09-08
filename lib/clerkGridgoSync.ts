@@ -11,6 +11,7 @@ import {
   clerkFreshSessionToken,
   clerkTokenProvider,
   type ClerkGetToken,
+  type ClerkTokenWait,
 } from "@/lib/clerkSignIn";
 import {
   bridgeClerkToGridgo,
@@ -46,7 +47,10 @@ export function invalidateClerkGridgoSync(): void {
   useSession.getState().endClerkSync();
 }
 
-async function loadClerkGridgoUser(getToken: ClerkGetToken): Promise<ClerkBridgeResult> {
+async function loadClerkGridgoUser(
+  getToken: ClerkGetToken,
+  tokenWait?: ClerkTokenWait,
+): Promise<ClerkBridgeResult> {
   api.setTokenProvider(clerkTokenProvider(getToken));
   useSession.getState().beginClerkSync();
   return bridgeClerkToGridgo({
@@ -56,7 +60,10 @@ async function loadClerkGridgoUser(getToken: ClerkGetToken): Promise<ClerkBridge
     // first JWT. It is what stops `/auth/me` going out with no Bearer. The
     // wait costs nothing once a token exists — probe 0 reads the cache — so
     // only a genuinely empty session pays, and it pays twice, not five times.
-    awaitToken: () => awaitClerkSessionToken(getToken, { attempts: 3, delayMs: 150 }),
+    // Google's native return passes a longer cache-heavy wait: the JWT is
+    // often not in cache for well over 3×150ms.
+    awaitToken: () =>
+      awaitClerkSessionToken(getToken, tokenWait ?? { attempts: 3, delayMs: 150 }),
     me: () => api.me({ ignoreUnauthorized: true }),
     activate: (input) => api.activateClerkClient(input),
     // Activate wrote `gridgo_role`; the cached JWT predates that claim, so
@@ -105,6 +112,7 @@ export function syncClerkToGridgo(deps: {
   getToken: ClerkGetToken;
   signOut: () => Promise<unknown>;
   sessionId?: string | null;
+  tokenWait?: ClerkTokenWait;
 }): Promise<ClerkBridgeResult> {
   const sessionId = deps.sessionId ?? null;
   if (activeSync) {
@@ -122,7 +130,7 @@ export function syncClerkToGridgo(deps: {
   const generation = ++currentGeneration;
   const run = (async () => {
     try {
-      const result = await loadClerkGridgoUser(deps.getToken);
+      const result = await loadClerkGridgoUser(deps.getToken, deps.tokenWait);
       if (generation === currentGeneration) {
         await applyClerkGridgoResult(result, deps.signOut);
       }

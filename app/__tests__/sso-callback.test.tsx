@@ -1,34 +1,155 @@
-import { render, screen, waitFor } from "@testing-library/react-native";
+import { render, screen } from "@testing-library/react-native";
+import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import SsoCallbackScreen from "@/app/sso-callback";
+import type { User } from "@/lib/api";
+import { useSession } from "@/store/session";
 
 const mockReplace = jest.fn();
+const mockSetActive = jest.fn(async () => undefined);
+const mockSignOut = jest.fn(async () => undefined);
+const mockReload = jest.fn();
+const mockGetToken = jest.fn(async () => "clerk-jwt");
+const mockMe = jest.fn();
 
-jest.mock("expo-router", () => ({
-  useRouter: () => ({ replace: mockReplace }),
+let mockIsSignedIn = false;
+let mockSessionId: string | null = null;
+let mockParams: Record<string, string | string[] | undefined> = {};
+
+const client: User = {
+  id: "u-client",
+  email: "client@gridgo.ph",
+  name: "Ana Santos",
+  role: "client",
+  accountType: "individual",
+};
+
+jest.mock("@clerk/expo", () => ({
+  useAuth: () => ({
+    isSignedIn: mockIsSignedIn,
+    isLoaded: true,
+    getToken: mockGetToken,
+    sessionId: mockSessionId,
+  }),
+  useClerk: () => ({
+    setActive: mockSetActive,
+    signOut: mockSignOut,
+    client: { signIn: { reload: mockReload } },
+  }),
+  useSignUp: () => ({
+    signUp: { create: jest.fn(), createdSessionId: null, finalize: jest.fn() },
+  }),
 }));
+
+jest.mock("@/lib/api", () => {
+  const actual = jest.requireActual("@/lib/api");
+  return {
+    ...actual,
+    me: (...args: unknown[]) => mockMe(...args),
+    activateClerkClient: jest.fn(),
+  };
+});
+
+jest.mock("expo-router", () => {
+  // Jest mock factories cannot use ESM imports; this is the same pattern as jest.setup.js.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require("react");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Text } = require("react-native");
+  return {
+    Redirect: ({ href }: { href: unknown }) => {
+      const value = typeof href === "string" ? href : JSON.stringify(href);
+      return React.createElement(Text, { testID: "redirect" }, value);
+    },
+    useLocalSearchParams: () => mockParams,
+    useRouter: () => ({ replace: mockReplace }),
+  };
+});
+
+function renderInSafeArea(ui: ReactElement) {
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 390, height: 844 },
+          insets: { top: 47, left: 0, right: 0, bottom: 34 },
+        }}
+      >
+        {children}
+      </SafeAreaProvider>
+    ),
+  });
+}
 
 describe("SSO callback route", () => {
   beforeEach(() => {
+    mockIsSignedIn = false;
+    mockSessionId = null;
+    mockParams = {};
     mockReplace.mockReset();
+    mockSetActive.mockReset().mockResolvedValue(undefined);
+    mockSignOut.mockReset().mockResolvedValue(undefined);
+    mockReload.mockReset();
+    mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
+    mockMe.mockReset();
+    useSession.setState({
+      user: null,
+      loading: false,
+      error: null,
+      source: null,
+      pendingClerkProfile: false,
+      justProvisioned: false,
+      signingOut: false,
+      ssoInFlight: false,
+      clerkSyncNonce: 0,
+    });
   });
 
-  it("matches Clerk's default callback path and returns to login", async () => {
-    await render(<SsoCallbackScreen />, {
-      wrapper: ({ children }) => (
-        <SafeAreaProvider
-          initialMetrics={{
-            frame: { x: 0, y: 0, width: 390, height: 844 },
-            insets: { top: 47, left: 0, right: 0, bottom: 34 },
-          }}
-        >
-          {children}
-        </SafeAreaProvider>
-      ),
+  it("keeps a spinner and does not dump a Google return onto login or welcome", async () => {
+    await renderInSafeArea(<SsoCallbackScreen />);
+
+    expect(screen.getByText("Signing you in")).toBeTruthy();
+    expect(screen.queryByTestId("redirect")).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockReload).not.toHaveBeenCalled();
+    expect(mockMe).not.toHaveBeenCalled();
+  });
+
+  it("lands an already-adopted client on Home, not login", async () => {
+    useSession.setState({
+      user: client,
+      loading: false,
+      error: null,
+      source: "clerk",
+      pendingClerkProfile: false,
+      justProvisioned: false,
+      clerkSyncNonce: 0,
     });
 
-    expect(screen.getByText("Signing you in…")).toBeTruthy();
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/(auth)/login"));
+    await renderInSafeArea(<SsoCallbackScreen />);
+
+    expect(screen.getByTestId("redirect").props.children).toBe("/(tabs)/home");
+    expect(screen.queryByText("/(auth)/login")).toBeNull();
+    expect(screen.queryByText("/(auth)/welcome")).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("sends a Google account that still needs a profile to complete-profile", async () => {
+    useSession.setState({
+      user: null,
+      loading: false,
+      error: null,
+      source: "clerk",
+      pendingClerkProfile: true,
+      justProvisioned: false,
+      clerkSyncNonce: 0,
+    });
+
+    await renderInSafeArea(<SsoCallbackScreen />);
+
+    expect(screen.getByTestId("redirect").props.children).toBe("/complete-profile");
+    expect(screen.queryByText("/(auth)/login")).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 });

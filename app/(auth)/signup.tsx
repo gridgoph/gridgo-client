@@ -151,6 +151,7 @@ export default function SignupScreen() {
     }
 
     setError(null);
+    useSession.getState().finishSigningOut();
     useSession.getState().clearError();
     try {
       await withSettledClerkSession({

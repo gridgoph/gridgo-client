@@ -23,18 +23,18 @@ Product requirements, the design system, and the operations model live in the `G
 
 ```bash
 npm install
-npx expo start --dev-client
+npm start
 ```
 
-Android day-to-day is a USB development build (`expo-dev-client`), not Expo Go. Install once with `npx expo run:android` (export `GOOGLE_SERVICES_JSON` to the captain's Firebase file so push is wired). Then the installed `ph.gridgo.client` app talks to Metro.
+Day-to-day testing is **Expo Go** (`expo start --go --port 8081`). Open Expo Go on the phone, or press `w` / visit http://localhost:8081 for web.
 
-**Expo Go is not sufficient.** Native FCM tokens, lock-screen push, and `gridgoclient://` returns need this app's own debug build. Expo Go Android SDK 53 throws if `expo-notifications` is imported.
+`npm run android` still builds the USB development client when you need native FCM, lock-screen push, or `gridgoclient://` returns. Export `GOOGLE_SERVICES_JSON` to the captain's Firebase file for that path.
 
 ## Scripts
 
 | Command | Does |
 |---|---|
-| `npm start` | Metro for the development client (`expo start --dev-client`) |
+| `npm start` | Metro for Expo Go (`expo start --go --port 8081`) |
 | `npm run android` | Build and install the USB debug app (`expo run:android`) |
 | `npm run ios` | Dev server targeting iOS |
 | `npm run web` | Web target — useful for quick layout checks, not a shipping surface |

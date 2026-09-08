@@ -15,6 +15,8 @@ export const AUTHENTICATED_ROOT_SCREENS = [
   "order/[id]",
   "design-system",
   "settings",
+  "saved-places",
+  "saved-place",
 ] as const;
 
 /** Only reachable while signed out (mirror of the signed-in set). */

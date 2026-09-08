@@ -143,6 +143,11 @@ export default function AccountScreen() {
               detail="Your name, number, and the email you sign in with"
               onPress={() => router.push("/account-details")}
             />
+            <DestinationRow
+              title="Saved Places"
+              detail="Home, Work, and the spots you drop off to"
+              onPress={() => router.push("/saved-places")}
+            />
             {/*
               Offered only while the account is still personal. After the
               upgrade the row has nothing left to do, and the identity card
@@ -201,7 +206,10 @@ export default function AccountScreen() {
         tone="destructive"
         onConfirm={() => {
           setConfirmingSignOut(false);
+          // `logout` drops the user synchronously. Replace immediately so the
+          // ranking screen cannot paint while Clerk is still leaving.
           void logout();
+          router.replace("/(auth)/welcome");
         }}
         onCancel={() => setConfirmingSignOut(false)}
       />

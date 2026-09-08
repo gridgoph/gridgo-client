@@ -145,25 +145,53 @@ export function showsFulfilmentProgress(state: string): boolean {
  * It reads the payment record as well as the state, because both halves of the
  * payment are asked for from states that otherwise belong to someone else.
  */
+export type OrderActionIcon =
+  | "wallet"
+  | "upload"
+  | "square-pen"
+  | "package-check"
+  | "triangle-alert";
+
 export type OrderNextAction = {
   /** Sentence-case verb phrase for the action itself. */
   title: string;
   /** Why it is being asked of them now. */
   body: string;
+  /**
+   * How the action reads at a glance, on Home's needs-you docket.
+   *
+   * Keyed to the *action*, never to the state it was asked from: the balance
+   * is asked for from `ready_for_dispatch` onward, and that state's own chip
+   * is an info-blue clock. A blue clock over "Pay the remaining 25%" tells a
+   * client to wait for the one thing that is waiting on them.
+   *
+   * Money and corrections are amber attention, a decision is informational,
+   * and a job on the counter is done and green. Colour never carries this on
+   * its own — the verb is the headline, and the icon is the third signal, so
+   * the docket still reads in grayscale.
+   */
+  tone: OrderStatusTone;
+  icon: OrderActionIcon;
 };
 
 const STATE_ACTIONS: Record<string, OrderNextAction> = {
   client_correction: {
     title: "Replace the artwork",
     body: "Operations found something they cannot print from. Upload a corrected file and send this job back to them — the order, its quote and any payment stay as they are.",
+    tone: "warning",
+    icon: "upload",
   },
   proof_approval: {
     title: "Approve your artwork proof",
     body: "Operations has checked your file against the print specification. Approving sends this job out for supplier matching.",
+    tone: "info",
+    icon: "square-pen",
   },
   issue_window_open: {
     title: "Check your delivery",
     body: "Tell Operations while the issue window is open if anything is wrong with what arrived.",
+    tone: "warning",
+    icon: "triangle-alert",
   },
 };
 
@@ -172,10 +200,14 @@ const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
   awaiting_collection: {
     title: "Collect at GRIDGO Office",
     body: "Your order is on the counter, paid for and ready. Bring the name you ordered under.",
+    tone: "success",
+    icon: "package-check",
   },
   issue_window_open: {
     title: "Check your order",
     body: "Tell Operations while the issue window is open if anything is wrong with what you collected.",
+    tone: "warning",
+    icon: "triangle-alert",
   },
 };
 
@@ -187,6 +219,8 @@ export function orderNextAction(order: Order): OrderNextAction | null {
       body: amount
         ? `Your supplier accepted at ${formatPhp(order.totalMinor ?? 0)} in total. Pay ${formatPhp(amount)} now by QR; production starts once Operations confirms it.`
         : "Your supplier has accepted and priced the job. Pay the downpayment by QR to start production.",
+      tone: "warning",
+      icon: "wallet",
     };
   }
   if (balanceDue(order)) {
@@ -197,6 +231,8 @@ export function orderNextAction(order: Order): OrderNextAction | null {
         body: amount
           ? `Settle the last ${formatPhp(amount)} before you come for this. The GRIDGO Office counter releases it once Operations confirms your payment.`
           : "Settle the remaining balance before you come for this. The GRIDGO Office counter releases it once Operations confirms your payment.",
+        tone: "warning",
+        icon: "wallet",
       };
     }
     return {
@@ -204,6 +240,8 @@ export function orderNextAction(order: Order): OrderNextAction | null {
       body: amount
         ? `Your job is on the press. GRIDGO sends a rider once the last ${formatPhp(amount)} is confirmed.`
         : "Your job is on the press. GRIDGO sends a rider once the remaining balance is confirmed.",
+      tone: "warning",
+      icon: "wallet",
     };
   }
   if (collectsAtOffice(order)) return COLLECT_STATE_ACTIONS[order.state] ?? STATE_ACTIONS[order.state] ?? null;

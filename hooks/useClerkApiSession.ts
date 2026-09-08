@@ -1,10 +1,13 @@
-import { useAuth, useClerk } from "@clerk/expo";
+import { useAuth, useClerk, useUser } from "@clerk/expo";
 import { useEffect, useRef } from "react";
 
 import * as api from "@/lib/api";
+import { isNonClientClerkRole, readGridgoRole } from "@/lib/clerkAuth";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
+import { wrongRoleMessage } from "@/lib/clerkSessionBridge";
 import {
   awaitClerkSessionToken,
+  CLERK_SSO_TOKEN_WAIT,
   clerkTokenProvider,
   releaseClerkSession,
 } from "@/lib/clerkSignIn";
@@ -17,7 +20,8 @@ import { useSignupFlow } from "@/store/signupFlow";
  * This hook joins those boundaries once, above every route.
  */
 export function useClerkApiSession(): void {
-  const { getToken, isLoaded, isSignedIn, sessionId } = useAuth();
+  const { getToken, isLoaded, isSignedIn, sessionId, sessionClaims } = useAuth();
+  const { user: clerkUser } = useUser();
   const { signOut } = useClerk();
   const clerkSyncNonce = useSession((state) => state.clerkSyncNonce);
   const signingOut = useSession((state) => state.signingOut);
@@ -25,6 +29,7 @@ export function useClerkApiSession(): void {
   const signupStep = useSignupFlow((state) => state.step);
   const syncedSessionId = useRef<string | null>(null);
   const clerkOwnerPresent = useRef(false);
+  const wasSigningOut = useRef(false);
 
   useEffect(() => {
     // Never rejects: the session store awaits this from `logout`,
@@ -61,21 +66,45 @@ export function useClerkApiSession(): void {
     if (!isLoaded) return;
     const current = useSession.getState();
 
+    if (current.signingOut) {
+      if (!wasSigningOut.current) {
+        wasSigningOut.current = true;
+        invalidateClerkGridgoSync();
+      }
+      if (!isSignedIn && !sessionId) {
+        api.setTokenProvider(null);
+        clerkOwnerPresent.current = false;
+        syncedSessionId.current = null;
+      }
+      // Keep the latch until Sign in / Google / Sign up. Clerk reporting
+      // signed-out here used to clear it, then a leftover session rebuilt the
+      // client and flashed the ranking screen before Welcome.
+      return;
+    }
+    wasSigningOut.current = false;
+
+    // A refused identity (wrong app) already owns the login error. Joining
+    // again would clear it and leave Signing you in up.
+    if (current.error) return;
+
+    const clerkRole =
+      readGridgoRole(clerkUser?.publicMetadata) ??
+      readGridgoRole(sessionClaims as unknown);
+    if (isNonClientClerkRole(clerkRole)) {
+      current.failClerkSync(wrongRoleMessage(clerkRole));
+      void signOut().catch(() => undefined);
+      return;
+    }
+
     if (!isSignedIn && !sessionId) {
       if (clerkOwnerPresent.current) {
         invalidateClerkGridgoSync();
       }
       clerkOwnerPresent.current = false;
       syncedSessionId.current = null;
-      if (current.signingOut) current.finishSigningOut();
       if (current.source === "clerk" || current.pendingClerkProfile) current.clearSession();
       return;
     }
-
-    // Local sign-out has already dropped the GRIDGO user. Do not rebuild it
-    // from a Clerk leftover that has not finished signing out yet — that is
-    // how the previous person came back after a slow logout.
-    if (current.signingOut) return;
 
     // A typed password / Google attempt is collecting a code. Do not join a
     // leftover Clerk identity to GRIDGO here — that leftover may be a rider
@@ -103,9 +132,13 @@ export function useClerkApiSession(): void {
         // would throw away a session that was about to work. This runs once
         // per launch / session change, not per request, so it can afford to
         // be more patient than the bearer path.
-        const token = await awaitClerkSessionToken(getToken, { attempts: 3, delayMs: 150 });
+        const token = await awaitClerkSessionToken(getToken, CLERK_SSO_TOKEN_WAIT);
         if (cancelled) return;
         if (!token) {
+          // A Google return is signed in at Clerk before a JWT is cached.
+          // Signing out here is what dumped a successful callback onto login.
+          // If GRIDGO is already joining that session, leave it alone.
+          if (useSession.getState().loading) return;
           // Dead leftover (failed Google, expired cache): drop it quietly so
           // login can accept the password or Google tap the person just made.
           await releaseClerkSession(signOut);
@@ -121,5 +154,17 @@ export function useClerkApiSession(): void {
     return () => {
       cancelled = true;
     };
-  }, [getToken, isLoaded, isSignedIn, sessionId, signOut, clerkSyncNonce, signingOut, loginStep, signupStep]);
+  }, [
+    getToken,
+    isLoaded,
+    isSignedIn,
+    sessionId,
+    signOut,
+    clerkSyncNonce,
+    signingOut,
+    loginStep,
+    signupStep,
+    clerkUser,
+    sessionClaims,
+  ]);
 }

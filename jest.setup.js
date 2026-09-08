@@ -21,6 +21,21 @@ jest.mock("react-native-webview", () => {
   return { __esModule: true, WebView, default: WebView };
 });
 
+jest.mock("expo-location", () => ({
+  Accuracy: { Balanced: 3, Low: 1, Lowest: 1, High: 4, Highest: 5, BestForNavigation: 6 },
+  getForegroundPermissionsAsync: jest.fn(async () => ({
+    status: "undetermined",
+    granted: false,
+    canAskAgain: true,
+  })),
+  requestForegroundPermissionsAsync: jest.fn(async () => ({
+    status: "undetermined",
+    granted: false,
+    canAskAgain: true,
+  })),
+  getCurrentPositionAsync: jest.fn(),
+}));
+
 // Push is FCM through a native module, so there is nothing to exercise in Jest:
 // the module's own surface is mocked to inert, and every rule the app applies to
 // it lives in lib/push.ts and is unit-tested there directly. Permission is
@@ -58,6 +73,16 @@ jest.mock("react-native-keyboard-controller", () =>
   require("react-native-keyboard-controller/jest"),
 );
 
+// A stray Nominatim / OSRM / API fetch is how the suite finished then sat
+// until GitHub cancelled the job (run 34213849490). Tests that need a
+// response spy on `global.fetch` themselves.
+global.fetch = jest.fn(async () => ({
+  ok: false,
+  status: 599,
+  json: async () => ({}),
+  text: async () => "",
+}));
+
 // Every screen test runs as a client who has already told GRIDGO what to match
 // on. The ranking is a one-off gate on the way in (lib/authLanding.ts), and
 // leaving the store empty would land every one of these tests on the ranking
@@ -67,4 +92,13 @@ jest.mock("react-native-keyboard-controller", () =>
 beforeEach(() => {
   const { usePriorities } = require("@/store/priorities");
   usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
+  if (jest.isMockFunction(global.fetch)) {
+    global.fetch.mockReset();
+    global.fetch.mockImplementation(async () => ({
+      ok: false,
+      status: 599,
+      json: async () => ({}),
+      text: async () => "",
+    }));
+  }
 });

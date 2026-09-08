@@ -41,24 +41,43 @@ export const BOARDS_TTL_MS = 60_000;
  */
 export const MAX_BOARDS = 12;
 
+/**
+ * How many boards Home reads.
+ *
+ * Home's strip is a taste of what is on press, not a catalogue, and it is read
+ * on a screen a client did not ask to browse from. Twelve round trips to fill
+ * three cards would be the wrong trade, so it reads far fewer and the picker
+ * one tap away does the full read.
+ */
+export const HOME_BOARDS = 4;
+
+/**
+ * Every shop's board, for one category or — with an empty code — for all of
+ * them. Home passes nothing, because the strip is a spread across families
+ * rather than a look inside one.
+ */
 export async function loadCategoryBoards(
   categoryCode: string,
-  { force = false }: { force?: boolean } = {},
+  { force = false, maxBoards = MAX_BOARDS }: { force?: boolean; maxBoards?: number } = {},
 ): Promise<CategoryBoards> {
-  const held = cache.get(categoryCode);
+  // The cap is part of the key. A short Home read and a full category read are
+  // different answers, and serving one from the other's entry would either
+  // shorten the category screen or charge Home for twelve boards.
+  const key = `${categoryCode}|${maxBoards}`;
+  const held = cache.get(key);
   if (!force && held && Date.now() - held.at < BOARDS_TTL_MS) return held.value;
 
-  const value = read(categoryCode);
-  cache.set(categoryCode, { at: Date.now(), value });
+  const value = read(categoryCode, maxBoards);
+  cache.set(key, { at: Date.now(), value });
   // A failed read must not be cached, or one flaky moment breaks the category
   // for the next minute.
-  value.catch(() => cache.delete(categoryCode));
+  value.catch(() => cache.delete(key));
   return value;
 }
 
-async function read(categoryCode: string): Promise<CategoryBoards> {
+async function read(categoryCode: string, maxBoards: number): Promise<CategoryBoards> {
   const shops = await api.listCatalogShops(canonicalCategoryCode(categoryCode) || categoryCode);
-  const page = shops.slice(0, MAX_BOARDS);
+  const page = shops.slice(0, maxBoards);
 
   const results = await Promise.all(
     page.map(async (shop) => {

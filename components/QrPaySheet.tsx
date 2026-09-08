@@ -1,4 +1,5 @@
-import { Image, Text, useWindowDimensions, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Image, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CropMarkFrame } from "@/components/CropMarkFrame";
@@ -6,6 +7,12 @@ import { Sheet } from "@/components/Sheet";
 import { images } from "@/constants/images";
 import { formatPhp, notificationImageUrl } from "@/lib/api";
 import { PAYMENT_CHOICE_BLURB } from "@/lib/checkout";
+import {
+  SAVE_QR_A11Y,
+  SAVE_QR_LABEL,
+  savePaymentQrToPhotos,
+  saveQrMessage,
+} from "@/lib/savePaymentQr";
 
 type Props = {
   open: boolean;
@@ -33,7 +40,7 @@ const QR_PAY_SHEET_HORIZONTAL_INSET = 50;
  * that is not the plate. Overestimate so the sheet shrinks the JPEG rather
  * than clipping it.
  */
-const QR_PAY_SHEET_CHROME_HEIGHT = 388;
+const QR_PAY_SHEET_CHROME_HEIGHT = 472;
 
 /**
  * Pixel box that shows the whole plate (`contain`). Never fills a mismatched
@@ -125,6 +132,8 @@ export function paymentQrImageSource(imageUrl?: string | null) {
 export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const [saving, setSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const plate = paymentQrPlateSize(
     {
       width: width > 0 ? width : 390,
@@ -132,6 +141,21 @@ export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl }: Props)
     },
     insets.bottom,
   );
+
+  useEffect(() => {
+    if (open) return;
+    setSaving(false);
+    setSaveNote(null);
+  }, [open]);
+
+  const onSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveNote(null);
+    const result = await savePaymentQrToPhotos(imageUrl);
+    setSaveNote(saveQrMessage(result));
+    setSaving(false);
+  };
 
   return (
     <Sheet
@@ -166,6 +190,22 @@ export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl }: Props)
         </View>
 
         <View className="gap-2">
+          <Pressable
+            onPress={() => void onSave()}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel={SAVE_QR_A11Y}
+            accessibilityState={{ disabled: saving }}
+            className={saving ? "gg-btn-secondary gg-disabled" : "gg-btn-secondary"}
+            style={({ pressed }) => (pressed && !saving ? { opacity: 0.85 } : undefined)}
+          >
+            <Text className="text-button text-text-primary">
+              {saving ? "Saving…" : SAVE_QR_LABEL}
+            </Text>
+          </Pressable>
+          {saveNote ? (
+            <Text className="text-caption text-text-muted">{saveNote}</Text>
+          ) : null}
           <Text className="text-body text-text-secondary">{PAYMENT_CHOICE_BLURB}</Text>
           <Text className="text-caption text-text-muted">
             Close this when you have sent it. The screenshot and the reference number go on

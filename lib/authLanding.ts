@@ -31,8 +31,10 @@ export type AuthLanding =
   | { kind: "priorities" }
   | { kind: "onboarding" }
   | { kind: "home" }
-  /** Durable state has not answered yet. Show nothing; do not guess. */
+  /** Durable ranking read has not answered yet. Show nothing; do not guess. */
   | { kind: "pending" }
+  | { kind: "signing_in" }
+  | { kind: "signing_out" }
   | { kind: "signed_out" };
 
 export type AuthLandingState = {
@@ -47,15 +49,45 @@ export type AuthLandingState = {
   prioritiesReady: boolean;
   /** All three ranked. Only meaningful once `prioritiesReady`. */
   hasRanked: boolean;
+  /** Local session is gone; Clerk sign-out may still be in flight. */
+  signingOut?: boolean;
+  /** Clerk → GRIDGO join is in flight (Google return, token wait). */
+  loading?: boolean;
+  /**
+   * Google browser-SSO is in flight. Survives `endClerkSync` so an incomplete
+   * `startSSOFlow` return cannot dump the person onto Welcome while the
+   * native `sso-callback` is still about to adopt.
+   */
+  ssoInFlight?: boolean;
+  /** Designed wait: Google/password join, or the sign-out beat. */
+  sessionWait?: "in" | "out" | null;
+  /** Wrong-role / refused identity — show the form, do not keep waiting. */
+  error?: string | null;
+  /**
+   * Clerk already has a session. That alone is not Signing you in — a rider
+   * Gmail on this app must reach the form, not "Taking your seat."
+   */
+  clerkJoined?: boolean;
 };
 
 export function authLanding(state: AuthLandingState): AuthLanding {
+  if (state.sessionWait === "out") return { kind: "signing_out" };
+  // Sign-out must not flash ranking / onboarding while Clerk is still leaving.
+  if (state.signingOut) return { kind: "signed_out" };
   if (state.user && needsClientProfile(state.user)) return { kind: "complete_profile" };
   if (!state.user && state.pendingClerkProfile) return { kind: "complete_profile" };
   if (state.user) {
     if (!state.prioritiesReady) return { kind: "pending" };
     if (!state.hasRanked) return { kind: "priorities" };
     return { kind: "home" };
+  }
+  // Google join after the Gmail is actually in. A leftover Clerk session
+  // (rider, shop, or the tap that only opened the picker) is not this wait.
+  if (
+    !state.error &&
+    (state.sessionWait === "in" || state.ssoInFlight)
+  ) {
+    return { kind: "signing_in" };
   }
   return { kind: "signed_out" };
 }

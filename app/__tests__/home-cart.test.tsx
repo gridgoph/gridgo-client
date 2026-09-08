@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -105,8 +105,8 @@ describe("the cart control on Home", () => {
     useCart.setState({ cartId: "cart_1", cart: cart(2) });
     await renderInSafeArea(<HomeScreen />);
 
-    expect(await screen.findByLabelText("Your order, 2 items")).toBeTruthy();
-    expect(screen.getByText("2")).toBeTruthy();
+    const bag = within(await screen.findByLabelText("Your order, 2 items"));
+    expect(bag.getByText("2")).toBeTruthy();
   });
 
   it("re-reads the basket on the way in, because it lives on GRIDGO", async () => {

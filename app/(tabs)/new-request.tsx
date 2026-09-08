@@ -291,8 +291,8 @@ export default function NewRequestScreen() {
   return (
     /*
       A tab screen, so it owns its top edge — there is no header above it.
-      The four free-text fields on the Details step (job title, street,
-      barangay, landmark) are why this goes through `FormScreen`: the address
+      The free-text fields on the Details step (job title, street, landmark)
+      are why this goes through `FormScreen`: the address
       sits at the bottom of a long scroll under a tab bar that floats over the
       scene, and nothing here avoided the keyboard at all before.
     */
@@ -620,16 +620,6 @@ function DetailsStep({
             placeholder="12 J.P. Laurel Ave"
             accessibilityLabel="Street and number"
             maxLength={120}
-          />
-        </FormField>
-
-        <FormField label="Barangay" helper="Davao street names repeat across barangays.">
-          <TextField
-            value={draft.barangay}
-            onChangeText={(barangay) => draft.patch({ barangay })}
-            placeholder="Bajada"
-            accessibilityLabel="Barangay"
-            maxLength={80}
           />
         </FormField>
 
