@@ -193,11 +193,12 @@ export default function CheckoutScreen() {
   const travel = travelChoiceOf(cart);
   const missingArtwork = linesMissingArtwork(lines);
   const referenceCheck = checkPaymentReference(reference);
+  const ocrReading = proof.ocr.status === "reading";
   const blockers = placeOrderBlockers({
     lineCount: lines.length,
     linesMissingArtwork: missingArtwork.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
-    referenceOk: referenceCheck.ok,
+    referenceOk: ocrReading ? false : referenceCheck.ok,
     hasProof: Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
   });
@@ -569,7 +570,11 @@ export default function CheckoutScreen() {
 
           <FormField
             label="Payment reference"
-            error={referenceTouched && !referenceCheck.ok ? referenceCheck.reason : null}
+            error={
+              ocrReading || !referenceTouched || referenceCheck.ok
+                ? null
+                : referenceCheck.reason
+            }
             helper={
               proof.ocr.status === "reading"
                 ? OCR_READING

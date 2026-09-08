@@ -52,6 +52,55 @@ describe("extractPaymentReference", () => {
   it("ignores an 8-digit date that looks like a short token", () => {
     expect(extractPaymentReference("20260904")).toBeNull();
   });
+
+  it("reads a GCash Bankard biller reference, not BancNet or the card number", () => {
+    const bankard = `
+RCBC Credit (Bankard)
+Paid via GCash
+Credit Card Number 5179681308604108
+GCash Reference No. 965373469
+BancNet Reference No. 003999
+Sep 8, 2026 8:14 AM
+Total 780.00
+`.trim();
+    expect(extractPaymentReference(bankard)).toBe("965373469");
+  });
+
+  it("reads a GCash biller number when OCR stacks labels then numbers", () => {
+    const stacked = `
+GCash Reference No.
+BancNet Reference No.
+965373469
+003999
+Sep 8, 2026
+`.trim();
+    expect(extractPaymentReference(stacked)).toBe("965373469");
+  });
+
+  it("does not treat a 16-digit card PAN as the wallet reference", () => {
+    expect(
+      extractPaymentReference("Paid via GCash\n5179681308604108\nSep 8, 2026"),
+    ).toBeNull();
+  });
+
+  it("reads a GCash send-money Ref No. and ignores the phone number", () => {
+    const sent = `
+HA..H AL..A U.
++63 975 942 4438
+Sent via GCash
+Amount 1,000.00
+Total Amount Sent ₱1000.00
+Ref No. 9044838604781
+Sep 8, 2026 9:48 PM
+`.trim();
+    expect(extractPaymentReference(sent)).toBe("9044838604781");
+  });
+
+  it("does not treat a +63 mobile as the wallet reference", () => {
+    expect(
+      extractPaymentReference("Sent via GCash\n+63 975 942 4438\nSep 8, 2026"),
+    ).toBeNull();
+  });
 });
 
 describe("referenceFromOcr", () => {
