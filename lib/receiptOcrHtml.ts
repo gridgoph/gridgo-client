@@ -11,7 +11,6 @@ export const RECEIPT_OCR_HTML = `<!DOCTYPE html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
   </head>
   <body>
     <script>
@@ -22,36 +21,38 @@ export const RECEIPT_OCR_HTML = `<!DOCTYPE html>
       window.onerror = function (msg) {
         send({ type: "error", message: String(msg) });
       };
-      function ready() {
-        send({ type: "ready" });
-      }
-      if (window.Tesseract) ready();
-      else {
-        var n = 0;
-        var t = setInterval(function () {
-          n += 1;
-          if (window.Tesseract) {
-            clearInterval(t);
-            ready();
-          } else if (n > 80) {
-            clearInterval(t);
-            send({ type: "error", message: "Tesseract.js did not load." });
-          }
-        }, 50);
+      window.onunhandledrejection = function (event) {
+        send({ type: "error", message: String(event.reason) });
+      };
+      // Wallet screenshots can be only 316px wide. Give their small reference
+      // type enough pixels for recognition without altering the receipt upload.
+      async function receiptImage(source) {
+        var img = new Image();
+        img.src = source;
+        await img.decode();
+        var scale = Math.min(3, Math.max(1, 1200 / img.naturalWidth));
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.naturalWidth * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        return canvas;
       }
       var busy = false;
       window.runOcr = async function (image) {
         if (busy) return;
         busy = true;
+        var worker;
         try {
-          var worker = await Tesseract.createWorker("eng", 1, {
+          worker = await Tesseract.createWorker("eng", 1, {
             workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
-            corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core-simd.wasm.js",
-            langPath: "https://tessdata.projectnaptha.com/4.0.0",
+            // Let Tesseract choose SIMD support for this Android WebView.
+            corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1",
+            langPath: "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int",
+            cachePath: "gridgo-receipt-eng-int-v1",
             logger: function () {},
+            errorHandler: function (e) { send({ type: "error", message: String(e) }); },
           });
-          var result = await worker.recognize(image);
-          await worker.terminate();
+          var result = await worker.recognize(await receiptImage(image));
           send({
             type: "result",
             text: (result && result.data && result.data.text) || "",
@@ -62,10 +63,15 @@ export const RECEIPT_OCR_HTML = `<!DOCTYPE html>
         } catch (e) {
           send({ type: "error", message: String(e && e.message ? e.message : e) });
         } finally {
+          if (worker) await worker.terminate();
           busy = false;
         }
       };
     </script>
+    <!-- Install runOcr and the error bridge before announcing readiness. -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"
+      onload="send({ type: 'ready' })"
+      onerror="send({ type: 'error', message: 'The receipt reader could not download.' })"></script>
   </body>
 </html>
 `;

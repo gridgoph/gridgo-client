@@ -9,8 +9,9 @@ import { getFileSystemLegacyNative } from "@/lib/nativeModules";
 
 export type ReceiptOcrRaw = { text: string; confidence: number };
 
-type Job = {
-  dataUrl: string;
+export type ReceiptOcrRequest = { id: number; dataUrl: string };
+
+type Job = ReceiptOcrRequest & {
   resolve: (result: ReceiptOcrRaw) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -19,6 +20,7 @@ type Job = {
 const OCR_TIMEOUT_MS = 45_000;
 
 let job: Job | null = null;
+let nextId = 0;
 const listeners = new Set<() => void>();
 
 export function subscribeReceiptOcr(listener: () => void): () => void {
@@ -28,8 +30,9 @@ export function subscribeReceiptOcr(listener: () => void): () => void {
   };
 }
 
-export function pendingReceiptOcrDataUrl(): string | null {
-  return job?.dataUrl ?? null;
+/** Stable snapshot: React Compiler cannot track a mutable module read in render. */
+export function pendingReceiptOcr(): ReceiptOcrRequest | null {
+  return job;
 }
 
 function notify(): void {
@@ -44,24 +47,26 @@ function clearJob(): Job | null {
   return current;
 }
 
-export function completeReceiptOcr(result: ReceiptOcrRaw): void {
-  clearJob()?.resolve(result);
+export function completeReceiptOcr(id: number, result: ReceiptOcrRaw): void {
+  if (job?.id === id) clearJob()?.resolve(result);
 }
 
-export function failReceiptOcr(message: string): void {
-  clearJob()?.reject(new Error(message));
+export function failReceiptOcr(id: number, message: string): void {
+  if (job?.id === id) clearJob()?.reject(new Error(message));
 }
 
 export function enqueueReceiptOcr(dataUrl: string): Promise<ReceiptOcrRaw> {
   const previous = clearJob();
   previous?.reject(new Error("replaced"));
+  const id = ++nextId;
   return new Promise((resolve, reject) => {
     job = {
+      id,
       dataUrl,
       resolve,
       reject,
       timer: setTimeout(() => {
-        failReceiptOcr("The screenshot took too long to read.");
+        failReceiptOcr(id, "The screenshot took too long to read.");
       }, OCR_TIMEOUT_MS),
     };
     notify();

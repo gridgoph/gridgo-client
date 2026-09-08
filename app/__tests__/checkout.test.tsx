@@ -205,7 +205,8 @@ describe("CheckoutScreen", () => {
     expect(screen.queryByText(/GRIDGO service fee/i)).toBeNull();
     expect(screen.queryByText(/10%/)).toBeNull();
     expect(screen.getByText("₱25.00")).toBeTruthy();
-    expect(screen.getByText("₱69.00")).toBeTruthy();
+    // Invoice and pinned commit bar show the same total.
+    expect(screen.getAllByText("₱69.00")).toHaveLength(2);
   });
 
   it("splits the payment 75/25 rather than asking for all of it", async () => {

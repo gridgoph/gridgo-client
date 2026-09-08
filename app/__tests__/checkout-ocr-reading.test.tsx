@@ -4,7 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import CheckoutScreen from "@/app/checkout";
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
-import { OCR_UNREADABLE } from "@/lib/receiptOcr";
+import { OCR_READING } from "@/lib/receiptOcr";
 import { useCart } from "@/store/cart";
 
 jest.mock("expo-router", () => ({
@@ -42,7 +42,7 @@ jest.mock("@/hooks/usePaymentProof", () => ({
       progress: 1,
       error: null,
     },
-    ocr: { status: "unreadable", reference: null },
+    ocr: { status: "reading", reference: null },
     pick: jest.fn(),
     reset: jest.fn(),
   }),
@@ -110,8 +110,8 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-describe("checkout OCR unreadable", () => {
-  it("says the number could not be read instead of inventing one", async () => {
+describe("checkout OCR pending", () => {
+  it("keeps the commit bar outside the scroll and waits without a missing-reference error", async () => {
     api.getSettings.mockResolvedValue(SETTINGS);
     api.getCart.mockResolvedValue(cart());
     api.getCatalogShop.mockResolvedValue({
@@ -134,7 +134,15 @@ describe("checkout OCR unreadable", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    expect(screen.getAllByText(OCR_UNREADABLE)).toHaveLength(2);
+    expect(screen.getAllByText(OCR_READING)).toHaveLength(2);
+    expect(screen.queryByText("Enter the reference number from your payment receipt.")).toBeNull();
+    expect(screen.getByLabelText("Place this order").props.accessibilityState.disabled).toBe(true);
+    const footer = screen.getByTestId("checkout-footer");
+    let ancestor = footer.parent;
+    while (ancestor) {
+      expect(typeof ancestor.type === "string" ? ancestor.type : "").not.toMatch(/ScrollView/);
+      ancestor = ancestor.parent;
+    }
     expect(screen.getByLabelText("Payment reference").props.value).toBe("");
   });
 });

@@ -198,7 +198,7 @@ export default function CheckoutScreen() {
     lineCount: lines.length,
     linesMissingArtwork: missingArtwork.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
-    referenceOk: ocrReading ? false : referenceCheck.ok,
+    referenceOk: ocrReading || referenceCheck.ok,
     hasProof: Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
   });
@@ -276,7 +276,7 @@ export default function CheckoutScreen() {
   };
 
   const place = async () => {
-    if (blockers.length || placing || !cartId || !proof.state.fileId) return;
+    if (blockers.length || ocrReading || placing || !cartId || !proof.state.fileId) return;
     setPlacing(true);
     setPlaceError(null);
     try {
@@ -336,6 +336,52 @@ export default function CheckoutScreen() {
 
   return (
     <FormScreen
+      footer={
+        <View testID="checkout-footer" className="gap-3 border-t border-outline bg-surface px-4 pb-2 pt-3">
+          <View className="flex-row items-baseline justify-between gap-3">
+            <Text className="text-body text-text-secondary">Total</Text>
+            <Text className="text-h3 text-text-primary">
+              {totals.totalMinor == null ? "—" : formatPhp(totals.totalMinor)}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => void place()}
+            disabled={blockers.length > 0 || ocrReading || placing || busy}
+            accessibilityRole="button"
+            accessibilityLabel="Place this order"
+            accessibilityState={{ disabled: blockers.length > 0 || ocrReading || placing || busy }}
+            className={
+              blockers.length || ocrReading || placing || busy
+                ? "gg-btn-primary gg-disabled"
+                : "gg-btn-primary"
+            }
+            style={({ pressed }) =>
+              pressed && !blockers.length && !ocrReading && !placing && !busy ? { opacity: 0.9 } : undefined
+            }
+          >
+            <Text className="text-button text-action-yellow-on">
+              {placing ? "Placing your order…" : "Place order"}
+            </Text>
+          </Pressable>
+
+          <Text
+            className={placeError
+              ? "text-center text-caption text-error"
+              : "text-center text-caption text-text-muted"}
+          >
+            {placeError || (ocrReading
+              ? OCR_READING
+              : blockers.length
+                ? blockers[0] === "reference" && proof.ocr.status === "unreadable"
+                  ? OCR_UNREADABLE
+                  : blockerLine(
+                      blockers[0],
+                      missingArtwork.length === 1 ? lineName(missingArtwork[0]) : undefined,
+                    )
+                : "Your order goes to Operations for artwork checking.")}
+          </Text>
+        </View>
+      }
       /* Beside the scroll, never inside it — see `FormScreen`'s `overlay`. */
       overlay={
         <>
@@ -571,7 +617,7 @@ export default function CheckoutScreen() {
           <FormField
             label="Payment reference"
             error={
-              ocrReading || !referenceTouched || referenceCheck.ok
+              ocrReading || (proof.ocr.status === "unreadable" && !reference.trim()) || !referenceTouched || referenceCheck.ok
                 ? null
                 : referenceCheck.reason
             }
@@ -653,46 +699,8 @@ export default function CheckoutScreen() {
           <Text className="text-caption text-text-muted">{INVOICE_NOTE}</Text>
         </Section>
 
-        {/* ---- Place it --------------------------------------------------- */}
+        {/* Leaving keeps the basket; the commit bar stays below the scroll. */}
         <View className="mt-8 gap-3">
-          {placeError ? (
-            <ErrorState
-              label="Not sent"
-              body={placeError}
-              retryLabel="Try again"
-              onRetry={() => void place()}
-            />
-          ) : null}
-
-          <Pressable
-            onPress={() => void place()}
-            disabled={blockers.length > 0 || placing || busy}
-            accessibilityRole="button"
-            accessibilityLabel="Place this order"
-            accessibilityState={{ disabled: blockers.length > 0 || placing || busy }}
-            className={
-              blockers.length || placing || busy
-                ? "gg-btn-primary gg-disabled"
-                : "gg-btn-primary"
-            }
-            style={({ pressed }) =>
-              pressed && !blockers.length && !placing && !busy ? { opacity: 0.9 } : undefined
-            }
-          >
-            <Text className="text-button text-action-yellow-on">
-              {placing ? "Placing your order…" : "Place order"}
-            </Text>
-          </Pressable>
-
-          <Text className="text-center text-caption text-text-muted">
-            {blockers.length
-              ? blockerLine(
-                  blockers[0],
-                  missingArtwork.length === 1 ? lineName(missingArtwork[0]) : undefined,
-                )
-              : "Your order goes to Operations for artwork checking."}
-          </Text>
-
           <Pressable
             onPress={() => router.replace("/(tabs)/home")}
             accessibilityRole="button"

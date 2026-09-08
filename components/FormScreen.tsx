@@ -30,6 +30,8 @@ type Props = {
    * deep-linked route declares to give itself a way back.
    */
   overlay?: ReactNode;
+  /** A commit bar that stays below the scroll, inside the safe area. */
+  footer?: ReactNode;
 };
 
 /**
@@ -66,6 +68,7 @@ export function FormScreen({
   contentContainerStyle,
   children,
   overlay,
+  footer,
 }: Props) {
   const colors = useThemeColors();
 
@@ -80,6 +83,7 @@ export function FormScreen({
       >
         {children}
       </KeyboardAwareScrollView>
+      {footer}
       {overlay}
     </Screen>
   );

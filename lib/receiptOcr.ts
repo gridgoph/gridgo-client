@@ -20,6 +20,11 @@ const LABEL =
 const LABELED_CAPTURE =
   /(?:instapay\s+)?ref(?:erence)?\.?\s*(?:no\.?|number|#)?[:.\s-]*([A-Z0-9][A-Z0-9 \-]{6,})/i;
 
+// A complete printed number ends before a neighbouring date or copy icon.
+// Never join those OCR tokens onto it, or truncate a longer PAN/mobile.
+const LABELED_NUMBER =
+  /(?:instapay\s+)?ref(?:erence)?\.?\s*(?:no\.?|number|#)?[:.,\s-]*(\d{9,})(?=$|\s|[)])/i;
+
 const TOKEN = /[A-Z0-9][A-Z0-9 \-]{6,31}/gi;
 
 const MONTH =
@@ -126,6 +131,15 @@ export function extractPaymentReference(text: string): string | null {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+
+  // Prefer the explicitly named GCash reference over the biller's BancNet id.
+  // OCR often puts the date in the same line, so inspect the number before
+  // applying whole-line date/amount rejection below.
+  const numberedLines = [...lines.filter((line) => GCASH_LABEL.test(line)), ...lines];
+  for (const line of numberedLines) {
+    const printed = line.match(LABELED_NUMBER)?.[1];
+    if (printed && isCandidate(printed)) return printed;
+  }
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];

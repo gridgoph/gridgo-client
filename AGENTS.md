@@ -215,6 +215,8 @@ Never hand-roll a `<Modal animationType="slide">` again — a fixed ramp that ig
 
 ## Running and testing
 
+- **React Compiler is enabled.** A mutable module read plus an unrelated render counter is not a reactive subscription. Use `useSyncExternalStore` for external state; receipt OCR exposed this on Expo Go. See `components/ReceiptOcrHost.tsx` and `docs/RECEIPT_OCR_VALIDATION.md` for the native verification path.
+
 - Day-to-day Android is a **USB development build** (`expo-dev-client`), not Expo Go. `npm start` is `expo start --dev-client`; `npm run android` is `expo run:android`. Push and `gridgoclient://` returns need that binary — Expo Go Android SDK 53 throws if `expo-notifications` is imported. Keep port/LAN flags out of `package.json`; this app's Metro is **8081**. Local prebuild / `expo run:android` must export `GOOGLE_SERVICES_JSON` to the captain's file (never copy it into the repo).
 - `npx tsc --noEmit`, `npx jest`, `npx expo lint` all have to be clean.
 - **Expo web boots only because `metro.config.js` resolves zustand through its CommonJS build.** zustand serves native the CJS build via the `react-native` export condition and everyone else an ESM build whose devtools middleware reads `import.meta.env`; Metro emits web as a classic script, so that is a syntax error that kills the *whole* bundle with one console line and a blank page. Session, theme and the request draft all import `zustand/middleware`, so this is not an edge case.

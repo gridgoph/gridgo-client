@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
@@ -6,51 +6,45 @@ import { RECEIPT_OCR_HTML } from "@/lib/receiptOcrHtml";
 import {
   completeReceiptOcr,
   failReceiptOcr,
-  pendingReceiptOcrDataUrl,
+  pendingReceiptOcr,
   subscribeReceiptOcr,
+  type ReceiptOcrRequest,
 } from "@/lib/receiptOcrRecognize";
 
-/**
- * Hidden Tesseract.js host. Checkout mounts it so a receipt pick can OCR
- * without a native module Expo Go does not ship.
- */
+/** Expo Go supplies the browser/Worker/WASM runtime; no native OCR module. */
 export function ReceiptOcrHost() {
+  const request = useSyncExternalStore(subscribeReceiptOcr, pendingReceiptOcr);
+  // A timeout/replacement destroys the old worker with its WebView. Its late
+  // messages cannot finish the next receipt, even when it is the same image.
+  return request ? <ReceiptOcrJob key={request.id} request={request} /> : null;
+}
+
+function ReceiptOcrJob({ request }: { request: ReceiptOcrRequest }) {
   const view = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
-  const [ticket, setTicket] = useState(0);
-
-  useEffect(() => subscribeReceiptOcr(() => setTicket((n) => n + 1)), []);
-
-  const dataUrl = pendingReceiptOcrDataUrl();
 
   useEffect(() => {
-    if (!ready || !dataUrl) return;
-    const js = `window.runOcr(${JSON.stringify(dataUrl)}); true;`;
-    view.current?.injectJavaScript(js);
-  }, [ready, dataUrl, ticket]);
+    if (!ready) return;
+    view.current?.injectJavaScript(`window.runOcr(${JSON.stringify(request.dataUrl)}); true;`);
+  }, [ready, request]);
 
+  const fail = (message: string) => failReceiptOcr(request.id, message);
   const onMessage = (event: WebViewMessageEvent) => {
     let payload: { type?: string; text?: string; confidence?: number; message?: string };
     try {
       payload = JSON.parse(event.nativeEvent.data) as typeof payload;
     } catch {
-      failReceiptOcr("The screenshot could not be read.");
+      fail("The screenshot could not be read.");
       return;
     }
-    if (payload.type === "ready") {
-      setReady(true);
-      return;
-    }
+    if (payload.type === "ready") setReady(true);
     if (payload.type === "result") {
-      completeReceiptOcr({
+      completeReceiptOcr(request.id, {
         text: typeof payload.text === "string" ? payload.text : "",
         confidence: typeof payload.confidence === "number" ? payload.confidence : 0,
       });
-      return;
     }
-    if (payload.type === "error") {
-      failReceiptOcr(payload.message || "The screenshot could not be read.");
-    }
+    if (payload.type === "error") fail(payload.message || "The screenshot could not be read.");
   };
 
   return (
@@ -63,11 +57,10 @@ export function ReceiptOcrHost() {
     >
       <WebView
         ref={view}
-        source={{
-          html: RECEIPT_OCR_HTML,
-          baseUrl: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/",
-        }}
+        source={OCR_SOURCE}
         onMessage={onMessage}
+        onError={() => fail("The receipt reader could not load.")}
+        onRenderProcessGone={() => fail("The receipt reader stopped. Pick the screenshot again.")}
         javaScriptEnabled
         originWhitelist={["*"]}
         androidLayerType="hardware"
@@ -75,3 +68,8 @@ export function ReceiptOcrHost() {
     </View>
   );
 }
+
+const OCR_SOURCE = {
+  html: RECEIPT_OCR_HTML,
+  baseUrl: "https://cdn.jsdelivr.net/",
+};

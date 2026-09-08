@@ -96,6 +96,18 @@ Sep 8, 2026 9:48 PM
     expect(extractPaymentReference(sent)).toBe("9044838604781");
   });
 
+  it("reads real Android OCR with the biller's copy icon beside the number", () => {
+    expect(extractPaymentReference(
+      "GCash Reference No. 965373469 0)\nBancNet Reference No, 003999 0",
+    )).toBe("965373469");
+  });
+
+  it("keeps a send reference separate from a date on the same OCR line", () => {
+    expect(extractPaymentReference(
+      "Ref No. 9044838604781 Sep 8, 2026 9:48 PM",
+    )).toBe("9044838604781");
+  });
+
   it("does not treat a +63 mobile as the wallet reference", () => {
     expect(
       extractPaymentReference("Sent via GCash\n+63 975 942 4438\nSep 8, 2026"),
