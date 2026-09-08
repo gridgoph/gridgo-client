@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -118,7 +119,7 @@ function GridPulse({
   useEffect(() => {
     if (reducedMotion) {
       progress.value = tone === "in" ? 1 : 0.35;
-      return;
+      return () => cancelAnimation(progress);
     }
     if (tone === "in") {
       progress.value = withSequence(
@@ -132,9 +133,10 @@ function GridPulse({
           false,
         ),
       );
-      return;
+    } else {
+      progress.value = withTiming(0, { duration: 720, easing: Easing.in(Easing.cubic) });
     }
-    progress.value = withTiming(0, { duration: 720, easing: Easing.in(Easing.cubic) });
+    return () => cancelAnimation(progress);
   }, [progress, reducedMotion, tone]);
 
   const token = useAnimatedStyle(() => ({

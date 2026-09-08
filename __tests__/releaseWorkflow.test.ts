@@ -203,4 +203,9 @@ describe("a pull request never produces a signed release build", () => {
     const check = jobBody("check");
     expect(check).not.toMatch(/secrets\./);
   });
+
+  it("force-exits Jest so an open handle cannot cancel the check job", () => {
+    const check = jobBody("check");
+    expect(check).toMatch(/npm test -- --ci --forceExit/);
+  });
 });

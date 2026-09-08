@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { Text, View } from "react-native";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -87,11 +88,15 @@ export function MatchingWait({ thing, size = 156 }: Props) {
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    if (reducedMotion) return;
+    if (reducedMotion) {
+      cancelAnimation(progress);
+      return;
+    }
     progress.value = withRepeat(
       withTiming(1, { duration: LOOP_MS, easing: Easing.linear }),
       -1,
     );
+    return () => cancelAnimation(progress);
   }, [progress, reducedMotion]);
 
   return (

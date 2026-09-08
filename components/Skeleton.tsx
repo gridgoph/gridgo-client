@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, type LayoutChangeEvent } from "react-native";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -51,11 +52,15 @@ function Sweep() {
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    if (reducedMotion) return;
+    if (reducedMotion) {
+      cancelAnimation(progress);
+      return;
+    }
     progress.value = withRepeat(
       withTiming(1, { duration: SWEEP_MS, easing: Easing.linear }),
       -1,
     );
+    return () => cancelAnimation(progress);
   }, [progress, reducedMotion]);
 
   const band = useAnimatedStyle(() => ({
