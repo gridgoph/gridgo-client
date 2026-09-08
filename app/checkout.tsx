@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Check, ChevronRight, MapPin, Minus, Plus, QrCode, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
@@ -130,6 +131,8 @@ export default function CheckoutScreen() {
       );
     }
   }, [loadCart]);
+
+  useLiveRefresh(["orders", "catalog", "settings"], load);
 
   useFocusEffect(
     useCallback(() => {

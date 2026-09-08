@@ -1,7 +1,17 @@
-import { useRouter, type Href } from "expo-router";
+import { getOrder } from "@/lib/api";
+import {
+  useRouter,
+  useRootNavigationState,
+  useSegments,
+  type Href,
+} from "expo-router";
 import { useEffect, useRef } from "react";
 
-import { parsePushData, PUSH_FOREGROUND_BEHAVIOR, pushTargetRoute } from "@/lib/push";
+import {
+  parsePushData,
+  PUSH_FOREGROUND_BEHAVIOR,
+  pushTargetRoute,
+} from "@/lib/push";
 import { hasActiveSession } from "@/lib/sessionGuard";
 import { useNotifications } from "@/store/notifications";
 import { getNotificationsNative, pushSupported, usePush } from "@/store/push";
@@ -23,6 +33,17 @@ import { useSession } from "@/store/session";
 
 export function usePushNotifications(): void {
   const router = useRouter();
+  const navigation = useRootNavigationState();
+  const segments = useSegments();
+  const protectedReady = Boolean(
+    navigation?.key &&
+    segments[0] &&
+    segments[0] !== "(auth)" &&
+    segments[0] !== "index" &&
+    segments[0] !== "sso-callback",
+  );
+  const readyRef = useRef(protectedReady);
+  readyRef.current = protectedReady;
   const user = useSession((s) => s.user);
   const signedIn = hasActiveSession(user);
 
@@ -34,14 +55,15 @@ export function usePushNotifications(): void {
    * to the order then would bounce off the route guard, so the target waits
    * here and is spent when a session appears.
    *
-   * **Known gap, seen on a device:** in the one cold-start run observed, this
-   * deferred push did not land — signing in went to Home. The likely cause is
-   * that `Stack.Protected` swaps the root stack's children in the same commit
-   * that flips the guard, so a `push` issued then is discarded. Taps route
-   * correctly whenever the process is still alive. Persisting the session
-   * would remove the situation; re-test on a device before trusting this path.
+   * Wait for an authenticated destination to mount, then route on the next
+   * animation frame. Authentication alone does not mean Stack.Protected has
+   * committed its destination tree. Native cold-start delivery still needs a
+   * device check after builds.
    */
-  const pending = useRef<string | null>(null);
+  const pending = useRef<{target: string; ownerId: string | null} | null>(null);
+  useEffect(() => useSession.subscribe((state, previous) => {
+    if (previous.user?.id && previous.user.id !== state.user?.id) pending.current = null;
+  }), []);
   /** Response identifiers already routed, so a tap opens its screen once. */
   const routed = useRef(new Set<string>());
 
@@ -74,8 +96,8 @@ export function usePushNotifications(): void {
       if (routed.current.has(identifier)) return;
       routed.current.add(identifier);
       const target = pushTargetRoute(parsePushData(data));
-      if (!hasActiveSession(useSession.getState().user)) {
-        pending.current = target;
+      if (!hasActiveSession(useSession.getState().user) || !readyRef.current) {
+        pending.current = {target, ownerId: useSession.getState().user?.id ?? null};
         return;
       }
       // The push carries no order state by design, so the screen fetches the
@@ -84,7 +106,15 @@ export function usePushNotifications(): void {
       void useNotifications.getState().refresh();
       // `pushTargetRoute` returns a route this app declares; typed routes
       // cannot see that through a string it built at runtime.
-      router.push(target as Href);
+      const ownerId = useSession.getState().user?.id;
+      void (async () => {
+        let destination = target;
+        if (target.startsWith("/order/")) {
+          try { await getOrder(target.slice("/order/".length)); }
+          catch { destination = "/(tabs)/notifications"; }
+        }
+        if (ownerId && ownerId === useSession.getState().user?.id && readyRef.current) router.push(destination as Href);
+      })();
     };
 
     try {
@@ -101,12 +131,14 @@ export function usePushNotifications(): void {
       });
 
       // A tap while the app is running or backgrounded.
-      const tap = Notifications.addNotificationResponseReceivedListener((response) => {
-        route(
-          response.notification.request.identifier,
-          response.notification.request.content.data,
-        );
-      });
+      const tap = Notifications.addNotificationResponseReceivedListener(
+        (response) => {
+          route(
+            response.notification.request.identifier,
+            response.notification.request.content.data,
+          );
+        },
+      );
 
       // A tap that launched the app. The listener above does not replay it.
       void Notifications.getLastNotificationResponseAsync()
@@ -146,9 +178,24 @@ export function usePushNotifications(): void {
   }, [router]);
 
   useEffect(() => {
-    if (!signedIn || !pending.current) return;
-    const target = pending.current;
-    pending.current = null;
-    router.push(target as Href);
-  }, [signedIn, router]);
+    if (!signedIn || !protectedReady || !pending.current) return;
+    const entry = pending.current;
+    const ownerId = user?.id;
+    if (entry.ownerId && entry.ownerId !== ownerId) {pending.current=null;return;}
+    let cancelled = false;
+    const frame = requestAnimationFrame(() => {
+      void (async () => {
+        let destination = entry.target;
+        if (destination.startsWith("/order/")) {
+          try { await getOrder(destination.slice("/order/".length)); }
+          catch { destination = "/(tabs)/notifications"; }
+        }
+        if (cancelled || ownerId !== useSession.getState().user?.id || !readyRef.current || pending.current !== entry) return;
+        router.push(destination as Href);
+        pending.current = null;
+        void getNotificationsNative()?.clearLastNotificationResponseAsync?.().catch(() => undefined);
+      })();
+    });
+    return () => {cancelled=true;cancelAnimationFrame(frame);};
+  }, [signedIn, protectedReady, router, user?.id]);
 }

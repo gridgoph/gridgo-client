@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronRight } from "lucide-react-native";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
@@ -120,6 +121,8 @@ export default function HomeScreen() {
     // has changed.
     void loadCart();
   }, [refreshNotifications, loadCart, loadSamples]);
+
+  useLiveRefresh(["orders", "catalog", "services", "availability", "settings", "credits"], load);
 
   useFocusEffect(
     useCallback(() => {

@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Search, X } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, TextInput, View, type TextStyle } from "react-native";
@@ -52,6 +53,8 @@ export default function ChooseCategoryScreen() {
       alive = false;
     };
   }, []);
+
+  useLiveRefresh(["catalog"], async () => { setCategories(await api.getProductCategories()); });
 
   const hits = useMemo(() => searchSubcategories(categories, query), [categories, query]);
   const searching = query.trim().length >= 2;

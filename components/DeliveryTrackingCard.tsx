@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
@@ -44,6 +45,8 @@ export function DeliveryTrackingCard({ order }: Props) {
       setUnavailable(true);
     }
   }, [order.id]);
+
+  useLiveRefresh(["location", "dispatch"], refresh);
 
   useEffect(() => {
     void refresh();

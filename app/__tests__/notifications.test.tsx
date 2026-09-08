@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { invalidate } from "@/lib/live";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -107,6 +114,19 @@ describe("NotificationsScreen", () => {
     api.markAllNotificationsRead.mockResolvedValue(1);
   });
 
+  it("updates the visible inbox from a silent cross-device hint", async () => {
+    await renderInSafeArea(<NotificationsScreen />);
+    expect(await screen.findByText(assignment.title)).toBeTruthy();
+    api.listNotifications.mockResolvedValue({
+      notifications: [{ ...assignment, id: "new", title: "Payment checked" }],
+      snapshot: "new",
+    });
+    await act(async () => {
+      invalidate("notifications");
+    });
+    expect(await screen.findByText("Payment checked")).toBeTruthy();
+  });
+
   it("shows where the job actually is, not only that something changed", async () => {
     await renderInSafeArea(<NotificationsScreen />);
 
@@ -129,9 +149,13 @@ describe("NotificationsScreen", () => {
     await renderInSafeArea(<NotificationsScreen />);
 
     const row = await screen.findByLabelText(/^Unread\./);
-    fireEvent(row, "accessibilityAction", { nativeEvent: { actionName: "markRead" } });
+    fireEvent(row, "accessibilityAction", {
+      nativeEvent: { actionName: "markRead" },
+    });
 
-    await waitFor(() => expect(useNotifications.getState().readIds).toContain("ntf_1"));
+    await waitFor(() =>
+      expect(useNotifications.getState().readIds).toContain("ntf_1"),
+    );
     expect(api.markNotificationRead).toHaveBeenCalledWith("ntf_1", true);
   });
 
@@ -144,7 +168,11 @@ describe("NotificationsScreen", () => {
   });
 
   it("paints cached updates on the first frame without waiting on the network", async () => {
-    useNotifications.setState({ items: [assignment], loading: false, error: null });
+    useNotifications.setState({
+      items: [assignment],
+      loading: false,
+      error: null,
+    });
     api.listNotifications.mockReturnValue(new Promise(() => {}));
 
     await renderInSafeArea(<NotificationsScreen />);
@@ -157,7 +185,16 @@ describe("NotificationsScreen", () => {
 
   it("draws no stage rail for an update with no job behind it", async () => {
     api.listNotifications.mockResolvedValue({
-      notifications: [{ ...assignment, id: "ntf_2", type: undefined, orderId: undefined, orderTitle: undefined, orderState: undefined }],
+      notifications: [
+        {
+          ...assignment,
+          id: "ntf_2",
+          type: undefined,
+          orderId: undefined,
+          orderTitle: undefined,
+          orderState: undefined,
+        },
+      ],
       snapshot: "ntf_2",
     });
     await renderInSafeArea(<NotificationsScreen />);
@@ -168,7 +205,9 @@ describe("NotificationsScreen", () => {
 
   it("still lists the updates when the jobs behind them cannot be loaded", async () => {
     api.listNotifications.mockResolvedValue({
-      notifications: [{ ...assignment, orderTitle: undefined, orderState: undefined }],
+      notifications: [
+        { ...assignment, orderTitle: undefined, orderState: undefined },
+      ],
       snapshot: assignment.id,
     });
     await renderInSafeArea(<NotificationsScreen />);
@@ -179,7 +218,10 @@ describe("NotificationsScreen", () => {
   });
 
   it("invites the next action rather than shrugging when there is nothing", async () => {
-    api.listNotifications.mockResolvedValue({ notifications: [], snapshot: null });
+    api.listNotifications.mockResolvedValue({
+      notifications: [],
+      snapshot: null,
+    });
     await renderInSafeArea(<NotificationsScreen />);
 
     expect(await screen.findByText("You are all caught up")).toBeTruthy();
@@ -243,7 +285,10 @@ describe("NotificationsScreen", () => {
   });
 
   it("keeps cart and chat on the header, and drops the helper line", async () => {
-    api.listNotifications.mockResolvedValue({ notifications: [], snapshot: null });
+    api.listNotifications.mockResolvedValue({
+      notifications: [],
+      snapshot: null,
+    });
     await renderInSafeArea(<NotificationsScreen />);
 
     expect(await screen.findByLabelText("Your order, empty")).toBeTruthy();
@@ -252,7 +297,9 @@ describe("NotificationsScreen", () => {
       screen.queryByText("Deadlines and status changes for your print jobs."),
     ).toBeNull();
     expect(
-      screen.queryByText("Tap an update to open the job, or swipe it left to mark it read."),
+      screen.queryByText(
+        "Tap an update to open the job, or swipe it left to mark it read.",
+      ),
     ).toBeNull();
   });
 });

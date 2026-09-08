@@ -8,6 +8,11 @@ import { clearListingCache, rememberListing } from "@/lib/listingCache";
 import { useCart } from "@/store/cart";
 
 jest.mock("expo-router", () => ({
+  useFocusEffect: (effect: () => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useEffect } = require("react");
+    useEffect(effect, [effect]);
+  },
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
   useLocalSearchParams: () => ({ itemId: "sci_flyers" }),
 }));
