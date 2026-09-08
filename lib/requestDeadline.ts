@@ -3,11 +3,13 @@ export async function withRequestDeadline<T>(caller: AbortSignal | null | undefi
   const controller = new AbortController();
   const timeout = new Error("The request timed out. Try again.");
   timeout.name = "TimeoutError";
+  const cancellation = new Error("Request cancelled");
+  cancellation.name = "AbortError";
   const cancel = () => controller.abort();
   let rejectAbort!: () => void;
   let timedOut = false;
   const aborted = new Promise<never>((_, reject) => {
-    rejectAbort = () => reject(timedOut ? timeout : new Error("Request cancelled"));
+    rejectAbort = () => reject(timedOut ? timeout : cancellation);
     controller.signal.addEventListener("abort", rejectAbort);
   });
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 20_000);
