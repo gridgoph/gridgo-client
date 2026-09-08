@@ -1,3 +1,4 @@
+import { useLiveNotifications } from "@/hooks/useLiveNotifications";
 import { ClerkProvider } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import "../global.css";
@@ -87,6 +88,7 @@ function AppNavigation() {
   // app is picked up before any screen has decided anything. It never asks for
   // permission — only `PushEnableCard` does that, and only from a tap.
   usePushNotifications();
+  useLiveNotifications();
 
   // Keeps the window behind the navigator on canvas, so theme changes and
   // screen transitions never flash the wrong background.
@@ -145,6 +147,7 @@ function AppNavigation() {
       <KeyboardProvider>
         <ThemeProvider value={navigationTheme(scheme)}>
             <Stack
+              key={user?.id ?? "signed-out"}
               screenOptions={{
                 headerStyle: { backgroundColor: token.surface },
                 headerTintColor: token.textPrimary,

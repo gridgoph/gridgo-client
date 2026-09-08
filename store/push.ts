@@ -3,6 +3,14 @@ import { Platform } from "react-native";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { liveGeneration, assertLiveGeneration } from "@/lib/live";
+
+let deviceMutation: Promise<unknown> = Promise.resolve();
+export function serializeDeviceMutation<T>(run: () => Promise<T>): Promise<T> {
+  const pending = deviceMutation.then(run, run);
+  deviceMutation = pending.catch(() => undefined);
+  return pending;
+}
 import { userFacingError } from "@/lib/copy";
 import {
   devicePlatform,
@@ -219,6 +227,7 @@ export const usePush = create<PushState>((set, get) => ({
   },
 
   registerIfGranted: async () => {
+    const generation = liveGeneration();
     const state = get();
     if (!state.supported) return;
 
@@ -232,7 +241,8 @@ export const usePush = create<PushState>((set, get) => ({
     // A bearer means the customer is signed in and this registration names them.
     // Without one the phone is registered unclaimed, so an announcement can
     // still reach a handset nobody has signed in on.
-    const signedIn = Boolean(api.getToken());
+    const signedIn = Boolean(await api.getAuthToken().catch(() => null));
+    if (generation !== liveGeneration()) return;
 
     set({ busy: true, error: null });
     try {
@@ -243,10 +253,17 @@ export const usePush = create<PushState>((set, get) => ({
       }
       // Idempotent by contract, so no comparison against the stored token is
       // worth the risk of skipping a call the server never actually received.
-      if (signedIn) await api.registerDevice(token, platform);
-      else await api.registerDeviceUnclaimed(token, platform);
+      assertLiveGeneration(generation);
+      if (signedIn) set({ token });
+      await serializeDeviceMutation(async () => {
+        assertLiveGeneration(generation);
+        if (signedIn) await api.registerDevice(token, platform);
+        else await api.registerDeviceUnclaimed(token, platform);
+      });
+      assertLiveGeneration(generation);
       set({ token, claimed: signedIn, busy: false, error: null });
     } catch (e) {
+      if (generation !== liveGeneration()) return;
       if (!signedIn && isUnclaimedRouteAbsent(e)) {
         // The provisional route is not deployed here. Nothing is wrong and
         // nobody is told: the phone registers for real at the next sign-in.

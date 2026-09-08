@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronLeft } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { Pressable, Text, View } from "react-native";
@@ -90,6 +91,8 @@ export default function OrderDetailScreen() {
       );
     }
   }, [id]);
+
+  useLiveRefresh(["orders", "dispatch", "claims"], load);
 
   useFocusEffect(
     useCallback(() => {

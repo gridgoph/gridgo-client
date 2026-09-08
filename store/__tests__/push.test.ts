@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { waitFor } from "@testing-library/react-native";
 import { join } from "node:path";
 
 import * as Notifications from "expo-notifications";
@@ -119,6 +120,18 @@ describe("registerIfGranted", () => {
     expect(register).not.toHaveBeenCalled();
     expect(usePush.getState().permission).toBe("undetermined");
     register.mockRestore();
+  });
+
+  it("claims a Clerk-authenticated installation without a legacy token", async () => {
+    api.setToken(null);
+    api.setTokenProvider(async () => "clerk-bearer");
+    usePush.setState({ permission: "granted" });
+    const claim = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+    await usePush.getState().registerIfGranted();
+    expect(claim).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(usePush.getState().claimed).toBe(true);
+    claim.mockRestore();
+    api.setTokenProvider(null);
   });
 
   it("registers unclaimed when nobody is signed in", async () => {
@@ -282,11 +295,32 @@ describe("signing out", () => {
 
     await useSession.getState().logout();
 
-    expect(logout).toHaveBeenCalledWith("fcm-token-a7c8d3f1");
+    expect(logout).toHaveBeenCalledWith("fcm-token-a7c8d3f1", expect.any(Promise));
     expect(useSession.getState().user).toBeNull();
     expect(usePush.getState().claimed).toBe(false);
     logout.mockRestore();
     unclaimed.mockRestore();
+  });
+
+  it("waits for an in-flight device claim before releasing that account", async () => {
+    usePush.setState({ permission: "granted" });
+    useSession.setState({ user: { id: "owner", role: "client" } as never });
+    let finish!: () => void;
+    const claim = jest.spyOn(api, "registerDevice").mockImplementation(() => new Promise((resolve) => {
+      finish = () => resolve({} as never);
+    }));
+    const release = jest.spyOn(api, "logout").mockResolvedValue(undefined);
+    const registration = usePush.getState().registerIfGranted();
+    await waitFor(() => expect(claim).toHaveBeenCalled());
+    const leaving = useSession.getState().logout();
+    expect(release).not.toHaveBeenCalled();
+    finish();
+    await registration;
+    await leaving;
+    expect(release).toHaveBeenCalledWith("fcm-token-a7c8d3f1", expect.any(Promise));
+    expect(usePush.getState().claimed).toBe(false);
+    claim.mockRestore();
+    release.mockRestore();
   });
 
   it("signs out normally on a phone that never had a token", async () => {
@@ -297,7 +331,7 @@ describe("signing out", () => {
 
     await useSession.getState().logout();
 
-    expect(logout).toHaveBeenCalledWith(null);
+    expect(logout).toHaveBeenCalledWith(null, expect.any(Promise));
     logout.mockRestore();
   });
 
