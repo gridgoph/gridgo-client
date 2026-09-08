@@ -15,6 +15,7 @@ const mockActivate = jest.fn();
 const mockSetTokenProvider = jest.fn();
 let mockAuthGetToken = mockGetToken;
 let mockIsSignedIn = true;
+let mockPrimaryRole: string | null = null;
 let mockSessionId: string | null = "sess_1";
 
 jest.mock("@clerk/expo", () => ({
@@ -26,7 +27,7 @@ jest.mock("@clerk/expo", () => ({
     sessionClaims: null,
   }),
   useClerk: () => ({ signOut: mockSignOut }),
-  useUser: () => ({ user: null, isLoaded: true }),
+  useUser: () => ({ user: mockPrimaryRole ? { publicMetadata: { gridgoRole: mockPrimaryRole } } : null, isLoaded: true }),
 }));
 
 jest.mock("@/lib/api", () => {
@@ -51,6 +52,7 @@ describe("useClerkApiSession", () => {
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockAuthGetToken = mockGetToken;
     mockIsSignedIn = true;
+    mockPrimaryRole = null;
     mockSessionId = "sess_1";
     mockSignOut.mockClear();
     mockSetTokenProvider.mockClear();
@@ -69,6 +71,15 @@ describe("useClerkApiSession", () => {
       signingOut: false,
     });
     useSession.getState().registerIdentityLogout(null);
+  });
+
+  it("lets the API client projection decide when Clerk names a different primary role", async () => {
+    mockPrimaryRole = "supplier";
+    mockMe.mockResolvedValue({ id: "multi", email: "multi@example.test", name: "Member", role: "client", accountType: "individual" });
+    renderHook(() => useClerkApiSession());
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("multi"));
+    expect(mockMe).toHaveBeenCalled();
+    expect(mockSignOut).not.toHaveBeenCalled();
   });
 
   it("does not re-join a refused identity and keep Signing you in", async () => {

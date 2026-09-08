@@ -1,3 +1,5 @@
+import { withRequestDeadline } from "@/lib/requestDeadline";
+import { liveGeneration, assertLiveGeneration } from "@/lib/live";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
@@ -548,6 +550,10 @@ export function setTokenProvider(provider: TokenProvider | null): void {
   tokenProvider = provider;
 }
 
+export async function getAuthToken(force = false): Promise<string | null> {
+  return (await resolveToken(force)).token;
+}
+
 export function getToken(): string | null {
   return tokenMemory;
 }
@@ -596,31 +602,26 @@ async function request<T>(
    */
   forceFreshToken = false,
 ): Promise<T> {
+  return withRequestDeadline(init.signal, async (signal) => {
+  const generation = liveGeneration();
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  if (signal.aborted) throw new Error("Request cancelled");
   const auth = await resolveToken(forceFreshToken);
-  if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
-
-  const timeoutMs = 20_000;
-  const timedOut = !init.signal;
-  const controller = timedOut ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  let res: Response;
-  try {
-    res = await fetch(`${getApiBase()}${path}`, {
-      ...init,
-      headers,
-      signal: init.signal ?? controller?.signal,
-    });
-  } catch (error) {
-    throw error;
-  } finally {
-    if (timer) clearTimeout(timer);
+  if (signal.aborted) throw new Error("Request cancelled");
+  assertLiveGeneration(generation);
+  if (auth.token) {
+    headers.Authorization = `Bearer ${auth.token}`;
+    if (path !== "/auth/clerk/activate") headers["X-GRIDGO-Role"] = "client";
   }
+
+  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
   const text = await res.text();
+  if (signal.aborted) throw new Error("Request cancelled");
+  assertLiveGeneration(generation);
   let data: unknown = null;
   if (text) {
     try {
@@ -639,7 +640,7 @@ async function request<T>(
       // deliberately — that 401 is the unmapped-identity probe before
       // activate, where a fresher token changes nothing.
       if (auth.source === "provider" && !forceFreshToken && !init.signal) {
-        return request<T>(path, init, options, true);
+        return request<T>(path, { ...init, signal }, options, true);
       }
       if (auth.source === "legacy") setToken(null);
       notifyUnauthorized();
@@ -647,6 +648,7 @@ async function request<T>(
     throw new ApiError(res.status, data);
   }
   return data as T;
+  });
 }
 
 export async function login(email: string, password: string): Promise<{ token: string; user: User }> {
@@ -688,20 +690,30 @@ export async function signupClient(
  * no token was sent, the session had already expired, or the token now belongs
  * to somebody else. None of those is a failure worth showing anyone.
  */
-export async function logout(deviceToken?: string | null): Promise<void> {
+/** Resolve against the current provider before account teardown. */
+export function captureLogoutBearer(): Promise<string | null> {
+  return getAuthToken().catch(() => null);
+}
+
+export async function logout(
+  deviceToken?: string | null,
+  capturedBearer: Promise<string | null> = captureLogoutBearer(),
+): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 2500);
   try {
-    await request("/auth/logout", {
+    const bearer = await capturedBearer;
+    if (!bearer || controller.signal.aborted) return;
+    await fetch(`${getApiBase()}/auth/logout`, {
       method: "POST",
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json", "X-GRIDGO-Role": "client" },
       body: JSON.stringify(deviceToken ? { deviceToken } : {}),
       signal: controller.signal,
     });
   } catch {
-    // Timeout, abort, or unreachable API: the local session is already gone.
+    // Local sign-out remains available offline. Never mutate a newer identity.
   } finally {
     clearTimeout(timer);
-    setToken(null);
   }
 }
 
@@ -721,7 +733,7 @@ export async function registerDevice(
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
-    body: JSON.stringify({ token, platform }),
+    body: JSON.stringify({ token, platform, appRole: "client" }),
   });
 }
 
@@ -758,7 +770,7 @@ export async function registerDeviceUnclaimed(
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ token, platform }),
+    body: JSON.stringify({ token, platform, appRole: "client" }),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -1241,7 +1253,7 @@ export async function listNotifications(): Promise<NotificationList> {
   const timer = setTimeout(() => controller.abort(), NOTIFICATIONS_TIMEOUT_MS);
   try {
     const result = await request<NotificationList>(
-      `/notifications?limit=${NOTIFICATION_LIST_LIMIT}`,
+      `/notifications?limit=${NOTIFICATION_LIST_LIMIT}&role=client`,
       { signal: controller.signal },
     );
     return {
@@ -1265,7 +1277,7 @@ export async function markNotificationRead(id: string, read = true): Promise<Not
 }
 
 export async function markAllNotificationsRead(snapshot: string): Promise<number> {
-  const result = await request<{ updatedCount: number }>("/notifications/read-all", {
+  const result = await request<{ updatedCount: number }>("/notifications/read-all?role=client", {
     method: "PATCH",
     body: JSON.stringify({ snapshot }),
   });
@@ -1816,6 +1828,7 @@ export function uploadFile(
       xhr.responseType = "text";
       xhr.setRequestHeader("Accept", "application/json");
       if (auth.token) xhr.setRequestHeader("Authorization", `Bearer ${auth.token}`);
+        xhr.setRequestHeader("X-GRIDGO-Role", "client");
       // Content-Type is left unset on purpose: the platform supplies the
       // multipart boundary, and overriding it corrupts the request body.
 

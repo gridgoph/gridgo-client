@@ -1,4 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { invalidate } from "@/lib/live";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -19,7 +26,10 @@ jest.mock("expo-router", () => ({
   }),
   // The screen sets its own header options when there is no history behind it.
   // Only the options matter here, so the element renders nothing.
-  Stack: { Screen: ({ options }: { options: unknown }) => mockStackOptions(options) ?? null },
+  Stack: {
+    Screen: ({ options }: { options: unknown }) =>
+      mockStackOptions(options) ?? null,
+  },
   useLocalSearchParams: () => ({ id: "ord_demo_1" }),
   useFocusEffect: (effect: () => void) => {
     // Required inside the factory: jest.mock is hoisted above imports.
@@ -48,6 +58,11 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     getOrder: jest.fn(),
+    getTaxonomy: jest.fn(async () => ({
+      categories: [],
+      materials: [],
+      finishes: [],
+    })),
     listCatalog: jest.fn(),
     listZones: jest.fn(),
     listIssues: jest.fn(),
@@ -82,7 +97,11 @@ const baseOrder: Order = {
   totalMinor: 112500,
   downpaymentMinor: 84375,
   balanceMinor: 28125,
-  priceRange: { subtotalMinMinor: 110000, subtotalMaxMinor: 110000, deliveryFeeStatus: "final" },
+  priceRange: {
+    subtotalMinMinor: 110000,
+    subtotalMaxMinor: 110000,
+    deliveryFeeStatus: "final",
+  },
   payments: {
     downpayment: {
       amountMinor: 84375,
@@ -102,10 +121,30 @@ const baseOrder: Order = {
     },
   },
   payoutMilestones: [
-    { code: "printing", sharePercent: 50, status: "pof_attached", pofFileIds: ["file_pof_1"] },
-    { code: "packaging_qc", sharePercent: 15, status: "pending_pof", pofFileIds: [] },
-    { code: "delivered", sharePercent: 25, status: "pending_pof", pofFileIds: [] },
-    { code: "retention", sharePercent: 10, status: "pending_pof", pofFileIds: [] },
+    {
+      code: "printing",
+      sharePercent: 50,
+      status: "pof_attached",
+      pofFileIds: ["file_pof_1"],
+    },
+    {
+      code: "packaging_qc",
+      sharePercent: 15,
+      status: "pending_pof",
+      pofFileIds: [],
+    },
+    {
+      code: "delivered",
+      sharePercent: 25,
+      status: "pending_pof",
+      pofFileIds: [],
+    },
+    {
+      code: "retention",
+      sharePercent: 10,
+      status: "pending_pof",
+      pofFileIds: [],
+    },
   ],
   paymentMethod: "qr_manual",
   paymentStatus: "downpayment_confirmed",
@@ -115,7 +154,12 @@ const baseOrder: Order = {
   createdAt: "2026-08-08T10:00:00+08:00",
   updatedAt: "2026-08-09T10:00:00+08:00",
   timeline: [
-    { at: "2026-08-08T10:00:00+08:00", state: "submitted", by: "user_client", note: "" },
+    {
+      at: "2026-08-08T10:00:00+08:00",
+      state: "submitted",
+      by: "user_client",
+      note: "",
+    },
     {
       at: "2026-08-09T10:00:00+08:00",
       state: "production",
@@ -172,7 +216,10 @@ describe("OrderDetailScreen", () => {
       issueWindowHours: 24,
       deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
     });
-    api.submitPayment.mockImplementation(async () => ({ ...baseOrder, state: "downpayment_review" }));
+    api.submitPayment.mockImplementation(async () => ({
+      ...baseOrder,
+      state: "downpayment_review",
+    }));
     api.getRiderLocation.mockResolvedValue(null);
     api.getFileDownloadUrl.mockRejectedValue(new Error("no file"));
     osrm.fetchRoute.mockResolvedValue({
@@ -187,12 +234,27 @@ describe("OrderDetailScreen", () => {
     });
   });
 
+  it("updates an already open order from a silent event without push or navigation", async () => {
+    setOrder({ title: "Before the server update" });
+    await renderInSafeArea(<OrderDetailScreen />);
+    expect(await screen.findByText("Before the server update")).toBeTruthy();
+    setOrder({ title: "Updated by Operations" });
+    await act(async () => {
+      invalidate("orders");
+    });
+    await waitFor(() =>
+      expect(screen.getByText("Updated by Operations")).toBeTruthy(),
+    );
+  });
+
   it("opens a job that never stored a history instead of crashing", async () => {
     setOrder({ timeline: undefined as never });
     await renderInSafeArea(<OrderDetailScreen />);
 
     expect(await screen.findByText("Grand opening tarpaulin")).toBeTruthy();
-    expect(screen.getByText(/Nothing has happened on this job yet/)).toBeTruthy();
+    expect(
+      screen.getByText(/Nothing has happened on this job yet/),
+    ).toBeTruthy();
   });
 
   it("opens with what is happening, in plain language", async () => {
@@ -229,9 +291,13 @@ describe("OrderDetailScreen", () => {
 
     expect(await screen.findByText("Replace the artwork")).toBeTruthy();
     // Shown as the reason to act on, and kept on the record below.
-    expect(screen.getAllByText("Bleed is missing on all four edges").length).toBe(2);
+    expect(
+      screen.getAllByText("Bleed is missing on all four edges").length,
+    ).toBe(2);
     expect(screen.getByText("Choose a corrected file")).toBeTruthy();
-    expect(screen.getByText(/history, price and any payment stay/i)).toBeTruthy();
+    expect(
+      screen.getByText(/history, price and any payment stay/i),
+    ).toBeTruthy();
   });
 
   it("asks for a considered decision on the artwork proof, not a row tap", async () => {
@@ -337,9 +403,9 @@ describe("OrderDetailScreen", () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
     // Once as the card's heading, once as the line under the job title.
-    expect((await screen.findAllByText(/We are checking your downpayment/)).length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      (await screen.findAllByText(/We are checking your downpayment/)).length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText("GCASH-ABC123")).toBeTruthy();
     // Submitting a reference is not paying. Nothing here may say it is.
     expect(screen.queryByText(/paid in full/i)).toBeNull();
@@ -392,7 +458,9 @@ describe("OrderDetailScreen", () => {
 
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText(/4\.2 km from your drop-off by road/)).toBeTruthy();
+    expect(
+      await screen.findByText(/4\.2 km from your drop-off by road/),
+    ).toBeTruthy();
     // OSRM returns a travel time; presenting it would read as a promise.
     expect(screen.queryByText(/10 min|arriv/i)).toBeNull();
     expect(screen.getByText(/does not publish a live ETA/i)).toBeTruthy();
@@ -416,10 +484,12 @@ describe("OrderDetailScreen", () => {
       at: new Date().toISOString(),
     });
     osrm.fetchRoute.mockResolvedValue(
-      jest.requireActual("@/lib/osrm").fallbackRoute(
-        { lat: 7.07, lng: 125.611 },
-        { lat: 7.0853, lng: 125.6137 },
-      ),
+      jest
+        .requireActual("@/lib/osrm")
+        .fallbackRoute(
+          { lat: 7.07, lng: 125.611 },
+          { lat: 7.0853, lng: 125.6137 },
+        ),
     );
 
     await renderInSafeArea(<OrderDetailScreen />);
@@ -436,7 +506,9 @@ describe("OrderDetailScreen", () => {
       issueWindowOpenedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
       // Rounded down deliberately, so the card never promises more time than
       // the platform will actually allow: 23h and change reads as "about 23".
-      issueWindowExpiresAt: new Date(Date.now() + 23 * 60 * 60 * 1000 + 60_000).toISOString(),
+      issueWindowExpiresAt: new Date(
+        Date.now() + 23 * 60 * 60 * 1000 + 60_000,
+      ).toISOString(),
       timeline: [
         ...baseOrder.timeline,
         {
@@ -452,7 +524,9 @@ describe("OrderDetailScreen", () => {
     expect(await screen.findByText("Report a problem")).toBeTruthy();
     // The platform really expires the window under v2 and stamps the expiry on
     // the order, so both halves of the clock are honest to show.
-    expect(screen.getByText(/Delivered 1 hour ago · Closes in about 23 hours/)).toBeTruthy();
+    expect(
+      screen.getByText(/Delivered 1 hour ago · Closes in about 23 hours/),
+    ).toBeTruthy();
   });
 
   it("recovers from a failed load with a retry rather than a blank screen", async () => {
@@ -473,7 +547,9 @@ describe("OrderDetailScreen", () => {
 
       await screen.findByText("Grand opening tarpaulin");
       expect(mockStackOptions).toHaveBeenCalled();
-      const options = mockStackOptions.mock.calls.at(-1)?.[0] as { headerLeft?: unknown };
+      const options = mockStackOptions.mock.calls.at(-1)?.[0] as {
+        headerLeft?: unknown;
+      };
       expect(typeof options.headerLeft).toBe("function");
     });
 
@@ -521,7 +597,9 @@ describe("OrderDetailScreen", () => {
 
       await renderInSafeArea(<OrderDetailScreen />);
 
-      expect(await screen.findByText("On the way to GRIDGO Office")).toBeTruthy();
+      expect(
+        await screen.findByText("On the way to GRIDGO Office"),
+      ).toBeTruthy();
       expect(screen.queryByText(/out for delivery/i)).toBeNull();
       // Nothing asks the platform where the rider is, so nothing can draw them.
       expect(api.getRiderLocation).not.toHaveBeenCalled();
@@ -551,7 +629,9 @@ describe("OrderDetailScreen", () => {
       expect(await screen.findByText("HELD AT THE COUNTER")).toBeTruthy();
       expect(screen.queryByText("READY AT THE COUNTER")).toBeNull();
       // The screen's one yellow control is the payment, not the walk.
-      expect(screen.getAllByText(/remaining balance/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/remaining balance/i).length).toBeGreaterThan(
+        0,
+      );
     });
   });
 });
