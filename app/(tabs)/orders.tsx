@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback, useMemo, useState } from "react";
 import { Platform, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -71,6 +72,8 @@ export default function OrdersScreen() {
       setLoading(false);
     }
   }, []);
+
+  useLiveRefresh(["orders"], load);
 
   useFocusEffect(
     useCallback(() => {

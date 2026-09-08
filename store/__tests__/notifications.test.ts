@@ -37,6 +37,8 @@ const assignment: Notification = {
 describe("notifications store", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
+    useNotifications.getState().setOwner(null);
+    useNotifications.getState().setOwner("user_client");
     api.listNotifications.mockReset();
     api.markNotificationRead.mockReset();
     api.markAllNotificationsRead.mockReset();
@@ -55,10 +57,23 @@ describe("notifications store", () => {
     });
   });
 
+  it("does not optimistically mark rows when there is no server snapshot", async () => {
+    useNotifications.setState({ items: [assignment], snapshot: null, readIds: [] });
+    await useNotifications.getState().markAllRead();
+    expect(useNotifications.getState().readIds).toEqual([]);
+    expect(api.markAllNotificationsRead).not.toHaveBeenCalled();
+  });
+
   it("does not flip loading when a list is already on screen", async () => {
-    useNotifications.setState({ items: [assignment], loading: false, error: null });
-    let finish: (value: { notifications: Notification[]; snapshot: string | null }) => void =
-      () => undefined;
+    useNotifications.setState({
+      items: [assignment],
+      loading: false,
+      error: null,
+    });
+    let finish: (value: {
+      notifications: Notification[];
+      snapshot: string | null;
+    }) => void = () => undefined;
     api.listNotifications.mockReturnValue(
       new Promise((resolve) => {
         finish = resolve;
@@ -76,8 +91,14 @@ describe("notifications store", () => {
   });
 
   it("keeps existing rows when a hung refresh later errors", async () => {
-    useNotifications.setState({ items: [assignment], loading: false, error: null });
-    api.listNotifications.mockRejectedValue(new Error("The operation was aborted."));
+    useNotifications.setState({
+      items: [assignment],
+      loading: false,
+      error: null,
+    });
+    api.listNotifications.mockRejectedValue(
+      new Error("The operation was aborted."),
+    );
 
     await useNotifications.getState().refresh();
 
@@ -90,8 +111,10 @@ describe("notifications store", () => {
     await useNotifications.getState().refresh();
 
     await waitFor(async () => {
-      const raw = await AsyncStorage.getItem("gridgo-notifications");
-      expect(raw ? JSON.parse(raw).state.items?.[0]?.id : null).toBe("ntf_1");
+      const raw = await AsyncStorage.getItem(
+        "gridgo-notifications:user_client",
+      );
+      expect(raw ? JSON.parse(raw).items?.[0]?.id : null).toBe("ntf_1");
     });
   });
 

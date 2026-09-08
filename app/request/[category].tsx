@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -57,6 +58,8 @@ export default function CategoryScreen() {
       );
     }
   }, [categoryCode]);
+
+  useLiveRefresh(["catalog", "services", "availability"], loadBoards);
 
   useEffect(() => {
     let alive = true;

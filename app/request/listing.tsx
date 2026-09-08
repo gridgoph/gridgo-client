@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Minus, Plus } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
@@ -124,6 +125,8 @@ export default function ListingScreen() {
       );
     }
   }, [itemId]);
+
+  useLiveRefresh(["catalog", "services", "settings"], load);
 
   useEffect(() => {
     void load();

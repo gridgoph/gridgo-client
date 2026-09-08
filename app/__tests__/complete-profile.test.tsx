@@ -5,6 +5,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import CompleteProfileScreen from "@/app/complete-profile";
 import { useSession } from "@/store/session";
 
+jest.mock("@clerk/expo", () => ({ useAuth: () => ({ isSignedIn: true }) }));
+
 jest.mock("expo-router", () => ({
   Redirect: () => null,
 }));

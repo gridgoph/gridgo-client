@@ -1,10 +1,8 @@
-import { useAuth, useClerk, useUser } from "@clerk/expo";
+import { useAuth, useClerk } from "@clerk/expo";
 import { useEffect, useRef } from "react";
 
 import * as api from "@/lib/api";
-import { isNonClientClerkRole, readGridgoRole } from "@/lib/clerkAuth";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
-import { wrongRoleMessage } from "@/lib/clerkSessionBridge";
 import {
   awaitClerkSessionToken,
   CLERK_SSO_TOKEN_WAIT,
@@ -20,8 +18,7 @@ import { useSignupFlow } from "@/store/signupFlow";
  * This hook joins those boundaries once, above every route.
  */
 export function useClerkApiSession(): void {
-  const { getToken, isLoaded, isSignedIn, sessionId, sessionClaims } = useAuth();
-  const { user: clerkUser } = useUser();
+  const { getToken, isLoaded, isSignedIn, sessionId } = useAuth();
   const { signOut } = useClerk();
   const clerkSyncNonce = useSession((state) => state.clerkSyncNonce);
   const signingOut = useSession((state) => state.signingOut);
@@ -87,15 +84,8 @@ export function useClerkApiSession(): void {
     // again would clear it and leave Signing you in up.
     if (current.error) return;
 
-    const clerkRole =
-      readGridgoRole(clerkUser?.publicMetadata) ??
-      readGridgoRole(sessionClaims as unknown);
-    if (isNonClientClerkRole(clerkRole)) {
-      current.failClerkSync(wrongRoleMessage(clerkRole));
-      void signOut().catch(() => undefined);
-      return;
-    }
-
+    // GRIDGO membership projection is authoritative; Clerk primary-role metadata
+    // may name another membership of the same person.
     if (!isSignedIn && !sessionId) {
       if (clerkOwnerPresent.current) {
         invalidateClerkGridgoSync();
@@ -164,7 +154,5 @@ export function useClerkApiSession(): void {
     signingOut,
     loginStep,
     signupStep,
-    clerkUser,
-    sessionClaims,
   ]);
 }
