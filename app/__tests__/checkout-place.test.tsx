@@ -33,6 +33,7 @@ jest.mock("@/lib/api", () => {
     getCatalogShop: jest.fn(),
     setCartFulfilment: jest.fn(),
     setCartDropoffs: jest.fn(),
+    listAddresses: jest.fn(),
     updateCartLine: jest.fn(),
     removeCartLine: jest.fn(),
     checkoutCart: jest.fn(),
@@ -45,6 +46,7 @@ jest.mock("@/hooks/usePaymentProof", () => ({
       phase: "stored",
       fileName: "receipt.jpg",
       fileId: "file_proof",
+      localUri: "file://receipt.jpg",
       progress: 1,
       error: null,
     },
@@ -174,6 +176,7 @@ function renderInSafeArea(ui: ReactElement) {
 describe("placing the order", () => {
   it("places with the cart's existing service level and the QR receipt", async () => {
     api.getSettings.mockResolvedValue(SETTINGS);
+    api.listAddresses.mockResolvedValue([]);
     api.getCart.mockResolvedValue(cart());
     api.getCatalogShop.mockResolvedValue({
       supplierId: "user_lovis",

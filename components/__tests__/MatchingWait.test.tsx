@@ -5,6 +5,7 @@ import {
   MATCH_WAIT_RESTING_CELL,
   MATCH_WAIT_ROUTE,
   MatchingWait,
+  matchWaitTokenOrigin,
 } from "@/components/MatchingWait";
 
 /**
@@ -40,6 +41,16 @@ function countDots(tree: unknown): number {
 describe("the route", () => {
   it("walks every cell once, so the token is going through all GRIDGO has", () => {
     expect([...MATCH_WAIT_ROUTE].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("keeps a pixel origin for every progress, including a wrapped or empty value", () => {
+    // Reanimated 4 dropped the hop list on device and crashed on `.x`. The
+    // origin must stay a real point for 0, 1, wrap-around, and garbage input.
+    for (const progress of [0, 0.5, 1, 1.01, Number.NaN]) {
+      const origin = matchWaitTokenOrigin(progress, 156);
+      expect(Number.isFinite(origin.x)).toBe(true);
+      expect(Number.isFinite(origin.y)).toBe(true);
+    }
   });
 
   it("opens on the centre and closes on the cell the GRIDGO mark lights", () => {

@@ -9,7 +9,7 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ orderId: "order_1" }),
 }));
 
-jest.mock("@react-navigation/native", () => ({ usePreventRemove: jest.fn() }));
+jest.mock("expo-router/react-navigation", () => ({ usePreventRemove: jest.fn() }));
 
 const frame = { x: 0, y: 0, width: 390, height: 844 };
 const insets = { top: 0, left: 0, right: 0, bottom: 0 };

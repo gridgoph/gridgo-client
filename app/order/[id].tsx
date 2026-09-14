@@ -214,6 +214,7 @@ export default function OrderDetailScreen() {
             <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
           </View>
           <Text className="text-h1 text-text-primary">{order.title}</Text>
+          <Text className="text-caption text-text-muted">Order {order.id}</Text>
           {/* Only when nothing below is already saying it. An action zone
               owns its instruction and reason, and so does the card that
               explains a payment being checked — repeating either up here is

@@ -1,7 +1,16 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { Check, ChevronRight, MapPin, Minus, Plus, QrCode, Trash2 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Check, ChevronRight, Home, MapPin, Minus, Plus, QrCode, Trash2 } from "lucide-react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Linking,
+  Modal,
+  Pressable,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -59,10 +68,11 @@ import { checkPaymentReference, DIGITAL_ONLY_NOTICE } from "@/lib/payment";
 import {
   OCR_READING,
   OCR_UNREADABLE,
-  nextReferenceFromOcr,
 } from "@/lib/receiptOcr";
+import { groupSavedPlaces } from "@/lib/savedPlaces";
 import { formatDistance, type GeoPoint } from "@/lib/tracking";
 import { useCart } from "@/store/cart";
+import { useCheckoutPayment } from "@/store/checkoutPayment";
 
 /**
  * The checkout sheet.
@@ -100,21 +110,28 @@ export default function CheckoutScreen() {
   const [settings, setSettings] = useState<api.PlatformSettings | null>(null);
   const [shops, setShops] = useState<Record<string, api.ShopBoard>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [reference, setReference] = useState("");
   const [referenceTouched, setReferenceTouched] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [showQr, setShowQr] = useState(false);
+  const [viewingProof, setViewingProof] = useState(false);
   // The line a swipe or a Remove tap has asked about. Nothing leaves the
   // basket until this is answered.
   const [removing, setRemoving] = useState<CartLineRecord | null>(null);
+  const scrollRef = useRef<{ scrollTo?: (opts: { y: number; animated?: boolean }) => void }>(null);
+  const fieldY = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference", number>>>({});
 
-  const proof = usePaymentProof();
+  const proof = usePaymentProof(cartId);
+  const reference = useCheckoutPayment((state) => state.reference);
+  const setReference = useCheckoutPayment((state) => state.setReference);
+  const resetPayment = useCheckoutPayment((state) => state.reset);
 
   useEffect(() => {
-    if (proof.ocr.status === "idle" || proof.ocr.status === "reading") return;
-    setReference((current) => nextReferenceFromOcr(current, proof.ocr));
-  }, [proof.ocr]);
+    if (proof.ocr.status !== "filled" || !proof.ocr.reference) return;
+    if (useCheckoutPayment.getState().reference.trim()) return;
+    setReference(proof.ocr.reference);
+  }, [proof.ocr, setReference]);
 
   const load = useCallback(async () => {
     await loadCart();
@@ -218,6 +235,45 @@ export default function CheckoutScreen() {
     }
   };
 
+  useEffect(() => {
+    if (travel !== "delivery" || !cartId || cart?.defaultDropoff) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const addresses = await api.listAddresses();
+        const grouped = groupSavedPlaces(addresses);
+        const chosen =
+          addresses.find((address) => address.isDefault) ??
+          grouped.home ??
+          grouped.work ??
+          grouped.named[0] ??
+          null;
+        if (!alive || !chosen) return;
+        adopt(
+          await run((id) =>
+            api.setCartDropoffs(id, {
+              defaultDropoff: {
+                lat: chosen.point.lat,
+                lng: chosen.point.lng,
+                label: chosen.point.label || chosen.addressLine || chosen.label,
+              },
+            }),
+          ),
+        );
+      } catch {
+        // Stay on "Not set yet" — the client can still pick an address.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [adopt, cart?.defaultDropoff, cartId, run, travel]);
+
+  const recordField =
+    (key: "artwork" | "address" | "proof" | "reference") => (event: LayoutChangeEvent) => {
+      fieldY.current[key] = event.nativeEvent.layout.y;
+    };
+
   const setTravel = (choice: TravelChoice) =>
     change(async (id) => {
       const cartAfter = await api.setCartFulfilment(id, {
@@ -278,6 +334,35 @@ export default function CheckoutScreen() {
     await change((id) => api.removeCartLine(id, line.id));
   };
 
+  const scrollToBlocker = (blocker: (typeof blockers)[number]) => {
+    const key =
+      blocker === "artwork"
+        ? "artwork"
+        : blocker === "address"
+          ? "address"
+          : blocker === "proof"
+            ? "proof"
+            : blocker === "reference"
+              ? "reference"
+              : null;
+    if (!key) return;
+    const y = fieldY.current[key];
+    if (typeof y !== "number") return;
+    const scroller = scrollRef.current as { scrollTo?: (opts: { y: number; animated?: boolean }) => void } | null;
+    scroller?.scrollTo?.({ y: Math.max(0, y - 12), animated: true });
+  };
+
+  const commit = () => {
+    if (ocrReading || placing || busy) return;
+    if (blockers.length) {
+      setAttempted(true);
+      if (blockers.includes("reference")) setReferenceTouched(true);
+      scrollToBlocker(blockers[0]);
+      return;
+    }
+    void place();
+  };
+
   const place = async () => {
     if (blockers.length || ocrReading || placing || !cartId || !proof.state.fileId) return;
     setPlacing(true);
@@ -292,6 +377,7 @@ export default function CheckoutScreen() {
         reference: reference.trim(),
         proofFileId: proof.state.fileId,
       });
+      resetPayment();
       clearCart();
       router.replace({ pathname: "/order/[id]", params: { id: order.id } });
     } catch (e) {
@@ -337,8 +423,12 @@ export default function CheckoutScreen() {
     );
   }
 
+  const placeLocked = ocrReading || placing || busy;
+  const missingShown = attempted || referenceTouched;
+
   return (
     <FormScreen
+      scrollRef={scrollRef}
       footer={
         <View testID="checkout-footer" className="gap-3 border-t border-outline bg-surface px-4 pb-2 pt-3">
           <View className="flex-row items-baseline justify-between gap-3">
@@ -347,28 +437,43 @@ export default function CheckoutScreen() {
               {totals.totalMinor == null ? "—" : formatPhp(totals.totalMinor)}
             </Text>
           </View>
-          <Pressable
-            onPress={() => void place()}
-            disabled={blockers.length > 0 || ocrReading || placing || busy}
-            accessibilityRole="button"
-            accessibilityLabel="Place this order"
-            accessibilityState={{ disabled: blockers.length > 0 || ocrReading || placing || busy }}
-            className={
-              blockers.length || ocrReading || placing || busy
-                ? "gg-btn-primary gg-disabled"
-                : "gg-btn-primary"
-            }
-            style={({ pressed }) =>
-              pressed && !blockers.length && !ocrReading && !placing && !busy ? { opacity: 0.9 } : undefined
-            }
-          >
-            <Text className="text-button text-action-yellow-on">
-              {placing ? "Placing your order…" : "Place order"}
-            </Text>
-          </Pressable>
+          <View className="flex-row items-center gap-2">
+            <Pressable
+              onPress={() => router.replace("/(tabs)/home")}
+              accessibilityRole="button"
+              accessibilityLabel="Go to Home and keep this order"
+              className="gg-btn-secondary h-12 w-12 items-center justify-center px-0"
+              style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
+            >
+              <Home
+                size={20}
+                color={colors.textPrimary}
+                strokeWidth={2}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              />
+            </Pressable>
+            <Pressable
+              onPress={commit}
+              disabled={placeLocked}
+              accessibilityRole="button"
+              accessibilityLabel="Place this order"
+              accessibilityState={{ disabled: placeLocked }}
+              className={
+                placeLocked ? "gg-btn-primary gg-disabled min-w-0 flex-1" : "gg-btn-primary min-w-0 flex-1"
+              }
+              style={({ pressed }) =>
+                pressed && !placeLocked ? { opacity: 0.9 } : undefined
+              }
+            >
+              <Text className="text-button text-action-yellow-on">
+                {placing ? "Placing your order…" : ocrReading ? "Reading the reference…" : "Place order"}
+              </Text>
+            </Pressable>
+          </View>
 
           <Text
-            className={placeError
+            className={placeError || (missingShown && blockers.length)
               ? "text-center text-caption text-error"
               : "text-center text-caption text-text-muted"}
           >
@@ -412,6 +517,29 @@ export default function CheckoutScreen() {
             onConfirm={() => void confirmRemove()}
             onCancel={() => setRemoving(null)}
           />
+          <Modal
+            visible={viewingProof}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setViewingProof(false)}
+          >
+            <Pressable
+              onPress={() => setViewingProof(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close the payment screenshot"
+              className="flex-1 items-center justify-center bg-black/90 px-4"
+            >
+              {proof.state.localUri ? (
+                <Image
+                  source={{ uri: proof.state.localUri }}
+                  accessibilityLabel="Payment screenshot"
+                  resizeMode="contain"
+                  style={{ width: "100%", height: "80%" }}
+                />
+              ) : null}
+              <Text className="mt-4 text-center text-caption text-white">Tap to close</Text>
+            </Pressable>
+          </Modal>
         </>
       }
     >
@@ -422,7 +550,7 @@ export default function CheckoutScreen() {
         <Text className="mt-4 text-h1 text-text-primary">Your order</Text>
 
         {/* ---- What is being printed ------------------------------------- */}
-        <View className="mt-6 gap-6">
+        <View className="mt-6 gap-6" onLayout={recordField("artwork")}>
           {runs.map((run, index) => (
             <View key={run.supplierId} className="gap-3">
               <View className="flex-row items-center justify-between gap-3">
@@ -510,6 +638,7 @@ export default function CheckoutScreen() {
             options={TRAVEL_CHOICES.map((choice) => ({
               value: choice,
               label: travelLabel(choice),
+              disabled: choice === "multi_drop",
             }))}
             value={travel}
             onChange={(next) => void setTravel(next as TravelChoice)}
@@ -517,7 +646,16 @@ export default function CheckoutScreen() {
             accessibilityLabel="How your order gets to you"
           />
           <Text className="text-body text-text-secondary">{travelBlurb(travel)}</Text>
-          {travelCaveat(travel) ? (
+          {travel === "multi_drop" ? (
+            <Text className="text-caption text-text-muted">
+              Multi-drop is not offered on this order. Use Delivery for one address.
+            </Text>
+          ) : (
+            <Text className="text-caption text-text-muted">
+              Multi-drop is not offered yet.
+            </Text>
+          )}
+          {travelCaveat(travel) && travel !== "multi_drop" ? (
             <Text className="text-caption text-text-muted">{travelCaveat(travel)}</Text>
           ) : null}
 
@@ -538,14 +676,21 @@ export default function CheckoutScreen() {
                   ? "Delivery is charged on each run, by the distance from where it is printed to your address."
                   : "Delivery is charged by the distance from where it is printed to your address."}
               </Text>
-              <AddressBlock
-                cart={cart}
-                multiDrop={travel === "multi_drop"}
-                lines={lines}
-                onChange={() =>
-                  router.push({ pathname: "/request/where", params: { next: "checkout" } })
-                }
-              />
+              <View onLayout={recordField("address")}>
+                <AddressBlock
+                  cart={cart}
+                  multiDrop={travel === "multi_drop"}
+                  lines={lines}
+                  error={
+                    attempted && blockers.includes("address")
+                      ? blockerLine("address")
+                      : null
+                  }
+                  onChange={() =>
+                    router.push({ pathname: "/request/where", params: { next: "checkout" } })
+                  }
+                />
+              </View>
             </>
           )}
         </Section>
@@ -611,38 +756,61 @@ export default function CheckoutScreen() {
             </View>
           ) : null}
 
-          <ProofRow
-            state={proof.state}
-            onPick={() => void proof.pick()}
-            onReset={proof.reset}
-          />
-
-          <FormField
-            label="Payment reference"
-            error={
-              ocrReading || (proof.ocr.status === "unreadable" && !reference.trim()) || !referenceTouched || referenceCheck.ok
-                ? null
-                : referenceCheck.reason
-            }
-            helper={
-              proof.ocr.status === "reading"
-                ? OCR_READING
-                : proof.ocr.status === "unreadable"
-                  ? OCR_UNREADABLE
-                  : "The reference number on the receipt from your wallet app."
-            }
-          >
-            <TextField
-              value={reference}
-              onChangeText={setReference}
-              onBlur={() => setReferenceTouched(true)}
-              placeholder="e.g. 1234567890123"
-              accessibilityLabel="Payment reference"
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={100}
+          <View onLayout={recordField("proof")}>
+            <ProofRow
+              state={proof.state}
+              reading={ocrReading}
+              error={attempted && blockers.includes("proof") ? blockerLine("proof") : null}
+              onPick={() => void proof.pick()}
+              onView={() => setViewingProof(true)}
+              onReset={proof.reset}
             />
-          </FormField>
+          </View>
+
+          <View onLayout={recordField("reference")}>
+            <FormField
+              label="Payment reference"
+              error={
+                ocrReading
+                  ? null
+                  : (attempted || referenceTouched) && !referenceCheck.ok
+                    ? proof.ocr.status === "unreadable" && !reference.trim()
+                      ? OCR_UNREADABLE
+                      : referenceCheck.reason
+                    : null
+              }
+              helper={
+                ocrReading
+                  ? OCR_READING
+                  : proof.ocr.status === "unreadable"
+                    ? OCR_UNREADABLE
+                    : "The reference number on the receipt from your wallet app."
+              }
+            >
+              <View className="relative">
+                <TextField
+                  value={reference}
+                  onChangeText={setReference}
+                  onBlur={() => setReferenceTouched(true)}
+                  placeholder="e.g. 1234567890123"
+                  accessibilityLabel="Payment reference"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  maxLength={100}
+                  editable={!ocrReading}
+                />
+                {ocrReading ? (
+                  <View
+                    pointerEvents="none"
+                    className="absolute right-3 top-0 h-full justify-center"
+                    accessibilityLabel="Reading the payment reference"
+                  >
+                    <ActivityIndicator size="small" color={colors.textMuted} />
+                  </View>
+                ) : null}
+              </View>
+            </FormField>
+          </View>
         </Section>
 
         {/* ---- Money ------------------------------------------------------ */}
@@ -702,21 +870,6 @@ export default function CheckoutScreen() {
           <Text className="text-caption text-text-muted">{INVOICE_NOTE}</Text>
         </Section>
 
-        {/* Leaving keeps the basket; the commit bar stays below the scroll. */}
-        <View className="mt-8 gap-3">
-          <Pressable
-            onPress={() => router.replace("/(tabs)/home")}
-            accessibilityRole="button"
-            accessibilityLabel="Go to Home and keep this order"
-            className="gg-btn-secondary"
-            style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
-          >
-            <Text className="text-button text-text-primary">Home</Text>
-          </Pressable>
-          <Text className="text-center text-caption text-text-muted">
-            Leaving keeps everything here — it is waiting when you come back.
-          </Text>
-        </View>
       </View>
 
     </FormScreen>
@@ -966,23 +1119,35 @@ function IconAction({
  */
 function ProofRow({
   state,
+  reading,
+  error,
   onPick,
+  onView,
   onReset,
 }: {
   state: ReturnType<typeof usePaymentProof>["state"];
+  reading: boolean;
+  error: string | null;
   onPick: () => void;
+  onView: () => void;
   onReset: () => void;
 }) {
   const colors = useThemeColors();
   const sending = state.phase === "sending";
+  const stored = state.phase === "stored";
 
   return (
-    <View className="gg-card gap-3">
+    <View className={error ? "gg-card gap-3 border-error" : "gg-card gap-3"}>
       <View className="flex-row items-center justify-between gap-3">
         <Text className="min-w-0 flex-1 text-body-lg font-medium text-text-primary">
           Payment screenshot
         </Text>
-        {state.phase === "stored" ? (
+        {reading ? (
+          <View className="flex-row items-center gap-2">
+            <ActivityIndicator size="small" color={colors.textMuted} />
+            <Text className="text-caption text-text-muted">Reading…</Text>
+          </View>
+        ) : stored ? (
           <View className="gg-chip">
             <Check size={13} color={colors.success} strokeWidth={2.5} />
             <Text className="text-caption text-text-secondary">Uploaded</Text>
@@ -990,19 +1155,36 @@ function ProofRow({
         ) : null}
       </View>
 
+      {stored && state.localUri ? (
+        <Pressable
+          onPress={onView}
+          accessibilityRole="button"
+          accessibilityLabel="Open the payment screenshot"
+        >
+          <Image
+            source={{ uri: state.localUri }}
+            accessibilityLabel="Payment screenshot preview"
+            resizeMode="cover"
+            style={{ height: 160, width: "100%", borderRadius: 8 }}
+          />
+        </Pressable>
+      ) : null}
+
       <Text
         className={
-          state.phase === "failed" ? "text-caption text-error" : "text-caption text-text-muted"
+          error || state.phase === "failed" ? "text-caption text-error" : "text-caption text-text-muted"
         }
       >
-        {state.phase === "empty"
+        {error
+          ? error
+          : state.phase === "empty"
           ? "The screenshot of your QR transfer, so Operations can match it."
           : state.phase === "sending"
             ? state.progress == null
               ? "Sending your screenshot…"
               : `Sending your screenshot — ${Math.round(state.progress * 100)}%.`
-            : state.phase === "stored"
-              ? state.fileName
+            : stored
+              ? "Tap the picture to view it."
               : (state.error ?? "That screenshot did not reach GRIDGO.")}
       </Text>
 
@@ -1022,7 +1204,18 @@ function ProofRow({
             {state.phase === "stored" ? "Choose another" : "Add screenshot"}
           </Text>
         </Pressable>
-        {state.phase === "stored" ? (
+        {stored && state.localUri ? (
+          <Pressable
+            onPress={onView}
+            accessibilityRole="button"
+            accessibilityLabel="View the payment screenshot"
+            className="gg-btn-secondary px-4"
+            style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
+          >
+            <Text className="text-button text-text-primary">View</Text>
+          </Pressable>
+        ) : null}
+        {stored ? (
           <Pressable
             onPress={onReset}
             accessibilityRole="button"
@@ -1049,18 +1242,20 @@ function AddressBlock({
   cart,
   multiDrop,
   lines,
+  error,
   onChange,
 }: {
   cart: api.Cart | null;
   multiDrop: boolean;
   lines: CartLineRecord[];
+  error: string | null;
   onChange: () => void;
 }) {
   const fallback = cart?.defaultDropoff ?? null;
 
   return (
     <View className="gap-3">
-      <View className="gg-card-flush">
+      <View className={error ? "gg-card-flush border border-error" : "gg-card-flush"}>
         <Pressable
           onPress={onChange}
           accessibilityRole="button"
@@ -1073,8 +1268,11 @@ function AddressBlock({
                 <Text className="text-body-lg font-medium text-text-primary">
                   {multiDrop ? "Default address" : "Delivery address"}
                 </Text>
-                <Text className="text-caption text-text-muted" numberOfLines={2}>
-                  {fallback?.label ?? "Not set yet"}
+                <Text
+                  className={error ? "text-caption text-error" : "text-caption text-text-muted"}
+                  numberOfLines={2}
+                >
+                  {error ?? fallback?.label ?? "Not set yet"}
                 </Text>
               </View>
               <Text className="text-button text-text-primary">{fallback ? "Change" : "Set"}</Text>

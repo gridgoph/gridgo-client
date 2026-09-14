@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import CheckoutScreen from "@/app/checkout";
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
 import { useCart } from "@/store/cart";
+import { useCheckoutPayment } from "@/store/checkoutPayment";
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -34,6 +35,7 @@ jest.mock("@/lib/api", () => {
     getCatalogShop: jest.fn(),
     setCartFulfilment: jest.fn(),
     setCartDropoffs: jest.fn(),
+    listAddresses: jest.fn(),
     updateCartLine: jest.fn(),
     removeCartLine: jest.fn(),
     checkoutCart: jest.fn(),
@@ -162,13 +164,20 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
+afterEach(() => {
+  cleanup();
+});
+
 beforeEach(() => {
   mockPush.mockClear();
   mockReplace.mockClear();
   mockNavigate.mockClear();
+  useCheckoutPayment.getState().reset();
   api.getSettings.mockResolvedValue(SETTINGS);
   api.getCart.mockResolvedValue(cart());
   api.getCatalogShop.mockResolvedValue(SHOP);
+  api.listAddresses.mockResolvedValue([]);
+  api.setCartDropoffs.mockResolvedValue(cart());
   useCart.setState({
     cartId: "cart_1",
     cart: cart(),
@@ -260,11 +269,12 @@ describe("CheckoutScreen", () => {
     expect(screen.getByLabelText("Payment reference")).toBeTruthy();
 
     const button = screen.getByLabelText("Place this order");
-    expect(button.props.accessibilityState.disabled).toBe(true);
-    expect(screen.getByText("Add the screenshot of your QR payment.")).toBeTruthy();
+    expect(button.props.accessibilityState.disabled).toBe(false);
+    expect(screen.getByText("The screenshot of your QR transfer, so Operations can match it.")).toBeTruthy();
 
     fireEvent.press(button);
     expect(api.checkoutCart).not.toHaveBeenCalled();
+    expect(screen.getAllByText("Add the screenshot of your QR payment.").length).toBeGreaterThan(0);
   });
 
   it("names the item still waiting for artwork", async () => {
@@ -274,6 +284,7 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
+    fireEvent.press(screen.getByLabelText("Place this order"));
     expect(screen.getByText("Attach artwork to Flyers before you place this.")).toBeTruthy();
   });
 
@@ -446,5 +457,71 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText("Flyers")).toBeTruthy();
     expect(screen.getByText("A4")).toBeTruthy();
     expect(screen.getByText("HOW IT GETS TO YOU")).toBeTruthy();
+  });
+
+  it("keeps Home in the footer and leaves Multi-drop unpressable", async () => {
+    await renderInSafeArea(<CheckoutScreen />);
+    await screen.findByText("WHAT GRIDGO IS PRINTING");
+
+    expect(screen.getByLabelText("Go to Home and keep this order")).toBeTruthy();
+    expect(screen.queryByText("Leaving keeps everything here — it is waiting when you come back.")).toBeNull();
+    expect(screen.getByLabelText("Multi-drop").props.accessibilityState.disabled).toBe(true);
+    expect(screen.getByText("Multi-drop is not offered yet.")).toBeTruthy();
+  });
+
+  it("fills delivery from the saved Home address when the basket has none", async () => {
+    const noAddress = cart({ defaultDropoff: null });
+    const withHome = cart({
+      defaultDropoff: { lat: 7.07, lng: 125.61, label: "Home" },
+    });
+    api.getCart.mockResolvedValue(noAddress);
+    api.listAddresses.mockResolvedValue([
+      {
+        id: "addr_home",
+        label: "Home",
+        addressLine: "Home",
+        point: { lat: 7.07, lng: 125.61, label: "Home" },
+        isDefault: true,
+        version: 1,
+        createdAt: "2026-09-08T00:00:00.000Z",
+        updatedAt: "2026-09-08T00:00:00.000Z",
+      },
+    ]);
+    api.setCartDropoffs.mockResolvedValue(withHome);
+    useCart.setState({ cart: noAddress });
+    await renderInSafeArea(<CheckoutScreen />);
+    await screen.findByText("WHAT GRIDGO IS PRINTING");
+
+    await screen.findByText("Home");
+    expect(api.setCartDropoffs).toHaveBeenCalledWith("cart_1", {
+      defaultDropoff: { lat: 7.07, lng: 125.61, label: "Home" },
+    });
+  });
+
+  it("keeps the screenshot and reference after checkout remounts", async () => {
+    const { EMPTY_PROOF } = jest.requireActual("@/store/checkoutPayment") as typeof import("@/store/checkoutPayment");
+    useCheckoutPayment.setState({
+      cartId: "cart_1",
+      proof: {
+        ...EMPTY_PROOF,
+        phase: "stored",
+        fileName: "gcash.png",
+        fileId: "file_kept",
+        localUri: "file://gcash.png",
+        progress: 1,
+      },
+      ocr: { status: "filled", reference: "965373469" },
+      reference: "965373469",
+    });
+    await renderInSafeArea(<CheckoutScreen />);
+    expect(await screen.findByLabelText("Payment reference")).toBeTruthy();
+    expect(screen.getByLabelText("Payment reference").props.value).toBe("965373469");
+    expect(screen.getByLabelText("View the payment screenshot")).toBeTruthy();
+
+    cleanup();
+    await renderInSafeArea(<CheckoutScreen />);
+    expect(await screen.findByLabelText("Payment reference")).toBeTruthy();
+    expect(screen.getByLabelText("Payment reference").props.value).toBe("965373469");
+    expect(screen.getByLabelText("View the payment screenshot")).toBeTruthy();
   });
 });

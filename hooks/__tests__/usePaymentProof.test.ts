@@ -18,9 +18,11 @@ jest.mock("@/lib/receiptOcrRecognize", () => ({
 }));
 
 import { usePaymentProof } from "@/hooks/usePaymentProof";
+import { useCheckoutPayment } from "@/store/checkoutPayment";
 
 describe("usePaymentProof OCR", () => {
   beforeEach(() => {
+    useCheckoutPayment.getState().reset();
     mockGetDocumentAsync.mockReset();
     mockRecognizeReceiptFromUri.mockReset();
     mockUploadFile.mockReset();
@@ -47,7 +49,7 @@ describe("usePaymentProof OCR", () => {
       confidence: 82,
     });
 
-    const { result } = await renderHook(() => usePaymentProof());
+    const { result } = await renderHook(() => usePaymentProof("cart_1"));
     await act(async () => {
       await result.current.pick();
     });

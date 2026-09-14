@@ -100,7 +100,7 @@ jest.mock("expo-router", () => {
 });
 
 const mockPreventRemove = jest.fn();
-jest.mock("@react-navigation/native", () => ({
+jest.mock("expo-router/react-navigation", () => ({
   usePreventRemove: (prevent: boolean, callback: () => void) => mockPreventRemove(prevent, callback),
 }));
 

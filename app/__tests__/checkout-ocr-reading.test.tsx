@@ -29,6 +29,8 @@ jest.mock("@/lib/api", () => {
     getCart: jest.fn(),
     getCatalogShop: jest.fn(),
     setCartFulfilment: jest.fn(),
+    setCartDropoffs: jest.fn(),
+    listAddresses: jest.fn(),
     checkoutCart: jest.fn(),
   };
 });
@@ -39,6 +41,7 @@ jest.mock("@/hooks/usePaymentProof", () => ({
       phase: "stored",
       fileName: "receipt.jpg",
       fileId: "file_proof",
+      localUri: "file://receipt.jpg",
       progress: 1,
       error: null,
     },
@@ -113,6 +116,7 @@ function renderInSafeArea(ui: ReactElement) {
 describe("checkout OCR pending", () => {
   it("keeps the commit bar outside the scroll and waits without a missing-reference error", async () => {
     api.getSettings.mockResolvedValue(SETTINGS);
+    api.listAddresses.mockResolvedValue([]);
     api.getCart.mockResolvedValue(cart());
     api.getCatalogShop.mockResolvedValue({
       supplierId: "user_lovis",

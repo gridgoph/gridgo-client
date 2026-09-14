@@ -58,7 +58,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${order.title}, ${meta.label}, ${money}`}
+        accessibilityLabel={`${order.title}, order ${order.id}, ${meta.label}, ${money}`}
         accessibilityHint={orderWaitingOn(order) ?? undefined}
         className="p-4"
       >
@@ -70,6 +70,9 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
               numberOfLines={2}
             >
               {order.title}
+            </Text>
+            <Text className="mt-1 text-caption text-text-muted" numberOfLines={1}>
+              Order {order.id}
             </Text>
             <Text className="mt-1 text-caption text-text-muted" numberOfLines={1}>
               {spec}

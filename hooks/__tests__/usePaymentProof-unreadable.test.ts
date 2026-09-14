@@ -18,6 +18,7 @@ jest.mock("@/lib/receiptOcrRecognize", () => ({
 }));
 
 import { usePaymentProof } from "@/hooks/usePaymentProof";
+import { useCheckoutPayment } from "@/store/checkoutPayment";
 
 describe("usePaymentProof OCR unreadable", () => {
   it("leaves the reference empty when the screenshot has no number", async () => {
@@ -41,7 +42,8 @@ describe("usePaymentProof OCR unreadable", () => {
       confidence: 40,
     });
 
-    const { result } = await renderHook(() => usePaymentProof());
+    useCheckoutPayment.getState().reset();
+    const { result } = await renderHook(() => usePaymentProof("cart_1"));
     await act(async () => {
       await result.current.pick();
     });

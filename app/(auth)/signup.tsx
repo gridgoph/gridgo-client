@@ -1,5 +1,5 @@
 import { useAuth, useClerk, useSignUp } from "@clerk/expo";
-import { usePreventRemove } from "@react-navigation/native";
+import { usePreventRemove } from "expo-router/react-navigation";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 
