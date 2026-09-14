@@ -176,3 +176,12 @@ it.each([
 ])("separates a neighboring date in %s", (text, reference) => {
   expect(extractPaymentReference(text)).toBe(reference);
 });
+
+it.each([
+  "GCash Reference No.\n965373469\nBancNet Reference No. 003999123",
+  "BancNet Reference No. 003999123\nGCash Reference No.\n965373469",
+  "BancNet Reference No. 003999123\nGCash Reference No. 965373469",
+  "GCash Reference No.\n965 373 469\nBancNet Reference No. 003999123",
+])("prefers the GCash reference across inline and stacked layouts: %s", (text) => {
+  expect(extractPaymentReference(text)).toBe("965373469");
+});

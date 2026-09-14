@@ -19,7 +19,6 @@ const inflight = new Map<string, Promise<api.CatalogItem>>();
 export const LISTING_TTL_MS = 60_000;
 
 export function rememberListing(item: api.CatalogItem): void {
-  inflight.delete(item.id);
   cache.set(item.id, { at: Date.now(), item });
 }
 

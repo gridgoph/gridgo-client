@@ -60,10 +60,20 @@ export function usePushNotifications(): void {
    * committed its destination tree. Native cold-start delivery still needs a
    * device check after builds.
    */
-  const pending = useRef<{target: string; ownerId: string | null} | null>(null);
-  useEffect(() => useSession.subscribe((state, previous) => {
-    if (previous.user?.id && previous.user.id !== state.user?.id) pending.current = null;
-  }), []);
+  const tapSequence = useRef(0);
+  const pending = useRef<{target: string; ownerId: string | null; sequence: number} | null>(null);
+  useEffect(() => {
+    const unsubscribe = useSession.subscribe((state, previous) => {
+      if (previous.user?.id && previous.user.id !== state.user?.id) {
+        tapSequence.current++;
+        pending.current = null;
+      }
+    });
+    return () => {
+      tapSequence.current++;
+      unsubscribe();
+    };
+  }, []);
   /** Response identifiers already routed, so a tap opens its screen once. */
   const routed = useRef(new Set<string>());
 
@@ -95,9 +105,11 @@ export function usePushNotifications(): void {
     const route = (identifier: string, data: unknown) => {
       if (routed.current.has(identifier)) return;
       routed.current.add(identifier);
+      const sequence = ++tapSequence.current;
+      pending.current = null;
       const target = pushTargetRoute(parsePushData(data));
       if (!hasActiveSession(useSession.getState().user) || !readyRef.current) {
-        pending.current = {target, ownerId: useSession.getState().user?.id ?? null};
+        pending.current = {target, ownerId: useSession.getState().user?.id ?? null, sequence};
         return;
       }
       // The push carries no order state by design, so the screen fetches the
@@ -113,7 +125,7 @@ export function usePushNotifications(): void {
           try { await getOrder(target.slice("/order/".length)); }
           catch { destination = "/(tabs)/notifications"; }
         }
-        if (ownerId && ownerId === useSession.getState().user?.id && readyRef.current) router.push(destination as Href);
+        if (sequence === tapSequence.current && ownerId && ownerId === useSession.getState().user?.id && readyRef.current) router.push(destination as Href);
       })();
     };
 
@@ -131,6 +143,7 @@ export function usePushNotifications(): void {
       });
 
       // A tap while the app is running or backgrounded.
+      const launchSequence = tapSequence.current;
       const tap = Notifications.addNotificationResponseReceivedListener(
         (response) => {
           route(
@@ -143,7 +156,7 @@ export function usePushNotifications(): void {
       // A tap that launched the app. The listener above does not replay it.
       void Notifications.getLastNotificationResponseAsync()
         .then((response) => {
-          if (!response) return;
+          if (!response || launchSequence !== tapSequence.current) return;
           route(
             response.notification.request.identifier,
             response.notification.request.content.data,
@@ -190,7 +203,7 @@ export function usePushNotifications(): void {
           try { await getOrder(destination.slice("/order/".length)); }
           catch { destination = "/(tabs)/notifications"; }
         }
-        if (cancelled || ownerId !== useSession.getState().user?.id || !readyRef.current || pending.current !== entry) return;
+        if (cancelled || entry.sequence !== tapSequence.current || ownerId !== useSession.getState().user?.id || !readyRef.current || pending.current !== entry) return;
         router.push(destination as Href);
         pending.current = null;
         void getNotificationsNative()?.clearLastNotificationResponseAsync?.().catch(() => undefined);

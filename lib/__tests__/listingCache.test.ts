@@ -151,13 +151,12 @@ it("keeps an invalidated read from replacing cache or removing a newer read", as
   expect(listingNow("sci_1")?.name).toBe("New price");
 });
 
-it("preserves a newer remembered listing over a pending network read", async () => {
+it("lets a pending server read replace an old match snapshot", async () => {
   let finish!: (value: CatalogItem) => void;
   api.getCatalogItem.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
   const pending = takeListing("sci_1");
-  const rejected = expect(pending).rejects.toThrow("listing changed");
-  rememberListing(item("sci_1", "New listing"));
-  finish(item("sci_1", "Old listing"));
-  await rejected;
-  expect(listingNow("sci_1")?.name).toBe("New listing");
+  rememberListing(item("sci_1", "Old match snapshot"));
+  finish(item("sci_1", "New server listing"));
+  await expect(pending).resolves.toMatchObject({ name: "New server listing" });
+  expect(listingNow("sci_1")?.name).toBe("New server listing");
 });

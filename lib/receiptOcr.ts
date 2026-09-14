@@ -137,27 +137,18 @@ export function extractPaymentReference(text: string): string | null {
   // Prefer the explicitly named GCash reference over the biller's BancNet id.
   // OCR often puts the date in the same line, so inspect the number before
   // applying whole-line date/amount rejection below.
-  const numberedLines = [...lines.filter((line) => GCASH_LABEL.test(line)), ...lines];
-  for (const line of numberedLines) {
-    const raw = line.match(LABELED_NUMBER)?.[1];
-    const printed = raw ? stripReferenceToken(raw) : null;
-    if (printed && isCandidate(printed)) return printed;
-  }
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (looksLikeDate(line) || looksLikeAmount(line)) continue;
-    if (!GCASH_LABEL.test(line) || !LABEL.test(line)) continue;
-    const hit = numberNearLabel(lines, i);
-    if (hit) return hit;
-  }
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (looksLikeDate(line) || looksLikeAmount(line)) continue;
-    if (!LABEL.test(line)) continue;
-    const hit = numberNearLabel(lines, i);
-    if (hit) return hit;
+  for (const gcashOnly of [true, false]) {
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (gcashOnly && !GCASH_LABEL.test(line)) continue;
+      if (!LABEL.test(line)) continue;
+      const raw = line.match(LABELED_NUMBER)?.[1];
+      const printed = raw ? stripReferenceToken(raw) : null;
+      if (printed && isCandidate(printed)) return printed;
+      if (looksLikeDate(line) || looksLikeAmount(line)) continue;
+      const hit = numberNearLabel(lines, i);
+      if (hit) return hit;
+    }
   }
 
   const unlabeled: string[] = [];
