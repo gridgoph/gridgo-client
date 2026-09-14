@@ -1,9 +1,15 @@
+const mockReadImage = jest.fn();
+jest.mock("@/lib/nativeModules", () => ({
+  getFileSystemLegacyNative: () => ({ readAsStringAsync: mockReadImage }),
+}));
+
 import {
   completeReceiptOcr,
   enqueueReceiptOcr,
   failReceiptOcr,
   pendingReceiptOcr,
   subscribeReceiptOcr,
+  recognizeReceiptFromUri,
 } from "@/lib/receiptOcrRecognize";
 
 describe("receipt OCR jobs", () => {
@@ -43,4 +49,21 @@ describe("receipt OCR jobs", () => {
     completeReceiptOcr(pendingReceiptOcr()!.id, { text: "GCash Reference No. 965373469", confidence: 90 });
     await expect(next).resolves.toHaveProperty("confidence", 90);
   });
+});
+
+it("does not replace current recognition when an old image conversion finishes", async () => {
+  let finish!: (base64: string) => void;
+  let current = true;
+  mockReadImage.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  const old = recognizeReceiptFromUri("file://old.png", () => current).catch((error: Error) => error.message);
+  current = false;
+  const newest = recognizeReceiptFromUri("data:image/png;base64,new", () => true);
+  await Promise.resolve();
+  const pending = pendingReceiptOcr()!;
+  expect(pending.dataUrl).toBe("data:image/png;base64,new");
+  finish("old");
+  expect(await old).toBe("replaced");
+  expect(pendingReceiptOcr()).toBe(pending);
+  completeReceiptOcr(pending.id, { text: "965373469", confidence: 90 });
+  await expect(newest).resolves.toEqual({ text: "965373469", confidence: 90 });
 });

@@ -1,7 +1,7 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import { CategoryHuntField } from "@/components/CategoryHuntField";
 import { CategorySampleCard, CategorySampleRow } from "@/components/CategorySample";
@@ -50,8 +50,12 @@ export default function CategoryScreen() {
     const sequence = ++boardSequence.current;
     if (!categoryCode) return;
     try {
-      const read = await loadCategoryBoards(categoryCode);
+      const [read, tree] = await Promise.all([
+        loadCategoryBoards(categoryCode),
+        api.getProductCategories().catch(() => null),
+      ]);
       if (sequence !== boardSequence.current) return;
+      if (tree) setCategories(tree);
       setBoards(read.boards);
       setBoardsError(null);
     } catch (e) {
@@ -63,24 +67,12 @@ export default function CategoryScreen() {
     }
   }, [categoryCode]);
 
-  useLiveRefresh(["catalog", "services", "availability"], loadBoards);
+  useLiveRefresh(["catalog", "services", "availability"], loadBoards, { refreshOnFocus: false });
 
-  useEffect(() => {
-    let alive = true;
-    void api.getProductCategories().then((tree) => {
-      if (alive) setCategories(tree);
-    }).catch(() => {
-      // Seed already on screen.
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     void loadBoards();
     return () => { boardSequence.current++; };
-  }, [loadBoards]);
+  }, [loadBoards]));
 
   const category = findCategory(categories, categoryCode);
 

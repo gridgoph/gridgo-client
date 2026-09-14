@@ -44,7 +44,7 @@ export function usePaymentProof(cartId: string | null) {
       setOcr({ status: "reading", reference: null });
       void (async () => {
         try {
-          const raw = await recognizeReceiptFromUri(uri);
+          const raw = await recognizeReceiptFromUri(uri, isCurrent);
           if (!isCurrent()) return;
           const reference = referenceFromOcr(raw);
           setOcr(

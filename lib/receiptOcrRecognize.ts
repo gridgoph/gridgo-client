@@ -94,7 +94,11 @@ export async function imageUriToDataUrl(uri: string): Promise<string> {
  * Read the local screenshot and run Tesseract in the WebView host.
  * The host must be mounted (checkout overlays it) or this waits until timeout.
  */
-export async function recognizeReceiptFromUri(uri: string): Promise<ReceiptOcrRaw> {
+export async function recognizeReceiptFromUri(
+  uri: string,
+  isCurrent: () => boolean = () => true,
+): Promise<ReceiptOcrRaw> {
   const dataUrl = await imageUriToDataUrl(uri);
+  if (!isCurrent()) throw new Error("replaced");
   return enqueueReceiptOcr(dataUrl);
 }

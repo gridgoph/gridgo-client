@@ -28,6 +28,8 @@ const LABELED_NUMBER =
 const NUMBER_SUFFIX =
   /^(?:\)|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?)?$/i;
 
+const AMBIGUOUS_REFERENCE = Symbol("ambiguous reference");
+
 const TOKEN = /[A-Z0-9][A-Z0-9 \-]{6,31}/gi;
 
 const MONTH =
@@ -88,7 +90,7 @@ function isCandidate(token: string): boolean {
  * A biller receipt often stacks labels in one column and numbers in the other,
  * so the line after "GCash Reference No." may be another label, not the number.
  */
-function numberNearLabel(lines: string[], labelIndex: number): string | null {
+function numberNearLabel(lines: string[], labelIndex: number): string | null | typeof AMBIGUOUS_REFERENCE {
   const line = lines[labelIndex];
   const labeled = line.match(LABELED_CAPTURE);
   if (labeled?.[1]) {
@@ -104,6 +106,7 @@ function numberNearLabel(lines: string[], labelIndex: number): string | null {
     const next = lines[j];
     if (looksLikeDate(next) || looksLikeAmount(next)) continue;
     if (LABEL.test(next)) continue;
+    if (/[A-Z]/i.test(next) && !/\d/.test(next)) return AMBIGUOUS_REFERENCE;
     const fromNext = accept(next);
     if (fromNext) return fromNext;
   }
@@ -149,6 +152,7 @@ export function extractPaymentReference(text: string): string | null {
       }
       if (looksLikeDate(line) || looksLikeAmount(line)) continue;
       const hit = numberNearLabel(lines, i);
+      if (hit === AMBIGUOUS_REFERENCE) return null;
       if (hit) return hit;
     }
   }

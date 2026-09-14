@@ -58,7 +58,11 @@ describe("usePaymentProof OCR", () => {
     await waitFor(() => expect(result.current.ocr.status).toBe("filled"));
     expect(result.current.ocr.reference).toBe("1234567890123");
     expect(mockRecognizeReceiptFromUri).toHaveBeenCalledTimes(1);
-    expect(mockRecognizeReceiptFromUri).toHaveBeenCalledWith("file://receipt.jpg");
+    expect(mockRecognizeReceiptFromUri).toHaveBeenCalledWith("file://receipt.jpg", expect.any(Function));
+    const isCurrent = mockRecognizeReceiptFromUri.mock.calls[0][1];
+    expect(isCurrent()).toBe(true);
+    useCheckoutPayment.getState().reset();
+    expect(isCurrent()).toBe(false);
   });
   it.each(["filled", "unreadable", "manual"])("replaces a receipt safely when the next OCR is %s", async (outcome) => {
     mockRecognizeReceiptFromUri.mockResolvedValueOnce({ text: "Ref No. 1234567890123", confidence: 90 });

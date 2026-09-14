@@ -1818,10 +1818,12 @@ export function uploadFile(
   purpose: string,
   onProgress?: (fraction: number | null) => void,
 ): UploadHandle {
+  const owner = liveGeneration();
   const xhr = new XMLHttpRequest();
 
   const done = (async () => {
     const auth = await resolveToken();
+    assertLiveGeneration(owner);
     return new Promise<StoredFile>((resolve, reject) => {
       const form = new FormData();
       form.append("purpose", purpose);
@@ -1842,6 +1844,7 @@ export function uploadFile(
 
       if (xhr.upload && onProgress) {
         xhr.upload.onprogress = (event: ProgressEvent) => {
+          if (owner !== liveGeneration()) return;
           onProgress(
             event.lengthComputable && event.total > 0
               ? event.loaded / event.total
@@ -1851,6 +1854,12 @@ export function uploadFile(
       }
 
       xhr.onload = () => {
+        try {
+          assertLiveGeneration(owner);
+        } catch (error) {
+          reject(error);
+          return;
+        }
         let data: unknown = null;
         const text = typeof xhr.response === "string" ? xhr.response : "";
         if (text) {

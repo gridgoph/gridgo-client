@@ -209,3 +209,10 @@ it.each([
 ])("rejects a neighboring field as a stacked reference: %s", (field) => {
   expect(extractPaymentReference(`GCash Reference No.\nSep 8, 2026\n${field}\n965373469`)).toBe("965373469");
 });
+
+it.each(["Account No.", "Customer ID:", "Invoice Number", "Total Amount"])(
+  "returns unreadable when a neighboring field owns the next value: %s",
+  (label) => {
+    expect(extractPaymentReference(`GCash Reference No.\n${label}\n123456789\n965373469`)).toBeNull();
+  },
+);

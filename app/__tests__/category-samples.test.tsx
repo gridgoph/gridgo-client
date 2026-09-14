@@ -199,3 +199,25 @@ it("keeps current category prices when an old board request finishes late", asyn
   await act(async () => { finish(BOARD); });
   expect(screen.getAllByText(/999\.00/).length).toBeGreaterThan(0);
 });
+
+it("shows a newly published subcategory when its tree and board refresh", async () => {
+  await renderInSafeArea(<CategoryScreen />);
+  await screen.findByText("GRIDGO PRINTS THESE NOW");
+  const name = "New printed notebooks";
+  expect(screen.queryByLabelText(new RegExp(name))).toBeNull();
+  api.getProductCategories.mockResolvedValue(PRODUCT_CATEGORY_SEED.map((category) =>
+    category.code === mockOpenCategory ? {
+      ...category,
+      subcategories: [...category.subcategories, { code: "notebooks", name, examples: "Notebooks", productFamilyIds: [] }],
+    } : category,
+  ));
+  api.getCatalogShop.mockResolvedValue({
+    ...BOARD,
+    services: BOARD.services.map((service) => ({
+      ...service, items: [...service.items, { ...listing("notebooks", 12000), name }],
+    })),
+  });
+  clearBoardCache();
+  await act(async () => { await mockRefresh(); });
+  expect(screen.getByLabelText(new RegExp(name))).toBeTruthy();
+});
