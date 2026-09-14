@@ -547,3 +547,24 @@ it("ignores an older checkout settings failure after refresh succeeds", async ()
   expect(screen.getByText("₱25.00")).toBeTruthy();
   expect(screen.queryByText("Old settings failure")).toBeNull();
 });
+
+it.each([false, true])("waits for the restored cart before considering Home autofill: existing address %s", async (hasAddress) => {
+  const home = { lat: 7.07, lng: 125.61, label: "Home" };
+  const server = { lat: 7.08, lng: 125.62, label: "Server address" };
+  let finish!: (value: ReturnType<typeof cart>) => void;
+  api.getCart.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  api.listAddresses.mockClear().mockResolvedValue([{ label: "Home", point: home, isDefault: true }]);
+  api.setCartDropoffs.mockClear().mockResolvedValue(cart({ defaultDropoff: home }));
+  useCart.setState({ cartId: "cart_1", cart: null });
+  await renderInSafeArea(<CheckoutScreen />);
+  expect(api.listAddresses).not.toHaveBeenCalled();
+  expect(api.setCartDropoffs).not.toHaveBeenCalled();
+  await act(async () => { finish(cart({ defaultDropoff: hasAddress ? server : null })); });
+  if (hasAddress) {
+    expect(api.setCartDropoffs).not.toHaveBeenCalled();
+    expect(useCart.getState().cart?.defaultDropoff).toEqual(server);
+  } else {
+    await screen.findByText("Home");
+    expect(api.setCartDropoffs).toHaveBeenCalledWith("cart_1", { defaultDropoff: home });
+  }
+});

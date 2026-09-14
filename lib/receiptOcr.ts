@@ -111,6 +111,8 @@ function numberNearLabel(lines: string[], labelIndex: number): string | null {
 }
 
 function accept(raw: string): string | null {
+  const parts = raw.trim().split(/\s+/);
+  if (!parts.every((part) => /^(?=.*\d)[A-Z0-9-]+$/i.test(part))) return null;
   if (looksLikeDate(raw) || looksLikeAmount(raw)) return null;
   const token = stripReferenceToken(raw);
   return isCandidate(token) ? token : null;

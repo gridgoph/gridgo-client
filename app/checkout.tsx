@@ -243,13 +243,13 @@ export default function CheckoutScreen() {
   };
 
   useEffect(() => {
-    if (travel !== "delivery" || !cartId || cart?.defaultDropoff) return;
+    if (travel !== "delivery" || !cartId || cart?.id !== cartId || cart?.defaultDropoff) return;
     let alive = true;
     void autofillDropoff(() => alive).catch(() => undefined);
     return () => {
       alive = false;
     };
-  }, [autofillDropoff, cart?.defaultDropoff, cartId, travel]);
+  }, [autofillDropoff, cart?.id, cart?.defaultDropoff, cartId, travel]);
 
   const setTravel = (choice: TravelChoice) =>
     change(async (id) => {

@@ -200,3 +200,12 @@ it.each([
 ])("skips populated neighboring reference fields in %s", (text) => {
   expect(extractPaymentReference(text)).toBe("965373469");
 });
+
+it.each([
+  "Account No. 123456789",
+  "Account Number 123456789",
+  "Customer ID: ABC123456789",
+  "Invoice Number 123456789",
+])("rejects a neighboring field as a stacked reference: %s", (field) => {
+  expect(extractPaymentReference(`GCash Reference No.\nSep 8, 2026\n${field}\n965373469`)).toBe("965373469");
+});

@@ -241,3 +241,11 @@ it("skips late saved-address lookup when an explicit choice has started", async 
   expect(api.setCartDropoffs).toHaveBeenCalledTimes(1);
   expect(useCart.getState().cart?.defaultDropoff).toEqual(chosen);
 });
+
+it.each([null, cart({ id: "another_cart" })])("does not autofill without a loaded matching cart: %s", async (loaded) => {
+  useCart.setState({ cartId: "cart_1", cart: loaded });
+  api.listAddresses.mockResolvedValue([{ label: "Home", point: { lat: 7.1, lng: 125.6 }, isDefault: true }]);
+  await useCart.getState().autofillDropoff(() => true);
+  expect(api.listAddresses).not.toHaveBeenCalled();
+  expect(api.setCartDropoffs).not.toHaveBeenCalled();
+});

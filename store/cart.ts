@@ -119,8 +119,12 @@ export const useCart = create<CartState>()(
         const cartId = get().cartId;
         const sequence = dropoffSequence;
         const owner = liveGeneration();
-        const current = () => isActive() && owner === liveGeneration() && sequence === dropoffSequence &&
-          get().cartId === cartId && !get().cart?.defaultDropoff && travelChoiceOf(get().cart) === "delivery";
+        const current = () => {
+          const cart = get().cart;
+          return isActive() && owner === liveGeneration() && sequence === dropoffSequence &&
+            get().cartId === cartId && cart !== null && cart.id === cartId && cart.state === "draft" &&
+            !cart.defaultDropoff && travelChoiceOf(cart) === "delivery";
+        };
         if (!cartId || !current()) return;
         const addresses = await api.listAddresses();
         if (!current()) return;
