@@ -1,3 +1,4 @@
+import { clearProductCategoryCache } from "@/lib/api";
 import { clearBoardCache } from "@/lib/shopBoards";
 import { clearListingCache } from "@/lib/listingCache";
 import { useEffect } from "react";
@@ -29,6 +30,7 @@ export function useLiveNotifications(): void {
       if (current()) {
         clearBoardCache();
         clearListingCache();
+        clearProductCategoryCache();
         void useSession.getState().refresh();
         inbox();
         invalidate();
@@ -53,6 +55,7 @@ export function useLiveNotifications(): void {
           ) {
             clearBoardCache();
             clearListingCache();
+            clearProductCategoryCache();
           }
           if (event.resource === "notifications") inbox();
           if (event.resource === "identity" || event.resource === "approvals")

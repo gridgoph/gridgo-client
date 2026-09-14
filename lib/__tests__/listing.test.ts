@@ -13,6 +13,7 @@ import {
   quantityLine,
   readyInShort,
   samplePhotoUri,
+  selectedOptionIds,
   specGroups,
   trimRatio,
   startingPriceLine,
@@ -372,4 +373,28 @@ describe("artworkFitWarning", () => {
     expect(artworkFitWarning("Custom", { width: 1920, height: 1080 })).toBeNull();
     expect(artworkFitWarning("A5", { width: 0, height: 0 })).toBeNull();
   });
+});
+
+it("requires a new choice when a selected option disappears, preserving other choices", () => {
+  const selection = { g_size: "o_a4", g_paper: "o_matte", g_addon: "o_lam" };
+  const updated = {
+    ...FLYERS,
+    optionGroups: [{ ...SIZE, options: [SIZE.options[0]] }, PAPER, ADDON],
+  };
+  expect(isSelectionComplete(FLYERS, selection)).toBe(true);
+  expect(isSelectionComplete(updated, selection)).toBe(false);
+  expect(firstMissingGroup(updated, selection)?.id).toBe("g_size");
+  expect(selectedOptionIds(updated, selection)).toEqual(["o_matte", "o_lam"]);
+  expect(isSelectionComplete(updated, { ...selection, g_size: "o_a5" })).toBe(true);
+});
+
+it("rejects options from another group and removed add-ons", () => {
+  const misplaced = { g_size: "o_matte", g_paper: "o_matte" };
+  expect(isSelectionComplete(FLYERS, misplaced)).toBe(false);
+  expect(selectedOptionIds(FLYERS, misplaced)).toEqual(["o_matte"]);
+  const selection = { g_size: "o_a4", g_paper: "o_matte", g_addon: "removed" };
+  expect(isSelectionComplete(FLYERS, selection)).toBe(false);
+  expect(firstMissingGroup(FLYERS, selection)?.id).toBe("g_addon");
+  expect(selectedOptionIds(FLYERS, selection)).toEqual(["o_a4", "o_matte"]);
+  expect(unitPriceMinor(FLYERS, selection)).toBe(4000);
 });

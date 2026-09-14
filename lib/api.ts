@@ -1149,14 +1149,15 @@ export async function getTaxonomy(): Promise<TaxonomyPayload> {
 const PRODUCT_CATEGORIES_TTL_MS = 5 * 60 * 1000;
 let productCategoryCache: { at: number; value: ProductCategory[] } | null = null;
 let productCategoryInflight: Promise<ProductCategory[]> | null = null;
+let productCategoryGeneration = 0;
 
 /** Instant tree for first paint. Never waits on the network. */
 export function productCategoriesNow(): ProductCategory[] {
   return productCategoryCache?.value ?? PRODUCT_CATEGORY_SEED;
 }
 
-/** Test helper — the live cache must not leak across cases. */
 export function clearProductCategoryCache(): void {
+  productCategoryGeneration++;
   productCategoryCache = null;
   productCategoryInflight = null;
 }
@@ -1168,18 +1169,21 @@ export async function getProductCategories(): Promise<ProductCategory[]> {
   }
   if (productCategoryInflight) return productCategoryInflight;
 
+  const generation = productCategoryGeneration;
   productCategoryInflight = (async () => {
     try {
       const tree = adaptProductCategories(await request("/taxonomy"));
+      if (generation !== productCategoryGeneration) return getProductCategories();
       productCategoryCache = { at: Date.now(), value: tree };
       return tree;
     } catch (error) {
+      if (generation !== productCategoryGeneration) return getProductCategories();
       const fallback = productCategoryCache?.value ?? PRODUCT_CATEGORY_SEED;
       productCategoryCache = { at: Date.now(), value: fallback };
       if (fallback.length) return fallback;
       throw error;
     } finally {
-      productCategoryInflight = null;
+      if (generation === productCategoryGeneration) productCategoryInflight = null;
     }
   })();
 

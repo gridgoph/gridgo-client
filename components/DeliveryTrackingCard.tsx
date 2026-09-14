@@ -1,5 +1,6 @@
+import { useFocusEffect } from "expo-router";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import { DeliveryMap } from "@/components/DeliveryMap";
@@ -50,16 +51,16 @@ export function DeliveryTrackingCard({ order }: Props) {
     }
   }, [order.id]);
 
-  useLiveRefresh(["location", "dispatch"], refresh);
+  useLiveRefresh(["location", "dispatch"], refresh, { refreshOnFocus: false });
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     void refresh();
     const timer = setInterval(() => void refresh(), POLL_MS);
     return () => {
       refreshSequence.current++;
       clearInterval(timer);
     };
-  }, [refresh]);
+  }, [refresh]));
 
   /*
     The origin, as far as the client is concerned.

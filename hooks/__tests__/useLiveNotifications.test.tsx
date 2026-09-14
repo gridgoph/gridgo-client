@@ -1,3 +1,4 @@
+import * as api from "@/lib/api";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { AppState, type AppStateStatus } from "react-native";
 import { useLiveNotifications } from "../useLiveNotifications";
@@ -58,4 +59,30 @@ it("reconciles missed identity/resources on reconnect and stops background deliv
   });
   expect(listener).toHaveBeenCalledTimes(count);
   unsub();
+});
+
+it.each(["catalog", "reconnect"])("clears the product tree before %s refresh listeners run", async (event) => {
+  Object.defineProperty(AppState, "currentState", { configurable: true, value: "active" });
+  useSession.setState({ user: { id: "client-a", role: "client" } as never, refresh: jest.fn(async () => {}) });
+  api.setToken(null);
+  api.setTokenProvider(null);
+  const view = await renderHook(() => useLiveNotifications());
+  const payload = (name: string) => ({ ok: true, status: 200, text: async () => JSON.stringify({
+    productCategories: [{ code: "print", name, subcategories: [{ code: "flyers", name: "Flyers" }] }],
+  }) } as Response);
+  const fetch = jest.spyOn(global, "fetch").mockResolvedValue(payload("Old"));
+  await api.getProductCategories();
+  fetch.mockResolvedValue(payload("New"));
+  let tree!: ReturnType<typeof api.getProductCategories>;
+  const stop = subscribeLive(() => { tree = api.getProductCategories(); });
+  await act(async () => {
+    if (event === "catalog") mockHandlers.onInvalidate?.({ resource: "catalog" });
+    else mockHandlers.onStatus?.(true);
+    await tree;
+  });
+  expect((await tree)[0].name).toBe("New");
+  expect(fetch).toHaveBeenCalledTimes(2);
+  stop();
+  await view.unmount();
+  fetch.mockRestore();
 });

@@ -2,10 +2,21 @@ import { act, render, screen } from "@testing-library/react-native";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
 import * as api from "@/lib/api";
 
+let mockFocused = true;
+jest.mock("expo-router", () => ({
+  useFocusEffect: (effect: () => void) => {
+    const { useEffect } = jest.requireActual("react");
+    useEffect(() => mockFocused ? effect() : undefined, [effect, mockFocused]);
+  },
+}));
+
 let mockRefresh: () => Promise<void>;
 const mockMap = jest.fn<null, [unknown]>(() => null);
 jest.mock("@/hooks/useLiveRefresh", () => ({
-  useLiveRefresh: (_resources: unknown, refresh: () => Promise<void>) => { mockRefresh = refresh; },
+  useLiveRefresh: (resources: unknown, refresh: () => Promise<void>, options: unknown) => {
+    mockRefresh = refresh;
+    jest.requireActual("@/hooks/useLiveRefresh").useLiveRefresh(resources, refresh, options);
+  },
 }));
 jest.mock("@/hooks/useRoute", () => ({ useRoute: () => ({ route: null }) }));
 jest.mock("@/components/DeliveryMap", () => ({
@@ -32,4 +43,28 @@ it.each([false, true])("ignores a stale tracking response or failure: %s", async
   expect(mockMap.mock.lastCall?.[0]).toMatchObject({ rider: { lat: 7.13, lng: 125.61 } });
   expect(screen.queryByText("Could not check")).toBeNull();
   await mounted.unmount();
+});
+
+it("loads once on focus, polls, and stops polling on blur and unmount", async () => {
+  jest.useFakeTimers();
+  mockFocused = true;
+  jest.mocked(api.getRiderLocation).mockClear().mockResolvedValue(null);
+  const card = <DeliveryTrackingCard order={{ id: "order", state: "out_for_delivery" } as api.Order} />;
+  const mounted = await render(card);
+  await act(() => jest.advanceTimersByTimeAsync(80));
+  expect(api.getRiderLocation).toHaveBeenCalledTimes(1);
+  await act(() => jest.advanceTimersByTimeAsync(30_000));
+  expect(api.getRiderLocation).toHaveBeenCalledTimes(2);
+  mockFocused = false;
+  await mounted.rerender(<DeliveryTrackingCard order={{ id: "order", state: "out_for_delivery" } as api.Order} />);
+  await act(() => jest.advanceTimersByTimeAsync(30_000));
+  expect(api.getRiderLocation).toHaveBeenCalledTimes(2);
+  mockFocused = true;
+  await mounted.rerender(<DeliveryTrackingCard order={{ id: "order", state: "out_for_delivery" } as api.Order} />);
+  await act(() => jest.advanceTimersByTimeAsync(80));
+  expect(api.getRiderLocation).toHaveBeenCalledTimes(3);
+  await mounted.unmount();
+  await act(() => jest.advanceTimersByTimeAsync(30_000));
+  expect(api.getRiderLocation).toHaveBeenCalledTimes(3);
+  jest.useRealTimers();
 });
