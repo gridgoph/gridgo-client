@@ -49,6 +49,7 @@ export function useLiveRefresh(
         if (resource !== "*" && !key.split(",").includes(resource)) return;
         if (!timer) timer = setTimeout(() => void flush(), 80);
       });
+      timer = setTimeout(() => void flush(), 80);
       return () => {
         active = false;
         unsubscribe();

@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronLeft } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
@@ -70,7 +70,9 @@ export default function OrderDetailScreen() {
   const [taxonomy, setTaxonomy] = useState<Taxonomy>(EMPTY_TAXONOMY);
   const [error, setError] = useState<string | null>(null);
 
+  const loadSequence = useRef(0);
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     if (!id) return;
     try {
       const [current, catalog, zoneList, taxonomyResult] = await Promise.all([
@@ -80,12 +82,14 @@ export default function OrderDetailScreen() {
         // Labels only. A failure costs a nicer material name, never the order.
         api.getTaxonomy().catch(() => EMPTY_TAXONOMY),
       ]);
+      if (sequence !== loadSequence.current) return;
       setOrder(current);
       setProduct(catalog.find((entry) => entry.id === current.productId) ?? null);
       setZones(zoneList);
       setTaxonomy(taxonomyResult);
       setError(null);
     } catch (e) {
+      if (sequence !== loadSequence.current) return;
       setError(
         userFacingError(e, "Could not load this order. Go back to Orders and open it again."),
       );
@@ -97,6 +101,7 @@ export default function OrderDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => { loadSequence.current++; };
     }, [load]),
   );
 

@@ -9,7 +9,6 @@ import {
   Pressable,
   Text,
   View,
-  type LayoutChangeEvent,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 
@@ -120,18 +119,19 @@ export default function CheckoutScreen() {
   // basket until this is answered.
   const [removing, setRemoving] = useState<CartLineRecord | null>(null);
   const scrollRef = useRef<{ scrollTo?: (opts: { y: number; animated?: boolean }) => void }>(null);
-  const fieldY = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference", number>>>({});
+  const contentRef = useRef<View>(null);
+  const fields = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference", View | null>>>({});
 
   const proof = usePaymentProof(cartId);
   const reference = useCheckoutPayment((state) => state.reference);
   const setReference = useCheckoutPayment((state) => state.setReference);
+  const applyOcrReference = useCheckoutPayment((state) => state.applyOcrReference);
   const resetPayment = useCheckoutPayment((state) => state.reset);
 
   useEffect(() => {
     if (proof.ocr.status !== "filled" || !proof.ocr.reference) return;
-    if (useCheckoutPayment.getState().reference.trim()) return;
-    setReference(proof.ocr.reference);
-  }, [proof.ocr, setReference]);
+    applyOcrReference(proof.ocr.reference);
+  }, [proof.ocr, applyOcrReference]);
 
   const load = useCallback(async () => {
     await loadCart();
@@ -269,11 +269,6 @@ export default function CheckoutScreen() {
     };
   }, [adopt, cart?.defaultDropoff, cartId, run, travel]);
 
-  const recordField =
-    (key: "artwork" | "address" | "proof" | "reference") => (event: LayoutChangeEvent) => {
-      fieldY.current[key] = event.nativeEvent.layout.y;
-    };
-
   const setTravel = (choice: TravelChoice) =>
     change(async (id) => {
       const cartAfter = await api.setCartFulfilment(id, {
@@ -346,10 +341,11 @@ export default function CheckoutScreen() {
               ? "reference"
               : null;
     if (!key) return;
-    const y = fieldY.current[key];
-    if (typeof y !== "number") return;
-    const scroller = scrollRef.current as { scrollTo?: (opts: { y: number; animated?: boolean }) => void } | null;
-    scroller?.scrollTo?.({ y: Math.max(0, y - 12), animated: true });
+    const content = contentRef.current;
+    if (!content) return;
+    fields.current[key]?.measureLayout(content, (_x, y) => {
+      scrollRef.current?.scrollTo?.({ y: Math.max(0, y - 12), animated: true });
+    }, () => undefined);
   };
 
   const commit = () => {
@@ -543,14 +539,14 @@ export default function CheckoutScreen() {
         </>
       }
     >
-      <View className="gg-page pb-8 pt-2">
+      <View ref={contentRef} collapsable={false} className="gg-page pb-8 pt-2">
         {/* Where this sits in the run, and the way back to any of it. */}
         <StepTrail current="pay" onStep={goStep} canGo={(step) => step === "shop" || Boolean(lastLine)} />
 
         <Text className="mt-4 text-h1 text-text-primary">Your order</Text>
 
         {/* ---- What is being printed ------------------------------------- */}
-        <View className="mt-6 gap-6" onLayout={recordField("artwork")}>
+        <View className="mt-6 gap-6" collapsable={false} ref={(node) => { fields.current.artwork = node; }}>
           {runs.map((run, index) => (
             <View key={run.supplierId} className="gap-3">
               <View className="flex-row items-center justify-between gap-3">
@@ -676,7 +672,7 @@ export default function CheckoutScreen() {
                   ? "Delivery is charged on each run, by the distance from where it is printed to your address."
                   : "Delivery is charged by the distance from where it is printed to your address."}
               </Text>
-              <View onLayout={recordField("address")}>
+              <View collapsable={false} ref={(node) => { fields.current.address = node; }}>
                 <AddressBlock
                   cart={cart}
                   multiDrop={travel === "multi_drop"}
@@ -756,7 +752,7 @@ export default function CheckoutScreen() {
             </View>
           ) : null}
 
-          <View onLayout={recordField("proof")}>
+          <View collapsable={false} ref={(node) => { fields.current.proof = node; }}>
             <ProofRow
               state={proof.state}
               reading={ocrReading}
@@ -767,7 +763,7 @@ export default function CheckoutScreen() {
             />
           </View>
 
-          <View onLayout={recordField("reference")}>
+          <View collapsable={false} ref={(node) => { fields.current.reference = node; }}>
             <FormField
               label="Payment reference"
               error={

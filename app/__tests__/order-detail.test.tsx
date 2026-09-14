@@ -247,6 +247,19 @@ describe("OrderDetailScreen", () => {
     );
   });
 
+  it("ignores an older focus response after a newer live read", async () => {
+    let finishCatalog!: (catalog: unknown[]) => void;
+    api.listCatalog.mockImplementationOnce(() => new Promise((resolve) => { finishCatalog = resolve; }));
+    setOrder({ title: "Old focus response" });
+    await renderInSafeArea(<OrderDetailScreen />);
+    setOrder({ title: "New live response" });
+    await act(async () => { invalidate("orders"); });
+    expect(await screen.findByText("New live response")).toBeTruthy();
+    await act(async () => { finishCatalog([]); });
+    expect(screen.queryByText("Old focus response")).toBeNull();
+    expect(screen.getByText("New live response")).toBeTruthy();
+  });
+
   it("opens a job that never stored a history instead of crashing", async () => {
     setOrder({ timeline: undefined as never });
     await renderInSafeArea(<OrderDetailScreen />);

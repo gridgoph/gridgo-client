@@ -730,9 +730,11 @@ export async function logout(
 export async function registerDevice(
   token: string,
   platform: DevicePlatform,
+  signal?: AbortSignal,
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
+    signal,
     body: JSON.stringify({ token, platform, appRole: "client" }),
   });
 }
@@ -766,9 +768,11 @@ export async function registerDevice(
 export async function registerDeviceUnclaimed(
   token: string,
   platform: DevicePlatform,
+  signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
+    signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ token, platform, appRole: "client" }),
   });

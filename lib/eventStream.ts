@@ -37,10 +37,11 @@ export type SseParseResult = {
  * a stream that only sends heartbeats produces no events and no garbage.
  */
 export function parseSseChunk(buffer: string): SseParseResult {
-  // Normalise the three line endings the spec allows before splitting.
-  const normalised = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const trailingCr = buffer.endsWith("\r") ? "\r" : "";
+  const complete = trailingCr ? buffer.slice(0, -1) : buffer;
+  const normalised = complete.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const parts = normalised.split("\n\n");
-  const rest = parts.pop() ?? "";
+  const rest = (parts.pop() ?? "") + trailingCr;
   const events: SseEvent[] = [];
 
   for (const frame of parts) {

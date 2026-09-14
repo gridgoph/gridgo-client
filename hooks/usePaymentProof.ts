@@ -4,6 +4,7 @@ import * as api from "@/lib/api";
 import { artworkErrorMessage, normalizeFileName } from "@/lib/artworkUpload";
 import { PROOF_ACCEPTED, PROOF_MAX_MIB, PROOF_MIME_TYPES } from "@/lib/checkout";
 import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
+import { liveGeneration } from "@/lib/live";
 import { referenceFromOcr } from "@/lib/receiptOcr";
 import { recognizeReceiptFromUri } from "@/lib/receiptOcrRecognize";
 import {
@@ -32,43 +33,51 @@ export function usePaymentProof(cartId: string | null) {
   const bind = useCheckoutPayment((state) => state.bind);
   const setProof = useCheckoutPayment((state) => state.setProof);
   const setOcr = useCheckoutPayment((state) => state.setOcr);
-  const setReference = useCheckoutPayment((state) => state.setReference);
   const handleRef = useRef<api.UploadHandle | null>(null);
-  const ocrGen = useRef(0);
 
   useEffect(() => {
     bind(cartId);
   }, [bind, cartId]);
 
   const readReference = useCallback(
-    (uri: string) => {
-      const gen = (ocrGen.current += 1);
+    (uri: string, isCurrent: () => boolean) => {
       setOcr({ status: "reading", reference: null });
       void (async () => {
         try {
           const raw = await recognizeReceiptFromUri(uri);
-          if (gen !== ocrGen.current) return;
+          if (!isCurrent()) return;
           const reference = referenceFromOcr(raw);
           setOcr(
             reference
               ? { status: "filled", reference }
               : { status: "unreadable", reference: null },
           );
-          if (reference && !useCheckoutPayment.getState().reference.trim()) {
-            setReference(reference);
-          }
+          if (reference) useCheckoutPayment.getState().applyOcrReference(reference);
         } catch {
-          if (gen !== ocrGen.current) return;
+          if (!isCurrent()) return;
           setOcr({ status: "unreadable", reference: null });
         }
       })();
     },
-    [setOcr, setReference],
+    [setOcr],
   );
 
   const pick = useCallback(async () => {
+    const owner = liveGeneration();
+    let generation = useCheckoutPayment.getState().generation;
+    const isCurrent = () => {
+      const state = useCheckoutPayment.getState();
+      return state.cartId === cartId && state.generation === generation && liveGeneration() === owner;
+    };
+    if (!cartId || !isCurrent()) return;
+    const beginProof = () => {
+      generation = useCheckoutPayment.getState().beginProof();
+      handleRef.current?.cancel();
+      handleRef.current = null;
+    };
     const DocumentPicker = getDocumentPickerNative();
     if (!DocumentPicker) {
+      beginProof();
       setProof({
         ...EMPTY_PROOF,
         phase: "failed",
@@ -84,6 +93,8 @@ export function usePaymentProof(cartId: string | null) {
         copyToCacheDirectory: true,
       });
     } catch {
+      if (!isCurrent()) return;
+      beginProof();
       setProof({
         ...EMPTY_PROOF,
         phase: "failed",
@@ -91,7 +102,8 @@ export function usePaymentProof(cartId: string | null) {
       });
       return;
     }
-    if (result.canceled) return;
+    if (!isCurrent() || result.canceled) return;
+    beginProof();
 
     const asset = result.assets?.[0];
     if (!asset?.uri) {
@@ -122,17 +134,19 @@ export function usePaymentProof(cartId: string | null) {
       progress: 0,
       error: null,
     });
-    readReference(asset.uri);
+    readReference(asset.uri, isCurrent);
     const handle = api.uploadFile(
       { uri: asset.uri, name: fileName, mimeType: asset.mimeType ?? null },
       "payment_proof",
-      (fraction) =>
-        setProof((prev) => (prev.phase === "sending" ? { ...prev, progress: fraction } : prev)),
+      (fraction) => {
+        if (isCurrent()) setProof((prev) => (prev.phase === "sending" ? { ...prev, progress: fraction } : prev));
+      },
     );
     handleRef.current = handle;
 
     try {
       const file = await handle.done;
+      if (!isCurrent()) return;
       setProof({
         phase: "stored",
         fileName: file.originalFilename || fileName,
@@ -142,6 +156,7 @@ export function usePaymentProof(cartId: string | null) {
         error: null,
       });
     } catch (error) {
+      if (!isCurrent()) return;
       setProof({
         ...EMPTY_PROOF,
         phase: "failed",
@@ -150,18 +165,18 @@ export function usePaymentProof(cartId: string | null) {
         error: `${artworkErrorMessage(error)} GRIDGO takes ${PROOF_ACCEPTED} for a receipt.`,
       });
     } finally {
-      handleRef.current = null;
+      if (handleRef.current === handle) handleRef.current = null;
     }
-  }, [readReference, setProof]);
+  }, [cartId, readReference, setProof]);
 
   const reset = useCallback(() => {
-    ocrGen.current += 1;
+    const state = useCheckoutPayment.getState();
+    if (state.cartId !== cartId) return;
+    state.beginProof();
+    state.setReference("");
     handleRef.current?.cancel();
     handleRef.current = null;
-    setProof(EMPTY_PROOF);
-    setOcr({ status: "idle", reference: null });
-    setReference("");
-  }, [setOcr, setProof, setReference]);
+  }, [cartId]);
 
   return { state: proof, ocr, pick, reset };
 }

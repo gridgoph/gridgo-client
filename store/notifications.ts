@@ -6,6 +6,7 @@ import * as api from "@/lib/api";
 
 let generation = 0;
 let readSequence = 0;
+let appliedSequence = 0;
 const cacheKey = (ownerId: string) =>
   `gridgo-notifications:${encodeURIComponent(ownerId)}`;
 function saveCache(state: NotificationsState): void {
@@ -77,13 +78,13 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
     });
     if (!ownerId) return;
     const currentGeneration = generation;
-    const sequence = readSequence;
+    const sequence = appliedSequence;
     void AsyncStorage.getItem(cacheKey(ownerId))
       .then((raw) => {
         if (
           !raw ||
           generation !== currentGeneration ||
-          readSequence !== sequence
+          appliedSequence !== sequence
         )
           return;
         const cached = JSON.parse(raw) as Partial<NotificationsState>;
@@ -109,6 +110,7 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
     try {
       const result = await api.listNotifications();
       if (generation !== currentGeneration || sequence !== readSequence) return;
+      appliedSequence++;
       set({
         items: result.notifications,
         snapshot: result.snapshot,

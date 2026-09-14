@@ -1,3 +1,4 @@
+import { serializeDeviceMutation } from "@/store/push";
 import * as api from "@/lib/api";
 import { CLERK_SIGNOUT_TIMEOUT_MS } from "@/lib/clerkSignIn";
 import { LOGOUT_API_TIMEOUT_MS, useSession } from "@/store/session";
@@ -142,6 +143,22 @@ describe("session store", () => {
 
     await jest.advanceTimersByTimeAsync(LOGOUT_API_TIMEOUT_MS);
     await pending;
+    jest.useRealTimers();
+  });
+
+  it("tears down Clerk even while device registration is stalled", async () => {
+    jest.useFakeTimers();
+    const stalled = serializeDeviceMutation(() => new Promise(() => {})).catch(() => undefined);
+    const identity = jest.fn(async () => undefined);
+    useSession.getState().registerIdentityLogout(identity);
+    jest.spyOn(api, "logout").mockResolvedValue(undefined);
+    const leaving = useSession.getState().logout();
+    await jest.advanceTimersByTimeAsync(LOGOUT_API_TIMEOUT_MS);
+    await leaving;
+    expect(identity).toHaveBeenCalledTimes(1);
+    expect(useSession.getState().sessionWait).toBeNull();
+    await jest.advanceTimersByTimeAsync(20_000);
+    await stalled;
     jest.useRealTimers();
   });
 

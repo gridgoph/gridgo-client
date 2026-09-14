@@ -22,6 +22,10 @@ export const EMPTY_PROOF: PaymentProofState = {
 
 type CheckoutPaymentState = {
   cartId: string | null;
+  generation: number;
+  autofilledReference: string | null;
+  beginProof: () => number;
+  applyOcrReference: (reference: string) => void;
   proof: PaymentProofState;
   ocr: ReceiptOcrState;
   reference: string;
@@ -44,6 +48,8 @@ type CheckoutPaymentState = {
  */
 export const useCheckoutPayment = create<CheckoutPaymentState>((set, get) => ({
   cartId: null,
+  generation: 0,
+  autofilledReference: null,
   proof: EMPTY_PROOF,
   ocr: OCR_IDLE,
   reference: "",
@@ -52,10 +58,31 @@ export const useCheckoutPayment = create<CheckoutPaymentState>((set, get) => ({
     if (get().cartId === cartId) return;
     set({
       cartId,
+      generation: get().generation + 1,
+      autofilledReference: null,
       proof: EMPTY_PROOF,
       ocr: OCR_IDLE,
       reference: "",
     });
+  },
+
+  beginProof: () => {
+    const state = get();
+    const generation = state.generation + 1;
+    set({
+      generation,
+      proof: EMPTY_PROOF,
+      ocr: OCR_IDLE,
+      reference: state.reference === state.autofilledReference ? "" : state.reference,
+      autofilledReference: null,
+    });
+    return generation;
+  },
+
+  applyOcrReference: (reference) => {
+    const state = get();
+    if (state.reference.trim() && state.reference !== state.autofilledReference) return;
+    set({ reference, autofilledReference: reference });
   },
 
   setProof: (next) =>
@@ -70,6 +97,8 @@ export const useCheckoutPayment = create<CheckoutPaymentState>((set, get) => ({
   reset: () =>
     set({
       cartId: null,
+      generation: get().generation + 1,
+      autofilledReference: null,
       proof: EMPTY_PROOF,
       ocr: OCR_IDLE,
       reference: "",

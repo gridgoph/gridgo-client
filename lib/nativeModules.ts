@@ -13,7 +13,7 @@
 type DocumentPickerNative = typeof import("expo-document-picker");
 type DateTimePickerNative = typeof import("@react-native-community/datetimepicker");
 type FileSystemLegacyNative = typeof import("expo-file-system/legacy");
-type MediaLibraryNative = typeof import("expo-media-library");
+type MediaLibraryNative = typeof import("expo-media-library/legacy");
 type LocationNative = typeof import("expo-location");
 
 let documentPickerNative: DocumentPickerNative | null | undefined;
@@ -125,7 +125,7 @@ export function getMediaLibraryNative(): MediaLibraryNative | null {
   }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    mediaLibraryNative = require("expo-media-library") as MediaLibraryNative;
+    mediaLibraryNative = require("expo-media-library/legacy") as MediaLibraryNative;
     return mediaLibraryNative;
   } catch {
     mediaLibraryNative = null;

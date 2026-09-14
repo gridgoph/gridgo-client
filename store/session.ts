@@ -1,3 +1,4 @@
+import { useCheckoutPayment } from "@/store/checkoutPayment";
 import { useNotifications } from "@/store/notifications";
 import { setLiveOwner } from "@/lib/live";
 import { clearBoardCache } from "@/lib/shopBoards";
@@ -264,7 +265,12 @@ export const useSession = create<SessionState>((set) => ({
     const deviceToken = usePush.getState().token;
     const identity = identityLogout;
     const bearer = api.captureLogoutBearer();
-    const serverLogout = serializeDeviceMutation(() => withTimeout(api.logout(deviceToken, bearer), LOGOUT_API_TIMEOUT_MS).catch(() => undefined));
+    const serverLogout = withTimeout(
+      serializeDeviceMutation(() =>
+        withTimeout(api.logout(deviceToken, bearer), LOGOUT_API_TIMEOUT_MS),
+      ),
+      LOGOUT_API_TIMEOUT_MS,
+    ).catch(() => undefined);
     api.setToken(null);
     const startedAt = Date.now();
     set({
@@ -315,6 +321,7 @@ api.onUnauthorized(() => {
 useSession.subscribe((state, previous) => {
   const id = state.user?.id ?? null;
   if (id === (previous.user?.id ?? null)) return;
+  useCheckoutPayment.getState().reset();
   clearBoardCache();
   clearListingCache();
   useNotifications.getState().setOwner(id);

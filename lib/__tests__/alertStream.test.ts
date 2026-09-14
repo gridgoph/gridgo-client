@@ -81,3 +81,15 @@ it("forces a new identity token after 401 and clears a missing replay cursor", a
   expect(Xhr.instances.at(-1)?.headers["Last-Event-ID"]).toBeUndefined();
   handle.close();
 });
+
+it("keeps an invalidation intact when CRLF is split between chunks", async () => {
+  const invalidate = jest.fn();
+  const handle = openAlertStream({ onNotification: jest.fn(), onInvalidate: invalidate });
+  await Promise.resolve();
+  await Promise.resolve();
+  Xhr.instances[0].frame("event: invalidate\r");
+  expect(invalidate).not.toHaveBeenCalled();
+  Xhr.instances[0].frame('\ndata: {"resource":"orders"}\r\n\r\n');
+  expect(invalidate).toHaveBeenCalledWith({ resource: "orders" });
+  handle.close();
+});

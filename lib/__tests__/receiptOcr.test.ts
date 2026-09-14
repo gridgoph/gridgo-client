@@ -154,3 +154,8 @@ describe("nextReferenceFromOcr", () => {
     ).toBe("typed");
   });
 });
+
+it("normalizes every digit group in an explicitly labeled reference", () => {
+  expect(extractPaymentReference("Ref No. 904483860 4781")).toBe("9044838604781");
+  expect(extractPaymentReference("Ref No. 904 483 860 4781")).toBe("9044838604781");
+});

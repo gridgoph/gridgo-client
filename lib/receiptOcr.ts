@@ -23,7 +23,7 @@ const LABELED_CAPTURE =
 // A complete printed number ends before a neighbouring date or copy icon.
 // Never join those OCR tokens onto it, or truncate a longer PAN/mobile.
 const LABELED_NUMBER =
-  /(?:instapay\s+)?ref(?:erence)?\.?\s*(?:no\.?|number|#)?[:.,\s-]*(\d{9,})(?=$|\s|[)])/i;
+  /(?:instapay\s+)?ref(?:erence)?\.?\s*(?:no\.?|number|#)?[:.,\s-]*(\d+(?:[ \t]+\d+)*)(?=$|\s|[)])/i;
 
 const TOKEN = /[A-Z0-9][A-Z0-9 \-]{6,31}/gi;
 
@@ -137,7 +137,8 @@ export function extractPaymentReference(text: string): string | null {
   // applying whole-line date/amount rejection below.
   const numberedLines = [...lines.filter((line) => GCASH_LABEL.test(line)), ...lines];
   for (const line of numberedLines) {
-    const printed = line.match(LABELED_NUMBER)?.[1];
+    const raw = line.match(LABELED_NUMBER)?.[1];
+    const printed = raw ? stripReferenceToken(raw) : null;
     if (printed && isCandidate(printed)) return printed;
   }
 

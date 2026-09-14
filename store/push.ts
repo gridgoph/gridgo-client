@@ -4,10 +4,13 @@ import { create } from "zustand";
 
 import * as api from "@/lib/api";
 import { liveGeneration, assertLiveGeneration } from "@/lib/live";
+import { withRequestDeadline } from "@/lib/requestDeadline";
+import { useSession } from "@/store/session";
 
 let deviceMutation: Promise<unknown> = Promise.resolve();
-export function serializeDeviceMutation<T>(run: () => Promise<T>): Promise<T> {
-  const pending = deviceMutation.then(run, run);
+export function serializeDeviceMutation<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const execute = () => withRequestDeadline(undefined, run);
+  const pending = deviceMutation.then(execute, execute);
   deviceMutation = pending.catch(() => undefined);
   return pending;
 }
@@ -229,7 +232,7 @@ export const usePush = create<PushState>((set, get) => ({
   registerIfGranted: async () => {
     const generation = liveGeneration();
     const state = get();
-    if (!state.supported) return;
+    if (!state.supported || useSession.getState().signingOut) return;
 
     const platform = devicePlatform();
     if (!platform) return;
@@ -242,7 +245,7 @@ export const usePush = create<PushState>((set, get) => ({
     // Without one the phone is registered unclaimed, so an announcement can
     // still reach a handset nobody has signed in on.
     const signedIn = Boolean(await api.getAuthToken().catch(() => null));
-    if (generation !== liveGeneration()) return;
+    if (generation !== liveGeneration() || useSession.getState().signingOut) return;
 
     set({ busy: true, error: null });
     try {
@@ -254,16 +257,19 @@ export const usePush = create<PushState>((set, get) => ({
       // Idempotent by contract, so no comparison against the stored token is
       // worth the risk of skipping a call the server never actually received.
       assertLiveGeneration(generation);
+      if (useSession.getState().signingOut) return;
       if (signedIn) set({ token });
-      await serializeDeviceMutation(async () => {
+      await serializeDeviceMutation(async (signal) => {
         assertLiveGeneration(generation);
-        if (signedIn) await api.registerDevice(token, platform);
-        else await api.registerDeviceUnclaimed(token, platform);
+        if (useSession.getState().signingOut) return;
+        if (signedIn) await api.registerDevice(token, platform, signal);
+        else await api.registerDeviceUnclaimed(token, platform, signal);
       });
       assertLiveGeneration(generation);
+      if (useSession.getState().signingOut) return;
       set({ token, claimed: signedIn, busy: false, error: null });
     } catch (e) {
-      if (generation !== liveGeneration()) return;
+      if (generation !== liveGeneration() || useSession.getState().signingOut) return;
       if (!signedIn && isUnclaimedRouteAbsent(e)) {
         // The provisional route is not deployed here. Nothing is wrong and
         // nobody is told: the phone registers for real at the next sign-in.
