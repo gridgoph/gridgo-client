@@ -48,7 +48,7 @@ import {
   type ListingSelection,
 } from "@/lib/listing";
 import { userFacingError } from "@/lib/copy";
-import { isFullListing, listingNow, rememberListing, takeListing } from "@/lib/listingCache";
+import { isFullListing, listingNow, takeListing } from "@/lib/listingCache";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { useCart } from "@/store/cart";
@@ -101,7 +101,9 @@ export default function ListingScreen() {
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const loadSequence = useRef(0);
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     if (!itemId) return;
     const cached = listingNow(itemId);
     if (cached) {
@@ -110,10 +112,11 @@ export default function ListingScreen() {
     }
     try {
       const read = await takeListing(itemId);
-      rememberListing(read);
+      if (sequence !== loadSequence.current) return;
       setItem(read);
       setError(null);
     } catch (e) {
+      if (sequence !== loadSequence.current) return;
       // A failed refresh must not blank a sheet the match already painted.
       if (listingNow(itemId) || cached) return;
       setItem(null);
@@ -130,6 +133,7 @@ export default function ListingScreen() {
 
   useEffect(() => {
     void load();
+    return () => { loadSequence.current++; };
   }, [load]);
 
   /*

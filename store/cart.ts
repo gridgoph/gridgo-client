@@ -2,6 +2,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import * as api from "@/lib/api";
+import { liveGeneration } from "@/lib/live";
+import { travelChoiceOf } from "@/lib/checkout";
+import { groupSavedPlaces } from "@/lib/savedPlaces";
 import { hydrateCartListings } from "@/lib/listingCache";
 import { createPersistStorage } from "@/lib/persistStorage";
 
@@ -33,6 +36,8 @@ export type CartState = {
 
   /** Read the basket this phone is holding, if any. */
   load: () => Promise<void>;
+  setDefaultDropoff: (dropoff: api.OrderPoint) => Promise<api.Cart>;
+  autofillDropoff: (isActive: () => boolean) => Promise<void>;
   /** The current draft basket, creating one the first time. */
   ensure: () => Promise<string>;
   /**
@@ -56,6 +61,8 @@ export type CartState = {
 /** The single in-flight `POST /me/carts`, shared by everyone who asks. */
 let creating: Promise<string> | null = null;
 let loadSequence = 0;
+let dropoffSequence = 0;
+let dropoffMutation: Promise<unknown> = Promise.resolve();
 
 export const useCart = create<CartState>()(
   persist(
@@ -100,6 +107,31 @@ export const useCart = create<CartState>()(
         } finally {
           if (sequence === loadSequence) set({ loading: false });
         }
+      },
+
+      setDefaultDropoff: async (dropoff) => {
+        const sequence = ++dropoffSequence;
+        const owner = liveGeneration();
+        return writeDefaultDropoff(dropoff, () => sequence === dropoffSequence && owner === liveGeneration());
+      },
+
+      autofillDropoff: async (isActive) => {
+        const cartId = get().cartId;
+        const sequence = dropoffSequence;
+        const owner = liveGeneration();
+        const current = () => isActive() && owner === liveGeneration() && sequence === dropoffSequence &&
+          get().cartId === cartId && !get().cart?.defaultDropoff && travelChoiceOf(get().cart) === "delivery";
+        if (!cartId || !current()) return;
+        const addresses = await api.listAddresses();
+        if (!current()) return;
+        const grouped = groupSavedPlaces(addresses);
+        const chosen = addresses.find((address) => address.isDefault) ?? grouped.home ?? grouped.work ?? grouped.named[0];
+        if (!chosen) return;
+        await writeDefaultDropoff({
+          lat: chosen.point.lat,
+          lng: chosen.point.lng,
+          label: chosen.point.label || chosen.addressLine || chosen.label,
+        }, current);
       },
 
       ensure: async () => {
@@ -148,12 +180,14 @@ export const useCart = create<CartState>()(
       },
 
       clear: () => {
+        dropoffSequence++;
         loadSequence++;
         creating = null;
         set({ cartId: null, cart: null, loading: false, error: null });
       },
 
       reset: () => {
+        dropoffSequence++;
         loadSequence++;
         creating = null;
         set({ cartId: null, cart: null, loading: false, busy: false, error: null });
@@ -178,4 +212,20 @@ export function cartHasContent(state: Pick<CartState, "cart">): boolean {
 /** How many things are in the basket, for the badge on Home. */
 export function cartLineCount(state: Pick<CartState, "cart">): number {
   return state.cart?.lines.length ?? 0;
+}
+
+function writeDefaultDropoff(dropoff: api.OrderPoint, current: () => boolean): Promise<api.Cart> {
+  const write = async () => {
+    if (!current()) throw new Error("The delivery address changed. Choose it again.");
+    return useCart.getState().run(async (cartId) => {
+      if (!current()) throw new Error("The delivery address changed. Choose it again.");
+      const cart = await api.setCartDropoffs(cartId, { defaultDropoff: dropoff });
+      if (!current()) throw new Error("The delivery address changed. Choose it again.");
+      useCart.getState().adopt(cart);
+      return cart;
+    });
+  };
+  const pending = dropoffMutation.then(write, write);
+  dropoffMutation = pending.catch(() => undefined);
+  return pending;
 }

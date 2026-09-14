@@ -131,3 +131,33 @@ describe("listing cache", () => {
     expect(hydrateCartListings(cart).lines[0].listing?.optionGroups).toEqual([]);
   });
 });
+
+it("keeps an invalidated read from replacing cache or removing a newer read", async () => {
+  let old!: (value: CatalogItem) => void;
+  let fresh!: (value: CatalogItem) => void;
+  api.getCatalogItem.mockReturnValueOnce(new Promise((resolve) => { old = resolve; }));
+  const first = takeListing("sci_1");
+  const rejected = expect(first).rejects.toThrow("listing changed");
+  clearListingCache();
+  api.getCatalogItem.mockReturnValueOnce(new Promise((resolve) => { fresh = resolve; }));
+  const second = takeListing("sci_1");
+  old(item("sci_1", "Old price"));
+  await rejected;
+  expect(listingNow("sci_1")).toBeNull();
+  const third = takeListing("sci_1");
+  expect(api.getCatalogItem).toHaveBeenCalledTimes(2);
+  fresh(item("sci_1", "New price"));
+  await Promise.all([second, third]);
+  expect(listingNow("sci_1")?.name).toBe("New price");
+});
+
+it("preserves a newer remembered listing over a pending network read", async () => {
+  let finish!: (value: CatalogItem) => void;
+  api.getCatalogItem.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  const pending = takeListing("sci_1");
+  const rejected = expect(pending).rejects.toThrow("listing changed");
+  rememberListing(item("sci_1", "New listing"));
+  finish(item("sci_1", "Old listing"));
+  await rejected;
+  expect(listingNow("sci_1")?.name).toBe("New listing");
+});

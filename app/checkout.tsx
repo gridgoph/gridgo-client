@@ -68,7 +68,6 @@ import {
   OCR_READING,
   OCR_UNREADABLE,
 } from "@/lib/receiptOcr";
-import { groupSavedPlaces } from "@/lib/savedPlaces";
 import { formatDistance, type GeoPoint } from "@/lib/tracking";
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
@@ -102,6 +101,7 @@ export default function CheckoutScreen() {
   const hydrated = useCart((state) => state.hydrated);
   const busy = useCart((state) => state.busy);
   const loadCart = useCart((state) => state.load);
+  const autofillDropoff = useCart((state) => state.autofillDropoff);
   const run = useCart((state) => state.run);
   const adopt = useCart((state) => state.adopt);
   const clearCart = useCart((state) => state.clear);
@@ -245,36 +245,11 @@ export default function CheckoutScreen() {
   useEffect(() => {
     if (travel !== "delivery" || !cartId || cart?.defaultDropoff) return;
     let alive = true;
-    void (async () => {
-      try {
-        const addresses = await api.listAddresses();
-        const grouped = groupSavedPlaces(addresses);
-        const chosen =
-          addresses.find((address) => address.isDefault) ??
-          grouped.home ??
-          grouped.work ??
-          grouped.named[0] ??
-          null;
-        if (!alive || !chosen) return;
-        adopt(
-          await run((id) =>
-            api.setCartDropoffs(id, {
-              defaultDropoff: {
-                lat: chosen.point.lat,
-                lng: chosen.point.lng,
-                label: chosen.point.label || chosen.addressLine || chosen.label,
-              },
-            }),
-          ),
-        );
-      } catch {
-        // Stay on "Not set yet" — the client can still pick an address.
-      }
-    })();
+    void autofillDropoff(() => alive).catch(() => undefined);
     return () => {
       alive = false;
     };
-  }, [adopt, cart?.defaultDropoff, cartId, run, travel]);
+  }, [autofillDropoff, cart?.defaultDropoff, cartId, travel]);
 
   const setTravel = (choice: TravelChoice) =>
     change(async (id) => {

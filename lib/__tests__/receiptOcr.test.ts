@@ -168,3 +168,11 @@ it.each([
 ])("excludes only the recognized copy icon in %s", (text, reference) => {
   expect(extractPaymentReference(text)).toBe(reference);
 });
+
+it.each([
+  ["Ref No. 1234567890123 8 Sep 2026", "1234567890123"],
+  ["Ref No. 904483860 4781 08 September 2026", "9044838604781"],
+  ["Ref No. 965373469 0) 8 Sep. 2026", "965373469"],
+])("separates a neighboring date in %s", (text, reference) => {
+  expect(extractPaymentReference(text)).toBe(reference);
+});

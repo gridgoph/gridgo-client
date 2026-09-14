@@ -3,7 +3,7 @@ import { cartHasContent, useCart } from "@/store/cart";
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
-  return { ...actual, getCart: jest.fn(), createCart: jest.fn() };
+  return { ...actual, getCart: jest.fn(), createCart: jest.fn(), listAddresses: jest.fn(), setCartDropoffs: jest.fn() };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -30,6 +30,8 @@ beforeEach(() => {
   useCart.getState().reset();
   api.getCart.mockReset();
   api.createCart.mockReset();
+  api.listAddresses.mockReset();
+  api.setCartDropoffs.mockReset();
 });
 
 describe("holding a basket", () => {
@@ -193,4 +195,49 @@ it("does not let an old missing-cart response clear a newer cart", async () => {
   await old;
   expect(useCart.getState().cart?.version).toBe(3);
   expect(useCart.getState().cartId).toBe("cart_1");
+});
+
+it("writes an explicit address after in-flight autofill and ignores the autofill response", async () => {
+  const home = { lat: 7.1, lng: 125.6, label: "Home" };
+  const chosen = { lat: 7.2, lng: 125.7, label: "Chosen" };
+  useCart.getState().adopt(cart());
+  api.listAddresses.mockResolvedValue([{ label: "Home", point: home, isDefault: true }]);
+  let finishHome!: () => void;
+  let started!: () => void;
+  const writingHome = new Promise<void>((resolve) => { started = resolve; });
+  let serverAddress = home;
+  api.setCartDropoffs.mockImplementationOnce(() => {
+    started();
+    return new Promise((resolve) => { finishHome = () => {
+      serverAddress = home;
+      resolve(cart({ defaultDropoff: home }));
+    }; });
+  }).mockImplementationOnce(async (_id: string, payload: { defaultDropoff: typeof chosen }) => {
+    serverAddress = payload.defaultDropoff;
+    return cart({ defaultDropoff: serverAddress });
+  });
+  const autofill = useCart.getState().autofillDropoff(() => true).catch(() => undefined);
+  await writingHome;
+  const explicit = useCart.getState().setDefaultDropoff(chosen);
+  expect(api.setCartDropoffs).toHaveBeenCalledTimes(1);
+  finishHome();
+  await autofill;
+  await explicit;
+  expect(serverAddress).toEqual(chosen);
+  expect(useCart.getState().cart?.defaultDropoff).toEqual(chosen);
+  expect(api.setCartDropoffs).toHaveBeenLastCalledWith("cart_1", { defaultDropoff: chosen });
+});
+
+it("skips late saved-address lookup when an explicit choice has started", async () => {
+  useCart.getState().adopt(cart());
+  let finish!: (addresses: unknown[]) => void;
+  api.listAddresses.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  const autofill = useCart.getState().autofillDropoff(() => true);
+  const chosen = { lat: 7.2, lng: 125.7, label: "Chosen" };
+  api.setCartDropoffs.mockResolvedValue(cart({ defaultDropoff: chosen }));
+  await useCart.getState().setDefaultDropoff(chosen);
+  finish([{ label: "Home", point: { lat: 7.1, lng: 125.6 }, isDefault: true }]);
+  await autofill;
+  expect(api.setCartDropoffs).toHaveBeenCalledTimes(1);
+  expect(useCart.getState().cart?.defaultDropoff).toEqual(chosen);
 });

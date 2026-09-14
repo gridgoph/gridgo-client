@@ -1,5 +1,5 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -45,13 +45,17 @@ export default function CategoryScreen() {
   const [boards, setBoards] = useState<api.ShopBoard[] | null>(null);
   const [boardsError, setBoardsError] = useState<string | null>(null);
 
+  const boardSequence = useRef(0);
   const loadBoards = useCallback(async () => {
+    const sequence = ++boardSequence.current;
     if (!categoryCode) return;
     try {
       const read = await loadCategoryBoards(categoryCode);
+      if (sequence !== boardSequence.current) return;
       setBoards(read.boards);
       setBoardsError(null);
     } catch (e) {
+      if (sequence !== boardSequence.current) return;
       setBoards(null);
       setBoardsError(
         userFacingError(e, "GRIDGO could not read today's prices, so this list may be short."),
@@ -75,6 +79,7 @@ export default function CategoryScreen() {
 
   useEffect(() => {
     void loadBoards();
+    return () => { boardSequence.current++; };
   }, [loadBoards]);
 
   const category = findCategory(categories, categoryCode);

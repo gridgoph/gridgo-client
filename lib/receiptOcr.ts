@@ -124,7 +124,9 @@ function accept(raw: string): string | null {
  * one we can trust. Never invents a number from leftover digits.
  */
 export function extractPaymentReference(text: string): string | null {
-  const source = text.replace(/\u00a0/g, " ").replace(/(\d)[ \t]+0\)/g, "$1").trim();
+  const source = text.replace(/\u00a0/g, " ").replace(/(\d)[ \t]+0\)/g, "$1")
+    .replace(/[ \t]+\d{1,2}[ \t]+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?[ \t,]+\d{4}\b[^\r\n]*/gi, "")
+    .trim();
   if (!source) return null;
 
   const lines = source

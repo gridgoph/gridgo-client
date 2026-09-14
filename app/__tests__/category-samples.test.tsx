@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -168,4 +168,34 @@ describe("CategoryScreen samples", () => {
     expect(await screen.findByText(/Nothing in this category matches/)).toBeTruthy();
     expect(screen.queryByLabelText(/Custom apparel/)).toBeNull();
   });
+});
+
+let mockRefresh: () => Promise<void>;
+jest.mock("@/hooks/useLiveRefresh", () => ({
+  useLiveRefresh: (_resources: unknown, refresh: () => Promise<void>) => { mockRefresh = refresh; },
+}));
+
+it("keeps current category prices when an old board request finishes late", async () => {
+  let finish!: (board: typeof BOARD) => void;
+  let started!: () => void;
+  const firstRead = new Promise<void>((resolve) => { started = resolve; });
+  api.getCatalogShop.mockImplementationOnce(() => {
+    started();
+    return new Promise((resolve) => { finish = resolve; });
+  });
+  const newer = {
+    ...BOARD,
+    services: BOARD.services.map((service) => ({
+      ...service,
+      items: service.items.map((item) => ({ ...item, basePriceMinor: 99900, fromPriceMinor: 99900 })),
+    })),
+  };
+  api.getCatalogShop.mockResolvedValue(newer);
+  await renderInSafeArea(<CategoryScreen />);
+  await firstRead;
+  clearBoardCache();
+  await act(async () => { await mockRefresh(); });
+  expect(screen.getAllByText(/999\.00/).length).toBeGreaterThan(0);
+  await act(async () => { finish(BOARD); });
+  expect(screen.getAllByText(/999\.00/).length).toBeGreaterThan(0);
 });

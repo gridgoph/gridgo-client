@@ -93,6 +93,7 @@ type SessionState = {
   finishSigningOut: () => void;
 };
 
+let accountReadSequence = 0;
 let identityLogout: (() => Promise<void>) | null = null;
 
 export const useSession = create<SessionState>((set) => ({
@@ -143,19 +144,24 @@ export const useSession = create<SessionState>((set) => ({
             sessionWait: null,
           },
     ),
-  setUser: (user) =>
-    set((state) => (state.user?.id === user.id ? { user } : {})),
+  setUser: (user) => {
+    accountReadSequence++;
+    set((state) => (state.user?.id === user.id ? { user } : {}));
+  },
   refresh: async () => {
+    const sequence = ++accountReadSequence;
     const ownerId = useSession.getState().user?.id;
     if (!ownerId) return;
     try {
       const user = await api.getAccount();
+      if (sequence !== accountReadSequence) return;
       // Signing out while this was in flight wins. Restoring the previous
       // person here is the same bug the launch bridge guards `signingOut` for.
       useSession.setState((state) =>
         state.user?.id === user.id ? { user } : {},
       );
     } catch (error) {
+      if (sequence !== accountReadSequence) return;
       if (error instanceof api.ApiError && error.status === 403 && useSession.getState().user?.id === ownerId) {
         useSession.getState().clearSession();
       }
@@ -319,6 +325,7 @@ api.onUnauthorized(() => {
 
 // Synchronous identity boundary: old inbox data is gone before new screens render.
 useSession.subscribe((state, previous) => {
+  if (state.user !== previous.user) accountReadSequence++;
   const id = state.user?.id ?? null;
   if (id === (previous.user?.id ?? null)) return;
   useCheckoutPayment.getState().reset();

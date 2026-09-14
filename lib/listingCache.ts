@@ -19,6 +19,7 @@ const inflight = new Map<string, Promise<api.CatalogItem>>();
 export const LISTING_TTL_MS = 60_000;
 
 export function rememberListing(item: api.CatalogItem): void {
+  inflight.delete(item.id);
   cache.set(item.id, { at: Date.now(), item });
 }
 
@@ -71,11 +72,12 @@ async function refresh(itemId: string): Promise<api.CatalogItem> {
   const next = api
     .getCatalogItem(itemId)
     .then((item) => {
+      if (inflight.get(itemId) !== next) throw new Error("This listing changed. Open it again.");
       rememberListing(item);
       return item;
     })
     .finally(() => {
-      inflight.delete(itemId);
+      if (inflight.get(itemId) === next) inflight.delete(itemId);
     });
   inflight.set(itemId, next);
   return next;

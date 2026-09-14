@@ -37,8 +37,7 @@ export default function WhereScreen() {
     next?: string;
   }>();
 
-  const adopt = useCart((state) => state.adopt);
-  const run = useCart((state) => state.run);
+  const setDefaultDropoff = useCart((state) => state.setDefaultDropoff);
   const editor = useDropoffEditor();
 
   const [saved, setSaved] = useState<ClientAddress[] | null>(null);
@@ -68,10 +67,7 @@ export default function WhereScreen() {
   /** Put the drop-off on the basket, then carry on where this came from. */
   const applyDropoff = useCallback(
     async (dropoff: OrderPoint) => {
-      const cart = await run((cartId) =>
-        api.setCartDropoffs(cartId, { defaultDropoff: dropoff }),
-      );
-      adopt(cart);
+      const cart = await setDefaultDropoff(dropoff);
       const target = next === "checkout" ? "/checkout" : "/request/match";
       if (target === "/request/match" && subcategory) {
         prefetchMatch({
@@ -85,7 +81,7 @@ export default function WhereScreen() {
         params: subcategory ? { subcategory, category: category ?? "" } : {},
       });
     },
-    [run, adopt, router, next, subcategory, category],
+    [setDefaultDropoff, router, next, subcategory, category],
   );
 
   const chooseSaved = async (address: ClientAddress) => {

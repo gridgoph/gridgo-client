@@ -265,3 +265,37 @@ describe("session store", () => {
     fetchMock.mockRestore();
   });
 });
+
+describe("account read ordering", () => {
+  const user: api.User = { id: "account", role: "client", name: "Old name", email: "client@example.com" };
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each(["refresh", "save"])("preserves the account after a newer %s", async (change) => {
+    useSession.setState({ user, signingOut: false });
+    let finish!: (value: api.User) => void;
+    const read = jest.spyOn(api, "getAccount").mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const stale = useSession.getState().refresh();
+    const corrected = { ...user, name: "Saved name", accountType: "business" as const };
+    if (change === "refresh") {
+      read.mockResolvedValueOnce(corrected);
+      await useSession.getState().refresh();
+    } else {
+      useSession.getState().setUser(corrected);
+    }
+    finish(user);
+    await stale;
+    expect(useSession.getState().user).toEqual(corrected);
+  });
+
+  it("ignores an old forbidden response after a saved correction", async () => {
+    useSession.setState({ user, signingOut: false });
+    let fail!: (error: Error) => void;
+    jest.spyOn(api, "getAccount").mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }));
+    const stale = useSession.getState().refresh();
+    const corrected = { ...user, name: "Saved name" };
+    useSession.getState().setUser(corrected);
+    fail(new api.ApiError(403, {}));
+    await stale;
+    expect(useSession.getState().user).toEqual(corrected);
+  });
+});
