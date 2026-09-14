@@ -133,12 +133,18 @@ export default function CheckoutScreen() {
     applyOcrReference(proof.ocr.reference);
   }, [proof.ocr, applyOcrReference]);
 
+  const loadSequence = useRef(0);
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     await loadCart();
+    if (sequence !== loadSequence.current) return;
     try {
-      setSettings(await api.getSettings());
+      const settings = await api.getSettings();
+      if (sequence !== loadSequence.current) return;
+      setSettings(settings);
       setLoadError(null);
     } catch (e) {
+      if (sequence !== loadSequence.current) return;
       setSettings(null);
       setLoadError(
         userFacingError(
@@ -154,6 +160,7 @@ export default function CheckoutScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => { loadSequence.current++; };
     }, [load]),
   );
 

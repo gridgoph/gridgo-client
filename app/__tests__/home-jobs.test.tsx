@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
+import { act, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -116,4 +116,21 @@ describe("Home's jobs slot", () => {
     expect(screen.queryByText(/₱/)).toBeNull();
     expect(screen.queryByText("proof_approval")).toBeNull();
   });
+});
+
+let mockRefresh: () => Promise<void>;
+jest.mock("@/hooks/useLiveRefresh", () => ({
+  useLiveRefresh: (_resources: unknown, refresh: () => Promise<void>) => { mockRefresh = refresh; },
+}));
+
+it("keeps the newer Home jobs when the focus read finishes late", async () => {
+  let finish!: (orders: Order[]) => void;
+  api.listOrders.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  api.listOrders.mockResolvedValue([order({ title: "Current job" })]);
+  await renderInSafeArea(<HomeScreen />);
+  await act(async () => { await mockRefresh(); });
+  expect(screen.getByText("Current job")).toBeTruthy();
+  await act(async () => { finish([order({ title: "Old job" })]); });
+  expect(screen.getByText("Current job")).toBeTruthy();
+  expect(screen.queryByText("Old job")).toBeNull();
 });

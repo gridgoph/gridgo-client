@@ -639,7 +639,7 @@ async function request<T>(
       // it. Ask for a new one and try once. `ignoreUnauthorized` is excluded
       // deliberately — that 401 is the unmapped-identity probe before
       // activate, where a fresher token changes nothing.
-      if (auth.source === "provider" && !forceFreshToken && !init.signal) {
+      if (auth.source === "provider" && !forceFreshToken) {
         return request<T>(path, { ...init, signal }, options, true);
       }
       if (auth.source === "legacy") setToken(null);

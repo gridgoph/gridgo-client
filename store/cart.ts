@@ -55,6 +55,7 @@ export type CartState = {
 
 /** The single in-flight `POST /me/carts`, shared by everyone who asks. */
 let creating: Promise<string> | null = null;
+let loadSequence = 0;
 
 export const useCart = create<CartState>()(
   persist(
@@ -67,14 +68,16 @@ export const useCart = create<CartState>()(
       hydrated: false,
 
       load: async () => {
+        const sequence = ++loadSequence;
         const cartId = get().cartId;
         if (!cartId) {
-          set({ cart: null });
+          set({ cart: null, loading: false });
           return;
         }
         set({ loading: true });
         try {
           const cart = await api.getCart(cartId);
+          if (sequence !== loadSequence || get().cartId !== cartId) return;
           // A basket that has been paid for is history, not a basket.
           if (cart.state !== "draft") {
             set({ cartId: null, cart: null, error: null });
@@ -82,6 +85,7 @@ export const useCart = create<CartState>()(
           }
           set({ cart: hydrateCartListings(cart, get().cart), error: null });
         } catch (error) {
+          if (sequence !== loadSequence || get().cartId !== cartId) return;
           // 404 and 403 both mean this phone is holding an id that is no longer
           // a basket. Anything else is a connection problem worth saying.
           const status = error instanceof api.ApiError ? error.status : 0;
@@ -94,7 +98,7 @@ export const useCart = create<CartState>()(
               error instanceof Error ? error.message : "GRIDGO could not read your order.",
           });
         } finally {
-          set({ loading: false });
+          if (sequence === loadSequence) set({ loading: false });
         }
       },
 
@@ -128,8 +132,10 @@ export const useCart = create<CartState>()(
           });
       },
 
-      adopt: (cart) =>
-        set({ cartId: cart.id, cart: hydrateCartListings(cart, get().cart), error: null }),
+      adopt: (cart) => {
+        loadSequence++;
+        set({ cartId: cart.id, cart: hydrateCartListings(cart, get().cart), loading: false, error: null });
+      },
 
       run: async (work) => {
         const cartId = await get().ensure();
@@ -142,11 +148,13 @@ export const useCart = create<CartState>()(
       },
 
       clear: () => {
+        loadSequence++;
         creating = null;
-        set({ cartId: null, cart: null, error: null });
+        set({ cartId: null, cart: null, loading: false, error: null });
       },
 
       reset: () => {
+        loadSequence++;
         creating = null;
         set({ cartId: null, cart: null, loading: false, busy: false, error: null });
       },

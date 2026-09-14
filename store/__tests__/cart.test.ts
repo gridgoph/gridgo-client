@@ -162,3 +162,35 @@ describe("after checkout and after sign-out", () => {
     ).toBe(true);
   });
 });
+
+it.each(["read", "adopt", "reset"])("ignores a stale cart read after %s", async (boundary) => {
+  useCart.setState({ cartId: "cart_1" });
+  let finish!: (value: Cart) => void;
+  api.getCart.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  const old = useCart.getState().load();
+  if (boundary === "read") {
+    api.getCart.mockResolvedValueOnce(cart({ version: 3 }));
+    await useCart.getState().load();
+  } else if (boundary === "adopt") {
+    useCart.getState().adopt(cart({ version: 3 }));
+  } else {
+    useCart.getState().reset();
+  }
+  finish(cart({ version: 1 }));
+  await old;
+  expect(useCart.getState().cart?.version ?? null).toBe(boundary === "reset" ? null : 3);
+  expect(useCart.getState().loading).toBe(false);
+});
+
+it("does not let an old missing-cart response clear a newer cart", async () => {
+  useCart.setState({ cartId: "cart_1" });
+  let fail!: (error: Error) => void;
+  api.getCart.mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }));
+  const old = useCart.getState().load();
+  api.getCart.mockResolvedValueOnce(cart({ version: 3 }));
+  await useCart.getState().load();
+  fail(new ApiError(404, {}));
+  await old;
+  expect(useCart.getState().cart?.version).toBe(3);
+  expect(useCart.getState().cartId).toBe("cart_1");
+});

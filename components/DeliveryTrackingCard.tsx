@@ -1,5 +1,5 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import { DeliveryMap } from "@/components/DeliveryMap";
@@ -35,12 +35,16 @@ export function DeliveryTrackingCard({ order }: Props) {
   const [ping, setPing] = useState<RiderPing | null>(null);
   const [unavailable, setUnavailable] = useState(false);
 
+  const refreshSequence = useRef(0);
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     try {
       const result = await api.getRiderLocation(order.id);
+      if (sequence !== refreshSequence.current) return;
       setPing(result ? { lat: result.lat, lng: result.lng, at: result.at } : null);
       setUnavailable(false);
     } catch {
+      if (sequence !== refreshSequence.current) return;
       // A failed poll must not silently look like "no rider yet".
       setUnavailable(true);
     }
@@ -51,7 +55,10 @@ export function DeliveryTrackingCard({ order }: Props) {
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => void refresh(), POLL_MS);
-    return () => clearInterval(timer);
+    return () => {
+      refreshSequence.current++;
+      clearInterval(timer);
+    };
   }, [refresh]);
 
   /*

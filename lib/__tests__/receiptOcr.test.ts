@@ -159,3 +159,12 @@ it("normalizes every digit group in an explicitly labeled reference", () => {
   expect(extractPaymentReference("Ref No. 904483860 4781")).toBe("9044838604781");
   expect(extractPaymentReference("Ref No. 904 483 860 4781")).toBe("9044838604781");
 });
+
+it.each([
+  ["Ref No. 1234567890123 0)", "1234567890123"],
+  ["GCash Reference No. 965373469 0)", "965373469"],
+  ["Ref No. 904483860 4781 0)", "9044838604781"],
+  ["Ref No. 123456789012 0", "1234567890120"],
+])("excludes only the recognized copy icon in %s", (text, reference) => {
+  expect(extractPaymentReference(text)).toBe(reference);
+});

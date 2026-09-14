@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -524,4 +524,26 @@ describe("CheckoutScreen", () => {
     expect(screen.getByLabelText("Payment reference").props.value).toBe("965373469");
     expect(screen.getByLabelText("View the payment screenshot")).toBeTruthy();
   });
+});
+
+let mockRefresh: () => Promise<void>;
+jest.mock("@/hooks/useLiveRefresh", () => ({
+  useLiveRefresh: (_resources: unknown, refresh: () => Promise<void>) => { mockRefresh = refresh; },
+}));
+
+it("ignores an older checkout settings failure after refresh succeeds", async () => {
+  let fail!: (error: Error) => void;
+  let started!: () => void;
+  const firstRead = new Promise<void>((resolve) => { started = resolve; });
+  api.getSettings.mockImplementationOnce(() => {
+    started();
+    return new Promise((_resolve, reject) => { fail = reject; });
+  });
+  await renderInSafeArea(<CheckoutScreen />);
+  await firstRead;
+  await act(async () => { await mockRefresh(); });
+  expect(screen.getByText("₱25.00")).toBeTruthy();
+  await act(async () => { fail(new Error("Old settings failure")); });
+  expect(screen.getByText("₱25.00")).toBeTruthy();
+  expect(screen.queryByText("Old settings failure")).toBeNull();
 });

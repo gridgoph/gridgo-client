@@ -1,5 +1,5 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Platform, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -56,20 +56,24 @@ export default function OrdersScreen() {
   const [filter, setFilter] = useState<OrderFilter>("all");
   const [sort, setSort] = useState<OrderSort>(DEFAULT_ORDER_SORT);
 
+  const loadSequence = useRef(0);
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     try {
       const [list, products] = await Promise.all([
         api.listOrders(),
         api.listCatalog().catch(() => [] as api.CatalogProduct[]),
       ]);
+      if (sequence !== loadSequence.current) return;
       setOrders(list);
       setCatalog(products);
       setError(null);
     } catch (e) {
+      if (sequence !== loadSequence.current) return;
       setOrders([]);
       setError(userFacingError(e, "Could not load orders. Check your connection and try again."));
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }, []);
 
@@ -78,6 +82,7 @@ export default function OrdersScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => { loadSequence.current++; };
     }, [load]),
   );
 

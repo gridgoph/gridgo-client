@@ -130,4 +130,50 @@ describe("API Clerk token provider", () => {
     stop();
     fetchMock.mockRestore();
   });
+  it.each([200, 401])("retries signaled device registration once before HTTP %s", async (status) => {
+    const controller = new AbortController();
+    const provider = jest.fn(async (options?: { force?: boolean }) => options?.force ? "fresh" : "cached");
+    api.setTokenProvider(provider);
+    const unauthorized = jest.fn();
+    const stop = api.onUnauthorized(unauthorized);
+    const fetchMock = jest.spyOn(global, "fetch")
+      .mockResolvedValueOnce({ ok: false, status: 401, text: async () => '{}' } as Response)
+      .mockResolvedValue({ ok: status === 200, status, text: async () => '{}' } as Response);
+    const registration = api.registerDevice("device", "android", controller.signal);
+    if (status === 200) await expect(registration).resolves.toEqual({});
+    else await expect(registration).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(provider.mock.calls).toEqual([[{ force: false }], [{ force: true }]]);
+    expect(unauthorized).toHaveBeenCalledTimes(status === 200 ? 0 : 1);
+    stop();
+  });
+
+  it("cancels device registration while the forced token is pending", async () => {
+    const controller = new AbortController();
+    let release!: (token: string) => void;
+    let started!: () => void;
+    const refreshing = new Promise<void>((resolve) => { started = resolve; });
+    api.setTokenProvider(async (options) => {
+      if (!options?.force) return "cached";
+      started();
+      return new Promise((resolve) => { release = resolve; });
+    });
+    const unauthorized = jest.fn();
+    const stop = api.onUnauthorized(unauthorized);
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false, status: 401, text: async () => '{}',
+    } as Response);
+    const rejected = expect(api.registerDevice("device", "android", controller.signal))
+      .rejects.toMatchObject({ name: "AbortError" });
+    await refreshing;
+    controller.abort();
+    await rejected;
+    release("late-fresh-token");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(unauthorized).not.toHaveBeenCalled();
+    stop();
+  });
+
 });

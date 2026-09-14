@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronRight } from "lucide-react-native";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -82,35 +82,40 @@ export default function HomeScreen() {
    * leaves the strip out rather than showing an empty shelf: the start board
    * under it answers everything the strip does, one tap further along.
    */
-  const loadSamples = useCallback(async () => {
+  const loadSequence = useRef(0);
+  const loadSamples = useCallback(async (sequence: number) => {
     setBoardsLoading(true);
     try {
       const read = await loadCategoryBoards("", { maxBoards: HOME_BOARDS });
-      setBoards(read.boards);
+      if (sequence === loadSequence.current) setBoards(read.boards);
     } catch {
-      setBoards([]);
+      if (sequence === loadSequence.current) setBoards([]);
     } finally {
-      setBoardsLoading(false);
+      if (sequence === loadSequence.current) setBoardsLoading(false);
     }
   }, []);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    setBoardsLoading(false);
     try {
       const list = await api.listOrders();
+      if (sequence !== loadSequence.current) return;
       setOrders(list);
       setError(null);
-      if (list.length === 0) void loadSamples();
+      if (list.length === 0) void loadSamples(sequence);
     } catch (e) {
+      if (sequence !== loadSequence.current) return;
       setOrders([]);
       setError(userFacingError(e, "Could not load home. Check your connection and try again."));
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
     void api
       .getProductCategories()
       .then((tree) => {
         // An empty payload must not blank the seed already on screen.
-        if (tree.length) setCategories(tree);
+        if (sequence === loadSequence.current && tree.length) setCategories(tree);
       })
       .catch(() => {
         // Seed already on screen.
@@ -127,6 +132,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => { loadSequence.current++; };
     }, [load]),
   );
 
