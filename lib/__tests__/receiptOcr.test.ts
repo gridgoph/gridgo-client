@@ -185,3 +185,11 @@ it.each([
 ])("prefers the GCash reference across inline and stacked layouts: %s", (text) => {
   expect(extractPaymentReference(text)).toBe("965373469");
 });
+
+it.each([
+  ["Reference No. 123456789 ABC123", "123456789ABC123"],
+  ["Reference No. 123 456 789 abc123", "123456789ABC123"],
+  ["GCash Reference No. 123456789 ABC123", "123456789ABC123"],
+])("preserves the complete alphanumeric reference in %s", (text, expected) => {
+  expect(extractPaymentReference(text)).toBe(expected);
+});

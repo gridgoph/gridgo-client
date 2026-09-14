@@ -25,6 +25,9 @@ const LABELED_CAPTURE =
 const LABELED_NUMBER =
   /(?:instapay\s+)?ref(?:erence)?\.?\s*(?:no\.?|number|#)?[:.,\s-]*(\d+(?:[ \t]+\d+)*)(?=$|\s|[)])/i;
 
+const NUMBER_SUFFIX =
+  /^(?:\)|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?)?$/i;
+
 const TOKEN = /[A-Z0-9][A-Z0-9 \-]{6,31}/gi;
 
 const MONTH =
@@ -142,9 +145,12 @@ export function extractPaymentReference(text: string): string | null {
       const line = lines[i];
       if (gcashOnly && !GCASH_LABEL.test(line)) continue;
       if (!LABEL.test(line)) continue;
-      const raw = line.match(LABELED_NUMBER)?.[1];
-      const printed = raw ? stripReferenceToken(raw) : null;
-      if (printed && isCandidate(printed)) return printed;
+      const number = line.match(LABELED_NUMBER);
+      const printed = number ? stripReferenceToken(number[1]) : null;
+      const suffix = number ? line.slice(number.index! + number[0].length).trim() : null;
+      if (printed && suffix != null && NUMBER_SUFFIX.test(suffix) && isCandidate(printed)) {
+        return printed;
+      }
       if (looksLikeDate(line) || looksLikeAmount(line)) continue;
       const hit = numberNearLabel(lines, i);
       if (hit) return hit;

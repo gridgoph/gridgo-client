@@ -71,6 +71,11 @@ export default function OrderDetailScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const loadSequence = useRef(0);
+  const applyOrderUpdate = useCallback((updated: api.Order) => {
+    loadSequence.current++;
+    setOrder(updated);
+    setError(null);
+  }, []);
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     if (!id) return;
@@ -244,12 +249,12 @@ export default function OrderDetailScreen() {
                 unit={unit}
                 materialLabel={materialLabel}
                 finishLabel={finishLabel}
-                onUpdated={setOrder}
+                onUpdated={applyOrderUpdate}
               />
             ) : actionZone === "correction" ? (
-              <CorrectionCard order={order} onUpdated={setOrder} />
+              <CorrectionCard order={order} onUpdated={applyOrderUpdate} />
             ) : actionZone === "pay" && payable ? (
-              <PaymentPanel order={order} installment={payable} onSubmitted={setOrder} />
+              <PaymentPanel order={order} installment={payable} onSubmitted={applyOrderUpdate} />
             ) : actionZone === "review" && underReview ? (
               <PaymentUnderReviewCard order={order} installment={underReview} />
             ) : actionZone === "rate" ? (

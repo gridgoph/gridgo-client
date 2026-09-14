@@ -260,6 +260,55 @@ describe("OrderDetailScreen", () => {
     expect(screen.getByText("New live response")).toBeTruthy();
   });
 
+  it("keeps a submitted payment after an older live read finishes", async () => {
+    const payable: Order = {
+      ...baseOrder,
+      state: "awaiting_downpayment",
+      paymentStatus: "unpaid",
+      payments: {
+        ...baseOrder.payments!,
+        downpayment: {
+          ...baseOrder.payments!.downpayment,
+          status: "not_submitted",
+          reference: null,
+          submittedAt: null,
+          confirmedAt: null,
+        },
+      },
+    };
+    api.getOrder.mockResolvedValue(payable);
+    api.submitPayment.mockResolvedValue({
+      ...payable,
+      state: "downpayment_review",
+      paymentStatus: "downpayment_pending",
+      payments: {
+        ...payable.payments,
+        downpayment: {
+          ...payable.payments!.downpayment,
+          status: "pending_confirmation",
+          reference: "1234567890123",
+          submittedAt: "2026-09-15T10:00:00Z",
+        },
+      },
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+    await screen.findByText("Send my payment reference");
+
+    let finishCatalog!: (catalog: unknown[]) => void;
+    api.listCatalog.mockImplementationOnce(() => new Promise((resolve) => {
+      finishCatalog = resolve;
+    }));
+    await act(async () => { invalidate("orders"); });
+    await waitFor(() => expect(finishCatalog).toBeDefined());
+    fireEvent.changeText(screen.getByLabelText("Payment reference"), "1234567890123");
+    fireEvent.press(screen.getByText("Send my payment reference"));
+    await screen.findAllByText(/We are checking your downpayment/);
+
+    await act(async () => { finishCatalog([]); });
+    expect(screen.queryByText("Send my payment reference")).toBeNull();
+    expect(screen.getAllByText(/We are checking your downpayment/).length).toBeGreaterThan(0);
+  });
+
   it("opens a job that never stored a history instead of crashing", async () => {
     setOrder({ timeline: undefined as never });
     await renderInSafeArea(<OrderDetailScreen />);
