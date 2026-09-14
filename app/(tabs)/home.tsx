@@ -127,7 +127,7 @@ export default function HomeScreen() {
     void loadCart();
   }, [refreshNotifications, loadCart, loadSamples]);
 
-  useLiveRefresh(["orders", "catalog", "services", "availability", "settings", "credits"], load);
+  useLiveRefresh(["orders", "catalog", "services", "availability", "settings", "credits"], load, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {

@@ -84,12 +84,6 @@ function isCandidate(token: string): boolean {
   return true;
 }
 
-function lineIsOnlyLabel(line: string): boolean {
-  if (!LABEL.test(line)) return false;
-  const rest = line.replace(LABEL, "").replace(/^[:.\s-]+/, "").trim();
-  return !rest || accept(rest) == null;
-}
-
 /**
  * A biller receipt often stacks labels in one column and numbers in the other,
  * so the line after "GCash Reference No." may be another label, not the number.
@@ -109,7 +103,7 @@ function numberNearLabel(lines: string[], labelIndex: number): string | null {
   for (let j = labelIndex + 1; j < Math.min(lines.length, labelIndex + 5); j += 1) {
     const next = lines[j];
     if (looksLikeDate(next) || looksLikeAmount(next)) continue;
-    if (lineIsOnlyLabel(next)) continue;
+    if (LABEL.test(next)) continue;
     const fromNext = accept(next);
     if (fromNext) return fromNext;
   }

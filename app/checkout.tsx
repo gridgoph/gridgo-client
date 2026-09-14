@@ -155,7 +155,7 @@ export default function CheckoutScreen() {
     }
   }, [loadCart]);
 
-  useLiveRefresh(["orders", "catalog", "settings"], load);
+  useLiveRefresh(["orders", "catalog", "settings"], load, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {

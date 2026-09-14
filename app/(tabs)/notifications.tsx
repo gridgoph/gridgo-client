@@ -32,7 +32,7 @@ export default function NotificationsScreen() {
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const { items, loading, error, refresh, readIds, markRead, markAllRead } = useNotifications();
 
-  useLiveRefresh(["notifications"], refresh);
+  useLiveRefresh(["notifications"], refresh, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {

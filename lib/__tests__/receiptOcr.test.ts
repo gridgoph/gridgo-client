@@ -193,3 +193,10 @@ it.each([
 ])("preserves the complete alphanumeric reference in %s", (text, expected) => {
   expect(extractPaymentReference(text)).toBe(expected);
 });
+
+it.each([
+  "GCash Reference No.\nBancNet Reference No. 003999123\n965373469",
+  "GCash Reference No.\nBancNet Reference No. 003999123\n965 373 469",
+])("skips populated neighboring reference fields in %s", (text) => {
+  expect(extractPaymentReference(text)).toBe("965373469");
+});

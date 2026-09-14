@@ -101,7 +101,7 @@ export default function OrderDetailScreen() {
     }
   }, [id]);
 
-  useLiveRefresh(["orders", "dispatch", "claims"], load);
+  useLiveRefresh(["orders", "dispatch", "claims"], load, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {

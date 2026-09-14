@@ -61,7 +61,7 @@ export default function AccountScreen() {
    * held on the way out is how a client applies as a business, comes back, and
    * finds "Personal client" still sitting here.
    */
-  useLiveRefresh(["identity", "approvals"], refresh);
+  useLiveRefresh(["identity", "approvals"], refresh, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {

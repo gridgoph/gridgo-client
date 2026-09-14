@@ -77,7 +77,7 @@ export default function OrdersScreen() {
     }
   }, []);
 
-  useLiveRefresh(["orders"], load);
+  useLiveRefresh(["orders"], load, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {

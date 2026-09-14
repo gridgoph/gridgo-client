@@ -7,6 +7,7 @@ import { liveGeneration, subscribeLive, type LiveResource } from "@/lib/live";
 export function useLiveRefresh(
   resources: readonly LiveResource[],
   refresh: () => void | Promise<unknown>,
+  { refreshOnFocus = true }: { refreshOnFocus?: boolean } = {},
 ): void {
   const latest = useRef(refresh);
   latest.current = refresh;
@@ -49,12 +50,12 @@ export function useLiveRefresh(
         if (resource !== "*" && !key.split(",").includes(resource)) return;
         if (!timer) timer = setTimeout(() => void flush(), 80);
       });
-      timer = setTimeout(() => void flush(), 80);
+      if (refreshOnFocus) timer = setTimeout(() => void flush(), 80);
       return () => {
         active = false;
         unsubscribe();
         if (timer) clearTimeout(timer);
       };
-    }, [key, ownerGeneration]),
+    }, [key, ownerGeneration, refreshOnFocus]),
   );
 }
