@@ -6,15 +6,15 @@ import { PushedStackHeader } from "@/components/PushedStackHeader";
 import { pushedScreenOptions } from "@/lib/navigationHeaders";
 
 const mockInsets = { top: 48, right: 0, bottom: 0, left: 0 };
-const headerProps: Array<{ headerStatusBarHeight?: number; title?: string }> = [];
+const headerProps: { headerStatusBarHeight?: number; title?: string }[] = [];
 
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => mockInsets,
 }));
 
 jest.mock("expo-router/react-navigation", () => {
-  const React = require("react");
-  const { View } = require("react-native");
+  const React = jest.requireActual("react");
+  const { View } = jest.requireActual("react-native");
   return {
     getHeaderTitle: (options: { title?: string }, name: string) => options.title ?? name,
     Header: (props: { headerStatusBarHeight?: number; title?: string; headerRight?: () => ReactNode }) => {

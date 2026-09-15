@@ -20,7 +20,7 @@ jest.mock("@/store/session", () => ({
 }));
 jest.mock("@/hooks/useTheme", () => ({
   useThemeName: () => "dark",
-  useThemeColors: () => require("@/constants/theme").colors.dark,
+  useThemeColors: () => jest.requireActual("@/constants/theme").colors.dark,
 }));
 jest.mock("@/hooks/useAppFonts", () => ({ useAppFonts: jest.fn() }));
 jest.mock("@/hooks/useClerkApiSession", () => ({ useClerkApiSession: jest.fn() }));
@@ -36,10 +36,10 @@ jest.mock("expo-splash-screen", () => ({
 jest.mock("expo-system-ui", () => ({ setBackgroundColorAsync: jest.fn() }));
 jest.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 jest.mock("react-native-gesture-handler", () => ({
-  GestureHandlerRootView: require("react-native").View,
+  GestureHandlerRootView: jest.requireActual("react-native").View,
 }));
 jest.mock("react-native-safe-area-context", () =>
-  require("react-native-safe-area-context/jest/mock").default,
+  jest.requireActual("react-native-safe-area-context/jest/mock").default,
 );
 jest.mock("expo-router/react-navigation", () => ({
   DarkTheme: { colors: {} },
@@ -47,13 +47,15 @@ jest.mock("expo-router/react-navigation", () => ({
   ThemeProvider: ({ children }: { children: ReactNode }) => children,
 }));
 jest.mock("expo-router", () => {
-  const React = require("react");
-  const { View } = require("react-native");
+  const React = jest.requireActual("react");
+  const { View } = jest.requireActual("react-native");
   const Stack = (props: object) => React.createElement(View, { ...props, testID: "root-stack" });
-  Stack.Screen = (props: { name: string }) =>
-    React.createElement(View, { ...props, testID: `route:${props.name}` });
-  Stack.Protected = ({ guard, children }: { guard: boolean; children: ReactNode }) =>
-    guard ? children : null;
+  Stack.Screen = function StackScreen(props: { name: string }) {
+    return React.createElement(View, { ...props, testID: `route:${props.name}` });
+  };
+  Stack.Protected = function StackProtected({ guard, children }: { guard: boolean; children: ReactNode }) {
+    return guard ? children : null;
+  };
   return { Stack };
 });
 
