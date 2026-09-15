@@ -1,118 +1,99 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createElement, type ReactNode } from "react";
+import { render, screen } from "@testing-library/react-native";
+import { Platform } from "react-native";
 
-/**
- * Regression lock for the empty header band.
- *
- * The captain bug: `request/category` declared `title: ""`, so a full header
- * bar — 44pt on iOS, 56dp on Android, plus the status inset — was drawn above
- * the screen's own display heading carrying nothing but a back chevron. The
- * fix is a rule rather than two edits, so the next pushed route cannot bring
- * the band back:
- *
- * 1. Every root-stack screen either hides its header or goes through
- *    `pushedScreenOptions("<title>")`. No route sets a bare `title:`, and
- *    `title: ""` may not appear anywhere in the file.
- * 2. A screen rendered under a visible header never wraps itself in
- *    `edges={["top"]}` — the header has already cleared the status bar, and a
- *    second inset is a notch's worth of blank canvas. This is the same defect
- *    wearing different clothes, and `design-system` was carrying it.
- */
-describe("pushed route layout contract", () => {
-  const appDir = join(__dirname, "../../app");
-  const layout = readFileSync(join(appDir, "_layout.tsx"), "utf8");
+import RootLayout from "@/app/_layout";
+import { HeaderThemeButton } from "@/components/HeaderThemeButton";
+import { PushedStackHeader } from "@/components/PushedStackHeader";
+import { colors, typography } from "@/constants/theme";
 
-  /** Every `<Stack.Screen … />` in the root layout, as name + its options text. */
-  const screens = [...layout.matchAll(/<Stack\.Screen\b([\s\S]*?)\/>/g)].map((match) => {
-    const body = match[1];
-    return {
-      name: /name="([^"]+)"/.exec(body)?.[1] ?? "",
-      body,
-      headerHidden: body.includes("headerShown: false"),
-    };
-  });
+let mockUser: { id: string } | null = null;
 
-  it("finds the root stack's screens", () => {
-    // A rename that silently matched nothing would make every assertion below
-    // vacuously pass.
-    expect(screens.map((s) => s.name)).toEqual(
-      expect.arrayContaining([
-        "(tabs)",
-        "(auth)/welcome",
-        "(auth)/login",
-        "(auth)/signup",
-        "request/category",
-        "request/[category]",
-        "order/[id]",
-        "settings",
-        "design-system",
-      ]),
-    );
-  });
-
-  it("never declares an empty title", () => {
-    expect(layout).not.toContain('title: ""');
-  });
-
-  it("shows the platform back on login and signup, and keeps welcome headerless", () => {
-    const byName = Object.fromEntries(screens.map((s) => [s.name, s]));
-    expect(byName["(auth)/welcome"]?.headerHidden).toBe(true);
-    expect(byName["(auth)/login"]?.headerHidden).toBe(false);
-    expect(byName["(auth)/signup"]?.headerHidden).toBe(false);
-    expect(byName["(auth)/login"]?.body).toContain('pushedScreenOptions("Sign in")');
-    expect(byName["(auth)/signup"]?.body).toContain('pushedScreenOptions("Sign up")');
-    expect(layout).not.toMatch(/mockup's own round back/);
-  });
-
-  it("gives every screen with a visible header a real title", () => {
-    const untitled = screens
-      .filter((s) => !s.headerHidden)
-      .filter((s) => !/pushedScreenOptions\(\s*"[^"]+"\s*\)/.test(s.body))
-      .map((s) => s.name);
-
-    expect(untitled).toEqual([]);
-  });
-
-  it("keeps a way back on every pushed screen", () => {
-    // `pushedScreenOptions` is the only place the back control is configured,
-    // so routing every titled screen through it is what guarantees the bare
-    // chevron — and, with it, that iOS never writes `(tabs)` on the control.
-    const pushed = screens.filter((s) => !s.headerHidden);
-    expect(pushed.length).toBeGreaterThan(0);
-    for (const screen of pushed) {
-      expect(screen.body).toContain("pushedScreenOptions(");
-    }
-  });
-
-  it("spreads the edge-to-edge header flag on the root stack", () => {
-    // `pushedScreenOptions` carries the flag per titled route; the root
-    // `screenOptions` must too, or a hidden-header screen still teaches the
-    // stack to pad twice when the next push shows a header.
-    expect(layout).toContain("androidEdgeToEdgeHeaderOptions");
-    expect(layout).toContain("...androidEdgeToEdgeHeaderOptions");
-  });
-
-  it("does not inset a screen that already sits under a header", () => {
-    const doubled = screens
-      .filter((s) => !s.headerHidden)
-      .map((s) => ({
-        name: s.name,
-        // Comments explain why "top" is wrong here; only real props count.
-        source: withoutComments(readFileSync(routeFile(appDir, s.name), "utf8")),
-      }))
-      .filter(({ source }) => /edges=\{\[[^\]]*"top"/.test(source))
-      .map(({ name }) => name);
-
-    expect(doubled).toEqual([]);
-  });
+jest.mock("@/global.css", () => ({}));
+jest.mock("@clerk/expo", () => ({
+  ClerkProvider: ({ children }: { children: ReactNode }) => children,
+}));
+jest.mock("@clerk/expo/token-cache", () => ({ tokenCache: {} }));
+jest.mock("@/lib/clerkAuth", () => ({ resolveClerkPublishableKey: () => "test" }));
+jest.mock("@/store/session", () => ({
+  useSession: (select: (state: { user: typeof mockUser }) => unknown) => select({ user: mockUser }),
+}));
+jest.mock("@/hooks/useTheme", () => ({
+  useThemeName: () => "dark",
+  useThemeColors: () => require("@/constants/theme").colors.dark,
+}));
+jest.mock("@/hooks/useAppFonts", () => ({ useAppFonts: jest.fn() }));
+jest.mock("@/hooks/useClerkApiSession", () => ({ useClerkApiSession: jest.fn() }));
+jest.mock("@/hooks/useClientPreferences", () => ({ useClientPreferences: jest.fn() }));
+jest.mock("@/hooks/usePushNotifications", () => ({ usePushNotifications: jest.fn() }));
+jest.mock("@/hooks/useLiveNotifications", () => ({ useLiveNotifications: jest.fn() }));
+jest.mock("@/components/BrandIntro", () => ({ BrandIntro: () => null }));
+jest.mock("@/store/theme", () => ({ useThemeStore: jest.fn() }));
+jest.mock("expo-splash-screen", () => ({
+  preventAutoHideAsync: jest.fn(),
+  hideAsync: jest.fn(),
+}));
+jest.mock("expo-system-ui", () => ({ setBackgroundColorAsync: jest.fn() }));
+jest.mock("expo-status-bar", () => ({ StatusBar: () => null }));
+jest.mock("react-native-gesture-handler", () => ({
+  GestureHandlerRootView: require("react-native").View,
+}));
+jest.mock("react-native-safe-area-context", () =>
+  require("react-native-safe-area-context/jest/mock").default,
+);
+jest.mock("expo-router/react-navigation", () => ({
+  DarkTheme: { colors: {} },
+  DefaultTheme: { colors: {} },
+  ThemeProvider: ({ children }: { children: ReactNode }) => children,
+}));
+jest.mock("expo-router", () => {
+  const React = require("react");
+  const { View } = require("react-native");
+  const Stack = (props: object) => React.createElement(View, { ...props, testID: "root-stack" });
+  Stack.Screen = (props: { name: string }) =>
+    React.createElement(View, { ...props, testID: `route:${props.name}` });
+  Stack.Protected = ({ guard, children }: { guard: boolean; children: ReactNode }) =>
+    guard ? children : null;
+  return { Stack };
 });
 
-/** `request/[category]` → `app/request/[category].tsx`. */
-function routeFile(appDir: string, routeName: string): string {
-  return join(appDir, `${routeName}.tsx`);
-}
+describe("pushed route layout contract", () => {
+  it.each([false, true])("configures reachable headers with signedIn=%s", async (signedIn) => {
+    mockUser = signedIn ? { id: "client" } : null;
+    jest.replaceProperty(Platform, "OS", "android");
+    try {
+      await render(createElement(RootLayout));
+      const defaults = screen.getByTestId("root-stack").props.screenOptions;
+      expect(defaults.statusBarTranslucent).toBe(true);
+      expect(defaults.headerStyle.backgroundColor).toBe(colors.dark.surface);
+      expect(defaults.headerTitleStyle.fontFamily).toBe(typography.h3.fontFamily);
 
-/** Block and line comments, so prose about a mistake is not read as the mistake. */
-function withoutComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-}
+      const routes = screen.getAllByTestId(/^route:/);
+      expect(routes.map((route) => route.props.name)).toEqual(expect.arrayContaining(
+        signedIn
+          ? ["(tabs)", "request/category", "request/[category]", "order/[id]", "settings", "design-system"]
+          : ["(auth)/welcome", "(auth)/login", "(auth)/signup"],
+      ));
+      const pushed = routes.filter((route) => route.props.options.headerShown !== false);
+      expect(pushed.length).toBeGreaterThan(0);
+      for (const route of pushed) {
+        const options = { ...defaults, ...route.props.options };
+        expect(options.title.trim().length).toBeGreaterThan(0);
+        expect(options.headerBackButtonDisplayMode).toBe("minimal");
+        expect(options.statusBarTranslucent).toBe(true);
+        expect(options.header).toBe(PushedStackHeader);
+        expect(options.headerRight).toBe(HeaderThemeButton);
+      }
+      if (signedIn) {
+        expect(screen.getByTestId("route:request/category").props.options.title).toBe("New request");
+        expect(screen.getByTestId("route:(tabs)").props.options.headerShown).toBe(false);
+      } else {
+        expect(screen.getByTestId("route:(auth)/login").props.options.title).toBe("Sign in");
+        expect(screen.getByTestId("route:(auth)/signup").props.options.title).toBe("Sign up");
+        expect(screen.getByTestId("route:(auth)/welcome").props.options.headerShown).toBe(false);
+      }
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+});

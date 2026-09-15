@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 
 import { PushedStackHeader } from "@/components/PushedStackHeader";
+import { HeaderThemeButton } from "@/components/HeaderThemeButton";
 
 /**
  * Header options for screens pushed above the tab shell.
@@ -73,5 +74,6 @@ export function pushedScreenOptions<T extends string>(title: NonEmptyTitle<T>) {
     headerBackButtonDisplayMode: "minimal" as const,
     ...androidEdgeToEdgeHeaderOptions,
     header: Platform.OS === "android" ? PushedStackHeader : undefined,
+    headerRight: Platform.OS === "android" ? HeaderThemeButton : undefined,
   };
 }
