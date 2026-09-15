@@ -152,6 +152,21 @@ describe("the APK reaches the captain's server only from the default branch", ()
 
     expect(published).toBeGreaterThan(verify);
   });
+
+  it("publishes the on-disk APK before the GitHub Actions artifact upload", () => {
+    const githubRelease = apkSteps.findIndex((step) => step.includes("gh release create"));
+    const published = apkSteps.findIndex((step) => step.includes("upload-apk client"));
+    const upload = apkSteps.findIndex((step) => step.includes("upload-artifact"));
+
+    expect(githubRelease).toBeGreaterThanOrEqual(0);
+    expect(published).toBeGreaterThan(githubRelease);
+    expect(upload).toBeGreaterThan(published);
+  });
+
+  it("does not fail the job when Actions artifact storage is full", () => {
+    const upload = apkSteps.find((step) => step.includes("upload-artifact"));
+    expect(upload).toMatch(/continue-on-error:\s*true/);
+  });
 });
 
 describe("the release APK is built with Firebase, or not at all", () => {
