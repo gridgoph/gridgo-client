@@ -27,7 +27,10 @@ import { useClientPreferences } from "@/hooks/useClientPreferences";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
-import { pushedScreenOptions } from "@/lib/navigationHeaders";
+import {
+  androidEdgeToEdgeHeaderOptions,
+  pushedScreenOptions,
+} from "@/lib/navigationHeaders";
 import { hasActiveSession } from "@/lib/sessionGuard";
 import { useSession } from "@/store/session";
 // Side-effect: rehydrate persisted theme preference from AsyncStorage.
@@ -157,6 +160,7 @@ function AppNavigation() {
                 },
                 headerShadowVisible: false,
                 contentStyle: { backgroundColor: token.canvas },
+                ...androidEdgeToEdgeHeaderOptions,
               }}
             >
               {/* Launch + public routes stay reachable; index maps session → entry. */}

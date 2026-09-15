@@ -75,7 +75,7 @@ Full detail is in `AGENTS.md`, which you should read before any feature. The thr
 - **Colour never carries meaning alone.** Every status is icon + label + colour, so a screen stays readable in grayscale and to a screen reader.
 - **No hard-coded hex values.** Style with NativeWind classes, which resolve per theme. `constants/theme.ts` exists for the places a class cannot reach — the navigation theme, the status bar, map styles.
 
-Light and Dark are the same product with different presentation: identical labels, states, validation, and workflows.
+Light and Dark are the same product with different presentation: identical labels, states, validation, and workflows. On Android pushed screens, including Sign in and New request, tap the title-row gear (**Choose theme**) to select System, Light, or Dark; theme selection is also available in Settings.
 
 ## Checkout and money
 
