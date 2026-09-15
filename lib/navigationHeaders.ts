@@ -6,8 +6,6 @@ import { HeaderThemeButton } from "@/components/HeaderThemeButton";
 /**
  * Header options for screens pushed above the tab shell.
  *
- * Two rules live here, and both were bugs before they were rules.
- *
  * **1. The back control is the bare chevron.**
  * On iOS, the native stack labels the back control with the previous screen's
  * title. The tab group route is the filesystem name `(tabs)`, which must never
@@ -21,9 +19,7 @@ import { HeaderThemeButton } from "@/components/HeaderThemeButton";
  * asked for the chevron. Keep `minimal` — dropping it does not merely change
  * the wording, it hands the label back to the previous screen's title.
  *
- * Android's native stack shows its own arrow and ignores both settings, which
- * is that platform's convention and correct. The control keeps a system
- * accessibility name on both.
+ * Android uses the React Navigation Header's platform back arrow.
  *
  * **2. The band always carries a title.**
  * A pushed screen costs a full header bar — 44pt on iOS, 56dp on Android, on
@@ -35,24 +31,26 @@ import { HeaderThemeButton } from "@/components/HeaderThemeButton";
  * band stays and earns its keep by naming where the client is.
  *
  * **3. Android edge-to-edge applies the status inset once.**
- * Expo 57 draws under the system bars (`android.edgeToEdgeEnabled`). The
- * native-stack header then pads for the clock *and* Material's AppBarLayout
- * pads again, so the title sits in the lower 56dp under an empty band. iOS
- * does not. `statusBarTranslucent: true` is the native-stack flag that the
- * status bar is already drawn over the header; `PushedStackHeader` is the
- * Android header that uses one `headerStatusBarHeight` so the fill sits
- * behind the icons and the title row sits immediately under them.
+ * PushedStackHeader owns the Android inset; see its local layout invariant.
+ * Keep it paired with androidEdgeToEdgeHeaderOptions on pushed routes and
+ * spread those options onto the root Stack. The flag alone does not install
+ * the replacement header. iOS keeps its native header.
+ *
+ * Android also supplies HeaderThemeButton through headerRight so the control
+ * belongs to the title row, outside the screen's scrolling content.
  *
  * The title is a required argument rather than a spread-in default so the
  * omission cannot happen again: `pushedScreenOptions("")` does not compile,
  * and an all-whitespace title throws at startup.
+ * Pick a title that does not repeat the screen's own heading. A headerless
+ * predecessor still needs a title for a pushed child's back-control fallback.
+ * lib/__tests__/pushedRouteLayout.test.ts renders the root layout to check
+ * effective header options for reachable signed-in and signed-out routes.
  */
 
 /**
- * Native-stack options that stop Android from applying the status inset twice
- * on a pushed header. Safe on iOS (ignored). Shared with the root `Stack`
- * `screenOptions` so a route that skips `pushedScreenOptions` cannot bring
- * the empty band back.
+ * Shared native-stack status-bar configuration. The Android header replacement
+ * is installed separately by pushedScreenOptions; see the contract above.
  */
 export const androidEdgeToEdgeHeaderOptions = {
   statusBarTranslucent: true,

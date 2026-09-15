@@ -23,7 +23,7 @@ For local development only, sign-in exposes a **Use local API instead** path. It
 
 ## Navigation and recovery
 
-The signed-out stack owns `welcome`, `login`, and `signup`. Welcome has no header. Sign-in and sign-up draw their own mockup-style back control and keep the native header hidden. Session clearing remains the only action needed to leave protected routes; no feature screen redirects itself.
+The signed-out stack owns `welcome`, `login`, and `signup`. Welcome has no header. Sign-in and sign-up follow the shared header contract in [lib/navigationHeaders.ts](../../lib/navigationHeaders.ts). Session clearing remains the only action needed to leave protected routes; no feature screen redirects itself.
 
 Clerk sign-out is registered behind the existing Zustand `logout()` action so the Account screen and API 401 behavior continue to have one exit boundary. Domain role mismatch signs out Clerk and explains which role-specific app the account belongs to.
 

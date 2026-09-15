@@ -3,14 +3,13 @@ import type { ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 /**
- * Android native-stack header under edge-to-edge.
+ * Owns the Android header's top safe area under edge-to-edge.
  *
- * The Material AppBarLayout and the toolbar each apply the status inset, so
- * the title sits in a 56dp row under an empty band the height of the clock.
- * This is the same Header the JS stack uses, with one `headerStatusBarHeight`
- * — the header fill goes behind the system icons, and the title row sits
- * immediately under them. iOS keeps the native header; this is Android-only
- * via `pushedScreenOptions`.
+ * Use the React Navigation Header in place of the native toolbar so the status
+ * inset is applied once, through headerStatusBarHeight. The fill extends behind
+ * the system icons; the title row begins below them. Do not add top padding to
+ * this wrapper. components/__tests__/PushedStackHeader.test.tsx pins the inset
+ * passed to Header; route selection belongs to lib/navigationHeaders.ts.
  */
 export function PushedStackHeader({
   options,
