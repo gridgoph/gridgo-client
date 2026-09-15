@@ -143,7 +143,12 @@ export default function AccountDetailsScreen() {
     // The name Clerk knows only fills a GRIDGO record that has none — see
     // `draftFromUser`. Read once at mount so a later Clerk re-render cannot
     // re-run the read.
-    void load(true, identity.name);
+    // `loading` already starts true, so the flag `load` raises cannot cascade
+    // a render here; the async wrapper keeps the effect body itself free of
+    // synchronous state writes.
+    void (async () => {
+      await load(true, identity.name);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
@@ -155,11 +160,12 @@ export default function AccountDetailsScreen() {
    * never do is leave a signed-in client looking at placeholders because one
    * read was slow.
    */
-  useEffect(() => {
-    if (draft || !sessionUser) return;
+  if (!draft && sessionUser) {
+    // Adjusted during render rather than in an effect, so the form appears in
+    // the same frame the session does instead of one paint later.
     setAccount((current) => current ?? sessionUser);
     setDraft(draftFromUser(sessionUser, identity.name));
-  }, [draft, sessionUser, identity.name]);
+  }
 
   const accountType = (account ?? sessionUser)?.accountType ?? "individual";
   const problems = draft ? accountProblems(draft, accountType) : {};

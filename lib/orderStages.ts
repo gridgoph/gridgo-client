@@ -54,6 +54,8 @@ const STAGE_BY_STATE: Record<string, OrderStageKey> = {
   proof_approval: "order",
   approved_for_matching: "order",
   supplier_assigned: "order",
+  awaiting_initial_payment: "order",
+  initial_payment_review: "order",
   awaiting_downpayment: "order",
   downpayment_review: "order",
   payment_authorized: "order",

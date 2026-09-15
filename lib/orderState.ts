@@ -13,7 +13,7 @@
 
 import type { Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
-import { balanceDue, downpaymentDue, installmentUnderReview } from "@/lib/payment";
+import { balanceDue, downpaymentDue, installmentUnderReview, paymentInstallment } from "@/lib/payment";
 
 export type OrderStatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type OrderStatusIcon =
@@ -38,11 +38,13 @@ const STATE_META: Record<string, OrderStateMeta> = {
   proof_approval: { label: "Proof approval", tone: "warning", icon: "square-pen" },
   approved_for_matching: { label: "Finding a supplier", tone: "info", icon: "clock" },
   supplier_assigned: { label: "Supplier reviewing", tone: "info", icon: "clock" },
+  awaiting_initial_payment: { label: "Initial payment due", tone: "warning", icon: "triangle-alert" },
+  initial_payment_review: { label: "Checking your payment", tone: "info", icon: "clock" },
   awaiting_downpayment: { label: "Downpayment due", tone: "warning", icon: "triangle-alert" },
   downpayment_review: { label: "Checking your payment", tone: "info", icon: "clock" },
   payment_authorized: { label: "Downpayment confirmed", tone: "success", icon: "circle-check" },
   production: { label: "In production", tone: "info", icon: "clock" },
-  supplier_self_qc: { label: "Supplier quality check", tone: "info", icon: "clock" },
+  supplier_self_qc: { label: "Printing and packing", tone: "info", icon: "clock" },
   ready_for_dispatch: { label: "Ready for dispatch", tone: "info", icon: "clock" },
   rider_assigned: { label: "Rider assigned", tone: "info", icon: "clock" },
   picked_up: { label: "Picked up", tone: "info", icon: "clock" },
@@ -213,9 +215,9 @@ const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
 
 export function orderNextAction(order: Order): OrderNextAction | null {
   if (downpaymentDue(order)) {
-    const amount = order.payments?.downpayment.amountMinor;
+    const amount = paymentInstallment(order, "downpayment")?.amountMinor;
     return {
-      title: "Pay the 75% downpayment",
+      title: order.payments?.initial ? "Pay the initial payment" : "Pay the 75% downpayment",
       body: amount
         ? `Your supplier accepted at ${formatPhp(order.totalMinor ?? 0)} in total. Pay ${formatPhp(amount)} now by QR; production starts once Operations confirms it.`
         : "Your supplier has accepted and priced the job. Pay the downpayment by QR to start production.",
@@ -224,10 +226,10 @@ export function orderNextAction(order: Order): OrderNextAction | null {
     };
   }
   if (balanceDue(order)) {
-    const amount = order.payments?.balance.amountMinor;
+    const amount = paymentInstallment(order, "balance")?.amountMinor;
     if (collectsAtOffice(order)) {
       return {
-        title: "Pay the remaining 25%",
+        title: order.payments?.final_online ? "Pay the final balance" : "Pay the remaining 25%",
         body: amount
           ? `Settle the last ${formatPhp(amount)} before you come for this. The GRIDGO Office counter releases it once Operations confirms your payment.`
           : "Settle the remaining balance before you come for this. The GRIDGO Office counter releases it once Operations confirms your payment.",
@@ -236,10 +238,10 @@ export function orderNextAction(order: Order): OrderNextAction | null {
       };
     }
     return {
-      title: "Pay the remaining 25%",
+      title: order.payments?.final_online ? "Pay the final balance" : "Pay the remaining 25%",
       body: amount
-        ? `Your job is on the press. GRIDGO sends a rider once the last ${formatPhp(amount)} is confirmed.`
-        : "Your job is on the press. GRIDGO sends a rider once the remaining balance is confirmed.",
+        ? `Pay the remaining ${formatPhp(amount)} by QR. The rider can hand over your order once Operations confirms it.`
+        : "Pay the remaining balance by QR. The rider can hand over your order once Operations confirms it.",
       tone: "warning",
       icon: "wallet",
     };
@@ -272,15 +274,15 @@ const WAITING_ON: Record<string, string> = {
   awaiting_downpayment: "Your supplier has accepted. The downpayment is next.",
   payment_authorized: "Your downpayment is confirmed. Your supplier starts production next.",
   production: "Your job is on the press.",
-  supplier_self_qc: "Your supplier is checking the finished job before it ships.",
+  supplier_self_qc: "Your order is being packed. The supplier and rider check it together before pickup.",
   ready_for_dispatch: "The job is packed and waiting for a rider.",
   rider_assigned: "A rider has taken this delivery.",
   picked_up: "The rider has collected your order.",
   out_for_delivery: "Your order is out for delivery.",
   delivered: "Delivered. Operations closes the job once the issue window passes.",
   awaiting_collection: "Your order is waiting at the GRIDGO Office counter.",
-  completed: "This job is closed.",
-  payout_released: "This job is closed.",
+  completed: "Job complete. Delivered, closed, and nothing more is needed from you.",
+  payout_released: "Job complete. Delivered, closed, and nothing more is needed from you.",
 };
 
 /** The travel half of the wait, for a job the client is coming to fetch. */
@@ -290,6 +292,8 @@ const COLLECT_WAITING_ON: Record<string, string> = {
   picked_up: "The rider has your order and is bringing it to GRIDGO Office.",
   out_for_delivery: "Your order is on its way to GRIDGO Office.",
   delivered: "Collected. Operations closes the job once the issue window passes.",
+  completed: "Job complete. Collected, closed, and nothing more is needed from you.",
+  payout_released: "Job complete. Collected, closed, and nothing more is needed from you.",
 };
 
 export function orderWaitingOn(order: Order): string | null {
@@ -298,7 +302,7 @@ export function orderWaitingOn(order: Order): string | null {
     return "We are checking your downpayment. Operations matches the reference you sent against the GRIDGO wallet by hand, so this is not instant.";
   }
   if (underReview === "balance") {
-    return "We are checking your balance payment. Your order goes out for delivery once Operations confirms it.";
+    return "We are checking your balance payment. Final handover is allowed once Operations confirms it; do not pay again.";
   }
   if (collectsAtOffice(order) && COLLECT_WAITING_ON[order.state]) return COLLECT_WAITING_ON[order.state];
   return WAITING_ON[order.state] ?? null;

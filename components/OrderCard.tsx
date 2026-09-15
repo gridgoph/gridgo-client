@@ -1,10 +1,12 @@
 import { RotateCcw } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
+import { OrderReference } from "@/components/OrderReference";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp, type Order } from "@/lib/api";
 import { paymentStatusLabel } from "@/lib/copy";
+import { orderReferenceSpoken } from "@/lib/orderReference";
 import {
   formatPriceRange,
   getOrderStateMeta,
@@ -58,7 +60,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${order.title}, order ${order.id}, ${meta.label}, ${money}`}
+        accessibilityLabel={`${order.title}, ${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}`}
         accessibilityHint={orderWaitingOn(order) ?? undefined}
         className="p-4"
       >
@@ -71,9 +73,9 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
             >
               {order.title}
             </Text>
-            <Text className="mt-1 text-caption text-text-muted" numberOfLines={1}>
-              Order {order.id}
-            </Text>
+            <View className="mt-2 flex-row">
+              <OrderReference id={order.id} />
+            </View>
             <Text className="mt-1 text-caption text-text-muted" numberOfLines={1}>
               {spec}
             </Text>

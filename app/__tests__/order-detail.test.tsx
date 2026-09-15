@@ -11,6 +11,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OrderDetailScreen from "@/app/order/[id]";
 import type { Order } from "@/lib/api";
+import { useOrderPayment } from "@/store/checkoutPayment";
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
@@ -268,7 +269,7 @@ describe("OrderDetailScreen", () => {
       payments: {
         ...baseOrder.payments!,
         downpayment: {
-          ...baseOrder.payments!.downpayment,
+          ...baseOrder.payments!.downpayment!,
           status: "not_submitted",
           reference: null,
           submittedAt: null,
@@ -284,7 +285,7 @@ describe("OrderDetailScreen", () => {
       payments: {
         ...payable.payments,
         downpayment: {
-          ...payable.payments!.downpayment,
+          ...payable.payments!.downpayment!,
           status: "pending_confirmation",
           reference: "1234567890123",
           submittedAt: "2026-09-15T10:00:00Z",
@@ -292,7 +293,7 @@ describe("OrderDetailScreen", () => {
       },
     });
     await renderInSafeArea(<OrderDetailScreen />);
-    await screen.findByText("Send my payment reference");
+    await screen.findByText("Review payment details");
 
     let finishCatalog!: (catalog: unknown[]) => void;
     api.listCatalog.mockImplementationOnce(() => new Promise((resolve) => {
@@ -300,12 +301,19 @@ describe("OrderDetailScreen", () => {
     }));
     await act(async () => { invalidate("orders"); });
     await waitFor(() => expect(finishCatalog).toBeDefined());
+    // The receipt screenshot is already uploaded; the panel only needs the reference.
+    await act(async () => {
+      useOrderPayment.getState().setProof({
+        phase: "stored", fileName: "receipt.jpg", fileId: "file_proof", localUri: null, progress: 1, error: null,
+      });
+    });
     await fireEvent.changeText(screen.getByLabelText("Payment reference"), "1234567890123");
-    await fireEvent.press(screen.getByText("Send my payment reference"));
+    await fireEvent.press(screen.getByText("Review payment details"));
+    await fireEvent.press(await screen.findByText("Send receipt for checking"));
     await screen.findAllByText(/We are checking your downpayment/);
 
     await act(async () => { finishCatalog([]); });
-    expect(screen.queryByText("Send my payment reference")).toBeNull();
+    expect(screen.queryByText("Review payment details")).toBeNull();
     expect(screen.getAllByText(/We are checking your downpayment/).length).toBeGreaterThan(0);
   });
 
@@ -326,7 +334,8 @@ describe("OrderDetailScreen", () => {
     // Header says what is happening; the timeline carries the supplier's own note.
     expect(screen.getAllByText(/on the press/i).length).toBeGreaterThan(1);
     // The reference remains visible while the workflow state is human-readable.
-    expect(screen.getByText(`Order ${baseOrder.id}`)).toBeTruthy();
+    // The reference tag, not the raw key: `ord_demo_1` reads as DEMO_1.
+    expect(screen.getByText("DEMO_1")).toBeTruthy();
     expect(screen.queryByText(baseOrder.state, { exact: true })).toBeNull();
   });
 
@@ -429,10 +438,12 @@ describe("OrderDetailScreen", () => {
     });
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText("Pay the 75% downpayment")).toBeTruthy();
+    // The panel leads with the installment and the QR-plus-receipt flow.
+    expect(await screen.findByText("Initial payment due")).toBeTruthy();
     // Once as the amount due, once on the money card's ledger below it.
     expect(screen.getAllByText("₱843.75").length).toBeGreaterThan(0);
-    expect(screen.getByText("Send my payment reference")).toBeTruthy();
+    expect(screen.getByText("Show payment QR")).toBeTruthy();
+    expect(screen.getByText("Review payment details")).toBeTruthy();
     // Cash is named once, to say it is gone — an ex-pilot client would
     // otherwise go looking for it. What must not exist is a way to choose it.
     expect(screen.queryByText(/pay with cash/i)).toBeNull();
@@ -479,7 +490,7 @@ describe("OrderDetailScreen", () => {
 
     await screen.findByText("Grand opening tarpaulin");
     expect(screen.getByText("Printing")).toBeTruthy();
-    expect(screen.getByText("Packaging and quality check")).toBeTruthy();
+    expect(screen.getByText("Packaging")).toBeTruthy();
     expect(screen.getByText("Delivered")).toBeTruthy();
     // Retention is a hold-back on someone else's payout, and the shares are
     // shares of the supplier's earnings. Neither is the client's business.
@@ -649,8 +660,8 @@ describe("OrderDetailScreen", () => {
     };
 
     const settled = {
-      downpayment: { ...baseOrder.payments!.downpayment },
-      balance: { ...baseOrder.payments!.balance, status: "confirmed" as const },
+      downpayment: { ...baseOrder.payments!.downpayment! },
+      balance: { ...baseOrder.payments!.balance!, status: "confirmed" as const },
     };
 
     it("shows no rider while it is being carried to the office", async () => {
@@ -695,6 +706,92 @@ describe("OrderDetailScreen", () => {
       expect(screen.getAllByText(/remaining balance/i).length).toBeGreaterThan(
         0,
       );
+    });
+  });
+
+  describe("a finished job", () => {
+    const finished: Partial<Order> = {
+      state: "completed",
+      riderId: "user_rider",
+      paymentStatus: "paid",
+      payments: {
+        ...baseOrder.payments!,
+        balance: {
+          ...baseOrder.payments!.balance!,
+          status: "confirmed",
+          reference: "GCASH-XYZ789",
+          submittedAt: "2026-08-11T09:00:00+08:00",
+          confirmedAt: "2026-08-11T09:30:00+08:00",
+        },
+      },
+      timeline: [
+        ...baseOrder.timeline,
+        { at: "2026-08-11T16:12:00+08:00", state: "delivered", by: "user_rider", note: "" },
+        { at: "2026-08-11T16:12:00+08:00", state: "issue_window_open", by: "system", note: "" },
+        {
+          at: "2026-08-12T16:12:00+08:00",
+          state: "completed",
+          by: "system",
+          note: "Issue window expired with no active claim",
+        },
+      ],
+    };
+
+    it("says the job is complete and that nothing was wrong, instead of a shrug", async () => {
+      setOrder(finished);
+
+      await renderInSafeArea(<OrderDetailScreen />);
+
+      expect(await screen.findByText("Job complete")).toBeTruthy();
+      await waitFor(() =>
+        expect(screen.getByText(/check window closed with nothing reported/)).toBeTruthy(),
+      );
+      expect(screen.getByText("Closed, nothing reported")).toBeTruthy();
+      expect(screen.getByText("Paid in full, ₱1,125.00")).toBeTruthy();
+      // The old one-liner and the "we will tell your phone" offer both belong
+      // to a job that is still going.
+      expect(screen.queryByText("This job is closed.")).toBeNull();
+      expect(screen.queryByText("Get these on your phone")).toBeNull();
+      expect(screen.queryByText("Get GRIDGO news on this phone")).toBeNull();
+      // The rating prompt stays the finished job's one action.
+      expect(screen.getByText("How did it go?")).toBeTruthy();
+    });
+
+    it("tells a client who reported a problem that it was settled, not that nothing happened", async () => {
+      setOrder(finished);
+      api.listIssues.mockResolvedValue([
+        {
+          id: "iss_1",
+          orderId: "ord_demo_1",
+          clientId: "user_client",
+          description: "Colour is washed out across all 200 flyers",
+          kind: "material_quality",
+          status: "resolved",
+          createdAt: "2026-08-11T18:00:00+08:00",
+          updatedAt: "2026-08-12T09:00:00+08:00",
+          resolvedAt: "2026-08-12T09:00:00+08:00",
+          resolution: "Reprinted",
+        },
+      ]);
+
+      await renderInSafeArea(<OrderDetailScreen />);
+
+      expect(await screen.findByText("Job complete")).toBeTruthy();
+      expect(await screen.findByText(/problem you reported was settled/)).toBeTruthy();
+      expect(screen.queryByText(/nothing reported/)).toBeNull();
+    });
+
+    it("speaks of collecting for a job fetched from the counter", async () => {
+      setOrder({ ...finished, fulfillmentMode: "pickup" });
+
+      await renderInSafeArea(<OrderDetailScreen />);
+
+      expect(await screen.findByText("Job complete")).toBeTruthy();
+      expect(await screen.findByText(/collected at GRIDGO Office/)).toBeTruthy();
+      // The fact row and the timeline entry both say it; neither says delivered
+      // to a person who fetched the job themselves.
+      expect(screen.getAllByText("Collected").length).toBeGreaterThan(0);
+      expect(screen.queryByText(/was delivered/)).toBeNull();
     });
   });
 });

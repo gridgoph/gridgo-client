@@ -1,5 +1,7 @@
-import type { Notification } from "@/lib/api";
+import { formatPhp, type Notification } from "@/lib/api";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
+import { isJobComplete } from "@/lib/jobComplete";
+import { orderReference } from "@/lib/orderReference";
 import {
   fulfilmentRailKind,
   orderStageIndex,
@@ -21,12 +23,15 @@ export type PresentedNotification = {
   title: string;
   body: string;
   jobLine: string | null;
+  /** "3FF0-128E-105A" — the job's reference, when the update is about one job. */
+  reference: string | null;
   railKind: FulfilmentRailKind | null;
   stageIndex: number | null;
   collectHold: boolean;
   collectReady: boolean;
   lane: NotificationLane;
   hint: string | null;
+  paymentLine: string | null;
 };
 
 const NEED_YOU_TYPES = new Set([
@@ -108,17 +113,35 @@ function collectCopy(
   }
 }
 
+/**
+ * The inbox row for the platform closing a job.
+ *
+ * The server words this "Completed / This order is complete", which is the
+ * state name read aloud. The row is the client's first sight of the ending,
+ * so it says what the ending was: it arrived, the window passed, you are done.
+ * The order screen carries the fuller record (`JobCompleteCard`).
+ */
+function completeCopy(collect: boolean): { title: string; body: string; hint: string } {
+  return {
+    title: "Job complete",
+    body: collect
+      ? `Your order was collected at ${GRIDGO_OFFICE_LABEL} and the check window has closed. This job is closed, and nothing more is needed from you.`
+      : "Your order was delivered and the check window has closed. This job is closed, and nothing more is needed from you.",
+    hint: "Opens this job",
+  };
+}
+
 function collectStamp(state: string | undefined, hold: boolean): string {
   if (hold) return "COLLECT · PAY FIRST";
+  if (isJobComplete(state)) return "JOB COMPLETE";
   if (state === "awaiting_collection") return "COLLECT AT THE COUNTER";
-  if (state === "delivered" || state === "issue_window_open" || state === "completed") {
-    return "COLLECTED";
-  }
+  if (state === "delivered" || state === "issue_window_open") return "COLLECTED";
   return "COLLECT AT GRIDGO OFFICE";
 }
 
 function deliveryStamp(state: string | undefined): string | null {
   if (!state) return null;
+  if (isJobComplete(state)) return "JOB COMPLETE";
   if (state === "out_for_delivery" || state === "picked_up" || state === "rider_assigned") {
     return "ON THE WAY TO YOU";
   }
@@ -128,10 +151,20 @@ function deliveryStamp(state: string | undefined): string | null {
 }
 
 export function presentNotification(notification: Notification): PresentedNotification {
+  const eventState = notification.eventState ?? notification.orderState;
+  const event = notification.eventState ? { ...notification, orderState: eventState } : notification;
+  const payment = notification.paymentAction;
+  const paymentLine = payment && payment.amountMinor > 0
+    ? payment.status === "due"
+      ? `Now: final payment ${formatPhp(payment.amountMinor)} due. Open the order for the QR and receipt upload.`
+      : `Now: final payment ${formatPhp(payment.amountMinor)} is being checked. Do not pay again.`
+    : null;
   const collect = isCollect(notification);
   const hold = collectionHeld(notification);
-  const overlay = collect
-    ? collectCopy(notification, hold)
+  const overlay = isJobComplete(eventState)
+    ? completeCopy(collect)
+    : collect
+    ? collectCopy(event, hold && eventState === notification.orderState)
     : {
         title: notification.title,
         body: notification.body,
@@ -140,27 +173,30 @@ export function presentNotification(notification: Notification): PresentedNotifi
   const collectReady =
     collect && notification.orderState === "awaiting_collection" && !hold;
   const needsYou =
+    payment?.status === "due" ||
     hold ||
     collectReady ||
     (notification.type != null && NEED_YOU_TYPES.has(notification.type));
 
-  const railKind = notification.orderState
+  const railKind = eventState
     ? fulfilmentRailKind(collect ? "pickup" : notification.fulfillmentMode)
     : null;
 
   return {
     stamp: collect
-      ? collectStamp(notification.orderState, hold)
-      : deliveryStamp(notification.orderState),
+      ? collectStamp(eventState, hold && eventState === notification.orderState)
+      : deliveryStamp(eventState),
     title: overlay.title,
     body: overlay.body,
     jobLine: notification.orderTitle?.trim() || null,
+    reference: orderReference(notification.orderId),
     railKind,
-    stageIndex: orderStageIndex(notification.orderState, collect ? "pickup" : notification.fulfillmentMode),
+    stageIndex: orderStageIndex(eventState, collect ? "pickup" : notification.fulfillmentMode),
     collectHold: hold,
     collectReady,
     lane: needsYou ? "need_you" : "update",
-    hint: overlay.hint,
+    hint: paymentLine ? "Opens current payment details" : overlay.hint,
+    paymentLine,
   };
 }
 

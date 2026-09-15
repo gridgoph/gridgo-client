@@ -251,6 +251,6 @@ describe("lockup layout", () => {
     // Wordmark and role share one column…
     expect(within(column).getByText("Business", hidden)).toBeTruthy();
     // …and the mark is outside it, so the column's height is what the mark spans.
-    expect(column.queryAll((node) => node.type === "RNSVGSvgView")).toHaveLength(0);
+    expect(column.queryAll((node: { type: unknown }) => node.type === "RNSVGSvgView")).toHaveLength(0);
   });
 });

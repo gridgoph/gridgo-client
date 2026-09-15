@@ -1,5 +1,5 @@
 import { ImageOff, Image as ImageIcon } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Image, Text, View } from "react-native";
 
 import { CropMarkFrame } from "@/components/CropMarkFrame";
@@ -44,13 +44,10 @@ export function SamplePhoto({
   emptyLabel,
 }: Props) {
   const colors = useThemeColors();
-  const [failed, setFailed] = useState(false);
-
-  // A different sample in the same frame takes the last one's failure with it,
-  // or one refusal sticks to every photo that lands in that position after.
-  useEffect(() => {
-    setFailed(false);
-  }, [url]);
+  // The failure is remembered against the url that failed, so a different
+  // sample in the same frame starts clean rather than inheriting a refusal.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = failedUrl !== null && failedUrl === url;
 
   // Native aspectRatio, not `aspect-[4/3]`: that arbitrary class has shipped as
   // a silent no-op in this pipeline before, and a frame with no ratio collapses.
@@ -66,7 +63,7 @@ export function SamplePhoto({
               accessibilityLabel={altText || "Sample photo"}
               resizeMode="cover"
               style={{ width: "100%", height: "100%" }}
-              onError={() => setFailed(true)}
+              onError={() => setFailedUrl(url ?? null)}
             />
           </View>
         ) : failed ? (

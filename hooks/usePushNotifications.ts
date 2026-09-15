@@ -39,7 +39,6 @@ export function usePushNotifications(): void {
     navigation?.key &&
     segments[0] &&
     segments[0] !== "(auth)" &&
-    segments[0] !== "index" &&
     segments[0] !== "sso-callback",
   );
   const readyRef = useRef(protectedReady);

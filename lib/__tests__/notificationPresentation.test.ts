@@ -101,6 +101,64 @@ describe("presentNotification", () => {
   });
 });
 
+describe("presentNotification job reference", () => {
+  it("carries the job's reference in the form a person reads out", () => {
+    const view = presentNotification(
+      note({
+        title: "Payment confirmed",
+        body: "Open GRIDGO to review the latest update.",
+        orderId: "ord_3ff0128e105a",
+        orderState: "payment_authorized",
+      }),
+    );
+    expect(view.reference).toBe("3FF0-128E-105A");
+    expect(presentNotification(note({ title: "News", body: "A broadcast." })).reference).toBeNull();
+  });
+});
+
+describe("presentNotification for a closed job", () => {
+  it("says the job is complete rather than reading the state name aloud", () => {
+    const view = presentNotification(
+      note({
+        title: "Completed",
+        body: "This order is complete.",
+        type: "order_completed",
+        orderId: "ord_1",
+        orderTitle: "Grand opening tarpaulin",
+        orderState: "completed",
+        fulfillmentMode: "delivery",
+      }),
+    );
+
+    expect(view.stamp).toBe("JOB COMPLETE");
+    expect(view.title).toBe("Job complete");
+    expect(view.reference).toBe("ORD_1".replace("ORD_", ""));
+    expect(view.body).toMatch(/delivered/);
+    expect(view.body).toMatch(/nothing more is needed from you/);
+    expect(view.lane).toBe("update");
+    expect(view.stageIndex).toBe(3);
+  });
+
+  it("says collected, not delivered, for a job fetched from the counter", () => {
+    const view = presentNotification(
+      note({
+        title: "Completed",
+        body: "This order is complete.",
+        type: "order_completed",
+        orderId: "ord_1",
+        orderTitle: "Seminar handouts",
+        orderState: "payout_released",
+        fulfillmentMode: "pickup",
+      }),
+    );
+
+    expect(view.stamp).toBe("JOB COMPLETE");
+    expect(view.title).toBe("Job complete");
+    expect(view.body).toMatch(/collected at GRIDGO Office/);
+    expect(view.body).not.toMatch(/delivered/);
+  });
+});
+
 describe("partitionInbox", () => {
   it("lifts collect-ready and pay-first above ordinary updates", () => {
     const ready = note({

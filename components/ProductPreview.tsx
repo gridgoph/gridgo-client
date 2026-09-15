@@ -1,3 +1,4 @@
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { Image } from "expo-image";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
@@ -44,14 +45,15 @@ export function ProductPreview({
   const template = subcategoryCode
     ? templateForSubcategory(subcategoryCode)
     : templateForFamily(family);
-  const { uri, unavailable, markUnrenderable } = useArtworkImage(artworkFileId);
+  const { uri, unavailable, document, markUnrenderable, retry, openFile, opening, openError } = useArtworkImage(artworkFileId);
   const name = artworkName?.trim() || "No artwork yet";
 
   const artwork: ReactNode = uri ? (
     <Image
       source={{ uri }}
       style={{ width: "100%", height: "100%" }}
-      contentFit="cover"
+      contentFit="contain"
+      cachePolicy="none"
       transition={0}
       onError={markUnrenderable}
       accessibilityLabel={`Mockup of ${name}`}
@@ -79,10 +81,13 @@ export function ProductPreview({
         </View>
         {unavailable && artworkFileId ? (
           <Text className="text-center text-caption text-text-muted">
-            This file cannot be shown on the phone — PDFs are opened by Operations. The
-            specification below is what will be printed.
+            The image preview could not load. Retry the preview or open the original file.
           </Text>
         ) : null}
+        {document ? <Text className="text-center text-caption text-text-muted">This attachment is a document. Open the original to inspect it.</Text> : null}
+        {unavailable ? <SecondaryButton label="Retry preview" onPress={retry} /> : null}
+        {artworkFileId ? <SecondaryButton label={opening ? "Opening…" : "Open original file"} onPress={() => void openFile()} disabled={opening} /> : null}
+        {openError ? <Text accessibilityRole="alert" className="text-body text-error">{openError}</Text> : null}
       </View>
     </View>
   );

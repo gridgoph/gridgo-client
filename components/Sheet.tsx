@@ -1,5 +1,5 @@
 import { X } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Dimensions, Modal, PanResponder, Pressable, Text, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, {
@@ -64,34 +64,42 @@ export function Sheet({
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
 
-  // Kept mounted through the closing animation so the sheet is seen leaving.
-  const [mounted, setMounted] = useState(open);
+  // Kept mounted through the closing animation so the sheet is seen leaving:
+  // `closing` is raised in the render `open` turns false and cleared once the
+  // slide-out has finished.
+  const [closing, setClosing] = useState(false);
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
+    if (!open) setClosing(true);
+  }
+  const mounted = open || closing;
   const screenHeight = Dimensions.get("window").height;
   const translateY = useSharedValue(screenHeight);
 
   const finishClose = useCallback(() => {
-    setMounted(false);
+    setClosing(false);
     onClose();
   }, [onClose]);
 
   const close = useCallback(() => {
-    if (reducedMotion) {
-      finishClose();
-      return;
-    }
-    translateY.value = withTiming(screenHeight, { duration: 200 }, (done) => {
-      if (done) runOnJS(finishClose)();
-    });
+    // Reduced motion still goes through the animation callback, at zero
+    // duration, so unmounting is always a reaction to the slide finishing
+    // rather than a state write made straight from the effect.
+    translateY.set(
+      withTiming(screenHeight, { duration: reducedMotion ? 0 : 200 }, (done) => {
+        if (done) runOnJS(finishClose)();
+      }),
+    );
   }, [reducedMotion, translateY, screenHeight, finishClose]);
 
   useEffect(() => {
     if (open) {
-      setMounted(true);
-      translateY.value = reducedMotion ? 0 : withSpring(0, SHEET_SPRING);
+      translateY.set(reducedMotion ? 0 : withSpring(0, SHEET_SPRING));
       return;
     }
-    if (mounted) close();
-  }, [open, reducedMotion, translateY, close, mounted]);
+    if (closing) close();
+  }, [open, closing, reducedMotion, translateY, close]);
 
   // The drag lives on the header, so the list inside keeps its own scrolling.
   //
@@ -100,7 +108,9 @@ export function Sheet({
   // outside that tree, so a `GestureDetector` in here silently never fires —
   // the sheet would simply not answer the finger. PanResponder is core React
   // Native, needs no provider, and behaves the same on both platforms.
-  const dragStart = useRef(0);
+  // A shared value rather than a ref: the responder is built during render,
+  // and only the value read and written inside its handlers may live here.
+  const dragStart = useSharedValue(0);
   const pan = useMemo(
     () =>
       PanResponder.create({
@@ -110,34 +120,36 @@ export function Sheet({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dy) > 4,
         onPanResponderGrant: () => {
-          dragStart.current = translateY.value;
+          dragStart.set(translateY.get());
         },
         onPanResponderMove: (_event, gesture) => {
-          translateY.value = dragOffset(dragStart.current, gesture.dy);
+          translateY.set(dragOffset(dragStart.get(), gesture.dy));
         },
         onPanResponderRelease: (_event, gesture) => {
-          if (shouldDismissOnRelease(translateY.value, gesture.vy)) {
-            translateY.value = withTiming(screenHeight, { duration: 180 }, (done) => {
-              if (done) runOnJS(finishClose)();
-            });
+          if (shouldDismissOnRelease(translateY.get(), gesture.vy)) {
+            translateY.set(
+              withTiming(screenHeight, { duration: 180 }, (done) => {
+                if (done) runOnJS(finishClose)();
+              }),
+            );
             return;
           }
-          translateY.value = withSpring(0, SHEET_SPRING);
+          translateY.set(withSpring(0, SHEET_SPRING));
         },
         onPanResponderTerminate: () => {
-          translateY.value = withSpring(0, SHEET_SPRING);
+          translateY.set(withSpring(0, SHEET_SPRING));
         },
       }),
-    [translateY, screenHeight, finishClose],
+    [translateY, dragStart, screenHeight, finishClose],
   );
 
   const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
+    transform: [{ translateY: translateY.get() }],
   }));
 
   const scrimStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
-      translateY.value,
+      translateY.get(),
       [0, DISMISS_DISTANCE * 2],
       [1, 0],
       Extrapolation.CLAMP,

@@ -107,7 +107,12 @@ export default function MatchScreen() {
   // Deliberately not `useFocusEffect`: coming back from a listing sheet must
   // not re-run the match and quietly move the client to a different shop.
   useEffect(() => {
-    void load();
+    // `loading` starts true, so the flag `load` raises on mount cannot
+    // cascade a render; the async wrapper keeps the effect body itself free
+    // of synchronous state writes.
+    void (async () => {
+      await load();
+    })();
   }, [load]);
 
   // The run the client is on, so the step trail on every screen after this one

@@ -37,8 +37,8 @@ const STEP_COPY: Record<string, { label: string; detail: string }> = {
     detail: "Your supplier is running the job on the press.",
   },
   packaging_qc: {
-    label: "Packaging and quality check",
-    detail: "The finished job is checked and packed for transport.",
+    label: "Packaging",
+    detail: "The job is packed for pickup. The supplier and rider run the quality checks together before transport.",
   },
   delivered: {
     label: "Delivered",

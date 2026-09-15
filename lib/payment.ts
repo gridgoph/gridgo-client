@@ -44,17 +44,7 @@ export function isInstallmentSubmitted(installment: PaymentInstallment | undefin
   return installment?.status === "pending_confirmation";
 }
 
-/**
- * States in which the remaining balance is asked for.
- *
- * Not the moment the downpayment clears — that would collect the whole price
- * up front and make the split a fiction. It is asked for once the job is on
- * the press, which is early enough that it is settled by the time the job is
- * packed. Asking only at the end sent riders to doorsteps to find nobody had
- * paid, with nothing either of them could do about it: no delivery is offered
- * to a rider until the balance clears, and no collected order leaves the
- * counter until it does.
- */
+/** Ask during production and transport; final handover waits on Ops confirmation. */
 export const BALANCE_DUE_STATES = [
   "production",
   "supplier_self_qc",
@@ -65,23 +55,33 @@ export const BALANCE_DUE_STATES = [
   "awaiting_collection",
 ] as const;
 
+/** Canonical server keys win; older deployments may still return the aliases. */
+export function paymentInstallment(order: Pick<Order, "payments">, code: InstallmentCode): PaymentInstallment | undefined {
+  const payments = order.payments;
+  return code === "downpayment"
+    ? payments?.initial ?? payments?.downpayment
+    : payments?.final_online ?? payments?.balance;
+}
+
 export function downpaymentDue(order: Order): boolean {
-  if (order.state !== "awaiting_downpayment") return false;
-  const installment = order.payments?.downpayment;
-  return Boolean(installment) && !isInstallmentSubmitted(installment) && !isInstallmentConfirmed(installment);
+  if (!["awaiting_downpayment", "awaiting_initial_payment"].includes(order.state)) return false;
+  const installment = paymentInstallment(order, "downpayment");
+  return Boolean(installment && installment.amountMinor != null && installment.amountMinor > 0 && ["not_submitted", "rejected"].includes(installment.status));
 }
 
 export function balanceDue(order: Order): boolean {
   if (!(BALANCE_DUE_STATES as readonly string[]).includes(order.state)) return false;
-  if (!isInstallmentConfirmed(order.payments?.downpayment)) return false;
-  const installment = order.payments?.balance;
-  return Boolean(installment) && !isInstallmentSubmitted(installment) && !isInstallmentConfirmed(installment);
+  if (order.payments?.initial
+    ? order.payments.initial.status !== "confirmed"
+    : !isInstallmentConfirmed(paymentInstallment(order, "downpayment"))) return false;
+  const installment = paymentInstallment(order, "balance");
+  return Boolean(installment && installment.amountMinor != null && installment.amountMinor > 0 && ["not_submitted", "rejected"].includes(installment.status));
 }
 
 /** Which half — if either — the client is currently waiting on a check for. */
 export function installmentUnderReview(order: Order): InstallmentCode | null {
-  if (isInstallmentSubmitted(order.payments?.downpayment)) return "downpayment";
-  if (isInstallmentSubmitted(order.payments?.balance)) return "balance";
+  if (isInstallmentSubmitted(paymentInstallment(order, "downpayment"))) return "downpayment";
+  if (isInstallmentSubmitted(paymentInstallment(order, "balance"))) return "balance";
   return null;
 }
 
@@ -104,14 +104,14 @@ export const MANUAL_CONFIRMATION_NOTICE =
 
 export function payInstruction(code: InstallmentCode): string {
   return code === "downpayment"
-    ? "Scan the GRIDGO QR code your Operations contact sent you and pay the downpayment, then enter the reference number printed on your receipt."
-    : "Scan the same GRIDGO QR code and pay the remaining balance, then enter the reference number printed on your receipt.";
+    ? "Open the GRIDGO QR below, pay the amount shown, then upload the receipt and check its reference number."
+    : "Use the same GRIDGO QR to pay the remaining balance. Upload your receipt, then check or correct the reference read from it.";
 }
 
 export function afterPayCopy(code: InstallmentCode): string {
   return code === "downpayment"
     ? "Your supplier starts production once Operations confirms this."
-    : "Your order goes out for delivery once Operations confirms this.";
+    : "Final handover is allowed once Operations confirms this.";
 }
 
 export type ReferenceCheck = { ok: boolean; reason: string | null };

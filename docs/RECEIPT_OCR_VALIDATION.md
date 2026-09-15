@@ -1,20 +1,21 @@
 # Receipt OCR in Expo Go
 
 The native path is `usePaymentProof` → `recognizeReceiptFromUri` →
-`ReceiptOcrHost` / `RECEIPT_OCR_HTML` → `referenceFromOcr` →
+the single root-layout `ReceiptOcrHost` / `RECEIPT_OCR_HTML` → `referenceFromOcr` →
 `useCheckoutPayment.applyOcrReference`. Parser fixtures alone do not exercise
 the WebView. User-facing checkout guidance lives in [README.md](../README.md#checkout-and-money).
 
 ## Draft ownership
 
-`store/checkoutPayment.ts` holds one in-memory payment draft bound to the current
-cart id: the local image URI, upload result, OCR state and reference. Navigating
-away preserves it; changing carts, changing accounts or completing checkout
-clears it. It does not persist across process restarts. Replacing a receipt clears
+`store/checkoutPayment.ts` creates separate in-memory checkout and order-payment
+drafts. Checkout binds to its cart id; an order payment binds to order id and
+installment. Each draft holds: the local image URI, upload result, OCR state and reference. Navigating
+away preserves it; changing its owner, changing accounts or completing its submission clears it.
+Opening an order payment does not replace a checkout receipt. It does not persist across process restarts. Replacing a receipt clears
 the previous OCR autofill while preserving a manually edited reference; explicitly
 removing the receipt also clears the reference.
 
-Upload and OCR completions must still belong to the same account, cart and receipt
+Upload and OCR completions must still belong to the same account, draft owner and receipt
 generation. The recognizer checks ownership after image conversion and before
 replacing its queue. During labeled lookahead, neighboring account fields end
 the search instead of supplying a number; candidate and confidence filters live
@@ -69,3 +70,15 @@ Run named Jest files with `--runInBand --forceExit`:
 Checkout's pending-OCR test checks that the footer is outside the scroll,
 Place order is disabled while reading, and missing-reference copy is absent.
 The invoice and pinned bar must show the same total. Also run `npx tsc --noEmit`.
+
+## Subsequent order payments
+
+The order's payment panel uses the same picker, streamed `payment_proof` upload,
+OCR parser and QR sheet as checkout. The client checks or corrects the reference,
+then explicitly confirms the receipt and server-provided amount before sending.
+The submission includes `proofFileId` and remains pending until Operations
+confirms it. Failed sends retain the receipt/reference; rejection reasons are
+shown above the form. No OCR result confirms a payment.
+
+A single `ReceiptOcrHost` lives in `app/_layout.tsx` so stacked checkout and order
+routes cannot create two WebView workers for the same recognition request.

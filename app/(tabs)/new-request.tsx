@@ -464,7 +464,10 @@ function DetailsStep({
   onBrowseCatalog: () => void;
 }) {
   const colors = useThemeColors();
-  const now = Date.now();
+  // Read once when the step mounts. The lead-time wording is in whole days,
+  // so it does not need a live clock, and reading one during render would
+  // make this render impure.
+  const [now] = useState(() => Date.now());
   const leadTime = describeLeadTime(draft.deadline, now);
 
   return (

@@ -87,8 +87,8 @@ function withPayments(
   return {
     ...base,
     payments: {
-      downpayment: { ...base.payments!.downpayment, status: downpayment },
-      balance: { ...base.payments!.balance, status: balance },
+      downpayment: { ...base.payments!.downpayment!, status: downpayment },
+      balance: { ...base.payments!.balance!, status: balance },
     },
   };
 }

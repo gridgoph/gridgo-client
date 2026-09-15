@@ -176,11 +176,16 @@ export function summarizeIssueWindow({
     };
   }
 
+  /*
+    Two endings, and the good one leads. Most jobs arrive fine, and a card that
+    opened with "tell Operations" read as though something was expected to be
+    wrong. Saying it is fine closes the job now; saying nothing lets the clock
+    close it; saying something is wrong holds the payout.
+  */
   return {
     canReport: true,
-    headline: `Tell Operations within ${issueWindowLengthLabel(windowHours)} of delivery.`,
-    detail:
-      "Reporting holds the supplier payout while Operations reviews it, so send it as soon as you see a problem. The window closes on its own once it passes.",
+    headline: "Your order is with you. Is everything okay?",
+    detail: `If it is, say so and this job closes now. If something is wrong, tell Operations within ${issueWindowLengthLabel(windowHours)} of delivery — reporting holds the supplier payout while they review it. Say nothing and the window closes on its own once it passes.`,
     elapsedLabel,
     remainingLabel,
   };

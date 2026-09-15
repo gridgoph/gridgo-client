@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Image, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -19,6 +19,8 @@ type Props = {
   onClose: () => void;
   /** The 75% this scan is for. Null while GRIDGO cannot yet total the basket. */
   downpaymentMinor: number | null;
+  /** Defaults to checkout wording; final payments reuse the same receiving QR. */
+  paymentKind?: "checkout" | "initial" | "final";
   /**
    * Public plate from `GET /settings` `paymentQr.imageUrl`. Missing or empty
    * uses the bundled GCash screenshot — never a blank plate.
@@ -129,7 +131,7 @@ export function paymentQrImageSource(imageUrl?: string | null) {
  * screenshot and the reference number are — those stay on the sheet behind
  * this one on purpose, because they are the part Operations matches by hand.
  */
-export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl }: Props) {
+export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl, paymentKind = "checkout" }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [saving, setSaving] = useState(false);
@@ -142,11 +144,15 @@ export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl }: Props)
     insets.bottom,
   );
 
-  useEffect(() => {
-    if (open) return;
-    setSaving(false);
-    setSaveNote(null);
-  }, [open]);
+  // Closing forgets the last save attempt, in the same render it closes.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
+    if (!open) {
+      setSaving(false);
+      setSaveNote(null);
+    }
+  }
 
   const onSave = async () => {
     if (saving) return;
@@ -161,13 +167,13 @@ export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl }: Props)
     <Sheet
       open={open}
       onClose={onClose}
-      title="Scan to send 75%"
+      title={paymentKind === "final" ? "Scan to pay the final balance" : paymentKind === "initial" ? "Scan to pay the initial amount" : "Scan to send 75%"}
       subtitle="GRIDGO takes QR Ph only."
       maxHeightRatio={QR_PAY_SHEET_MAX_HEIGHT_RATIO}
     >
       <View className="gap-5 px-4 pt-4">
         <View className="gg-panel-high gap-1">
-          <Text className="text-caption text-text-muted">Send now (75%)</Text>
+          <Text className="text-caption text-text-muted">{paymentKind === "final" ? "Final payment due" : paymentKind === "initial" ? "Initial payment due" : "Send now (75%)"}</Text>
           <Text className="text-display text-text-primary">
             {downpaymentMinor == null ? "Not yet" : formatPhp(downpaymentMinor)}
           </Text>
@@ -209,7 +215,7 @@ export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl }: Props)
           <Text className="text-body text-text-secondary">{PAYMENT_CHOICE_BLURB}</Text>
           <Text className="text-caption text-text-muted">
             Close this when you have sent it. The screenshot and the reference number go on
-            the checkout sheet behind — GRIDGO checks them against its wallet by hand.
+            the payment form behind — GRIDGO checks them against its wallet by hand.
           </Text>
         </View>
       </View>

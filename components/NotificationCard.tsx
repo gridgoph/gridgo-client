@@ -1,8 +1,9 @@
 import { Image } from "expo-image";
 import { Check, ChevronRight } from "lucide-react-native";
-import { useMemo, useRef } from "react";
+import { useMemo, useState } from "react";
 import { Animated, PanResponder, Pressable, Text, View } from "react-native";
 
+import { OrderReference } from "@/components/OrderReference";
 import { OrderStageRail } from "@/components/OrderStageRail";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -42,7 +43,9 @@ type Props = {
 export function NotificationCard({ notification, read, onOpen, onMarkRead }: Props) {
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
-  const translateX = useRef(new Animated.Value(0)).current;
+  // State rather than a ref: the value object is read during render for the
+  // transform, and a ref must not be.
+  const [translateX] = useState(() => new Animated.Value(0));
   const presented = presentNotification(notification);
   const picture = notificationImageUrl(notification.imageUrl);
   const spine =
@@ -117,7 +120,7 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
         <Pressable
           onPress={onOpen ?? undefined}
           accessibilityRole={onOpen ? "button" : undefined}
-          accessibilityLabel={`${read ? "" : "Unread. "}${presented.stamp ? `${presented.stamp}. ` : ""}${presented.title}. ${presented.body}`}
+          accessibilityLabel={`${read ? "" : "Unread. "}${presented.stamp ? `${presented.stamp}. ` : ""}${presented.title}. ${presented.body}${presented.paymentLine ? `. ${presented.paymentLine}` : ""}`}
           accessibilityHint={onOpen ? presented.hint ?? "Opens this job" : undefined}
           accessibilityActions={read ? undefined : [{ name: "markRead", label: "Mark read" }]}
           onAccessibilityAction={(event) => {
@@ -175,6 +178,7 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
                         </Text>
                       </View>
                       <Text className="text-body text-text-secondary">{presented.body}</Text>
+                      {presented.paymentLine ? <Text className="text-body font-medium text-text-primary">{presented.paymentLine}</Text> : null}
                       <Text className="text-caption text-text-muted">
                         {formatTimelineStamp(notification.at)}
                       </Text>
@@ -193,12 +197,27 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
                     />
                   ) : null}
 
-                  {presented.jobLine || presented.railKind ? (
+                  {presented.jobLine || presented.reference || presented.railKind ? (
                     <View className="gap-3 border-t border-outline-subtle pt-4">
-                      {presented.jobLine ? (
-                        <Text className="text-caption text-text-muted" numberOfLines={1}>
-                          {presented.jobLine}
-                        </Text>
+                      {/*
+                        Which job this is about: its reference as a tag, then
+                        its name. The tag is what a client quotes back to
+                        Operations, so it is the same shape as on the order.
+                      */}
+                      {presented.jobLine || presented.reference ? (
+                        <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+                          {presented.reference ? (
+                            <OrderReference id={notification.orderId} />
+                          ) : null}
+                          {presented.jobLine ? (
+                            <Text
+                              className="shrink text-caption text-text-muted"
+                              numberOfLines={1}
+                            >
+                              {presented.jobLine}
+                            </Text>
+                          ) : null}
+                        </View>
                       ) : null}
                       {presented.railKind ? (
                         <OrderStageRail

@@ -35,7 +35,10 @@ export function PinPicker({ point, onPick, caption }: PinPickerProps) {
   const webRef = useRef<WebView>(null);
   const readyRef = useRef(false);
   const lastTap = useRef<GeoPoint | null>(null);
-  const [dropped, setDropped] = useState(Boolean(point));
+  // A marker exists once a point does, or once the client has tapped one in
+  // and the parent has not yet echoed it back.
+  const [tapped, setTapped] = useState(false);
+  const dropped = tapped || Boolean(point);
 
   const model: MapModel = useMemo(
     () => ({
@@ -65,7 +68,6 @@ export function PinPicker({ point, onPick, caption }: PinPickerProps) {
 
   useEffect(() => {
     if (!point) return;
-    setDropped(true);
     if (!readyRef.current) return;
     // A tap already placed the marker; injecting again would pan the map
     // out from under the finger.
@@ -84,7 +86,7 @@ export function PinPicker({ point, onPick, caption }: PinPickerProps) {
       if (typeof message.lat !== "number" || typeof message.lng !== "number") return;
       const next = { lat: message.lat, lng: message.lng };
       lastTap.current = next;
-      setDropped(true);
+      setTapped(true);
       onPick(next);
     } catch {
       // A message this component does not understand is not an error worth
