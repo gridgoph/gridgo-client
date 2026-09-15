@@ -1,3 +1,7 @@
+import { Platform } from "react-native";
+
+import { PushedStackHeader } from "@/components/PushedStackHeader";
+
 /**
  * Header options for screens pushed above the tab shell.
  *
@@ -29,10 +33,29 @@
  * it, because an in-content back control needs a 44pt row of its own; so the
  * band stays and earns its keep by naming where the client is.
  *
+ * **3. Android edge-to-edge applies the status inset once.**
+ * Expo 57 draws under the system bars (`android.edgeToEdgeEnabled`). The
+ * native-stack header then pads for the clock *and* Material's AppBarLayout
+ * pads again, so the title sits in the lower 56dp under an empty band. iOS
+ * does not. `statusBarTranslucent: true` is the native-stack flag that the
+ * status bar is already drawn over the header; `PushedStackHeader` is the
+ * Android header that uses one `headerStatusBarHeight` so the fill sits
+ * behind the icons and the title row sits immediately under them.
+ *
  * The title is a required argument rather than a spread-in default so the
  * omission cannot happen again: `pushedScreenOptions("")` does not compile,
  * and an all-whitespace title throws at startup.
  */
+
+/**
+ * Native-stack options that stop Android from applying the status inset twice
+ * on a pushed header. Safe on iOS (ignored). Shared with the root `Stack`
+ * `screenOptions` so a route that skips `pushedScreenOptions` cannot bring
+ * the empty band back.
+ */
+export const androidEdgeToEdgeHeaderOptions = {
+  statusBarTranslucent: true,
+} as const;
 
 /** A string literal type that rejects the empty string at compile time. */
 type NonEmptyTitle<T extends string> = T extends "" ? never : T;
@@ -48,5 +71,7 @@ export function pushedScreenOptions<T extends string>(title: NonEmptyTitle<T>) {
   return {
     title,
     headerBackButtonDisplayMode: "minimal" as const,
+    ...androidEdgeToEdgeHeaderOptions,
+    header: Platform.OS === "android" ? PushedStackHeader : undefined,
   };
 }

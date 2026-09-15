@@ -84,6 +84,14 @@ describe("pushed route layout contract", () => {
     }
   });
 
+  it("spreads the edge-to-edge header flag on the root stack", () => {
+    // `pushedScreenOptions` carries the flag per titled route; the root
+    // `screenOptions` must too, or a hidden-header screen still teaches the
+    // stack to pad twice when the next push shows a header.
+    expect(layout).toContain("androidEdgeToEdgeHeaderOptions");
+    expect(layout).toContain("...androidEdgeToEdgeHeaderOptions");
+  });
+
   it("does not inset a screen that already sits under a header", () => {
     const doubled = screens
       .filter((s) => !s.headerHidden)
