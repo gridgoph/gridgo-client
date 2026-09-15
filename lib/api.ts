@@ -60,9 +60,12 @@ export type PaymentInstallment = {
   reference: string | null;
   submittedAt: string | null;
   confirmedAt: string | null;
+  rejectionReason?: string | null;
+  rejectedAt?: string | null;
+  proofFileId?: string | null;
 };
 
-export type OrderPayments = Record<InstallmentCode, PaymentInstallment>;
+export type OrderPayments = Partial<Record<InstallmentCode | "initial" | "final_online", PaymentInstallment>>;
 
 /**
  * Supplier fulfilment milestone as the client is allowed to see it.
@@ -97,6 +100,19 @@ export type PriceRange = {
  * GRIDGO's commission are withheld by the server's role projection — a field
  * for either of them here would be a misreading of the contract.
  */
+export type ProductionItem = {
+  id: string;
+  itemName: string;
+  quantity: number;
+  pricingUnit: string | null;
+  packageQty: number | null;
+  measurement: { pages?: number; widthMilli?: number; heightMilli?: number; lengthMilli?: number; unit?: string | null } | null;
+  structuredSpec: Record<string, unknown>;
+  options: { groupName: string; label: string }[];
+  artworkFileId: string | null;
+  mockupFileId: string | null;
+};
+
 export type Order = {
   id: string;
   /** Whether this order has already been rated, so a client is asked once. */
@@ -141,6 +157,8 @@ export type Order = {
   artworkName: string | null;
   /** Stored artwork ids, newest last. Empty is valid. */
   artworkFileIds?: string[];
+  mockupFileIds?: string[];
+  productionItems?: ProductionItem[];
   /**
    * Whether the client collects this order or has it delivered.
    *
@@ -276,6 +294,9 @@ export type Notification = {
   orderTitle?: string;
   /** Job state from the list payload, enough for the stage rail. */
   orderState?: string;
+  /** Historical lifecycle stage; current orderState remains a live snapshot. */
+  eventState?: string;
+  paymentAction?: { installment: "final_online"; status: "due" | "pending_confirmation"; amountMinor: number };
   /** Collect vs door — from the live job, so a pickup is never drawn as a delivery. */
   fulfillmentMode?: FulfilmentMode | null;
   /**
@@ -1233,12 +1254,13 @@ export async function submitPayment(
   orderId: string,
   installment: InstallmentCode,
   reference: string,
+  proofFileId?: string,
 ): Promise<Order> {
   const result = await request<{ order: Order }>(
     `/orders/${orderId}/payments/${installment}/submit`,
     {
       method: "POST",
-      body: JSON.stringify({ method: "qr_manual", reference }),
+      body: JSON.stringify({ method: "qr_manual", reference, ...(proofFileId ? { proofFileId } : {}) }),
     },
   );
   return result.order;
@@ -1942,6 +1964,20 @@ export async function reportIssue(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+/**
+ * The client saying the order arrived with no problems.
+ *
+ * Closes the issue window now rather than on the clock: the platform marks
+ * the job `completed` in the client's name and releases what it was holding
+ * for the supplier. Refused with `issue_open` while a report is open.
+ */
+export async function confirmDelivery(orderId: string): Promise<Order> {
+  const result = await request<{ order: Order }>(`/orders/${orderId}/confirm`, {
+    method: "POST",
+  });
+  return result.order;
 }
 
 export async function listIssues(orderId?: string): Promise<Issue[]> {

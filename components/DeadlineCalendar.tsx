@@ -103,6 +103,23 @@ function numeralColour(choice: DayChoice, light: boolean): string {
   return palette.onCannot;
 }
 
+const MONTH_CACHE = new WeakMap<(month: Date) => CalendarDay[], Map<string, CalendarDay[]>>();
+
+/** One month's cells, built at most once per availability. */
+function monthDays(daysFor: (month: Date) => CalendarDay[], which: Date): CalendarDay[] {
+  let cache = MONTH_CACHE.get(daysFor);
+  if (!cache) {
+    cache = new Map();
+    MONTH_CACHE.set(daysFor, cache);
+  }
+  const key = `${which.getFullYear()}-${which.getMonth()}`;
+  const held = cache.get(key);
+  if (held) return held;
+  const built = daysFor(which);
+  cache.set(key, built);
+  return built;
+}
+
 export function DeadlineCalendar({
   daysFor,
   month,
@@ -140,24 +157,12 @@ export function DeadlineCalendar({
     stutter at the end of the gesture, not the animation. With it, the month
     being scrolled towards is the very array that was already on screen beside
     it, and two of the three pages skip re-rendering entirely.
+
+    The cache lives outside the component, keyed by the `daysFor` function
+    itself: a new availability means a new function from the parent and so a
+    fresh cache, and the old one is collected with the old function.
   */
-  const cache = useRef(new Map<string, CalendarDay[]>());
-  const cacheKey = useRef(daysFor);
-  if (cacheKey.current !== daysFor) {
-    cacheKey.current = daysFor;
-    cache.current = new Map();
-  }
-  const cachedDays = useCallback(
-    (which: Date) => {
-      const key = `${which.getFullYear()}-${which.getMonth()}`;
-      const held = cache.current.get(key);
-      if (held) return held;
-      const built = daysFor(which);
-      cache.current.set(key, built);
-      return built;
-    },
-    [daysFor],
-  );
+  const cachedDays = useCallback((which: Date) => monthDays(daysFor, which), [daysFor]);
 
   const pages = useMemo(
     () =>
@@ -211,12 +216,12 @@ export function DeadlineCalendar({
     previousKey.current = monthKey;
     // Back to centre before this month is painted. The strip has already
     // travelled; the new middle page is the one the client is looking at.
-    shift.value = 0;
-    settling.value = 0;
+    shift.set(0);
+    settling.set(0);
   }, [monthKey, shift, settling]);
 
   const slide = useAnimatedStyle(() => ({
-    transform: [{ translateX: -page + shift.value }],
+    transform: [{ translateX: -page + shift.get() }],
   }));
 
   const commit = useCallback((direction: number) => onStepMonth(direction), [onStepMonth]);
@@ -242,16 +247,16 @@ export function DeadlineCalendar({
         .failOffsetY([-18, 18])
         .onUpdate((event) => {
           "worklet";
-          if (settling.value) return;
+          if (settling.get()) return;
           const blocked = event.translationX < 0 ? !canStepForward : !canStepBack;
           // A month that is not there still moves, but heavily, so the end of
           // the window is something the hand meets rather than something that
           // ignores it.
-          shift.value = blocked ? event.translationX * 0.16 : event.translationX;
+          shift.set(blocked ? event.translationX * 0.16 : event.translationX);
         })
         .onEnd((event) => {
           "worklet";
-          if (settling.value) return;
+          if (settling.get()) return;
           // Distance or a flick. `velocityX` is points per second here, so a
           // deliberate flick clears 400 well before it has travelled far.
           const flung = Math.abs(event.velocityX) > 400;
@@ -260,7 +265,7 @@ export function DeadlineCalendar({
           const allowed = forward ? canStepForward : canStepBack;
 
           if (!allowed || !(flung || far)) {
-            shift.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) });
+            shift.set(withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) }));
             return;
           }
           // Finish the throw near the speed it was thrown, floored so a slow
@@ -270,13 +275,15 @@ export function DeadlineCalendar({
             260,
             Math.max(120, (remaining / Math.max(600, Math.abs(event.velocityX))) * 1000),
           );
-          settling.value = 1;
-          shift.value = withTiming(
-            forward ? -page : page,
-            { duration, easing: Easing.out(Easing.quad) },
-            (finished) => {
-              if (finished) runOnJS(commit)(forward ? 1 : -1);
-            },
+          settling.set(1);
+          shift.set(
+            withTiming(
+              forward ? -page : page,
+              { duration, easing: Easing.out(Easing.quad) },
+              (finished) => {
+                if (finished) runOnJS(commit)(forward ? 1 : -1);
+              },
+            ),
           );
         }),
     [reducedMotion, canStepBack, canStepForward, page, shift, settling, commit],
@@ -285,17 +292,19 @@ export function DeadlineCalendar({
   /** The arrows travel the same way, so both routes feel like one control. */
   const stepWithSlide = useCallback(
     (direction: number) => {
-      if (reducedMotion || settling.value) {
+      if (reducedMotion || settling.get()) {
         commit(direction);
         return;
       }
-      settling.value = 1;
-      shift.value = withTiming(
-        direction > 0 ? -page : page,
-        { duration: 220, easing: Easing.out(Easing.cubic) },
-        (finished) => {
-          if (finished) runOnJS(commit)(direction);
-        },
+      settling.set(1);
+      shift.set(
+        withTiming(
+          direction > 0 ? -page : page,
+          { duration: 220, easing: Easing.out(Easing.cubic) },
+          (finished) => {
+            if (finished) runOnJS(commit)(direction);
+          },
+        ),
       );
     },
     [reducedMotion, page, shift, settling, commit],

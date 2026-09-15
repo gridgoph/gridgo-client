@@ -25,18 +25,25 @@ import {
 
 type Props = {
   order: Order;
+  /** The order after the client closes it as fine. */
+  onUpdated: (order: Order) => void;
 };
 
 /**
- * The material-issue window.
+ * The material-issue window, with both of its endings.
  *
  * Its length is one platform-wide setting, so the card reads it from
  * `GET /settings` rather than stating a number of its own. The window really
  * expires under v2 — the platform stamps the expiry on the order and closes it
  * when it passes — so the time left is a fact worth showing, next to how long
  * ago the job arrived.
+ *
+ * The card's one yellow control is "Everything is fine": the client confirms
+ * the order arrived as agreed, the job closes now, and the screen becomes the
+ * finished job. Reporting a problem is the quieter second choice, and takes
+ * the yellow only once its form is open — the screen never carries two.
  */
-export function IssueWindowCard({ order }: Props) {
+export function IssueWindowCard({ order, onUpdated }: Props) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [windowHours, setWindowHours] = useState(DEFAULT_ISSUE_WINDOW_HOURS);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -44,6 +51,7 @@ export function IssueWindowCard({ order }: Props) {
   const [kind, setKind] = useState<IssueKind>("material_quality");
   const [description, setDescription] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [closingAsFine, setClosingAsFine] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +72,11 @@ export function IssueWindowCard({ order }: Props) {
   }, [order.id]);
 
   useEffect(() => {
-    void load();
+    // Every write in `load` lands after an await; the async wrapper keeps the
+    // effect body itself free of synchronous state writes.
+    void (async () => {
+      await load();
+    })();
   }, [load]);
 
   const openIssue = issues.find((issue) => issue.status === "open") ?? null;
@@ -76,6 +88,26 @@ export function IssueWindowCard({ order }: Props) {
     hasOpenIssue: Boolean(openIssue),
   });
   const check = checkIssueDescription(description);
+
+  const closeAsFine = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await api.confirmDelivery(order.id);
+      setClosingAsFine(false);
+      onUpdated(updated);
+    } catch (e) {
+      setClosingAsFine(false);
+      setError(
+        userFacingError(
+          e,
+          "GRIDGO could not close this job just now. Check your connection and try again — the window stays open meanwhile.",
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -136,10 +168,24 @@ export function IssueWindowCard({ order }: Props) {
         />
       ) : null}
 
-      {error ? <ErrorState label="Not sent" body={error} /> : null}
+      {error ? <ErrorState label="Not done" body={error} /> : null}
 
       {status.canReport && !open ? (
-        <PrimaryButton label="Report a problem" onPress={() => setOpen(true)} />
+        <View className="gap-3">
+          <PrimaryButton
+            label="Everything is fine"
+            disabled={busy}
+            onPress={() => setClosingAsFine(true)}
+          />
+          <SecondaryButton
+            label="Report a problem"
+            disabled={busy}
+            onPress={() => {
+              setError(null);
+              setOpen(true);
+            }}
+          />
+        </View>
       ) : null}
 
       {status.canReport && open ? (
@@ -189,6 +235,17 @@ export function IssueWindowCard({ order }: Props) {
           />
         </View>
       ) : null}
+
+      <ConfirmDialog
+        visible={closingAsFine}
+        question={`Close ${order.title} as fine?`}
+        body="This confirms the order arrived as agreed. The check window closes now, your supplier is paid for the job, and a problem can no longer be reported on it from the app."
+        confirmLabel="Yes, everything is fine"
+        cancelLabel="Not yet"
+        busy={busy}
+        onConfirm={() => void closeAsFine()}
+        onCancel={() => setClosingAsFine(false)}
+      />
 
       <ConfirmDialog
         visible={confirming}

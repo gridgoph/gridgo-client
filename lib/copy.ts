@@ -130,6 +130,10 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "The downpayment is not open on this job yet. Pull it down to see what it is waiting on.";
       case "issue_already_open":
         return "You already have a report open on this job. Operations is reviewing it — add anything else to that one rather than opening a second.";
+      case "issue_window_not_open":
+        return "This job is not waiting on your confirmation right now. Pull it down to see where it got to.";
+      case "issue_open":
+        return "You have a problem reported on this job, so it cannot be closed as fine. Operations closes it once that report is settled.";
       case "issue_window_closed":
         return "This job has been signed off, so the issue window is closed. Message Operations if something is still wrong with it.";
       case "invalid_issue":

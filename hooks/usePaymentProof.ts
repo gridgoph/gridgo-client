@@ -5,7 +5,7 @@ import { artworkErrorMessage, normalizeFileName } from "@/lib/artworkUpload";
 import { PROOF_ACCEPTED, PROOF_MAX_MIB, PROOF_MIME_TYPES } from "@/lib/checkout";
 import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
 import { liveGeneration } from "@/lib/live";
-import { referenceFromOcr } from "@/lib/receiptOcr";
+import { OCR_IDLE, referenceFromOcr } from "@/lib/receiptOcr";
 import { recognizeReceiptFromUri } from "@/lib/receiptOcrRecognize";
 import {
   EMPTY_PROOF,
@@ -27,12 +27,13 @@ export type { PaymentProofState };
  * State lives in `useCheckoutPayment` so leaving checkout to set an address
  * does not throw the screenshot and the reference away.
  */
-export function usePaymentProof(cartId: string | null) {
-  const proof = useCheckoutPayment((state) => state.proof);
-  const ocr = useCheckoutPayment((state) => state.ocr);
-  const bind = useCheckoutPayment((state) => state.bind);
-  const setProof = useCheckoutPayment((state) => state.setProof);
-  const setOcr = useCheckoutPayment((state) => state.setOcr);
+export function usePaymentProof(cartId: string | null, paymentStore = useCheckoutPayment) {
+  const bound = paymentStore((state) => state.cartId === cartId);
+  const proof = paymentStore((state) => state.proof);
+  const ocr = paymentStore((state) => state.ocr);
+  const bind = paymentStore((state) => state.bind);
+  const setProof = paymentStore((state) => state.setProof);
+  const setOcr = paymentStore((state) => state.setOcr);
   const handleRef = useRef<api.UploadHandle | null>(null);
 
   useEffect(() => {
@@ -52,26 +53,26 @@ export function usePaymentProof(cartId: string | null) {
               ? { status: "filled", reference }
               : { status: "unreadable", reference: null },
           );
-          if (reference) useCheckoutPayment.getState().applyOcrReference(reference);
+          if (reference) paymentStore.getState().applyOcrReference(reference);
         } catch {
           if (!isCurrent()) return;
           setOcr({ status: "unreadable", reference: null });
         }
       })();
     },
-    [setOcr],
+    [paymentStore, setOcr],
   );
 
   const pick = useCallback(async () => {
     const owner = liveGeneration();
-    let generation = useCheckoutPayment.getState().generation;
+    let generation = paymentStore.getState().generation;
     const isCurrent = () => {
-      const state = useCheckoutPayment.getState();
+      const state = paymentStore.getState();
       return state.cartId === cartId && state.generation === generation && liveGeneration() === owner;
     };
     if (!cartId || !isCurrent()) return;
     const beginProof = () => {
-      generation = useCheckoutPayment.getState().beginProof();
+      generation = paymentStore.getState().beginProof();
       handleRef.current?.cancel();
       handleRef.current = null;
     };
@@ -167,16 +168,16 @@ export function usePaymentProof(cartId: string | null) {
     } finally {
       if (handleRef.current === handle) handleRef.current = null;
     }
-  }, [cartId, readReference, setProof]);
+  }, [cartId, paymentStore, readReference, setProof]);
 
   const reset = useCallback(() => {
-    const state = useCheckoutPayment.getState();
+    const state = paymentStore.getState();
     if (state.cartId !== cartId) return;
     state.beginProof();
     state.setReference("");
     handleRef.current?.cancel();
     handleRef.current = null;
-  }, [cartId]);
+  }, [cartId, paymentStore]);
 
-  return { state: proof, ocr, pick, reset };
+  return { state: bound ? proof : EMPTY_PROOF, ocr: bound ? ocr : OCR_IDLE, pick, reset };
 }

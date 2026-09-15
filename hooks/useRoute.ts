@@ -18,33 +18,35 @@ type Args = {
  * Mirrors `hooks/useRoute.ts` in gridgo-rider.
  */
 export function useRoute({ from, to, enabled = true }: Args) {
-  const [route, setRoute] = useState<RouteResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  // The answer is remembered against the leg it answers, so a new leg shows
+  // no stale route and reads as loading until its own answer lands.
+  const key =
+    enabled && isGeoPoint(from) && isGeoPoint(to)
+      ? `${from.lat},${from.lng}->${to.lat},${to.lng}`
+      : null;
+  const [answer, setAnswer] = useState<{ key: string; route: RouteResult } | null>(null);
   const seq = useRef(0);
 
   useEffect(() => {
-    if (!enabled || !isGeoPoint(from) || !isGeoPoint(to)) {
-      setRoute(null);
-      setLoading(false);
-      return;
-    }
+    if (!key || !isGeoPoint(from) || !isGeoPoint(to)) return;
 
     const id = ++seq.current;
     const controller = new AbortController();
-    setLoading(true);
 
     void (async () => {
       const result = await fetchRoute(from, to, { signal: controller.signal });
       // A newer request has already started; drop this answer.
       if (id !== seq.current) return;
-      setRoute(result);
-      setLoading(false);
+      setAnswer({ key, route: result });
     })();
 
     return () => {
       controller.abort();
     };
-  }, [from?.lat, from?.lng, to?.lat, to?.lng, enabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
+  const route = key && answer?.key === key ? answer.route : null;
+  const loading = key !== null && answer?.key !== key;
   return { route, loading };
 }

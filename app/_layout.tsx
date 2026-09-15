@@ -1,3 +1,4 @@
+import { ReceiptOcrHost } from "@/components/ReceiptOcrHost";
 import { useLiveNotifications } from "@/hooks/useLiveNotifications";
 import { ClerkProvider } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
@@ -369,6 +370,7 @@ function AppNavigation() {
                 />
               </Stack.Protected>
             </Stack>
+            <ReceiptOcrHost />
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />
             {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}
         </ThemeProvider>

@@ -1,4 +1,4 @@
-import { useCheckoutPayment } from "@/store/checkoutPayment";
+import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useNotifications } from "@/store/notifications";
 import { setLiveOwner } from "@/lib/live";
 import { clearBoardCache } from "@/lib/shopBoards";
@@ -329,6 +329,7 @@ useSession.subscribe((state, previous) => {
   const id = state.user?.id ?? null;
   if (id === (previous.user?.id ?? null)) return;
   useCheckoutPayment.getState().reset();
+  useOrderPayment.getState().reset();
   clearBoardCache();
   clearListingCache();
   useNotifications.getState().setOwner(id);

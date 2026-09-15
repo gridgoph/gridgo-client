@@ -13,10 +13,13 @@ import { PickupCounterCard } from "@/components/PickupCounterCard";
 import { FormScreen } from "@/components/FormScreen";
 import { FulfilmentProgress } from "@/components/FulfilmentProgress";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
+import { JobCompleteCard } from "@/components/JobCompleteCard";
+import { OrderReference } from "@/components/OrderReference";
 import { OrderTimeline } from "@/components/OrderTimeline";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { ProductPreview } from "@/components/ProductPreview";
+import { ArtworkPanel } from "@/components/ArtworkPanel";
+import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -43,7 +46,8 @@ import {
   orderWaitingOn,
   showsFulfilmentProgress,
 } from "@/lib/orderState";
-import { installmentUnderReview, payableInstallment } from "@/lib/payment";
+import { isJobComplete } from "@/lib/jobComplete";
+import { installmentUnderReview, payableInstallment, paymentInstallment } from "@/lib/payment";
 import { canRate } from "@/lib/rating";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
@@ -182,12 +186,18 @@ export default function OrderDetailScreen() {
   const waitingOn = orderWaitingOn(order);
   const unit = order.unit || product?.unit || "";
   const family = product?.family ?? null;
-  const artworkFileId = order.artworkFileIds?.[order.artworkFileIds.length - 1] ?? null;
   const materialLabel = taxonomyLabel(taxonomy, order.material);
   const finishLabel = order.finish ? taxonomyLabel(taxonomy, order.finish) : null;
   const payable = payableInstallment(order);
   const underReview = installmentUnderReview(order);
   const showsOwnPreview = isProofApprovalState(order.state);
+  /*
+    A closed job tells its own story in the card below the title: how it
+    arrived, that nothing was wrong with it, that it is paid. The one-line
+    wait and the "we will tell your phone" offer both belong to a job that
+    is still going, so neither is drawn once it is over.
+  */
+  const finished = isJobComplete(order.state);
   /*
     Whether there is an action zone at all. The zone used to render as an empty
     Animated.View on every state that has nothing to ask for — invisible, but
@@ -224,17 +234,19 @@ export default function OrderDetailScreen() {
             <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
           </View>
           <Text className="text-h1 text-text-primary">{order.title}</Text>
-          <Text className="text-caption text-text-muted">Order {order.id}</Text>
+          <OrderReference id={order.id} />
           {/* Only when nothing below is already saying it. An action zone
               owns its instruction and reason, and so does the card that
               explains a payment being checked — repeating either up here is
               filler. */}
-          {!nextAction && !underReview ? (
+          {!nextAction && !underReview && !finished ? (
             <Text className="text-body-lg text-text-secondary">
               {waitingOn ?? "This job is in progress."}
             </Text>
           ) : null}
         </View>
+
+        {finished ? <JobCompleteCard order={order} /> : null}
 
         {/* One action zone at a time — the single yellow control lives here. */}
         {actionZone ? (
@@ -278,7 +290,7 @@ export default function OrderDetailScreen() {
                 />
               </View>
             ) : (
-              <IssueWindowCard order={order} />
+              <IssueWindowCard order={order} onUpdated={applyOrderUpdate} />
             )}
           </Animated.View>
         ) : null}
@@ -290,7 +302,7 @@ export default function OrderDetailScreen() {
           answer to the question the screen has just raised. When there *is* an
           action here the screen belongs to it, so nothing is offered.
         */}
-        {!nextAction ? <PushEnableCard /> : null}
+        {!nextAction && !finished ? <PushEnableCard /> : null}
 
         {/*
           Two different endings, two different things to show.
@@ -312,7 +324,9 @@ export default function OrderDetailScreen() {
 
         <View className="gap-4">
           <Text className="text-overline text-text-muted">SPECIFICATION</Text>
+          {order.productionItems?.length ? <ProductionSpecifications order={order} taxonomy={taxonomy} /> : null}
           <View className="gg-card">
+            {!order.productionItems?.length ? <>
             <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
             <SpecRow label="Size" value={order.size || "—"} />
             {/* Resolved through the taxonomy: an order can carry a code
@@ -320,6 +334,7 @@ export default function OrderDetailScreen() {
                 client recognises. */}
             <SpecRow label="Material" value={materialLabel} />
             {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
+            </> : null}
             <SpecRow label="Deadline" value={formatDeadline(order.deadline)} />
             {order.promisedDate ? (
               <SpecRow label="Supplier promised" value={formatDeadline(order.promisedDate)} />
@@ -340,13 +355,10 @@ export default function OrderDetailScreen() {
         </View>
 
         {!showsOwnPreview ? (
-          <ProductPreview
-            family={family}
-            artworkName={order.artworkName}
-            productName={order.title}
-            size={order.size}
-            artworkFileId={artworkFileId}
-          />
+          <View className="gap-3">
+            <Text className="text-overline text-text-muted">ARTWORK AND REFERENCES</Text>
+            <ArtworkPanel order={order} />
+          </View>
         ) : null}
 
         <View className="gap-4">
@@ -394,8 +406,8 @@ function MoneyCard({ order }: { order: api.Order }) {
     );
   }
 
-  const downpayment = order.payments?.downpayment;
-  const balance = order.payments?.balance;
+  const downpayment = paymentInstallment(order, "downpayment");
+  const balance = paymentInstallment(order, "balance");
 
   return (
     <View className="gg-card">

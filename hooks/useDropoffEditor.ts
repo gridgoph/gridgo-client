@@ -39,8 +39,12 @@ export function useDropoffEditor(options?: {
   const [landmark, setLandmark] = useState("");
   const [point, setPoint] = useState<GeoPoint | null>(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<DropoffSuggestion[]>([]);
-  const [searching, setSearching] = useState(false);
+  // The last answer, remembered against the words it answered. Results and
+  // the searching flag fall out of comparing that to what is typed now.
+  const [search, setSearch] = useState<{ query: string; results: DropoffSuggestion[] }>({
+    query: "",
+    results: [],
+  });
   const [locating, setLocating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
@@ -49,12 +53,18 @@ export function useDropoffEditor(options?: {
   const [streetUnread, setStreetUnread] = useState(false);
 
   const pointRef = useRef(point);
-  pointRef.current = point;
   const lineRef = useRef(line1);
-  lineRef.current = line1;
+  useEffect(() => {
+    pointRef.current = point;
+    lineRef.current = line1;
+  });
   const prePinned = useRef(false);
   const searchGen = useRef(0);
   const reverseGen = useRef(0);
+
+  const trimmedQuery = query.trim();
+  const results = search.query === trimmedQuery ? search.results : [];
+  const searching = trimmedQuery !== "" && search.query !== trimmedQuery;
 
   const parts = { line1, barangay: "", landmark };
   const addressCheck = checkAddress(parts);
@@ -74,7 +84,7 @@ export function useDropoffEditor(options?: {
       setLabel((current) => current || suggestion.label.slice(0, ADDRESS_LABEL_MAX));
     }
     setQuery("");
-    setResults([]);
+    setSearch({ query: "", results: [] });
     setNotice(null);
   }, []);
 
@@ -169,23 +179,17 @@ export function useDropoffEditor(options?: {
 
   useEffect(() => {
     const q = query.trim();
-    if (!q) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
+    if (!q) return;
     const gen = ++searchGen.current;
-    setSearching(true);
     const handle = setTimeout(() => {
       void searchNominatim(q, appVersion()).then((result) => {
         if (gen !== searchGen.current) return;
-        setSearching(false);
         if (result.status === "ok") {
-          setResults(result.suggestions);
+          setSearch({ query: q, results: result.suggestions });
           setNotice(null);
           return;
         }
-        setResults([]);
+        setSearch({ query: q, results: [] });
         setNotice(result.message);
       });
     }, SEARCH_DEBOUNCE_MS);

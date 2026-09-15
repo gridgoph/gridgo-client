@@ -1,0 +1,87 @@
+/* global jest, beforeEach, afterEach, it, expect */
+const React = require("react");
+const { act, create } = require("react-test-renderer");
+const { PaymentPanel, PaymentUnderReviewCard } = require("@/components/PaymentPanel");
+const { useOrderPayment } = require("@/store/checkoutPayment");
+const mockSubmit = jest.fn();
+const mockOnSubmitted = jest.fn();
+const mockProof = { state: { phase: "stored", fileId: "receipt-1", localUri: "file://receipt.png" }, ocr: { status: "filled", reference: "1234567890123" }, pick: jest.fn(), reset: jest.fn() };
+const order = { id: "job", state: "out_for_delivery", payments: { initial: { status: "confirmed", amountMinor: 35000 }, final_online: { status: "not_submitted", amountMinor: 77500 } } };
+jest.mock("expo-router", () => ({ useFocusEffect: jest.fn() }));
+jest.mock("react-native", () => ({ Image: "Image", Modal: "Modal", Text: "Text", View: "View" }));
+jest.mock("@/lib/api", () => ({ ApiError: class ApiError extends Error {}, formatPhp: (value) => `₱${(value / 100).toFixed(2)}`, submitPayment: (...args) => mockSubmit(...args), getSettings: async () => ({ paymentQr: { imageUrl: "/public/payment-qr" } }) }));
+jest.mock("@/hooks/usePaymentProof", () => ({ usePaymentProof: () => mockProof }));
+jest.mock("@/components/ConfirmDialog", () => ({ ConfirmDialog: "ConfirmDialog" }));
+jest.mock("@/components/ErrorState", () => ({ ErrorState: "ErrorState" }));
+jest.mock("@/components/form/FormField", () => ({ FormField: "FormField" }));
+jest.mock("@/components/form/TextField", () => ({ TextField: "TextField" }));
+jest.mock("@/components/PaymentProofRow", () => ({ PaymentProofRow: "PaymentProofRow" }));
+jest.mock("@/components/PrimaryButton", () => ({ PrimaryButton: "PrimaryButton" }));
+jest.mock("@/components/SecondaryButton", () => ({ SecondaryButton: "SecondaryButton" }));
+jest.mock("@/components/QrPaySheet", () => ({ QrPaySheet: "QrPaySheet", paymentQrFromSettings: (settings) => settings?.paymentQr }));
+jest.mock("@/components/SpecRow", () => ({ SpecRow: "SpecRow" }));
+let view;
+beforeEach(async () => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  jest.clearAllMocks();
+  mockProof.ocr.status = "filled";
+  mockProof.state.phase = "stored";
+  mockProof.state.fileId = "receipt-1";
+  useOrderPayment.getState().reset();
+  useOrderPayment.getState().bind("order:job:balance");
+  useOrderPayment.getState().setReference("1234567890123");
+  mockSubmit.mockResolvedValue({ ...order, payments: { ...order.payments, final_online: { ...order.payments.final_online, status: "pending_confirmation" } } });
+  await act(async () => { view = create(React.createElement(PaymentPanel, { order, installment: "balance", onSubmitted: mockOnSubmitted })); });
+});
+afterEach(async () => { await act(async () => view.unmount()); });
+const primary = () => view.root.findByType("PrimaryButton");
+const dialog = () => view.root.findByType("ConfirmDialog");
+it("shows the exact final amount and current QR, and requires review before submission", async () => {
+  const qr = view.root.findByType("QrPaySheet");
+  expect(qr.props.downpaymentMinor).toBe(77500);
+  expect(qr.props.paymentKind).toBe("final");
+  expect(qr.props.imageUrl).toBe("/public/payment-qr");
+  await act(async () => primary().props.onPress());
+  expect(mockSubmit).not.toHaveBeenCalled();
+  expect(dialog().props.body).toContain("₱775.00");
+  expect(dialog().props.body).toContain("1234567890123");
+  await act(async () => dialog().props.onConfirm());
+  expect(mockSubmit).toHaveBeenCalledWith("job", "balance", "1234567890123", "receipt-1");
+  expect(mockOnSubmitted.mock.calls[0][0].payments.final_online.status).toBe("pending_confirmation");
+});
+it("keeps the receipt and corrected reference after failure, and blocks duplicate requests", async () => {
+  let reject;
+  mockSubmit.mockImplementation(() => new Promise((_, fail) => { reject = fail; }));
+  await act(async () => view.root.findByType("TextField").props.onChangeText("9876543210000"));
+  await act(async () => primary().props.onPress());
+  await act(async () => { dialog().props.onConfirm(); dialog().props.onConfirm(); });
+  expect(mockSubmit).toHaveBeenCalledTimes(1);
+  await act(async () => reject(new Error("offline")));
+  expect(mockOnSubmitted).not.toHaveBeenCalled();
+  expect(useOrderPayment.getState().reference).toBe("9876543210000");
+  expect(view.root.findByType("PaymentProofRow").props.state.fileId).toBe("receipt-1");
+  expect(view.root.findAllByType("ErrorState").some((node) => node.props.label === "Not sent")).toBe(true);
+  expect(primary().props.disabled).toBe(false);
+});
+it("does not review while OCR is reading or a receipt is missing", async () => {
+  mockProof.ocr.status = "reading";
+  await act(async () => view.update(React.createElement(PaymentPanel, { order: { ...order }, installment: "balance", onSubmitted: mockOnSubmitted })));
+  expect(primary().props.disabled).toBe(true);
+  mockProof.ocr.status = "unreadable";
+  mockProof.state.fileId = null;
+  await act(async () => view.update(React.createElement(PaymentPanel, { order: { ...order }, installment: "balance", onSubmitted: mockOnSubmitted })));
+  await act(async () => primary().props.onPress());
+  expect(dialog().props.visible).toBe(false);
+  expect(mockSubmit).not.toHaveBeenCalled();
+});
+it("shows the Operations rejection and lets the user correct the same transfer", async () => {
+  const rejected = { ...order, payments: { ...order.payments, final_online: { ...order.payments.final_online, rejectionReason: "Reference did not match" } } };
+  await act(async () => view.update(React.createElement(PaymentPanel, { order: rejected, installment: "balance", onSubmitted: mockOnSubmitted })));
+  expect(view.root.findByType("ErrorState").props.body).toContain("Reference did not match");
+});
+it("reads the canonical reference while pending without presenting another payment form", async () => {
+  const pending = { ...order, payments: { final_online: { ...order.payments.final_online, status: "pending_confirmation", reference: "9876543210000" } } };
+  await act(async () => view.update(React.createElement(PaymentUnderReviewCard, { order: pending, installment: "balance" })));
+  expect(view.root.findAllByType("PrimaryButton")).toHaveLength(0);
+  expect(view.root.findAllByType("SpecRow").find((row) => row.props.label === "Reference you sent").props.value).toBe("9876543210000");
+});

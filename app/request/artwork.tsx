@@ -57,7 +57,12 @@ export default function ArtworkScreen() {
   const line = cart?.lines.find((entry) => entry.id === lineId) ?? null;
   const item = line?.listing ?? null;
 
-  const [pixels, setPixels] = useState<{ width: number; height: number } | null>(null);
+  // The pixels belong to one file; a different file, or a server answer,
+  // simply stops them being used rather than needing them cleared.
+  const [measuredPixels, setMeasuredPixels] = useState<{
+    fileId: string;
+    size: { width: number; height: number };
+  } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -87,9 +92,9 @@ export default function ArtworkScreen() {
   const stored = upload.state.fileId;
   useEffect(() => {
     if (!line || !stored || stored === line.artworkFileId || saving) return;
-    setSaving(true);
-    setSaveError(null);
     void (async () => {
+      setSaving(true);
+      setSaveError(null);
       try {
         const updated = await run((cartId) =>
           api.updateCartLine(cartId, line.id, { artworkFileId: stored }),
@@ -156,27 +161,24 @@ export default function ArtworkScreen() {
   const measured = detectedProportions(detected);
 
   const measure = useCallback((fileId: string | null) => {
-    setPixels(null);
     if (!fileId) return;
     api
       .getFileDownloadUrl(fileId)
       .then(({ url }) => {
         Image.getSize(
           url,
-          (width, height) => setPixels({ width, height }),
-          () => setPixels(null),
+          (width, height) => setMeasuredPixels({ fileId, size: { width, height } }),
+          () => setMeasuredPixels(null),
         );
       })
-      .catch(() => setPixels(null));
+      .catch(() => setMeasuredPixels(null));
   }, []);
 
   useEffect(() => {
-    if (measured) {
-      setPixels(null);
-      return;
-    }
-    measure(stored ?? null);
+    if (!measured) measure(stored ?? null);
   }, [stored, measure, measured]);
+
+  const pixels = !measured && stored && measuredPixels?.fileId === stored ? measuredPixels.size : null;
 
   /** Back to the shop board, or to the sheet this file belongs to. */
   const goStep = (step: OrderStepId) => {

@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { Sheet } from "@/components/Sheet";
@@ -141,13 +141,16 @@ function OptionSheet({
   const [customText, setCustomText] = useState(value);
 
   // Reopening the sheet starts from what is actually selected, not from
-  // whatever the client typed and abandoned last time.
-  useEffect(() => {
+  // whatever the client typed and abandoned last time. Adjusted in the render
+  // that opens it, so the first frame is already right.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
     if (open) {
       setCustomMode(isCustomValue);
       setCustomText(isCustomValue ? value : "");
     }
-  }, [open, isCustomValue, value]);
+  }
 
   const commitCustom = () => {
     const trimmed = customText.trim();

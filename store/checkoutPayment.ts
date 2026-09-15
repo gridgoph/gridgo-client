@@ -44,7 +44,7 @@ type CheckoutPaymentState = {
  * Address navigation must not discard a receipt already uploaded. Draft
  * lifetime and replacement rules: `docs/RECEIPT_OCR_VALIDATION.md#draft-ownership`.
  */
-export const useCheckoutPayment = create<CheckoutPaymentState>((set, get) => ({
+export const createPaymentDraft = () => create<CheckoutPaymentState>((set, get) => ({
   cartId: null,
   generation: 0,
   autofilledReference: null,
@@ -102,3 +102,7 @@ export const useCheckoutPayment = create<CheckoutPaymentState>((set, get) => ({
       reference: "",
     }),
 }));
+
+/** Checkout and order payments never replace each other's in-memory draft. */
+export const useCheckoutPayment = createPaymentDraft();
+export const useOrderPayment = createPaymentDraft();

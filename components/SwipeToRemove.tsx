@@ -1,5 +1,5 @@
 import { Trash2 } from "lucide-react-native";
-import { useCallback, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { PanResponder, Pressable, Text, View } from "react-native";
 import Animated, {
   runOnJS,
@@ -52,13 +52,15 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
   const translateX = useSharedValue(0);
-  const dragStart = useRef(0);
+  // A shared value rather than a ref: the responder is built during render,
+  // and only the value read and written inside its handlers may live here.
+  const dragStart = useSharedValue(0);
 
   const settle = useCallback(
     (to: number) => {
-      translateX.value = reducedMotion
-        ? withTiming(to, { duration: 160 })
-        : withSpring(to, ROW_SPRING);
+      translateX.set(
+        reducedMotion ? withTiming(to, { duration: 160 }) : withSpring(to, ROW_SPRING),
+      );
     },
     [reducedMotion, translateX],
   );
@@ -85,17 +87,19 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
         onMoveShouldSetPanResponder: (_event, gesture) =>
           !disabled && isHorizontalSwipe(gesture.dx, gesture.dy),
         onPanResponderGrant: () => {
-          dragStart.current = translateX.value;
+          dragStart.set(translateX.get());
         },
         onPanResponderMove: (_event, gesture) => {
-          translateX.value = swipeOffset(dragStart.current, gesture.dx);
+          translateX.set(swipeOffset(dragStart.get(), gesture.dx));
         },
         onPanResponderRelease: (_event, gesture) => {
-          const release = swipeRelease(translateX.value, gesture.vx);
+          const release = swipeRelease(translateX.get(), gesture.vx);
           if (release === "commit") {
-            translateX.value = withTiming(0, { duration: 160 }, (done) => {
-              if (done) runOnJS(onRemove)();
-            });
+            translateX.set(
+              withTiming(0, { duration: 160 }, (done) => {
+                if (done) runOnJS(onRemove)();
+              }),
+            );
             return;
           }
           settle(restingOffset(release));
@@ -104,11 +108,11 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
           settle(0);
         },
       }),
-    [disabled, translateX, settle, onRemove],
+    [disabled, translateX, dragStart, settle, onRemove],
   );
 
   const rowStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [{ translateX: translateX.get() }],
   }));
 
   return (

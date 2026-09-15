@@ -66,7 +66,8 @@ describe("summarizeIssueWindow", () => {
       now: NOW,
     });
     expect(status.canReport).toBe(true);
-    expect(status.headline).toContain("24 hours");
+    expect(status.headline).toMatch(/everything okay/i);
+    expect(status.detail).toContain("24 hours");
     expect(status.elapsedLabel).toMatch(/Delivered 3 hours ago/);
   });
 
@@ -78,8 +79,8 @@ describe("summarizeIssueWindow", () => {
       hasOpenIssue: false,
       now: NOW,
     });
-    expect(status.headline).toContain("2 days");
-    expect(status.headline).not.toContain("24");
+    expect(status.detail).toContain("2 days");
+    expect(status.detail).not.toContain("24");
   });
 
   it("shows the real time left, because the platform now really expires it", () => {

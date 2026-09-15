@@ -45,11 +45,13 @@ export default function SsoCallbackScreen() {
   const setActiveRef = useRef(setActive);
   const signOutRef = useRef(signOut);
   const signUpRef = useRef(signUp);
-  clerkRef.current = clerk;
-  getTokenRef.current = getToken;
-  setActiveRef.current = setActive;
-  signOutRef.current = signOut;
-  signUpRef.current = signUp;
+  useEffect(() => {
+    clerkRef.current = clerk;
+    getTokenRef.current = getToken;
+    setActiveRef.current = setActive;
+    signOutRef.current = signOut;
+    signUpRef.current = signUp;
+  });
 
   const createdSessionId = googleSsoCreatedSessionId(params);
   const rotatingTokenNonce = googleSsoRotatingTokenNonce(params);

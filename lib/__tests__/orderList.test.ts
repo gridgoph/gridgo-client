@@ -76,8 +76,8 @@ function owing(overrides: Partial<Order> = {}): Order {
   return {
     ...base,
     payments: {
-      downpayment: { ...base.payments!.downpayment, status: "confirmed" },
-      balance: { ...base.payments!.balance, status: "not_submitted" },
+      downpayment: { ...base.payments!.downpayment!, status: "confirmed" },
+      balance: { ...base.payments!.balance!, status: "not_submitted" },
     },
   };
 }
@@ -102,7 +102,7 @@ describe("hasPaymentDue", () => {
     expect(hasPaymentDue(order())).toBe(false);
 
     const submitted = owing();
-    submitted.payments!.balance.status = "pending_confirmation";
+    submitted.payments!.balance!.status = "pending_confirmation";
     expect(hasPaymentDue(submitted)).toBe(false);
   });
 });
