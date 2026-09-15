@@ -101,20 +101,15 @@ export default function ListingScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const loadSequence = useRef(0);
-  const load = useCallback(async () => {
+  const load = useCallback(() => {
     const sequence = ++loadSequence.current;
     if (!itemId) return;
     const cached = listingNow(itemId);
-    if (cached) {
-      setItem(cached);
-      setError(null);
-    }
-    try {
-      const read = await takeListing(itemId);
+    return takeListing(itemId).then((read) => {
       if (sequence !== loadSequence.current) return;
       setItem(read);
       setError(null);
-    } catch (e) {
+    }).catch((e) => {
       if (sequence !== loadSequence.current) return;
       // A failed refresh must not blank a sheet the match already painted.
       if (listingNow(itemId) || cached) return;
@@ -125,7 +120,7 @@ export default function ListingScreen() {
           "GRIDGO could not open this listing. It may have been taken down — go back and pick another.",
         ),
       );
-    }
+    });
   }, [itemId]);
 
   useLiveRefresh(["catalog", "services", "settings"], load);
@@ -151,17 +146,23 @@ export default function ListingScreen() {
 
   // Reopening a basket row starts from what was already answered on it, so a
   // client changing the paper does not have to pick the size again.
-  useEffect(() => {
-    if (!editing || !item) return;
-    const restored: ListingSelection = {};
-    for (const group of item.optionGroups) {
-      const chosen = group.options.find((option) => editing.optionIds.includes(option.id));
-      if (chosen) restored[group.id] = chosen.id;
+  const [restoredFrom, setRestoredFrom] = useState<{
+    lineId?: string;
+    itemId?: string;
+  }>({});
+  if (restoredFrom.lineId !== editing?.id || restoredFrom.itemId !== item?.id) {
+    setRestoredFrom({ lineId: editing?.id, itemId: item?.id });
+    if (editing && item) {
+      const restored: ListingSelection = {};
+      for (const group of item.optionGroups) {
+        const chosen = group.options.find((option) => editing.optionIds.includes(option.id));
+        if (chosen) restored[group.id] = chosen.id;
+      }
+      setSelection(restored);
+      setQuantity(editing.quantity);
+      setMeasured(toDraft(editing.measurement));
     }
-    setSelection(restored);
-    setQuantity(editing.quantity);
-    setMeasured(toDraft(editing.measurement));
-  }, [editing?.id, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   /**
    * Back to GRIDGO's pick for this job, or to the start of choosing what to

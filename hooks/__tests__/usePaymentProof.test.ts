@@ -1,5 +1,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 
+import { setLiveOwner } from "@/lib/live";
+import { usePaymentProof } from "@/hooks/usePaymentProof";
+import { useCheckoutPayment } from "@/store/checkoutPayment";
+
 const mockGetDocumentAsync = jest.fn();
 const mockRecognizeReceiptFromUri = jest.fn();
 const mockUploadFile = jest.fn();
@@ -16,10 +20,6 @@ jest.mock("@/lib/api", () => ({
 jest.mock("@/lib/receiptOcrRecognize", () => ({
   recognizeReceiptFromUri: (...args: unknown[]) => mockRecognizeReceiptFromUri(...args),
 }));
-
-import { setLiveOwner } from "@/lib/live";
-import { usePaymentProof } from "@/hooks/usePaymentProof";
-import { useCheckoutPayment } from "@/store/checkoutPayment";
 
 describe("usePaymentProof OCR", () => {
   beforeEach(() => {

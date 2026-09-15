@@ -48,7 +48,7 @@ describe("GridgoMark", () => {
   // Set the scheme while nothing is mounted, so no subscribed component
   // updates outside act().
   beforeEach(() => Appearance.setColorScheme("light"));
-  afterAll(() => Appearance.setColorScheme(null));
+  afterAll(() => Appearance.setColorScheme("unspecified"));
 
   it("draws nine dots", async () => {
     await render(<GridgoMark />);

@@ -1,8 +1,3 @@
-const mockReadImage = jest.fn();
-jest.mock("@/lib/nativeModules", () => ({
-  getFileSystemLegacyNative: () => ({ readAsStringAsync: mockReadImage }),
-}));
-
 import {
   completeReceiptOcr,
   enqueueReceiptOcr,
@@ -11,6 +6,11 @@ import {
   subscribeReceiptOcr,
   recognizeReceiptFromUri,
 } from "@/lib/receiptOcrRecognize";
+
+const mockReadImage = jest.fn();
+jest.mock("@/lib/nativeModules", () => ({
+  getFileSystemLegacyNative: () => ({ readAsStringAsync: mockReadImage }),
+}));
 
 describe("receipt OCR jobs", () => {
   afterEach(() => {

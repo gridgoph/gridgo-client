@@ -24,13 +24,14 @@ let preference: ThemePreference = "system";
 const listeners = new Set<() => void>();
 
 function applyPreference(next: ThemePreference) {
-  Appearance.setColorScheme(next === "system" ? null : next);
+  Appearance.setColorScheme(next === "system" ? "unspecified" : next);
 
   // react-native-css keeps its own colour-scheme observable, seeded from
   // Appearance and updated by its change listener. Push the value directly so
   // the CSS layer switches on the same frame rather than waiting for the
   // native echo, which platforms deliver at different times.
-  cssColorScheme.set(next === "system" ? Appearance.getColorScheme() : next);
+  const scheme = next === "system" ? Appearance.getColorScheme() : next;
+  cssColorScheme.set(scheme === "dark" ? "dark" : "light");
 }
 
 export function setThemePreference(next: ThemePreference) {

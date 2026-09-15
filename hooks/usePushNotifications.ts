@@ -5,7 +5,7 @@ import {
   useSegments,
   type Href,
 } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import {
   parsePushData,
@@ -43,7 +43,9 @@ export function usePushNotifications(): void {
     segments[0] !== "sso-callback",
   );
   const readyRef = useRef(protectedReady);
-  readyRef.current = protectedReady;
+  useLayoutEffect(() => {
+    readyRef.current = protectedReady;
+  }, [protectedReady]);
   const user = useSession((s) => s.user);
   const signedIn = hasActiveSession(user);
 

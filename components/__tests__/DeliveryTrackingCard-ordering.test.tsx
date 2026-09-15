@@ -6,7 +6,8 @@ let mockFocused = true;
 jest.mock("expo-router", () => ({
   useFocusEffect: (effect: () => void) => {
     const { useEffect } = jest.requireActual("react");
-    useEffect(() => mockFocused ? effect() : undefined, [effect, mockFocused]);
+    const focused = mockFocused;
+    useEffect(() => focused ? effect() : undefined, [effect, focused]);
   },
 }));
 

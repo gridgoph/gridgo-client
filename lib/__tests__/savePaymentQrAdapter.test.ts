@@ -1,3 +1,4 @@
+import { savePaymentQrToPhotos } from "@/lib/savePaymentQr";
 const mockSave = jest.fn<Promise<void>, unknown[]>(async () => undefined);
 jest.mock("expo-media-library", () => ({
   saveToLibraryAsync: () => { throw new Error("Deprecated method"); },
@@ -13,7 +14,6 @@ jest.mock("expo-asset", () => ({
     uri: "file://qr.jpg",
   }) },
 }));
-import { savePaymentQrToPhotos } from "@/lib/savePaymentQr";
 it("saves through the SDK 57 legacy adapter", async () => {
   await expect(savePaymentQrToPhotos(null)).resolves.toEqual({ ok: true });
   expect(mockSave).toHaveBeenCalledWith("file://qr.jpg");

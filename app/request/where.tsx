@@ -45,11 +45,11 @@ export default function WhereScreen() {
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setSaved(await api.listAddresses());
+  const load = useCallback(() => {
+    return api.listAddresses().then((addresses) => {
+      setSaved(addresses);
       setLoadError(null);
-    } catch (error) {
+    }).catch((error) => {
       setSaved([]);
       setLoadError(
         userFacingError(
@@ -57,7 +57,7 @@ export default function WhereScreen() {
           "GRIDGO could not read your saved addresses. You can still set a new one.",
         ),
       );
-    }
+    });
   }, []);
 
   useEffect(() => {

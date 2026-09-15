@@ -1,9 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import CategoryScreen from "@/app/request/[category]";
-import ChooseCategoryScreen from "@/app/request/category";
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { clearProductCategoryCache } from "@/lib/api";
 import { clearBoardCache } from "@/lib/shopBoards";
