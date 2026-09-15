@@ -6,23 +6,23 @@ Business / organization / teacher **client mobile app**. One app per role — th
 
 - `gridgo-tinker` full PRD
 - Supplier presentation 2026-08-04 (ecosystem, categories, Order→Print→Deliver)
-- Captain MVP: custom auth + local API, no Clerk/Supabase/PayMongo
+- Current client integration constraints: [AGENTS.md](AGENTS.md#mvp-stack-current-phase)
 
 ## Job to be done
 
-Request managed print jobs in Davao zones: structured specs + artwork → QA/proof → pay with Pilot Credits or eligible COD → track delivery → report material issues within 24h.
+Request managed print jobs in Davao: structured specs + artwork → QA/proof → payment → tracked delivery → material-issue reporting. See [README.md](README.md) for the current customer workflow, payment methods and issue window.
 
 ## MVP features
 
 | Feature | Status target |
 |---|---|
-| Custom login (demo API) + role gate | required |
-| Home: credits balance + recent orders | required |
+| Client sign-in and role gate; see [auth guidance](AGENTS.md#mvp-stack-current-phase) | required |
+| Home summary; see [client product logic](AGENTS.md#client-product-logic-pure-testable) | required |
 | Orders list with state labels | required |
 | Catalog / product-first categories (flyers, banners, apparel, …) | partial → expand |
 | New request stepper (details → artwork → review → confirm) | partial |
-| Pilot Credits authorize / COD ≤ ₱1,500 | API ready; UI wire |
-| Delivery tracking card (demo locations) | later |
+| Checkout and payment; see [customer guidance](README.md#checkout-and-money) | required |
+| Delivery tracking with current/stale/unavailable location states | required |
 | Issue window report | later |
 | Light/Dark + design system tokens | required |
 

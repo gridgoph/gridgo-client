@@ -6,14 +6,6 @@ import * as api from "@/lib/api";
 import { liveGeneration, assertLiveGeneration } from "@/lib/live";
 import { withRequestDeadline } from "@/lib/requestDeadline";
 import { useSession } from "@/store/session";
-
-let deviceMutation: Promise<unknown> = Promise.resolve();
-export function serializeDeviceMutation<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  const execute = () => withRequestDeadline(undefined, run);
-  const pending = deviceMutation.then(execute, execute);
-  deviceMutation = pending.catch(() => undefined);
-  return pending;
-}
 import { userFacingError } from "@/lib/copy";
 import {
   devicePlatform,
@@ -23,6 +15,14 @@ import {
   readPushPermission,
   type PushPermission,
 } from "@/lib/push";
+
+let deviceMutation: Promise<unknown> = Promise.resolve();
+export function serializeDeviceMutation<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const execute = () => withRequestDeadline(undefined, run);
+  const pending = deviceMutation.then(execute, execute);
+  deviceMutation = pending.catch(() => undefined);
+  return pending;
+}
 
 type NotificationsNative = typeof import("expo-notifications");
 
@@ -48,6 +48,7 @@ export function getNotificationsNative(): NotificationsNative | null {
   }
   try {
     // Metro evaluates this only when called. A throw costs push, never the app.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Must stay lazy: Expo Go can throw at import time.
     notificationsNative = require("expo-notifications") as NotificationsNative;
     return notificationsNative;
   } catch {
@@ -64,9 +65,8 @@ export function getNotificationsNative(): NotificationsNative | null {
  * channel, the permission dialog, the FCM token, and keeping the server's idea
  * of this phone in step with the phone's.
  *
- * **Reusable as-is by the supplier and rider apps.** Nothing in this file names
- * a client concept; the app-specific parts of push are the routes in
- * `pushTargetRoute` and where the enable card is drawn.
+ * Registration uses this client's API role context and session boundary.
+ * Fleet reuse must adapt those as well as routes and permission-card placement.
  *
  * Three things that look like bugs and are not:
  *

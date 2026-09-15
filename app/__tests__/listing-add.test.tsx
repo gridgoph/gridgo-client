@@ -174,7 +174,7 @@ describe("adding a listing to the order", () => {
     await renderInSafeArea(<ListingScreen />);
     await waitFor(() => expect(api.createCart).toHaveBeenCalled());
 
-    fireEvent.press(screen.getByLabelText("Add to my order"));
+    await fireEvent.press(screen.getByLabelText("Add to my order"));
 
     await waitFor(() =>
       expect(mockReplace).toHaveBeenCalledWith({

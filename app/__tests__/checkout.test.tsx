@@ -164,8 +164,8 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await cleanup();
 });
 
 beforeEach(() => {
@@ -272,7 +272,7 @@ describe("CheckoutScreen", () => {
     expect(button.props.accessibilityState.disabled).toBe(false);
     expect(screen.getByText("The screenshot of your QR transfer, so Operations can match it.")).toBeTruthy();
 
-    fireEvent.press(button);
+    await fireEvent.press(button);
     expect(api.checkoutCart).not.toHaveBeenCalled();
     expect(screen.getAllByText("Add the screenshot of your QR payment.").length).toBeGreaterThan(0);
   });
@@ -284,7 +284,7 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    fireEvent.press(screen.getByLabelText("Place this order"));
+    await fireEvent.press(screen.getByLabelText("Place this order"));
     expect(screen.getByText("Attach artwork to Flyers before you place this.")).toBeTruthy();
   });
 
@@ -306,7 +306,7 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    fireEvent.press(screen.getByLabelText("Show the GRIDGO QR to scan"));
+    await fireEvent.press(screen.getByLabelText("Show the GRIDGO QR to scan"));
 
     const image = await screen.findByLabelText("GRIDGO's QR Ph code");
     expect(image).toBeTruthy();
@@ -318,7 +318,7 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    fireEvent.press(screen.getByLabelText("Go to Home and keep this order"));
+    await fireEvent.press(screen.getByLabelText("Go to Home and keep this order"));
 
     expect(mockReplace).toHaveBeenCalledWith("/(tabs)/home");
     // The basket is GRIDGO's, and leaving does not spend it.
@@ -373,7 +373,7 @@ describe("CheckoutScreen", () => {
 
     expect(screen.queryByLabelText("GRIDGO's QR Ph code")).toBeNull();
 
-    fireEvent.press(screen.getByLabelText("Show the GRIDGO QR to scan"));
+    await fireEvent.press(screen.getByLabelText("Show the GRIDGO QR to scan"));
 
     expect(await screen.findByLabelText("GRIDGO's QR Ph code")).toBeTruthy();
     expect(screen.getByText("Scan to send 75%")).toBeTruthy();
@@ -392,7 +392,7 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    fireEvent.press(screen.getByLabelText("Show the GRIDGO QR to scan"));
+    await fireEvent.press(screen.getByLabelText("Show the GRIDGO QR to scan"));
 
     const image = await screen.findByLabelText("GRIDGO's QR Ph code");
     expect(image.props.source?.uri).toEqual(expect.stringContaining("/public/payment-qr?v=file_live"));
@@ -404,7 +404,7 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
 
     expect(await screen.findByText("Nothing to print yet")).toBeTruthy();
-    fireEvent.press(screen.getByText("Start a print job"));
+    await fireEvent.press(screen.getByText("Start a print job"));
     expect(mockReplace).toHaveBeenCalledWith("/request/category");
   });
 
@@ -413,7 +413,7 @@ describe("CheckoutScreen", () => {
     useCart.setState({ cart: cart({ lines: [] }), loading: false, hydrated: true });
     await renderInSafeArea(<CheckoutScreen />);
 
-    fireEvent.press(await screen.findByText("Go to Home"));
+    await fireEvent.press(await screen.findByText("Go to Home"));
     expect(mockReplace).toHaveBeenCalledWith("/(tabs)/home");
   });
 
@@ -518,7 +518,7 @@ describe("CheckoutScreen", () => {
     expect(screen.getByLabelText("Payment reference").props.value).toBe("965373469");
     expect(screen.getByLabelText("View the payment screenshot")).toBeTruthy();
 
-    cleanup();
+    await cleanup();
     await renderInSafeArea(<CheckoutScreen />);
     expect(await screen.findByLabelText("Payment reference")).toBeTruthy();
     expect(screen.getByLabelText("Payment reference").props.value).toBe("965373469");

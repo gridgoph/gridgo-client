@@ -157,14 +157,14 @@ describe("CategoryScreen samples", () => {
     await renderInSafeArea(<CategoryScreen />);
     await screen.findByText("GRIDGO PRINTS THESE NOW");
 
-    fireEvent.press(screen.getByLabelText("Show as a wall"));
+    await fireEvent.press(screen.getByLabelText("Show as a wall"));
     expect(screen.getByLabelText(/Custom apparel/)).toBeTruthy();
     expect(screen.getByLabelText("Show as a wall")).toBeTruthy();
 
-    fireEvent.changeText(screen.getByLabelText(/Find a sample/), "hoodie");
+    await fireEvent.changeText(screen.getByLabelText(/Find a sample/), "hoodie");
     expect(screen.getByLabelText(/Custom apparel/)).toBeTruthy();
 
-    fireEvent.changeText(screen.getByLabelText(/Find a sample/), "tarpaulin");
+    await fireEvent.changeText(screen.getByLabelText(/Find a sample/), "tarpaulin");
     expect(await screen.findByText(/Nothing in this category matches/)).toBeTruthy();
     expect(screen.queryByLabelText(/Custom apparel/)).toBeNull();
   });

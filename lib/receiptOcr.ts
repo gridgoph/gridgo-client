@@ -197,7 +197,7 @@ export type ReceiptOcrState = {
 
 export const OCR_IDLE: ReceiptOcrState = { status: "idle", reference: null };
 
-/** What the Payment reference field should show after an OCR result. */
+/** Legacy stateless mapping; checkout uses useCheckoutPayment.applyOcrReference. */
 export function nextReferenceFromOcr(current: string, ocr: ReceiptOcrState): string {
   if (ocr.status === "filled" && ocr.reference) return ocr.reference;
   if (ocr.status === "unreadable") return "";

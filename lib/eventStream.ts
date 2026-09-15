@@ -3,8 +3,8 @@
  *
  * React Native has no `EventSource` and its `fetch` cannot stream a response
  * body, but `XMLHttpRequest` exposes `responseText` as it grows — which is all
- * an SSE client needs. The browser build uses the real `EventSource`, because
- * one exists there and it handles reconnection for us.
+ * an SSE client needs. `lib/alertStream.ts` uses this transport on native and
+ * web so both can attach the bearer and role headers.
  *
  * The parser below is separate from the transport on purpose: framing is the
  * part worth testing, and it is the part that goes wrong quietly. An event is

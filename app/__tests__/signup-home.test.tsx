@@ -172,17 +172,17 @@ describe("SignupScreen finalize", () => {
 
   it("verifies the emailed code, adopts the client, and lands home", async () => {
     await renderInSafeArea(<SignupScreen />);
-    fireEvent.changeText(screen.getByLabelText("Full name"), "Ana Santos");
-    fireEvent.changeText(screen.getByLabelText("Email"), "ana@company.com");
-    fireEvent.changeText(screen.getByLabelText("Password"), "a-long-gridgo-password");
-    fireEvent.changeText(screen.getByLabelText("Confirm password"), "a-long-gridgo-password");
+    await fireEvent.changeText(screen.getByLabelText("Full name"), "Ana Santos");
+    await fireEvent.changeText(screen.getByLabelText("Email"), "ana@company.com");
+    await fireEvent.changeText(screen.getByLabelText("Password"), "a-long-gridgo-password");
+    await fireEvent.changeText(screen.getByLabelText("Confirm password"), "a-long-gridgo-password");
     await waitFor(() =>
       expect(screen.getByLabelText("Confirm password").props.value).toBe(
         "a-long-gridgo-password",
       ),
     );
 
-    fireEvent.press(screen.getByRole("button", { name: "Sign Up" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Sign Up" }));
 
     await waitFor(() => expect(screen.getByText("Verify your email")).toBeTruthy());
     expect(mockSendEmailCode).toHaveBeenCalled();
@@ -190,11 +190,11 @@ describe("SignupScreen finalize", () => {
     expect(screen.queryByText("Recovery code")).toBeNull();
     expect(mockPreventRemove).toHaveBeenLastCalledWith(true, expect.any(Function));
 
-    fireEvent.changeText(screen.getByLabelText("Verification code"), "123456");
+    await fireEvent.changeText(screen.getByLabelText("Verification code"), "123456");
     await waitFor(() =>
       expect(screen.getByLabelText("Verification code").props.value).toBe("123456"),
     );
-    fireEvent.press(screen.getByRole("button", { name: "Verify email" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Verify email" }));
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
     expect(mockVerifyEmailCode).toHaveBeenCalledWith({ code: "123456" });

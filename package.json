@@ -60,12 +60,13 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
-    "@react-native/jest-preset": "^0.87.1",
+    "@react-native/jest-preset": "0.86.3",
     "@testing-library/react-native": "^14.0.1",
     "@types/jest": "29.5.14",
     "@types/react": "~19.2.4",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~57.0.2",
+    "expo-modules-core": "57.0.17",
     "jest": "^29.7.0",
     "jest-expo": "~57.0.5",
     "typescript": "~6.0.3"
@@ -76,6 +77,7 @@
   "private": true,
   "jest": {
     "preset": "jest-expo",
+    "resolver": "<rootDir>/jest.resolver.js",
     "forceExit": true,
     "setupFilesAfterEnv": [
       "<rootDir>/jest.setup.js"

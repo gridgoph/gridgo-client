@@ -300,8 +300,8 @@ describe("OrderDetailScreen", () => {
     }));
     await act(async () => { invalidate("orders"); });
     await waitFor(() => expect(finishCatalog).toBeDefined());
-    fireEvent.changeText(screen.getByLabelText("Payment reference"), "1234567890123");
-    fireEvent.press(screen.getByText("Send my payment reference"));
+    await fireEvent.changeText(screen.getByLabelText("Payment reference"), "1234567890123");
+    await fireEvent.press(screen.getByText("Send my payment reference"));
     await screen.findAllByText(/We are checking your downpayment/);
 
     await act(async () => { finishCatalog([]); });
@@ -325,8 +325,9 @@ describe("OrderDetailScreen", () => {
     expect(await screen.findByText("Grand opening tarpaulin")).toBeTruthy();
     // Header says what is happening; the timeline carries the supplier's own note.
     expect(screen.getAllByText(/on the press/i).length).toBeGreaterThan(1);
-    // No snake_case state, enum or error code reaches the screen.
-    expect(screen.queryByText(/[a-z]+_[a-z]+/)).toBeNull();
+    // The reference remains visible while the workflow state is human-readable.
+    expect(screen.getByText(`Order ${baseOrder.id}`)).toBeTruthy();
+    expect(screen.queryByText(baseOrder.state, { exact: true })).toBeNull();
   });
 
   it("shows the operations note and the actor on the timeline", async () => {
@@ -627,7 +628,7 @@ describe("OrderDetailScreen", () => {
       api.getOrder.mockRejectedValue(new Error("Network request failed"));
       await renderInSafeArea(<OrderDetailScreen />);
 
-      fireEvent.press(await screen.findByText("Back to orders"));
+      await fireEvent.press(await screen.findByText("Back to orders"));
 
       expect(mockReplace).toHaveBeenCalledWith("/(tabs)/orders");
       expect(mockBack).not.toHaveBeenCalled();

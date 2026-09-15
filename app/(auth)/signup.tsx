@@ -32,7 +32,7 @@ import { useSignupFlow } from "@/store/signupFlow";
 
 export default function SignupScreen() {
   const { signUp, fetchStatus } = useSignUp();
-  const { isSignedIn, getToken, sessionId } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { setActive, signOut } = useClerk();
   const landing = useAuthLanding();
   const sessionError = useSession((state) => state.error);

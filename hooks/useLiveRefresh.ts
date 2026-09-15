@@ -56,6 +56,7 @@ export function useLiveRefresh(
         unsubscribe();
         if (timer) clearTimeout(timer);
       };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Account changes must replace the focused subscription even when its resources are unchanged.
     }, [key, ownerGeneration, refreshOnFocus]),
   );
 }

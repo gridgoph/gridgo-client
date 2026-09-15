@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Minus, Plus } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -75,7 +75,6 @@ const MAX_QUANTITY = 500;
  */
 export default function ListingScreen() {
   const router = useRouter();
-  const colors = useThemeColors();
   const { itemId, lineId } = useLocalSearchParams<{
     itemId?: string;
     /** Present when reopening a basket row to change it. */
@@ -133,6 +132,7 @@ export default function ListingScreen() {
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Invalidate the latest request on cleanup; this ref is a sequence counter, not a node.
     return () => { loadSequence.current++; };
   }, [load]);
 

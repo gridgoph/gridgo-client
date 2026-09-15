@@ -41,10 +41,8 @@ type CheckoutPaymentState = {
 /**
  * Checkout's receipt and reference, kept outside the screen.
  *
- * Setting a delivery address pushes `/request/where` and unmounts checkout.
- * React state on the screen died with it, which emptied a screenshot already
- * sent. This store is the basket's payment draft for as long as this cart id
- * is the one on the phone.
+ * Address navigation must not discard a receipt already uploaded. Draft
+ * lifetime and replacement rules: `docs/RECEIPT_OCR_VALIDATION.md#draft-ownership`.
  */
 export const useCheckoutPayment = create<CheckoutPaymentState>((set, get) => ({
   cartId: null,

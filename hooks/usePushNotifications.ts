@@ -23,8 +23,8 @@ import { useSession } from "@/store/session";
  *
  * Mounted once, from the root layout. Everything it decides comes from
  * `lib/push.ts`; everything it stores goes through `store/push.ts`. The
- * supplier and rider apps can take this file wholesale — the only app-specific
- * thing it touches is `pushTargetRoute`.
+ * supplier and rider apps must adapt the protected-route readiness check and
+ * authorized destination read as well as `pushTargetRoute`.
  *
  * Do not statically import `expo-notifications`. Expo Go Android SDK 53 throws
  * at import time; `getNotificationsNative` skips that runtime or swallows a
@@ -50,10 +50,9 @@ export function usePushNotifications(): void {
   /**
    * A tap that arrived before there was anywhere to send it.
    *
-   * A notification tapped from a cold start opens the app on the login screen,
-   * because the session lives in memory and a killed process has none. Routing
-   * to the order then would bounce off the route guard, so the target waits
-   * here and is spent when a session appears.
+   * The GRIDGO projection lives in memory, so a cold-start target waits while
+   * Clerk restores or the person signs in. Routing before that projection is
+   * ready would bounce off the route guard.
    *
    * Wait for an authenticated destination to mount, then route on the next
    * animation frame. Authentication alone does not mean Stack.Protected has
@@ -70,6 +69,7 @@ export function usePushNotifications(): void {
       }
     });
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- Invalidate the latest tap on cleanup; this ref is a sequence counter, not a node.
       tapSequence.current++;
       unsubscribe();
     };

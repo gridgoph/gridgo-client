@@ -29,7 +29,7 @@ it("lets the client remove an unavailable optional choice after a live update", 
   await view.rerender(<Picker current={{ ...group, options: [] }} />);
   expect(screen.getByText("Needs a choice")).toBeTruthy();
   expect(screen.getByText("[]")).toBeTruthy();
-  fireEvent.press(screen.getByText("Remove unavailable selection"));
+  await fireEvent.press(screen.getByText("Remove unavailable selection"));
   expect(screen.getByText("Ready")).toBeTruthy();
   expect(screen.queryByText("Remove unavailable selection")).toBeNull();
   expect(screen.getByText("[]")).toBeTruthy();

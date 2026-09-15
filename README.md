@@ -1,8 +1,8 @@
 # GRIDGO Client
 
-The business-client app for GRIDGO, a Davao City managed-printing marketplace. It carries a print job from a structured request through artwork QA and proof approval to tracked delivery and the 24-hour issue window.
+The business-client app for GRIDGO, a Davao City managed-printing marketplace. It carries a print job from a structured request through artwork QA and proof approval to tracked delivery and the platform-configured issue window.
 
-React Native, Expo SDK 54, Expo Router, NativeWind.
+React Native, Expo Router, NativeWind. [package.json](package.json) owns the dependency versions.
 
 ## Where this sits
 
@@ -20,6 +20,8 @@ All apps share one Clerk application, so a person holding two roles keeps one ac
 Product requirements, the design system, and the operations model live in the `GRIDGO-TINKER` blueprint repo. `AGENTS.md` in this repo is the working source of truth for design tokens and conventions.
 
 ## Getting started
+
+Use Node.js and Expo Go versions compatible with the SDK in `package.json`; see the [Expo SDK 57 requirements](https://docs.expo.dev/versions/v57.0.0/).
 
 ```bash
 npm install
@@ -50,8 +52,8 @@ Typecheck with `npx tsc --noEmit`. Strict mode is on and `any` is not allowed.
 app/                 Routes and screens only — no reusable UI, no business logic
   (auth)/            Clerk-backed welcome, sign-in, and sign-up routes
   (tabs)/            Client tab shell: home, orders, new-request, notifications, account
-  index.tsx          Launch-state mapping into auth, profile setup, onboarding, or the app
-  onboarding.tsx     First-run walkthrough
+  index.tsx          Launch-state mapping into auth, profile setup, or the app
+  onboarding.tsx     Walkthrough available from Settings
   design-system.tsx  Living token and component reference
 components/          Reusable UI
 constants/           theme.ts (token mirror), fonts.ts, tabs.ts
@@ -61,7 +63,7 @@ store/               Zustand stores
 lib/                 External service helpers
 ```
 
-Clerk owns the identity session while `gridgo-api` owns the Client projection. A valid Client session enters the app after any required profile setup or first-run onboarding; accounts that cannot be adopted stay on sign-in with a clear recovery action.
+Clerk owns the identity session while `gridgo-api` owns the Client projection. A valid Client session enters Home after any required profile setup; accounts that cannot be adopted stay on sign-in with a clear recovery action.
 
 `app/design-system.tsx` renders every colour token, type step, and base component in both themes. Open it when you need to check a token rather than reading the tables.
 
@@ -75,11 +77,19 @@ Full detail is in `AGENTS.md`, which you should read before any feature. The thr
 
 Light and Dark are the same product with different presentation: identical labels, states, validation, and workflows.
 
-## Money
+## Checkout and money
 
 All amounts are PHP minor units — centavos, as integers. Nothing holds a peso float.
 
-Pilot payment is Pilot Credits or eligible Cash on Delivery. COD requires a final total of ₱1,500 or less. Pilot Credits are a non-cash test instrument: the UI never says "Top Up", "Cash Out", or "Transfer", and exposes no purchase, withdrawal, or transfer control.
+Payment uses QR Ph: a 75% downpayment and a 25% balance before delivery, checked by Operations. Cash on Delivery and Pilot Credits are unavailable.
+
+At checkout, add the QR transfer screenshot. GRIDGO reads its payment reference automatically; wait for reading to finish, then check or enter the reference yourself if it could not be read. You can view, replace or remove the screenshot. The receipt and reference survive a trip to the address screen within the same app session. The pinned footer shows the total; tapping **Place order** points out missing fields. A submitted receipt awaits Operations' confirmation.
+
+For delivery without an address, checkout can fill a saved address. Check it and use **Change** if needed. If a listing refresh removes an option you selected, choose a current option or tap **Remove unavailable selection**; required groups still need a choice.
+
+## Updates and notifications
+
+Open screens refresh when GRIDGO reports relevant changes and reconcile after reconnecting or returning to the foreground. Order cards and details include the order ID. Push taps wait for sign-in and navigation readiness, then open an accessible order or the Notifications inbox. Foreground updates work independently of push permission; see [Live resource updates](docs/REALTIME_UPDATES.md) for implementation guidance.
 
 ## Android emulator API URL
 

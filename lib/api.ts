@@ -487,7 +487,7 @@ function readExpoDevHostUri(): string | null {
   const modern = Constants.manifest2 as LooseManifest | null | undefined;
   const expoGo = Constants.expoGoConfig as { debuggerHost?: string } | null | undefined;
 
-  const candidates: Array<string | null | undefined> = [
+  const candidates: (string | null | undefined)[] = [
     Constants.expoConfig?.hostUri,
     modern?.extra?.expoClient?.hostUri,
     modern?.extra?.expoGo?.debuggerHost,
@@ -676,6 +676,11 @@ export async function signupClient(
   return result;
 }
 
+/** Resolve against the current provider before account teardown. */
+export function captureLogoutBearer(): Promise<string | null> {
+  return getAuthToken().catch(() => null);
+}
+
 /**
  * Sign out, and stop this phone receiving the account's push in the same call.
  *
@@ -690,11 +695,6 @@ export async function signupClient(
  * no token was sent, the session had already expired, or the token now belongs
  * to somebody else. None of those is a failure worth showing anyone.
  */
-/** Resolve against the current provider before account teardown. */
-export function captureLogoutBearer(): Promise<string | null> {
-  return getAuthToken().catch(() => null);
-}
-
 export async function logout(
   deviceToken?: string | null,
   capturedBearer: Promise<string | null> = captureLogoutBearer(),

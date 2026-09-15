@@ -1,10 +1,28 @@
 # Receipt OCR in Expo Go
 
 The native path is `usePaymentProof` → `recognizeReceiptFromUri` →
-`ReceiptOcrHost` / `RECEIPT_OCR_HTML` → `referenceFromOcr` → checkout's
-`nextReferenceFromOcr`. Parser fixtures alone do not exercise the WebView.
+`ReceiptOcrHost` / `RECEIPT_OCR_HTML` → `referenceFromOcr` →
+`useCheckoutPayment.applyOcrReference`. Parser fixtures alone do not exercise
+the WebView. User-facing checkout guidance lives in [README.md](../README.md#checkout-and-money).
+
+## Draft ownership
+
+`store/checkoutPayment.ts` holds one in-memory payment draft bound to the current
+cart id: the local image URI, upload result, OCR state and reference. Navigating
+away preserves it; changing carts, changing accounts or completing checkout
+clears it. It does not persist across process restarts. Replacing a receipt clears
+the previous OCR autofill while preserving a manually edited reference; explicitly
+removing the receipt also clears the reference.
+
+Upload and OCR completions must still belong to the same account, cart and receipt
+generation. The recognizer checks ownership after image conversion and before
+replacing its queue. During labeled lookahead, neighboring account fields end
+the search instead of supplying a number; candidate and confidence filters live
+in `lib/receiptOcr.ts`.
 
 ## Android verification — 2026-09-08
+
+This is historical SDK 54 evidence, not verification of the current SDK upgrade.
 
 Tested on a Moto G Power (2025), Expo Go 54.0.8, with this project's React
 Compiler enabled. A temporary Expo entry rendered the real host and payment

@@ -41,7 +41,7 @@ export default function ChooseCategoryScreen() {
   const [focused, setFocused] = useState(false);
 
   // Seed is already the tree. Refresh in the background; never blank the
-  // picker on a taxonomy blip or refetch it every time this screen is focused.
+  // picker on a taxonomy blip. Focus and live events read through the cache.
   const loadSequence = useRef(0);
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
@@ -51,6 +51,7 @@ export default function ChooseCategoryScreen() {
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Invalidate the latest request on cleanup; this ref is a sequence counter, not a node.
     return () => { loadSequence.current++; };
   }, [load]);
 

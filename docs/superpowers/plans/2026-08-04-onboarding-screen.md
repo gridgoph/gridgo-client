@@ -49,7 +49,7 @@ Three facts discovered and verified while standing the harness up. They are not 
 5. **`react-native-svg` host nodes carry a processed colour, not your hex string.** Verified empirically: `<Circle fill="#1A1A1A" />` renders host type `RNSVGCircle` with `props.fill === { type: 0, payload: 4279900698 }`. `<Path>` renders `RNSVGPath` the same way. Compare against `processColor(token)` from `react-native` and read `props.fill?.payload` — never the token string. `processColor("#1A1A1A") === 4279900698`, `processColor("#FFDE58") === 4294958680`.
 6. **Change the colour scheme with nothing mounted.** `Appearance.setColorScheme` in an `afterEach` fires the `useSyncExternalStore` subscription of a still-mounted component and produces an `act()` warning. Set it in `beforeEach` instead, and reset in `afterAll`.
 
-`jest-expo` is pinned to `^54.0.17` to track the Expo SDK major. Do not let a tool upgrade it — `jest-expo@57` requires `react@^19.2.3` and this project is on `19.1.0`.
+Current SDK and test dependency versions are owned by [package.json](../../../package.json); the versions in this dated plan describe its original environment.
 
 ---
 

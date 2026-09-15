@@ -202,11 +202,11 @@ describe("placing the order", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    fireEvent.changeText(screen.getByLabelText("Payment reference"), "1234567890123");
+    await fireEvent.changeText(screen.getByLabelText("Payment reference"), "1234567890123");
     await waitFor(() =>
       expect(screen.getByLabelText("Payment reference").props.value).toBe("1234567890123"),
     );
-    fireEvent.press(screen.getByLabelText("Place this order"));
+    await fireEvent.press(screen.getByLabelText("Place this order"));
 
     await waitFor(() =>
       expect(api.checkoutCart).toHaveBeenCalledWith("cart_1", {

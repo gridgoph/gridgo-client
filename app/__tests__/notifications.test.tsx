@@ -149,7 +149,7 @@ describe("NotificationsScreen", () => {
     await renderInSafeArea(<NotificationsScreen />);
 
     const row = await screen.findByLabelText(/^Unread\./);
-    fireEvent(row, "accessibilityAction", {
+    await fireEvent(row, "accessibilityAction", {
       nativeEvent: { actionName: "markRead" },
     });
 
@@ -162,7 +162,7 @@ describe("NotificationsScreen", () => {
   it("opens the job the update is about", async () => {
     await renderInSafeArea(<NotificationsScreen />);
 
-    fireEvent.press(await screen.findByText(assignment.title));
+    await fireEvent.press(await screen.findByText(assignment.title));
 
     expect(mockPush).toHaveBeenCalledWith("/order/ord_demo_1");
   });
