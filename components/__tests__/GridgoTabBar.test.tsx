@@ -1,4 +1,4 @@
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -257,7 +257,7 @@ describe("GridgoTabBar", () => {
   it("navigates to a tab that is not open", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    fireEvent.press(screen.getByRole("tab", { name: "Notifications" }));
+    await fireEvent.press(screen.getByRole("tab", { name: "Notifications" }));
 
     expect(navigate).toHaveBeenCalledWith("notifications");
   });
@@ -265,7 +265,7 @@ describe("GridgoTabBar", () => {
   it("stays put when the open tab is pressed again", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    fireEvent.press(screen.getByRole("tab", { name: "Home" }));
+    await fireEvent.press(screen.getByRole("tab", { name: "Home" }));
 
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -275,7 +275,7 @@ describe("GridgoTabBar", () => {
 
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    fireEvent.press(screen.getByRole("tab", { name: "Notifications" }));
+    await fireEvent.press(screen.getByRole("tab", { name: "Notifications" }));
 
     expect(navigate).not.toHaveBeenCalled();
   });

@@ -114,7 +114,7 @@ jest.mock("expo-router", () => {
   };
 });
 
-jest.mock("@react-navigation/native", () => ({
+jest.mock("expo-router/react-navigation", () => ({
   usePreventRemove: jest.fn(),
 }));
 
@@ -155,13 +155,13 @@ describe("LoginScreen completed password sign-in", () => {
 
   it("finalizes, adopts the GRIDGO client, and lands home", async () => {
     await renderInSafeArea(<LoginScreen />);
-    fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
-    fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
+    await fireEvent.changeText(screen.getByLabelText("Email"), "client@gridgo.ph");
+    await fireEvent.changeText(screen.getByLabelText("Password"), "fixture-password");
     await waitFor(() =>
       expect(screen.getByLabelText("Password").props.value).toBe("fixture-password"),
     );
 
-    fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
     await waitFor(() => expect(useSession.getState().user?.id).toBe("u-client"));
     expect(mockFinalize).toHaveBeenCalled();

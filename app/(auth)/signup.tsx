@@ -1,5 +1,5 @@
 import { useAuth, useClerk, useSignUp } from "@clerk/expo";
-import { usePreventRemove } from "@react-navigation/native";
+import { usePreventRemove } from "expo-router/react-navigation";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 
@@ -32,7 +32,7 @@ import { useSignupFlow } from "@/store/signupFlow";
 
 export default function SignupScreen() {
   const { signUp, fetchStatus } = useSignUp();
-  const { isSignedIn, getToken, sessionId } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { setActive, signOut } = useClerk();
   const landing = useAuthLanding();
   const sessionError = useSession((state) => state.error);

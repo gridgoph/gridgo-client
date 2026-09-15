@@ -1,3 +1,4 @@
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { Check } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
@@ -29,6 +30,7 @@ type Props = {
  * and there is nowhere else to give it.
  */
 export function OptionGroupPicker({ group, step, selectedId, onSelect }: Props) {
+  const unavailable = Boolean(selectedId) && !group.options.some((option) => option.id === selectedId);
   const heading =
     step != null ? `STEP ${step} · ${group.name.toUpperCase()}` : group.name.toUpperCase();
 
@@ -45,6 +47,15 @@ export function OptionGroupPicker({ group, step, selectedId, onSelect }: Props) 
 
       {group.helpText ? (
         <Text className="text-caption text-text-muted">{group.helpText}</Text>
+      ) : null}
+
+      {unavailable ? (
+        <View className="gap-2">
+          <Text className="text-body text-text-secondary">
+            Your selected option is no longer available.
+          </Text>
+          <SecondaryButton label="Remove unavailable selection" onPress={() => onSelect(null)} />
+        </View>
       ) : null}
 
       <View className="gg-card-flush">

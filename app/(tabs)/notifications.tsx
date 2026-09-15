@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -30,6 +31,8 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const { items, loading, error, refresh, readIds, markRead, markAllRead } = useNotifications();
+
+  useLiveRefresh(["notifications"], refresh, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {

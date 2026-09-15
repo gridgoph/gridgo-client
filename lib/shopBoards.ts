@@ -71,7 +71,9 @@ export async function loadCategoryBoards(
   cache.set(key, { at: Date.now(), value });
   // A failed read must not be cached, or one flaky moment breaks the category
   // for the next minute.
-  value.catch(() => cache.delete(key));
+  value.catch(() => {
+    if (cache.get(key)?.value === value) cache.delete(key);
+  });
   return value;
 }
 

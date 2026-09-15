@@ -1,5 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 
+import { usePaymentProof } from "@/hooks/usePaymentProof";
+import { useCheckoutPayment } from "@/store/checkoutPayment";
+
 const mockGetDocumentAsync = jest.fn();
 const mockRecognizeReceiptFromUri = jest.fn();
 const mockUploadFile = jest.fn();
@@ -16,8 +19,6 @@ jest.mock("@/lib/api", () => ({
 jest.mock("@/lib/receiptOcrRecognize", () => ({
   recognizeReceiptFromUri: (...args: unknown[]) => mockRecognizeReceiptFromUri(...args),
 }));
-
-import { usePaymentProof } from "@/hooks/usePaymentProof";
 
 describe("usePaymentProof OCR unreadable", () => {
   it("leaves the reference empty when the screenshot has no number", async () => {
@@ -41,7 +42,8 @@ describe("usePaymentProof OCR unreadable", () => {
       confidence: 40,
     });
 
-    const { result } = await renderHook(() => usePaymentProof());
+    useCheckoutPayment.getState().reset();
+    const { result } = await renderHook(() => usePaymentProof("cart_1"));
     await act(async () => {
       await result.current.pick();
     });

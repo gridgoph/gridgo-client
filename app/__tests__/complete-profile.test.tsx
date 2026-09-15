@@ -7,7 +7,7 @@ import { useSession } from "@/store/session";
 
 jest.mock("@clerk/expo", () => ({
   useAuth: () => ({
-    isSignedIn: false,
+    isSignedIn: true,
     isLoaded: true,
     getToken: jest.fn(async () => "clerk-jwt"),
     sessionId: null,

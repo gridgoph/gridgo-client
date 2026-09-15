@@ -1,5 +1,6 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Search, X } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View, type TextStyle } from "react-native";
 import { useRouter } from "expo-router";
 
@@ -40,18 +41,21 @@ export default function ChooseCategoryScreen() {
   const [focused, setFocused] = useState(false);
 
   // Seed is already the tree. Refresh in the background; never blank the
-  // picker on a taxonomy blip or refetch it every time this screen is focused.
-  useEffect(() => {
-    let alive = true;
-    void api.getProductCategories().then((tree) => {
-      if (alive) setCategories(tree);
-    }).catch(() => {
-      // Seed already on screen.
-    });
-    return () => {
-      alive = false;
-    };
+  // picker on a taxonomy blip. Focus and live events read through the cache.
+  const loadSequence = useRef(0);
+  const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    const tree = await api.getProductCategories().catch(() => null);
+    if (tree && sequence === loadSequence.current) setCategories(tree);
   }, []);
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Invalidate the latest request on cleanup; this ref is a sequence counter, not a node.
+    return () => { loadSequence.current++; };
+  }, [load]);
+
+  useLiveRefresh(["catalog"], load);
 
   const hits = useMemo(() => searchSubcategories(categories, query), [categories, query]);
   const searching = query.trim().length >= 2;

@@ -1,31 +1,19 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import * as api from "@/lib/api";
 import { artworkErrorMessage, normalizeFileName } from "@/lib/artworkUpload";
 import { PROOF_ACCEPTED, PROOF_MAX_MIB, PROOF_MIME_TYPES } from "@/lib/checkout";
 import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
-import {
-  OCR_IDLE,
-  referenceFromOcr,
-  type ReceiptOcrState,
-} from "@/lib/receiptOcr";
+import { liveGeneration } from "@/lib/live";
+import { referenceFromOcr } from "@/lib/receiptOcr";
 import { recognizeReceiptFromUri } from "@/lib/receiptOcrRecognize";
+import {
+  EMPTY_PROOF,
+  useCheckoutPayment,
+  type PaymentProofState,
+} from "@/store/checkoutPayment";
 
-export type PaymentProofState = {
-  phase: "empty" | "sending" | "stored" | "failed";
-  fileName: string;
-  fileId: string | null;
-  progress: number | null;
-  error: string | null;
-};
-
-const EMPTY: PaymentProofState = {
-  phase: "empty",
-  fileName: "",
-  fileId: null,
-  progress: null,
-  error: null,
-};
+export type { PaymentProofState };
 
 /**
  * The screenshot of the QR payment.
@@ -36,42 +24,62 @@ const EMPTY: PaymentProofState = {
  * screenshot, so it is uploaded here, ahead of the button, and the reference is
  * typed beside it.
  *
- * Its own hook rather than the artwork one: the purpose is `payment_proof`,
- * which the storage API limits to images and to a much smaller file than a
- * print-ready artwork. Sharing the artwork hook would have meant one set of
- * limits quietly applying to both.
+ * State lives in `useCheckoutPayment` so leaving checkout to set an address
+ * does not throw the screenshot and the reference away.
  */
-export function usePaymentProof() {
-  const [state, setState] = useState<PaymentProofState>(EMPTY);
-  const [ocr, setOcr] = useState<ReceiptOcrState>(OCR_IDLE);
+export function usePaymentProof(cartId: string | null) {
+  const proof = useCheckoutPayment((state) => state.proof);
+  const ocr = useCheckoutPayment((state) => state.ocr);
+  const bind = useCheckoutPayment((state) => state.bind);
+  const setProof = useCheckoutPayment((state) => state.setProof);
+  const setOcr = useCheckoutPayment((state) => state.setOcr);
   const handleRef = useRef<api.UploadHandle | null>(null);
-  const ocrGen = useRef(0);
 
-  const readReference = useCallback((uri: string) => {
-    const gen = (ocrGen.current += 1);
-    setOcr({ status: "reading", reference: null });
-    void (async () => {
-      try {
-        const raw = await recognizeReceiptFromUri(uri);
-        if (gen !== ocrGen.current) return;
-        const reference = referenceFromOcr(raw);
-        setOcr(
-          reference
-            ? { status: "filled", reference }
-            : { status: "unreadable", reference: null },
-        );
-      } catch {
-        if (gen !== ocrGen.current) return;
-        setOcr({ status: "unreadable", reference: null });
-      }
-    })();
-  }, []);
+  useEffect(() => {
+    bind(cartId);
+  }, [bind, cartId]);
+
+  const readReference = useCallback(
+    (uri: string, isCurrent: () => boolean) => {
+      setOcr({ status: "reading", reference: null });
+      void (async () => {
+        try {
+          const raw = await recognizeReceiptFromUri(uri, isCurrent);
+          if (!isCurrent()) return;
+          const reference = referenceFromOcr(raw);
+          setOcr(
+            reference
+              ? { status: "filled", reference }
+              : { status: "unreadable", reference: null },
+          );
+          if (reference) useCheckoutPayment.getState().applyOcrReference(reference);
+        } catch {
+          if (!isCurrent()) return;
+          setOcr({ status: "unreadable", reference: null });
+        }
+      })();
+    },
+    [setOcr],
+  );
 
   const pick = useCallback(async () => {
+    const owner = liveGeneration();
+    let generation = useCheckoutPayment.getState().generation;
+    const isCurrent = () => {
+      const state = useCheckoutPayment.getState();
+      return state.cartId === cartId && state.generation === generation && liveGeneration() === owner;
+    };
+    if (!cartId || !isCurrent()) return;
+    const beginProof = () => {
+      generation = useCheckoutPayment.getState().beginProof();
+      handleRef.current?.cancel();
+      handleRef.current = null;
+    };
     const DocumentPicker = getDocumentPickerNative();
     if (!DocumentPicker) {
-      setState({
-        ...EMPTY,
+      beginProof();
+      setProof({
+        ...EMPTY_PROOF,
         phase: "failed",
         error: FILE_PICKER_NEEDS_REBUILD,
       });
@@ -85,19 +93,22 @@ export function usePaymentProof() {
         copyToCacheDirectory: true,
       });
     } catch {
-      setState({
-        ...EMPTY,
+      if (!isCurrent()) return;
+      beginProof();
+      setProof({
+        ...EMPTY_PROOF,
         phase: "failed",
         error: "The picker did not open. Try again, and check GRIDGO has access to your photos.",
       });
       return;
     }
-    if (result.canceled) return;
+    if (!isCurrent() || result.canceled) return;
+    beginProof();
 
     const asset = result.assets?.[0];
     if (!asset?.uri) {
-      setState({
-        ...EMPTY,
+      setProof({
+        ...EMPTY_PROOF,
         phase: "failed",
         error: "That file could not be read. Take the screenshot again, or pick it from Photos.",
       });
@@ -105,10 +116,9 @@ export function usePaymentProof() {
     }
 
     const fileName = normalizeFileName(asset.name);
-    // Said before the bytes move, in the client's own terms.
     if (typeof asset.size === "number" && asset.size > PROOF_MAX_MIB * 1024 * 1024) {
-      setState({
-        ...EMPTY,
+      setProof({
+        ...EMPTY_PROOF,
         phase: "failed",
         fileName,
         error: `A receipt screenshot has to be under ${PROOF_MAX_MIB} MB. Send the screenshot rather than the whole photo.`,
@@ -116,45 +126,57 @@ export function usePaymentProof() {
       return;
     }
 
-    setState({ phase: "sending", fileName, fileId: null, progress: 0, error: null });
-    readReference(asset.uri);
+    setProof({
+      phase: "sending",
+      fileName,
+      fileId: null,
+      localUri: asset.uri,
+      progress: 0,
+      error: null,
+    });
+    readReference(asset.uri, isCurrent);
     const handle = api.uploadFile(
       { uri: asset.uri, name: fileName, mimeType: asset.mimeType ?? null },
       "payment_proof",
-      (fraction) =>
-        setState((prev) => (prev.phase === "sending" ? { ...prev, progress: fraction } : prev)),
+      (fraction) => {
+        if (isCurrent()) setProof((prev) => (prev.phase === "sending" ? { ...prev, progress: fraction } : prev));
+      },
     );
     handleRef.current = handle;
 
     try {
       const file = await handle.done;
-      setState({
+      if (!isCurrent()) return;
+      setProof({
         phase: "stored",
         fileName: file.originalFilename || fileName,
         fileId: file.fileId,
+        localUri: asset.uri,
         progress: 1,
         error: null,
       });
     } catch (error) {
-      setState({
-        ...EMPTY,
+      if (!isCurrent()) return;
+      setProof({
+        ...EMPTY_PROOF,
         phase: "failed",
         fileName,
-        // The storage contract's own words, plus what this purpose accepts.
+        localUri: asset.uri,
         error: `${artworkErrorMessage(error)} GRIDGO takes ${PROOF_ACCEPTED} for a receipt.`,
       });
     } finally {
-      handleRef.current = null;
+      if (handleRef.current === handle) handleRef.current = null;
     }
-  }, [readReference]);
+  }, [cartId, readReference, setProof]);
 
   const reset = useCallback(() => {
-    ocrGen.current += 1;
+    const state = useCheckoutPayment.getState();
+    if (state.cartId !== cartId) return;
+    state.beginProof();
+    state.setReference("");
     handleRef.current?.cancel();
     handleRef.current = null;
-    setState(EMPTY);
-    setOcr(OCR_IDLE);
-  }, []);
+  }, [cartId]);
 
-  return { state, ocr, pick, reset };
+  return { state: proof, ocr, pick, reset };
 }

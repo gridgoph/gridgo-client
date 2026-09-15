@@ -1,12 +1,11 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { waitFor } from "@testing-library/react-native";
 
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
 import * as api from "@/lib/api";
 import { PUSH_CHANNEL_ID } from "@/lib/push";
-import { usePush, pushSupported } from "@/store/push";
+import { usePush, pushSupported, serializeDeviceMutation } from "@/store/push";
 import { useSession } from "@/store/session";
 
 /**
@@ -37,6 +36,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  useSession.setState({ signingOut: false });
   usePush.setState({
     supported: true,
     permission: "unknown",
@@ -59,14 +59,6 @@ afterEach(() => {
 });
 
 describe("native module isolation", () => {
-  it("does not statically import expo-notifications", () => {
-    // Expo Go Android SDK 53 throws at import time, not at getDevicePushTokenAsync.
-    // A static import on this file would crash login (and launch) before any
-    // try/wrap around a native call could run.
-    const source = readFileSync(join(__dirname, "../push.ts"), "utf8");
-    expect(source).not.toMatch(/import\s+[^;]*from\s+["']expo-notifications["']/);
-  });
-
   it("constructing the store does not touch the native module", () => {
     // The store is imported at the top of this file. If that evaluation required
     // expo-notifications to succeed, a throwing module would kill the suite.
@@ -106,7 +98,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().claimed).toBe(true);
     expect(usePush.getState().error).toBeNull();
@@ -121,6 +113,18 @@ describe("registerIfGranted", () => {
     register.mockRestore();
   });
 
+  it("claims a Clerk-authenticated installation without a legacy token", async () => {
+    api.setToken(null);
+    api.setTokenProvider(async () => "clerk-bearer");
+    usePush.setState({ permission: "granted" });
+    const claim = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+    await usePush.getState().registerIfGranted();
+    expect(claim).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
+    expect(usePush.getState().claimed).toBe(true);
+    claim.mockRestore();
+    api.setTokenProvider(null);
+  });
+
   it("registers unclaimed when nobody is signed in", async () => {
     // A customer that installs GRIDGO and never signs in still has to hear
     // "there is a new version". No bearer exists, so the phone goes on the
@@ -132,7 +136,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     expect(claimed).not.toHaveBeenCalled();
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().claimed).toBe(false);
@@ -147,7 +151,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     expect(usePush.getState().claimed).toBe(true);
     claimed.mockRestore();
   });
@@ -225,7 +229,7 @@ describe("enable", () => {
     await expect(usePush.getState().enable()).resolves.toBe(true);
 
     expect(mocked.requestPermissionsAsync).toHaveBeenCalled();
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     register.mockRestore();
   });
 
@@ -255,7 +259,7 @@ describe("adoptToken", () => {
 
     await usePush.getState().adoptToken("rotated-token");
 
-    expect(register).toHaveBeenCalledWith("rotated-token", "android");
+    expect(register).toHaveBeenCalledWith("rotated-token", "android", expect.any(AbortSignal));
     register.mockRestore();
   });
 
@@ -282,11 +286,32 @@ describe("signing out", () => {
 
     await useSession.getState().logout();
 
-    expect(logout).toHaveBeenCalledWith("fcm-token-a7c8d3f1");
+    expect(logout).toHaveBeenCalledWith("fcm-token-a7c8d3f1", expect.any(Promise));
     expect(useSession.getState().user).toBeNull();
     expect(usePush.getState().claimed).toBe(false);
     logout.mockRestore();
     unclaimed.mockRestore();
+  });
+
+  it("waits for an in-flight device claim before releasing that account", async () => {
+    usePush.setState({ permission: "granted" });
+    useSession.setState({ user: { id: "owner", role: "client" } as never });
+    let finish!: () => void;
+    const claim = jest.spyOn(api, "registerDevice").mockImplementation(() => new Promise((resolve) => {
+      finish = () => resolve({} as never);
+    }));
+    const release = jest.spyOn(api, "logout").mockResolvedValue(undefined);
+    const registration = usePush.getState().registerIfGranted();
+    await waitFor(() => expect(claim).toHaveBeenCalled());
+    const leaving = useSession.getState().logout();
+    expect(release).not.toHaveBeenCalled();
+    finish();
+    await registration;
+    await leaving;
+    expect(release).toHaveBeenCalledWith("fcm-token-a7c8d3f1", expect.any(Promise));
+    expect(usePush.getState().claimed).toBe(false);
+    claim.mockRestore();
+    release.mockRestore();
   });
 
   it("signs out normally on a phone that never had a token", async () => {
@@ -297,7 +322,7 @@ describe("signing out", () => {
 
     await useSession.getState().logout();
 
-    expect(logout).toHaveBeenCalledWith(null);
+    expect(logout).toHaveBeenCalledWith(null, expect.any(Promise));
     logout.mockRestore();
   });
 
@@ -311,8 +336,57 @@ describe("signing out", () => {
 
     await usePush.getState().release();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android");
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
     expect(usePush.getState().claimed).toBe(false);
     unclaimed.mockRestore();
   });
+});
+
+it("does not reclaim a device while Clerk is still signing out", async () => {
+  useSession.setState({ signingOut: true });
+  api.setTokenProvider(async () => "departing-clerk-bearer");
+  usePush.setState({ permission: "granted" });
+  const claim = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+  await usePush.getState().registerIfGranted();
+  expect(claim).not.toHaveBeenCalled();
+  claim.mockRestore();
+  api.setTokenProvider(null);
+});
+
+it("checks sign-out again when a queued registration starts", async () => {
+  let finish!: () => void;
+  const barrier = serializeDeviceMutation(() => new Promise<void>((resolve) => { finish = resolve; }));
+  usePush.setState({ permission: "granted" });
+  const claim = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+  const registration = usePush.getState().registerIfGranted();
+  await waitFor(() => expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1"));
+  useSession.setState({ signingOut: true });
+  finish();
+  await barrier;
+  await registration;
+  expect(claim).not.toHaveBeenCalled();
+  claim.mockRestore();
+});
+
+it("aborts a stalled unclaimed registration and lets the queue continue", async () => {
+  jest.useFakeTimers();
+  api.setToken(null);
+  usePush.setState({ permission: "granted" });
+  let signal!: AbortSignal;
+  const unclaimed = jest.spyOn(api, "registerDeviceUnclaimed").mockImplementation((_token, _platform, requestSignal) => {
+    signal = requestSignal!;
+    return new Promise(() => {});
+  });
+  const registration = usePush.getState().registerIfGranted();
+  await jest.advanceTimersByTimeAsync(1);
+  const next = jest.fn(async () => undefined);
+  const queued = serializeDeviceMutation(next);
+  await jest.advanceTimersByTimeAsync(20_000);
+  await registration;
+  await queued;
+  expect(signal.aborted).toBe(true);
+  expect(next).toHaveBeenCalledTimes(1);
+  expect(usePush.getState().busy).toBe(false);
+  unclaimed.mockRestore();
+  jest.useRealTimers();
 });

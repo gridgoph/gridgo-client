@@ -67,13 +67,17 @@ export function findOption(
   return null;
 }
 
+function selectedOption(group: CatalogOptionGroup, selection: ListingSelection): CatalogOption | undefined {
+  return group.options.find((option) => option.id === selection[group.id]);
+}
+
 /** Selected option ids, in the shop's own group order. */
 export function selectedOptionIds(
   item: CatalogItem,
   selection: ListingSelection,
 ): string[] {
   return [...specGroups(item), ...addOnGroups(item)]
-    .map((group) => selection[group.id])
+    .map((group) => selectedOption(group, selection)?.id)
     .filter((id): id is string => Boolean(id));
 }
 
@@ -82,9 +86,7 @@ export function isSelectionComplete(
   item: CatalogItem,
   selection: ListingSelection,
 ): boolean {
-  return specGroups(item)
-    .filter((group) => group.required)
-    .every((group) => Boolean(selection[group.id]));
+  return firstMissingGroup(item, selection) === null;
 }
 
 /** The first step still unanswered, so the sheet can say which one. */
@@ -93,9 +95,8 @@ export function firstMissingGroup(
   selection: ListingSelection,
 ): CatalogOptionGroup | null {
   return (
-    specGroups(item)
-      .filter((group) => group.required)
-      .find((group) => !selection[group.id]) ?? null
+    [...specGroups(item), ...addOnGroups(item)]
+      .find((group) => (group.required || Boolean(selection[group.id])) && !selectedOption(group, selection)) ?? null
   );
 }
 
@@ -287,8 +288,7 @@ export function selectionSummary(
 ): { groupId: string; groupName: string; label: string; priceModifierMinor: number }[] {
   return [...specGroups(item), ...addOnGroups(item)]
     .map((group) => {
-      const optionId = selection[group.id];
-      const option = group.options.find((candidate) => candidate.id === optionId);
+      const option = selectedOption(group, selection);
       if (!option) return null;
       return {
         groupId: group.id,

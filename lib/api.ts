@@ -1,3 +1,5 @@
+import { withRequestDeadline } from "@/lib/requestDeadline";
+import { liveGeneration, assertLiveGeneration } from "@/lib/live";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
@@ -485,7 +487,7 @@ function readExpoDevHostUri(): string | null {
   const modern = Constants.manifest2 as LooseManifest | null | undefined;
   const expoGo = Constants.expoGoConfig as { debuggerHost?: string } | null | undefined;
 
-  const candidates: Array<string | null | undefined> = [
+  const candidates: (string | null | undefined)[] = [
     Constants.expoConfig?.hostUri,
     modern?.extra?.expoClient?.hostUri,
     modern?.extra?.expoGo?.debuggerHost,
@@ -548,6 +550,10 @@ export function setTokenProvider(provider: TokenProvider | null): void {
   tokenProvider = provider;
 }
 
+export async function getAuthToken(force = false): Promise<string | null> {
+  return (await resolveToken(force)).token;
+}
+
 export function getToken(): string | null {
   return tokenMemory;
 }
@@ -596,31 +602,26 @@ async function request<T>(
    */
   forceFreshToken = false,
 ): Promise<T> {
+  return withRequestDeadline(init.signal, async (signal) => {
+  const generation = liveGeneration();
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  if (signal.aborted) throw new Error("Request cancelled");
   const auth = await resolveToken(forceFreshToken);
-  if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
-
-  const timeoutMs = 20_000;
-  const timedOut = !init.signal;
-  const controller = timedOut ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  let res: Response;
-  try {
-    res = await fetch(`${getApiBase()}${path}`, {
-      ...init,
-      headers,
-      signal: init.signal ?? controller?.signal,
-    });
-  } catch (error) {
-    throw error;
-  } finally {
-    if (timer) clearTimeout(timer);
+  if (signal.aborted) throw new Error("Request cancelled");
+  assertLiveGeneration(generation);
+  if (auth.token) {
+    headers.Authorization = `Bearer ${auth.token}`;
+    if (path !== "/auth/clerk/activate") headers["X-GRIDGO-Role"] = "client";
   }
+
+  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
   const text = await res.text();
+  if (signal.aborted) throw new Error("Request cancelled");
+  assertLiveGeneration(generation);
   let data: unknown = null;
   if (text) {
     try {
@@ -638,8 +639,8 @@ async function request<T>(
       // it. Ask for a new one and try once. `ignoreUnauthorized` is excluded
       // deliberately — that 401 is the unmapped-identity probe before
       // activate, where a fresher token changes nothing.
-      if (auth.source === "provider" && !forceFreshToken && !init.signal) {
-        return request<T>(path, init, options, true);
+      if (auth.source === "provider" && !forceFreshToken) {
+        return request<T>(path, { ...init, signal }, options, true);
       }
       if (auth.source === "legacy") setToken(null);
       notifyUnauthorized();
@@ -647,6 +648,7 @@ async function request<T>(
     throw new ApiError(res.status, data);
   }
   return data as T;
+  });
 }
 
 export async function login(email: string, password: string): Promise<{ token: string; user: User }> {
@@ -674,6 +676,11 @@ export async function signupClient(
   return result;
 }
 
+/** Resolve against the current provider before account teardown. */
+export function captureLogoutBearer(): Promise<string | null> {
+  return getAuthToken().catch(() => null);
+}
+
 /**
  * Sign out, and stop this phone receiving the account's push in the same call.
  *
@@ -688,20 +695,25 @@ export async function signupClient(
  * no token was sent, the session had already expired, or the token now belongs
  * to somebody else. None of those is a failure worth showing anyone.
  */
-export async function logout(deviceToken?: string | null): Promise<void> {
+export async function logout(
+  deviceToken?: string | null,
+  capturedBearer: Promise<string | null> = captureLogoutBearer(),
+): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 2500);
   try {
-    await request("/auth/logout", {
+    const bearer = await capturedBearer;
+    if (!bearer || controller.signal.aborted) return;
+    await fetch(`${getApiBase()}/auth/logout`, {
       method: "POST",
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json", "X-GRIDGO-Role": "client" },
       body: JSON.stringify(deviceToken ? { deviceToken } : {}),
       signal: controller.signal,
     });
   } catch {
-    // Timeout, abort, or unreachable API: the local session is already gone.
+    // Local sign-out remains available offline. Never mutate a newer identity.
   } finally {
     clearTimeout(timer);
-    setToken(null);
   }
 }
 
@@ -718,10 +730,12 @@ export async function logout(deviceToken?: string | null): Promise<void> {
 export async function registerDevice(
   token: string,
   platform: DevicePlatform,
+  signal?: AbortSignal,
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
-    body: JSON.stringify({ token, platform }),
+    signal,
+    body: JSON.stringify({ token, platform, appRole: "client" }),
   });
 }
 
@@ -754,11 +768,13 @@ export async function registerDevice(
 export async function registerDeviceUnclaimed(
   token: string,
   platform: DevicePlatform,
+  signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
+    signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ token, platform }),
+    body: JSON.stringify({ token, platform, appRole: "client" }),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -1133,14 +1149,15 @@ export async function getTaxonomy(): Promise<TaxonomyPayload> {
 const PRODUCT_CATEGORIES_TTL_MS = 5 * 60 * 1000;
 let productCategoryCache: { at: number; value: ProductCategory[] } | null = null;
 let productCategoryInflight: Promise<ProductCategory[]> | null = null;
+let productCategoryGeneration = 0;
 
 /** Instant tree for first paint. Never waits on the network. */
 export function productCategoriesNow(): ProductCategory[] {
   return productCategoryCache?.value ?? PRODUCT_CATEGORY_SEED;
 }
 
-/** Test helper — the live cache must not leak across cases. */
 export function clearProductCategoryCache(): void {
+  productCategoryGeneration++;
   productCategoryCache = null;
   productCategoryInflight = null;
 }
@@ -1152,18 +1169,21 @@ export async function getProductCategories(): Promise<ProductCategory[]> {
   }
   if (productCategoryInflight) return productCategoryInflight;
 
+  const generation = productCategoryGeneration;
   productCategoryInflight = (async () => {
     try {
       const tree = adaptProductCategories(await request("/taxonomy"));
+      if (generation !== productCategoryGeneration) return getProductCategories();
       productCategoryCache = { at: Date.now(), value: tree };
       return tree;
     } catch (error) {
+      if (generation !== productCategoryGeneration) return getProductCategories();
       const fallback = productCategoryCache?.value ?? PRODUCT_CATEGORY_SEED;
       productCategoryCache = { at: Date.now(), value: fallback };
       if (fallback.length) return fallback;
       throw error;
     } finally {
-      productCategoryInflight = null;
+      if (generation === productCategoryGeneration) productCategoryInflight = null;
     }
   })();
 
@@ -1241,7 +1261,7 @@ export async function listNotifications(): Promise<NotificationList> {
   const timer = setTimeout(() => controller.abort(), NOTIFICATIONS_TIMEOUT_MS);
   try {
     const result = await request<NotificationList>(
-      `/notifications?limit=${NOTIFICATION_LIST_LIMIT}`,
+      `/notifications?limit=${NOTIFICATION_LIST_LIMIT}&role=client`,
       { signal: controller.signal },
     );
     return {
@@ -1265,7 +1285,7 @@ export async function markNotificationRead(id: string, read = true): Promise<Not
 }
 
 export async function markAllNotificationsRead(snapshot: string): Promise<number> {
-  const result = await request<{ updatedCount: number }>("/notifications/read-all", {
+  const result = await request<{ updatedCount: number }>("/notifications/read-all?role=client", {
     method: "PATCH",
     body: JSON.stringify({ snapshot }),
   });
@@ -1798,10 +1818,12 @@ export function uploadFile(
   purpose: string,
   onProgress?: (fraction: number | null) => void,
 ): UploadHandle {
+  const owner = liveGeneration();
   const xhr = new XMLHttpRequest();
 
   const done = (async () => {
     const auth = await resolveToken();
+    assertLiveGeneration(owner);
     return new Promise<StoredFile>((resolve, reject) => {
       const form = new FormData();
       form.append("purpose", purpose);
@@ -1816,11 +1838,13 @@ export function uploadFile(
       xhr.responseType = "text";
       xhr.setRequestHeader("Accept", "application/json");
       if (auth.token) xhr.setRequestHeader("Authorization", `Bearer ${auth.token}`);
+        xhr.setRequestHeader("X-GRIDGO-Role", "client");
       // Content-Type is left unset on purpose: the platform supplies the
       // multipart boundary, and overriding it corrupts the request body.
 
       if (xhr.upload && onProgress) {
         xhr.upload.onprogress = (event: ProgressEvent) => {
+          if (owner !== liveGeneration()) return;
           onProgress(
             event.lengthComputable && event.total > 0
               ? event.loaded / event.total
@@ -1830,6 +1854,12 @@ export function uploadFile(
       }
 
       xhr.onload = () => {
+        try {
+          assertLiveGeneration(owner);
+        } catch (error) {
+          reject(error);
+          return;
+        }
         let data: unknown = null;
         const text = typeof xhr.response === "string" ? xhr.response : "";
         if (text) {

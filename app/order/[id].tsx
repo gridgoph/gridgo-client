@@ -1,5 +1,6 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronLeft } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
@@ -69,7 +70,14 @@ export default function OrderDetailScreen() {
   const [taxonomy, setTaxonomy] = useState<Taxonomy>(EMPTY_TAXONOMY);
   const [error, setError] = useState<string | null>(null);
 
+  const loadSequence = useRef(0);
+  const applyOrderUpdate = useCallback((updated: api.Order) => {
+    loadSequence.current++;
+    setOrder(updated);
+    setError(null);
+  }, []);
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     if (!id) return;
     try {
       const [current, catalog, zoneList, taxonomyResult] = await Promise.all([
@@ -79,21 +87,26 @@ export default function OrderDetailScreen() {
         // Labels only. A failure costs a nicer material name, never the order.
         api.getTaxonomy().catch(() => EMPTY_TAXONOMY),
       ]);
+      if (sequence !== loadSequence.current) return;
       setOrder(current);
       setProduct(catalog.find((entry) => entry.id === current.productId) ?? null);
       setZones(zoneList);
       setTaxonomy(taxonomyResult);
       setError(null);
     } catch (e) {
+      if (sequence !== loadSequence.current) return;
       setError(
         userFacingError(e, "Could not load this order. Go back to Orders and open it again."),
       );
     }
   }, [id]);
 
+  useLiveRefresh(["orders", "dispatch", "claims"], load, { refreshOnFocus: false });
+
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => { loadSequence.current++; };
     }, [load]),
   );
 
@@ -211,6 +224,7 @@ export default function OrderDetailScreen() {
             <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
           </View>
           <Text className="text-h1 text-text-primary">{order.title}</Text>
+          <Text className="text-caption text-text-muted">Order {order.id}</Text>
           {/* Only when nothing below is already saying it. An action zone
               owns its instruction and reason, and so does the card that
               explains a payment being checked — repeating either up here is
@@ -235,12 +249,12 @@ export default function OrderDetailScreen() {
                 unit={unit}
                 materialLabel={materialLabel}
                 finishLabel={finishLabel}
-                onUpdated={setOrder}
+                onUpdated={applyOrderUpdate}
               />
             ) : actionZone === "correction" ? (
-              <CorrectionCard order={order} onUpdated={setOrder} />
+              <CorrectionCard order={order} onUpdated={applyOrderUpdate} />
             ) : actionZone === "pay" && payable ? (
-              <PaymentPanel order={order} installment={payable} onSubmitted={setOrder} />
+              <PaymentPanel order={order} installment={payable} onSubmitted={applyOrderUpdate} />
             ) : actionZone === "review" && underReview ? (
               <PaymentUnderReviewCard order={order} installment={underReview} />
             ) : actionZone === "rate" ? (

@@ -1,6 +1,6 @@
 import { Platform, type StyleProp, type ViewStyle } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 import { Screen, type Edge } from "@/components/Screen";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -30,6 +30,10 @@ type Props = {
    * deep-linked route declares to give itself a way back.
    */
   overlay?: ReactNode;
+  /** A commit bar that stays below the scroll, inside the safe area. */
+  footer?: ReactNode;
+  /** Lets a long form jump to the first missing field. */
+  scrollRef?: Ref<{ scrollTo?: (opts: { y: number; animated?: boolean }) => void }>;
 };
 
 /**
@@ -66,12 +70,15 @@ export function FormScreen({
   contentContainerStyle,
   children,
   overlay,
+  footer,
+  scrollRef,
 }: Props) {
   const colors = useThemeColors();
 
   return (
     <Screen edges={edges}>
       <KeyboardAwareScrollView
+        ref={scrollRef as never}
         style={{ flex: 1, backgroundColor: colors.canvas }}
         contentContainerStyle={contentContainerStyle}
         bottomOffset={KEYBOARD_CARET_GAP}
@@ -80,6 +87,7 @@ export function FormScreen({
       >
         {children}
       </KeyboardAwareScrollView>
+      {footer}
       {overlay}
     </Screen>
   );

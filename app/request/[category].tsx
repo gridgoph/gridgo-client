@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import { CategoryHuntField } from "@/components/CategoryHuntField";
 import { CategorySampleCard, CategorySampleRow } from "@/components/CategorySample";
@@ -44,13 +45,21 @@ export default function CategoryScreen() {
   const [boards, setBoards] = useState<api.ShopBoard[] | null>(null);
   const [boardsError, setBoardsError] = useState<string | null>(null);
 
+  const boardSequence = useRef(0);
   const loadBoards = useCallback(async () => {
+    const sequence = ++boardSequence.current;
     if (!categoryCode) return;
     try {
-      const read = await loadCategoryBoards(categoryCode);
+      const [read, tree] = await Promise.all([
+        loadCategoryBoards(categoryCode),
+        api.getProductCategories().catch(() => null),
+      ]);
+      if (sequence !== boardSequence.current) return;
+      if (tree) setCategories(tree);
       setBoards(read.boards);
       setBoardsError(null);
     } catch (e) {
+      if (sequence !== boardSequence.current) return;
       setBoards(null);
       setBoardsError(
         userFacingError(e, "GRIDGO could not read today's prices, so this list may be short."),
@@ -58,21 +67,12 @@ export default function CategoryScreen() {
     }
   }, [categoryCode]);
 
-  useEffect(() => {
-    let alive = true;
-    void api.getProductCategories().then((tree) => {
-      if (alive) setCategories(tree);
-    }).catch(() => {
-      // Seed already on screen.
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  useLiveRefresh(["catalog", "services", "availability"], loadBoards, { refreshOnFocus: false });
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     void loadBoards();
-  }, [loadBoards]);
+    return () => { boardSequence.current++; };
+  }, [loadBoards]));
 
   const category = findCategory(categories, categoryCode);
 

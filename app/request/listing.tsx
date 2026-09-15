@@ -1,5 +1,6 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Minus, Plus } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -47,7 +48,7 @@ import {
   type ListingSelection,
 } from "@/lib/listing";
 import { userFacingError } from "@/lib/copy";
-import { isFullListing, listingNow, rememberListing, takeListing } from "@/lib/listingCache";
+import { isFullListing, listingNow, takeListing } from "@/lib/listingCache";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { useCart } from "@/store/cart";
@@ -74,7 +75,6 @@ const MAX_QUANTITY = 500;
  */
 export default function ListingScreen() {
   const router = useRouter();
-  const colors = useThemeColors();
   const { itemId, lineId } = useLocalSearchParams<{
     itemId?: string;
     /** Present when reopening a basket row to change it. */
@@ -100,19 +100,17 @@ export default function ListingScreen() {
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const loadSequence = useRef(0);
+  const load = useCallback(() => {
+    const sequence = ++loadSequence.current;
     if (!itemId) return;
     const cached = listingNow(itemId);
-    if (cached) {
-      setItem(cached);
-      setError(null);
-    }
-    try {
-      const read = await takeListing(itemId);
-      rememberListing(read);
+    return takeListing(itemId).then((read) => {
+      if (sequence !== loadSequence.current) return;
       setItem(read);
       setError(null);
-    } catch (e) {
+    }).catch((e) => {
+      if (sequence !== loadSequence.current) return;
       // A failed refresh must not blank a sheet the match already painted.
       if (listingNow(itemId) || cached) return;
       setItem(null);
@@ -122,11 +120,15 @@ export default function ListingScreen() {
           "GRIDGO could not open this listing. It may have been taken down — go back and pick another.",
         ),
       );
-    }
+    });
   }, [itemId]);
+
+  useLiveRefresh(["catalog", "services", "settings"], load);
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Invalidate the latest request on cleanup; this ref is a sequence counter, not a node.
+    return () => { loadSequence.current++; };
   }, [load]);
 
   /*
@@ -144,17 +146,23 @@ export default function ListingScreen() {
 
   // Reopening a basket row starts from what was already answered on it, so a
   // client changing the paper does not have to pick the size again.
-  useEffect(() => {
-    if (!editing || !item) return;
-    const restored: ListingSelection = {};
-    for (const group of item.optionGroups) {
-      const chosen = group.options.find((option) => editing.optionIds.includes(option.id));
-      if (chosen) restored[group.id] = chosen.id;
+  const [restoredFrom, setRestoredFrom] = useState<{
+    lineId?: string;
+    itemId?: string;
+  }>({});
+  if (restoredFrom.lineId !== editing?.id || restoredFrom.itemId !== item?.id) {
+    setRestoredFrom({ lineId: editing?.id, itemId: item?.id });
+    if (editing && item) {
+      const restored: ListingSelection = {};
+      for (const group of item.optionGroups) {
+        const chosen = group.options.find((option) => editing.optionIds.includes(option.id));
+        if (chosen) restored[group.id] = chosen.id;
+      }
+      setSelection(restored);
+      setQuantity(editing.quantity);
+      setMeasured(toDraft(editing.measurement));
     }
-    setSelection(restored);
-    setQuantity(editing.quantity);
-    setMeasured(toDraft(editing.measurement));
-  }, [editing?.id, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   /**
    * Back to GRIDGO's pick for this job, or to the start of choosing what to

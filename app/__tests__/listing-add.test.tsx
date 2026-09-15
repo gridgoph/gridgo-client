@@ -1,4 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -10,7 +15,17 @@ import { useCart } from "@/store/cart";
 const mockReplace = jest.fn();
 
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ push: jest.fn(), replace: mockReplace, navigate: jest.fn(), back: jest.fn() }),
+  useFocusEffect: (effect: () => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useEffect } = require("react");
+    useEffect(effect, [effect]);
+  },
+  useRouter: () => ({
+    push: jest.fn(),
+    replace: mockReplace,
+    navigate: jest.fn(),
+    back: jest.fn(),
+  }),
   useLocalSearchParams: () => ({ itemId: "sci_flyers" }),
 }));
 
@@ -159,7 +174,7 @@ describe("adding a listing to the order", () => {
     await renderInSafeArea(<ListingScreen />);
     await waitFor(() => expect(api.createCart).toHaveBeenCalled());
 
-    fireEvent.press(screen.getByLabelText("Add to my order"));
+    await fireEvent.press(screen.getByLabelText("Add to my order"));
 
     await waitFor(() =>
       expect(mockReplace).toHaveBeenCalledWith({

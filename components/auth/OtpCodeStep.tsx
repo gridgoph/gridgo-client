@@ -92,7 +92,7 @@ export function OtpCodeStep({
             }}
             accessibilityLabel="Verification code"
             style={[
-              StyleSheet.absoluteFillObject,
+              StyleSheet.absoluteFill,
               {
                 color: colors.textPrimary,
                 opacity: 0.02,

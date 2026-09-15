@@ -1,3 +1,8 @@
+import { useCheckoutPayment } from "@/store/checkoutPayment";
+import { useNotifications } from "@/store/notifications";
+import { setLiveOwner } from "@/lib/live";
+import { clearBoardCache } from "@/lib/shopBoards";
+import { clearListingCache } from "@/lib/listingCache";
 import { create } from "zustand";
 
 import type { User } from "@/lib/api";
@@ -6,7 +11,7 @@ import { CLERK_SIGNOUT_TIMEOUT_MS, withTimeout } from "@/lib/clerkSignIn";
 import { clientEmailUnavailableMessage, userFacingError } from "@/lib/copy";
 import { sessionWaitHold } from "@/lib/sessionWait";
 import { signupInput, type SignupFields } from "@/lib/signup";
-import { usePush } from "@/store/push";
+import { usePush, serializeDeviceMutation } from "@/store/push";
 
 /** Expected role for this binary — mismatched login is rejected. */
 export const APP_ROLE = "client" as const;
@@ -88,6 +93,7 @@ type SessionState = {
   finishSigningOut: () => void;
 };
 
+let accountReadSequence = 0;
 let identityLogout: (() => Promise<void>) | null = null;
 
 export const useSession = create<SessionState>((set) => ({
@@ -109,7 +115,8 @@ export const useSession = create<SessionState>((set) => ({
     set((state) => {
       // Fire-and-forget, so a Clerk failure cannot leave the app signed in;
       // the registered logout is the one that swallows "already signed out".
-      if (state.source === "clerk") void identityLogout?.().catch(() => undefined);
+      if (state.source === "clerk")
+        void identityLogout?.().catch(() => undefined);
       return {
         user: null,
         source: null,
@@ -137,16 +144,27 @@ export const useSession = create<SessionState>((set) => ({
             sessionWait: null,
           },
     ),
-  setUser: (user) =>
-    set((state) => (state.user ? { user } : {})),
+  setUser: (user) => {
+    accountReadSequence++;
+    set((state) => (state.user?.id === user.id ? { user } : {}));
+  },
   refresh: async () => {
-    if (!useSession.getState().user) return;
+    const sequence = ++accountReadSequence;
+    const ownerId = useSession.getState().user?.id;
+    if (!ownerId) return;
     try {
       const user = await api.getAccount();
+      if (sequence !== accountReadSequence) return;
       // Signing out while this was in flight wins. Restoring the previous
       // person here is the same bug the launch bridge guards `signingOut` for.
-      useSession.setState((state) => (state.user ? { user } : {}));
-    } catch {
+      useSession.setState((state) =>
+        state.user?.id === user.id ? { user } : {},
+      );
+    } catch (error) {
+      if (sequence !== accountReadSequence) return;
+      if (error instanceof api.ApiError && error.status === 403 && useSession.getState().user?.id === ownerId) {
+        useSession.getState().clearSession();
+      }
       // A 401 already clears the session through the unauthorized handler, and
       // anything else leaves the account as last known rather than emptying
       // the card because one request did not land.
@@ -238,7 +256,10 @@ export const useSession = create<SessionState>((set) => ({
         sessionWait: null,
         error: api.isNetworkFailure(e)
           ? `Cannot reach the backend at ${api.getApiBase()}. Check your connection and try again.`
-          : userFacingError(e, "Could not create the account. Check your details and try again."),
+          : userFacingError(
+              e,
+              "Could not create the account. Check your details and try again.",
+            ),
       });
     }
   },
@@ -249,6 +270,14 @@ export const useSession = create<SessionState>((set) => ({
     // whoever signed in last — not the next email typed.
     const deviceToken = usePush.getState().token;
     const identity = identityLogout;
+    const bearer = api.captureLogoutBearer();
+    const serverLogout = withTimeout(
+      serializeDeviceMutation(() =>
+        withTimeout(api.logout(deviceToken, bearer), LOGOUT_API_TIMEOUT_MS),
+      ),
+      LOGOUT_API_TIMEOUT_MS,
+    ).catch(() => undefined);
+    api.setToken(null);
     const startedAt = Date.now();
     set({
       user: null,
@@ -261,15 +290,13 @@ export const useSession = create<SessionState>((set) => ({
       sessionWait: "out",
       error: null,
     });
-    void usePush.getState().release();
-    await Promise.all([
-      withTimeout(api.logout(deviceToken), LOGOUT_API_TIMEOUT_MS).catch(() => undefined),
-      withTimeout(identity?.() ?? Promise.resolve(), CLERK_SIGNOUT_TIMEOUT_MS).catch(
-        () => undefined,
-      ),
-    ]);
+    usePush.setState({ claimed: false, busy: false });
+    await serverLogout;
+    await withTimeout(identity?.() ?? Promise.resolve(), CLERK_SIGNOUT_TIMEOUT_MS).catch(() => undefined);
+    // The authenticated endpoint already leaves this installation unclaimed.
+    if (!useSession.getState().user) usePush.setState({ claimed: false, busy: false });
     await sessionWaitHold(startedAt);
-    useSession.setState({ sessionWait: null });
+    if (useSession.getState().signingOut) useSession.setState({ sessionWait: null });
   },
 }));
 
@@ -294,4 +321,16 @@ api.onUnauthorized(() => {
     error: null,
     clerkSyncNonce: state.clerkSyncNonce + 1,
   }));
+});
+
+// Synchronous identity boundary: old inbox data is gone before new screens render.
+useSession.subscribe((state, previous) => {
+  if (state.user !== previous.user) accountReadSequence++;
+  const id = state.user?.id ?? null;
+  if (id === (previous.user?.id ?? null)) return;
+  useCheckoutPayment.getState().reset();
+  clearBoardCache();
+  clearListingCache();
+  useNotifications.getState().setOwner(id);
+  setLiveOwner(id);
 });

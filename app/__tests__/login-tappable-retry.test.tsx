@@ -94,7 +94,7 @@ jest.mock("expo-router", () => ({
   }),
 }));
 
-jest.mock("@react-navigation/native", () => ({
+jest.mock("expo-router/react-navigation", () => ({
   usePreventRemove: jest.fn(),
 }));
 

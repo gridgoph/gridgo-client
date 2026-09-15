@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -8,6 +8,11 @@ import { clearListingCache, rememberListing } from "@/lib/listingCache";
 import { useCart } from "@/store/cart";
 
 jest.mock("expo-router", () => ({
+  useFocusEffect: (effect: () => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useEffect } = require("react");
+    useEffect(effect, [effect]);
+  },
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
   useLocalSearchParams: () => ({ itemId: "sci_flyers" }),
 }));
@@ -141,4 +146,23 @@ describe("ListingScreen", () => {
     expect(await screen.findByLabelText("Opening the listing")).toBeTruthy();
     expect(screen.queryByText("Add to my order")).toBeNull();
   });
+});
+
+let mockRefresh: () => Promise<void>;
+jest.mock("@/hooks/useLiveRefresh", () => ({
+  useLiveRefresh: (_resources: unknown, refresh: () => Promise<void>) => { mockRefresh = refresh; },
+}));
+
+it("keeps the refreshed listing when the initial request finishes late", async () => {
+  useCart.setState({ cartId: "cart_1" });
+  let finish!: (item: CatalogItem) => void;
+  api.getCatalogItem.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  api.getCatalogItem.mockResolvedValue({ ...ITEM, name: "New listing", fromPriceMinor: 9900 });
+  await renderInSafeArea(<ListingScreen />);
+  clearListingCache();
+  await act(async () => { await mockRefresh(); });
+  expect(screen.getByText("New listing")).toBeTruthy();
+  await act(async () => { finish({ ...ITEM, name: "Old listing" }); });
+  expect(screen.getByText("New listing")).toBeTruthy();
+  expect(screen.queryByText("Old listing")).toBeNull();
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { Text, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -139,9 +139,41 @@ type SharedProgress = ReturnType<typeof useSharedValue<number>>;
 
 /** Where cell `index` sits, in px, for a grid of `size`. */
 function cellCentre(index: number, size: number): { x: number; y: number } {
+  "worklet";
   return {
     x: (CENTRES[index % 3] / 100) * size,
     y: (CENTRES[Math.floor(index / 3)] / 100) * size,
+  };
+}
+
+/**
+ * Pixel origin of the travelling token for a 0..1 loop progress.
+ *
+ * Kept as a worklet so Reanimated 4 / the React Compiler cannot drop the
+ * `{x,y}` hop list on the UI thread — that was `Cannot read property 'x' of
+ * undefined` on Expo Go. Numbers and a flat route stay serialisable.
+ */
+export function matchWaitTokenOrigin(
+  progress: number,
+  size: number,
+): { x: number; y: number } {
+  "worklet";
+  const length = MATCH_WAIT_ROUTE.length;
+  const p = typeof progress === "number" && Number.isFinite(progress) ? progress : 0;
+  const t = p * length;
+  let index = Math.floor(t) % length;
+  if (index < 0) index += length;
+  const fraction = t - Math.floor(t);
+  const hop = fraction < DWELL ? 0 : (fraction - DWELL) / (1 - DWELL);
+  const back = -2 * hop + 2;
+  const eased = hop < 0.5 ? 2 * hop * hop : 1 - (back * back) / 2;
+  const fromCell = MATCH_WAIT_ROUTE[index] ?? MATCH_WAIT_RESTING_CELL;
+  const toCell = MATCH_WAIT_ROUTE[(index + 1) % length] ?? MATCH_WAIT_RESTING_CELL;
+  const from = cellCentre(fromCell, size);
+  const to = cellCentre(toCell, size);
+  return {
+    x: from.x + (to.x - from.x) * eased,
+    y: from.y + (to.y - from.y) * eased,
   };
 }
 
@@ -177,31 +209,21 @@ function Field({ size }: { size: number }) {
 function TravellingToken({ size, progress }: { size: number; progress: SharedProgress }) {
   const colors = useThemeColors();
   const radius = (RADIUS / 100) * size;
-  // Rebuilt only when the grid resizes: the worklet closes over this array, so
-  // a fresh one every render would rebuild the animation for nothing.
-  const centres = useMemo(
-    () => MATCH_WAIT_ROUTE.map((cell) => cellCentre(cell, size)),
-    [size],
-  );
+  const sizeSv = useSharedValue(size);
+  const radiusSv = useSharedValue(radius);
+
+  useEffect(() => {
+    sizeSv.value = size;
+    radiusSv.value = radius;
+  }, [radius, radiusSv, size, sizeSv]);
 
   const move = useAnimatedStyle(() => {
-    const length = centres.length;
-    const t = progress.value * length;
-    const index = Math.floor(t) % length;
-    const fraction = t - Math.floor(t);
-
-    // Stand still for the dwell, then ease across. A constant glide would read
-    // as an object being dragged; a job is handed from one press to the next.
-    const hop = fraction < DWELL ? 0 : (fraction - DWELL) / (1 - DWELL);
-    const back = -2 * hop + 2;
-    const eased = hop < 0.5 ? 2 * hop * hop : 1 - (back * back) / 2;
-
-    const from = centres[index];
-    const to = centres[(index + 1) % length];
+    const origin = matchWaitTokenOrigin(progress.value, sizeSv.value);
+    const r = radiusSv.value;
     return {
       transform: [
-        { translateX: from.x + (to.x - from.x) * eased - radius },
-        { translateY: from.y + (to.y - from.y) * eased - radius },
+        { translateX: origin.x - r },
+        { translateY: origin.y - r },
       ],
     };
   });

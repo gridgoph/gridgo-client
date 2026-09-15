@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useUser } from "@clerk/expo";
 import { router, useFocusEffect } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
@@ -60,6 +61,8 @@ export default function AccountScreen() {
    * held on the way out is how a client applies as a business, comes back, and
    * finds "Personal client" still sitting here.
    */
+  useLiveRefresh(["identity", "approvals"], refresh, { refreshOnFocus: false });
+
   useFocusEffect(
     useCallback(() => {
       void refresh();

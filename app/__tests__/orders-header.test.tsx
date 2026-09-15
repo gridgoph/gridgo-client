@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -62,4 +62,29 @@ describe("Orders header", () => {
     fireEvent.press(await screen.findByLabelText("Your order, empty"));
     expect(mockPush).toHaveBeenCalledWith("/checkout");
   });
+});
+
+let mockRefresh: () => Promise<void>;
+jest.mock("@/hooks/useLiveRefresh", () => ({
+  useLiveRefresh: (_resources: unknown, refresh: () => Promise<void>) => { mockRefresh = refresh; },
+}));
+
+jest.mock("@/components/OrderCard", () => ({
+  OrderCard: ({ order }: { order: { title: string } }) => {
+    const { Text } = jest.requireActual("react-native");
+    return <Text>{order.title}</Text>;
+  },
+}));
+it("keeps newer Orders when the focus catalog read finishes late", async () => {
+  const api = jest.requireMock("@/lib/api");
+  let finish!: (catalog: unknown[]) => void;
+  api.listCatalog.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  api.listOrders.mockResolvedValueOnce([{ id: "old", title: "Old job", state: "production" }]);
+  api.listOrders.mockResolvedValue([{ id: "new", title: "Current job", state: "production" }]);
+  await renderInSafeArea(<OrdersScreen />);
+  await act(async () => { await mockRefresh(); });
+  expect(screen.getByText("Current job")).toBeTruthy();
+  await act(async () => { finish([]); });
+  expect(screen.getByText("Current job")).toBeTruthy();
+  expect(screen.queryByText("Old job")).toBeNull();
 });

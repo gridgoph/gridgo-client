@@ -3,6 +3,9 @@ import { Platform } from "react-native";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { liveGeneration, assertLiveGeneration } from "@/lib/live";
+import { withRequestDeadline } from "@/lib/requestDeadline";
+import { useSession } from "@/store/session";
 import { userFacingError } from "@/lib/copy";
 import {
   devicePlatform,
@@ -12,6 +15,14 @@ import {
   readPushPermission,
   type PushPermission,
 } from "@/lib/push";
+
+let deviceMutation: Promise<unknown> = Promise.resolve();
+export function serializeDeviceMutation<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const execute = () => withRequestDeadline(undefined, run);
+  const pending = deviceMutation.then(execute, execute);
+  deviceMutation = pending.catch(() => undefined);
+  return pending;
+}
 
 type NotificationsNative = typeof import("expo-notifications");
 
@@ -37,6 +48,7 @@ export function getNotificationsNative(): NotificationsNative | null {
   }
   try {
     // Metro evaluates this only when called. A throw costs push, never the app.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Must stay lazy: Expo Go can throw at import time.
     notificationsNative = require("expo-notifications") as NotificationsNative;
     return notificationsNative;
   } catch {
@@ -53,9 +65,8 @@ export function getNotificationsNative(): NotificationsNative | null {
  * channel, the permission dialog, the FCM token, and keeping the server's idea
  * of this phone in step with the phone's.
  *
- * **Reusable as-is by the supplier and rider apps.** Nothing in this file names
- * a client concept; the app-specific parts of push are the routes in
- * `pushTargetRoute` and where the enable card is drawn.
+ * Registration uses this client's API role context and session boundary.
+ * Fleet reuse must adapt those as well as routes and permission-card placement.
  *
  * Three things that look like bugs and are not:
  *
@@ -219,8 +230,9 @@ export const usePush = create<PushState>((set, get) => ({
   },
 
   registerIfGranted: async () => {
+    const generation = liveGeneration();
     const state = get();
-    if (!state.supported) return;
+    if (!state.supported || useSession.getState().signingOut) return;
 
     const platform = devicePlatform();
     if (!platform) return;
@@ -232,7 +244,8 @@ export const usePush = create<PushState>((set, get) => ({
     // A bearer means the customer is signed in and this registration names them.
     // Without one the phone is registered unclaimed, so an announcement can
     // still reach a handset nobody has signed in on.
-    const signedIn = Boolean(api.getToken());
+    const signedIn = Boolean(await api.getAuthToken().catch(() => null));
+    if (generation !== liveGeneration() || useSession.getState().signingOut) return;
 
     set({ busy: true, error: null });
     try {
@@ -243,10 +256,20 @@ export const usePush = create<PushState>((set, get) => ({
       }
       // Idempotent by contract, so no comparison against the stored token is
       // worth the risk of skipping a call the server never actually received.
-      if (signedIn) await api.registerDevice(token, platform);
-      else await api.registerDeviceUnclaimed(token, platform);
+      assertLiveGeneration(generation);
+      if (useSession.getState().signingOut) return;
+      if (signedIn) set({ token });
+      await serializeDeviceMutation(async (signal) => {
+        assertLiveGeneration(generation);
+        if (useSession.getState().signingOut) return;
+        if (signedIn) await api.registerDevice(token, platform, signal);
+        else await api.registerDeviceUnclaimed(token, platform, signal);
+      });
+      assertLiveGeneration(generation);
+      if (useSession.getState().signingOut) return;
       set({ token, claimed: signedIn, busy: false, error: null });
     } catch (e) {
+      if (generation !== liveGeneration() || useSession.getState().signingOut) return;
       if (!signedIn && isUnclaimedRouteAbsent(e)) {
         // The provisional route is not deployed here. Nothing is wrong and
         // nobody is told: the phone registers for real at the next sign-in.

@@ -1,3 +1,4 @@
+import { serializeDeviceMutation } from "@/store/push";
 import * as api from "@/lib/api";
 import { CLERK_SIGNOUT_TIMEOUT_MS } from "@/lib/clerkSignIn";
 import { LOGOUT_API_TIMEOUT_MS, useSession } from "@/store/session";
@@ -108,6 +109,20 @@ describe("session store", () => {
     expect(useSession.getState()).toMatchObject({ user: null, source: null });
   });
 
+  it("finishes authenticated server logout before invalidating Clerk", async () => {
+    let finish!: () => void;
+    jest.spyOn(api, "logout").mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
+    const identity = jest.fn(async () => undefined);
+    useSession.getState().registerIdentityLogout(identity);
+    const pending = useSession.getState().logout();
+    expect(useSession.getState().user).toBeNull();
+    expect(identity).not.toHaveBeenCalled();
+    await Promise.resolve();
+    finish();
+    await pending;
+    expect(identity).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves the signed-in area before a hung API logout finishes", async () => {
     jest.useFakeTimers();
     useSession.setState({
@@ -128,6 +143,22 @@ describe("session store", () => {
 
     await jest.advanceTimersByTimeAsync(LOGOUT_API_TIMEOUT_MS);
     await pending;
+    jest.useRealTimers();
+  });
+
+  it("tears down Clerk even while device registration is stalled", async () => {
+    jest.useFakeTimers();
+    const stalled = serializeDeviceMutation(() => new Promise(() => {})).catch(() => undefined);
+    const identity = jest.fn(async () => undefined);
+    useSession.getState().registerIdentityLogout(identity);
+    jest.spyOn(api, "logout").mockResolvedValue(undefined);
+    const leaving = useSession.getState().logout();
+    await jest.advanceTimersByTimeAsync(LOGOUT_API_TIMEOUT_MS);
+    await leaving;
+    expect(identity).toHaveBeenCalledTimes(1);
+    expect(useSession.getState().sessionWait).toBeNull();
+    await jest.advanceTimersByTimeAsync(20_000);
+    await stalled;
     jest.useRealTimers();
   });
 
@@ -232,5 +263,39 @@ describe("session store", () => {
     expect(api.getToken()).toBeNull();
 
     fetchMock.mockRestore();
+  });
+});
+
+describe("account read ordering", () => {
+  const user: api.User = { id: "account", role: "client", name: "Old name", email: "client@example.com" };
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each(["refresh", "save"])("preserves the account after a newer %s", async (change) => {
+    useSession.setState({ user, signingOut: false });
+    let finish!: (value: api.User) => void;
+    const read = jest.spyOn(api, "getAccount").mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const stale = useSession.getState().refresh();
+    const corrected = { ...user, name: "Saved name", accountType: "business" as const };
+    if (change === "refresh") {
+      read.mockResolvedValueOnce(corrected);
+      await useSession.getState().refresh();
+    } else {
+      useSession.getState().setUser(corrected);
+    }
+    finish(user);
+    await stale;
+    expect(useSession.getState().user).toEqual(corrected);
+  });
+
+  it("ignores an old forbidden response after a saved correction", async () => {
+    useSession.setState({ user, signingOut: false });
+    let fail!: (error: Error) => void;
+    jest.spyOn(api, "getAccount").mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }));
+    const stale = useSession.getState().refresh();
+    const corrected = { ...user, name: "Saved name" };
+    useSession.getState().setUser(corrected);
+    fail(new api.ApiError(403, {}));
+    await stale;
+    expect(useSession.getState().user).toEqual(corrected);
   });
 });
