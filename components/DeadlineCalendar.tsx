@@ -44,18 +44,13 @@ const MONTHS = [
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 /**
- * The captain's three indicators.
+ * Two indicators, plus the earliest line on the screen above.
  *
- * White is vacant and his yellow is a queue moving, both as given. For a queue
- * that is full the platform already has a red — the one every error in every
- * GRIDGO app is drawn in — and this uses that rather than inventing a brighter
- * one. It reads as a stop without the glare of a pure signal red, and it means
- * the same thing here as it does everywhere else in the product.
- *
- * What keeps a month of it from becoming a siren is not the shade but scope:
- * the month opens where there is something to book, and days already gone are
- * neutral rather than red, so the red marks the boundary of what is possible
- * instead of colouring in the past.
+ * White is vacant and yellow is a queue moving. A day nobody can make uses
+ * the same quiet disc as a day already gone — a client being told a date is
+ * too soon has done nothing wrong, so it must not look like an error. The
+ * words that replace the old red live above the grid: "Earliest a printer
+ * can have these ready: …" (or that nobody can, within the window).
  *
  * White needs opposite handling on each ground. On black it fills and
  * dominates, which is right — an open day should be the loudest thing here. On
@@ -66,21 +61,17 @@ const PALETTE = {
   light: {
     open: "#FFFFFF",
     tight: "#FFDE59",
-    cannot: "#C62828",
     past: "#ECECEC",
     onOpen: "#1A1A1A",
     onTight: "#1A1A1A",
-    onCannot: "#FFFFFF",
     onPast: "#B4B4B4",
   },
   dark: {
     open: "#FFFFFF",
     tight: "#FFDE59",
-    cannot: "#B33A3A",
     past: "#1F1F1F",
     onOpen: "#1A1A1A",
     onTight: "#1A1A1A",
-    onCannot: "#FFE0E0",
     onPast: "#585858",
   },
 } as const;
@@ -89,18 +80,23 @@ function paletteFor(light: boolean) {
   return light ? PALETTE.light : PALETTE.dark;
 }
 
+/** Open and tight keep their own paint; cannot is drawn as past. */
+function paintedChoice(choice: DayChoice): "open" | "tight" | "past" {
+  return choice === "open" || choice === "tight" ? choice : "past";
+}
+
 /** What a day is painted. */
 function discColour(choice: DayChoice, light: boolean): string {
-  return paletteFor(light)[choice];
+  return paletteFor(light)[paintedChoice(choice)];
 }
 
 /** Ink that can be read on a given disc. */
 function numeralColour(choice: DayChoice, light: boolean): string {
   const palette = paletteFor(light);
-  if (choice === "open") return palette.onOpen;
-  if (choice === "tight") return palette.onTight;
-  if (choice === "past") return palette.onPast;
-  return palette.onCannot;
+  const painted = paintedChoice(choice);
+  if (painted === "open") return palette.onOpen;
+  if (painted === "tight") return palette.onTight;
+  return palette.onPast;
 }
 
 const MONTH_CACHE = new WeakMap<(month: Date) => CalendarDay[], Map<string, CalendarDay[]>>();
@@ -408,7 +404,7 @@ export function DeadlineCalendar({
         the one thing a status in this product may never be.
       */}
       <View className="mt-4 flex-row flex-wrap gap-x-5 gap-y-2">
-        {(["open", "tight", "cannot"] as DayChoice[]).map((choice) => (
+        {(["open", "tight"] as const).map((choice) => (
           <View key={choice} className="flex-row items-center gap-2">
             <View
               style={{
@@ -578,7 +574,7 @@ const DayCell = memo(function DayCell({
           // Today wears the accent as a ring, the way the reference marks it.
           borderWidth: day.isToday ? 2 : needsEdge ? 1.5 : 0,
           borderColor: day.isToday ? colors.brand : colors.textPrimary,
-          opacity: day.choice === "past" ? 0.5 : 1,
+          opacity: paintedChoice(day.choice) === "past" ? 0.5 : 1,
         }}
       >
         {/*
@@ -592,13 +588,13 @@ const DayCell = memo(function DayCell({
           It cannot grow: a disc bigger than its cell overlaps the days beside
           it, which is a calendar that looks broken at the one moment the
           client has just made a decision. It cannot take a new colour either —
-          white, yellow and red are all spoken for here, and a fourth would be
-          read against three meanings that already exist.
+          white and yellow are spoken for here, and a third would be
+          read against two meanings that already exist.
 
           So the mark is drawn in the disc's own ink, inside its own edge. That
           ink is chosen to be legible on the fill by construction, which makes
-          this the one treatment that reads identically on a white day, a
-          yellow one and a red one.
+          this the one treatment that reads identically on a white day and a
+          yellow one.
         */}
         {selected ? (
           <View

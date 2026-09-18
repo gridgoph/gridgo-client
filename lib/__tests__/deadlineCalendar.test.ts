@@ -4,7 +4,9 @@ import {
   chosenLabel,
   choiceLabel,
   deadlineFor,
+  earliestReadyLine,
   firstAvailable,
+  formatEarliestDay,
   SHOP_TIME_ZONE,
   monthGrid,
   monthKeyOf,
@@ -85,6 +87,21 @@ describe("what a day is called", () => {
       expect(label).not.toMatch(/\d/);
     }
     expect(choiceLabel("tight")).toContain("choice");
+  });
+});
+
+describe("the earliest-ready line", () => {
+  it("names the day a printer can first have this ready", () => {
+    expect(formatEarliestDay("2026-09-23T12:00:00+08:00")).toBe("Wed 23 Sep");
+    expect(earliestReadyLine("2026-09-23T12:00:00+08:00")).toBe(
+      "Earliest a printer can have these ready: Wed 23 Sep",
+    );
+  });
+
+  it("says so when nobody in the window can make it", () => {
+    expect(earliestReadyLine(null)).toBe(
+      "No printer can make this within the next 120 days. Try No rush to see anyone.",
+    );
   });
 });
 

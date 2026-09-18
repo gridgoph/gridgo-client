@@ -15,6 +15,7 @@ import { useJobDeadline } from "@/store/jobDeadline";
 import {
   canStep,
   deadlineFor,
+  earliestReadyLine,
   monthGrid,
   monthName,
   nextMonthWithADay,
@@ -54,6 +55,7 @@ export default function WhenScreen() {
 
   const [chosen, setChosen] = useState<string | null>(null);
   const [availability, setAvailability] = useState<api.DeadlineDay[] | null>(null);
+  const [earliest, setEarliest] = useState<string | null>(null);
   const [availabilityFailed, setAvailabilityFailed] = useState(false);
   const [month, setMonth] = useState(() => new Date());
   // Opened on a month that has something in it. A job whose soonest date is
@@ -78,6 +80,7 @@ export default function WhenScreen() {
       .then((answer) => {
         if (!alive) return;
         setAvailability(answer.days);
+        setEarliest(answer.earliest);
         if (!monthPinned) setMonth(openingMonth(answer.days, new Date()));
       })
       .catch(() => {
@@ -166,12 +169,18 @@ export default function WhenScreen() {
         <Text className="text-h2 text-text-primary">When do you need your {thing}?</Text>
         {/*
           One line, not three. The old paragraph explained the rule this
-          calendar now simply shows -- a day GRIDGO cannot make is struck
-          through -- and spent a third of the screen saying it.
+          calendar now simply shows — a day nobody can make sits quiet, like
+          the past — and spent a third of the screen saying it. The earliest
+          date is the line that replaced the red discs.
         */}
         <Text className="mt-1 text-body text-text-secondary">
           Only the days a printer can actually make.
         </Text>
+        {availability && !availabilityFailed ? (
+          <Text className="mt-1 text-body text-text-secondary">
+            {earliestReadyLine(earliest)}
+          </Text>
+        ) : null}
 
         <View className="mt-4">
           {/*

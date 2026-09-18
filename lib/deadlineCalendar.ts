@@ -11,6 +11,7 @@
  */
 
 import type { DeadlineDay } from "@/lib/api";
+import { MAX_LEAD_DAYS, parseDeadline } from "@/lib/deadline";
 
 export type DayChoice = "cannot" | "tight" | "open" | "past";
 
@@ -159,6 +160,37 @@ export function chosenLabel(dayKey: string): string {
     day: "numeric",
     month: "long",
   });
+}
+
+/** "Wed 24 Sep" — a calendar day without a clock. */
+export function formatEarliestDay(value: string | Date | null | undefined): string | null {
+  const date = value instanceof Date ? value : parseDeadline(value ?? null);
+  if (!date) return null;
+  const weekday = date.toLocaleDateString("en-PH", {
+    weekday: "short",
+    timeZone: SHOP_TIME_ZONE,
+  });
+  const day = date.toLocaleDateString("en-PH", {
+    day: "numeric",
+    timeZone: SHOP_TIME_ZONE,
+  });
+  const month = date.toLocaleDateString("en-PH", {
+    month: "short",
+    timeZone: SHOP_TIME_ZONE,
+  });
+  return `${weekday} ${day} ${month}`;
+}
+
+/**
+ * The line that replaced the red discs: when a printer can first have this
+ * ready, or that nobody can within the window.
+ */
+export function earliestReadyLine(earliest: string | null): string {
+  const day = formatEarliestDay(earliest);
+  if (!day) {
+    return `No printer can make this within the next ${MAX_LEAD_DAYS} days. Try No rush to see anyone.`;
+  }
+  return `Earliest a printer can have these ready: ${day}`;
 }
 
 

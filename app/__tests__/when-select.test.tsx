@@ -5,6 +5,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import WhenScreen from "@/app/request/when";
 import { useJobDeadline } from "@/store/jobDeadline";
 
+const EARLIEST = "2026-09-23T12:00:00+08:00";
+
 /**
  * Picking a day, in its own file.
  *
@@ -60,7 +62,7 @@ describe("choosing a day", () => {
   beforeEach(() => {
     mockPush.mockReset();
     useJobDeadline.getState().clear();
-    api.deadlineDays.mockResolvedValue({ days: openDays(), earliest: new Date().toISOString() });
+    api.deadlineDays.mockResolvedValue({ days: openDays(), earliest: EARLIEST });
   });
 
   it("takes the tap and puts the date on the control that finishes the screen", async () => {
@@ -75,6 +77,11 @@ describe("choosing a day", () => {
     await waitFor(() =>
       expect(screen.getAllByLabelText(/: We can make this$/).length).toBeGreaterThan(0),
     );
+    expect(
+      screen.getByText("Earliest a printer can have these ready: Wed 23 Sep"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Not this day")).toBeNull();
+    expect(JSON.stringify(screen.toJSON())).not.toMatch(/#C62828|#B33A3A/i);
     fireEvent.press(screen.getAllByLabelText(/: We can make this$/)[0]);
 
     await waitFor(() => expect(screen.getByText("Continue")).toBeTruthy());
