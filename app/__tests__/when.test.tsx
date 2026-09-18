@@ -5,6 +5,14 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import WhenScreen from "@/app/request/when";
 import { useJobDeadline } from "@/store/jobDeadline";
 
+jest.mock("@/lib/api", () => {
+  const actual = jest.requireActual("@/lib/api");
+  return { ...actual, deadlineDays: jest.fn() };
+});
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const api = require("@/lib/api");
+
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
     wrapper: ({ children }) => (
@@ -35,6 +43,11 @@ describe("WhenScreen", () => {
   beforeEach(() => {
     mockPush.mockReset();
     useJobDeadline.getState().clear();
+    api.deadlineDays.mockReset();
+    // Leave the answer hanging so these tests stay on the skeleton — a
+    // resolved month is 126 cells and is not what the No-rush / Pick-a-date
+    // cases are about.
+    api.deadlineDays.mockImplementation(() => new Promise(() => {}));
   });
 
   it("lets a client say they are not in a hurry, and treats that as an answer", async () => {
@@ -58,5 +71,19 @@ describe("WhenScreen", () => {
 
     fireEvent.press(screen.getByText("Pick a date"));
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("says when nobody in the window can make it, without painting an error", async () => {
+    api.deadlineDays.mockResolvedValue({ days: [], earliest: null });
+    await renderInSafeArea(<WhenScreen />);
+
+    expect(
+      await screen.findByText(
+        "No printer can make this within the next 120 days. Try No rush to see anyone.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Not this day")).toBeNull();
+    expect(JSON.stringify(screen.toJSON())).not.toMatch(/#C62828|#B33A3A/i);
+    expect(screen.queryByText(/could not check which dates/i)).toBeNull();
   });
 });
