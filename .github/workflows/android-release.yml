@@ -63,7 +63,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     permissions:
       contents: write # gh release create
     env:
@@ -171,6 +171,22 @@ jobs:
           EXPO_PUBLIC_CARTO_API_KEY: ${{ secrets.EXPO_PUBLIC_CARTO_API_KEY }}
         run: npx expo prebuild --platform android --clean --no-install
 
+      # Expo's template regenerates android/gradle.properties on every
+      # prebuild with org.gradle.jvmargs=-Xmx2048m. A Hermes release assemble
+      # (packageRelease, mergeReleaseNativeDebugMetadata, ART profiles) now
+      # needs more than 2 GiB. ubuntu-latest has 16 GiB and 4 cores; 6g heap
+      # plus two workers leaves headroom for the OS.
+      - name: Give the Gradle daemon enough heap
+        working-directory: android
+        run: |
+          set -euo pipefail
+          if ! grep -q '^org.gradle.jvmargs=' gradle.properties; then
+            echo "::error::android/gradle.properties has no org.gradle.jvmargs= line after prebuild"
+            exit 1
+          fi
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8/' gradle.properties
+          grep '^org.gradle.jvmargs=' gradle.properties
+
       - name: Stage the release signing key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -222,7 +238,7 @@ jobs:
             pk_live_*) ;;
             *) echo "::error::EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY must be a production pk_live_ key"; exit 1 ;;
           esac
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --max-workers=2
 
       - name: Verify signature and baked-in public configuration
         env:
