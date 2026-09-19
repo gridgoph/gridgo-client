@@ -34,8 +34,10 @@ import {
   lineOptionLabels,
   linesMissingArtwork,
   linesMissingDropoff,
+  linesUnpriced,
   printRuns,
 } from "@/lib/basket";
+import { gridgoPriceOrNull, unpricedLineReason } from "@/lib/clientPrice";
 import {
   blockerLine,
   fulfilmentModeFor,
@@ -70,6 +72,7 @@ import {
 } from "@/lib/receiptOcr";
 import { formatDistance, type GeoPoint } from "@/lib/tracking";
 import { useCart } from "@/store/cart";
+import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
 
 /**
@@ -142,6 +145,8 @@ export default function CheckoutScreen() {
       const settings = await api.getSettings();
       if (sequence !== loadSequence.current) return;
       setSettings(settings);
+      // The same charges price every other screen; keep them in step.
+      usePlatformSettings.getState().adopt(settings);
       setLoadError(null);
     } catch (e) {
       if (sequence !== loadSequence.current) return;
@@ -218,11 +223,13 @@ export default function CheckoutScreen() {
   );
 
   const travel = travelChoiceOf(cart);
+  const unpriced = linesUnpriced(lines);
   const missingArtwork = linesMissingArtwork(lines);
   const referenceCheck = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
   const blockers = placeOrderBlockers({
     lineCount: lines.length,
+    linesUnpriced: unpriced.length,
     linesMissingArtwork: missingArtwork.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
     referenceOk: ocrReading || referenceCheck.ok,
@@ -313,7 +320,7 @@ export default function CheckoutScreen() {
 
   const scrollToBlocker = (blocker: (typeof blockers)[number]) => {
     const key =
-      blocker === "artwork"
+      blocker === "artwork" || blocker === "price"
         ? "artwork"
         : blocker === "address"
           ? "address"
@@ -412,7 +419,7 @@ export default function CheckoutScreen() {
           <View className="flex-row items-baseline justify-between gap-3">
             <Text className="text-body text-text-secondary">Total</Text>
             <Text className="text-h3 text-text-primary">
-              {totals.totalMinor == null ? "—" : formatPhp(totals.totalMinor)}
+              {totals.totalMinor == null ? "Not yet" : formatPhp(totals.totalMinor)}
             </Text>
           </View>
           <View className="flex-row items-center gap-2">
@@ -462,7 +469,13 @@ export default function CheckoutScreen() {
                   ? OCR_UNREADABLE
                   : blockerLine(
                       blockers[0],
-                      missingArtwork.length === 1 ? lineName(missingArtwork[0]) : undefined,
+                      blockers[0] === "price"
+                        ? unpriced.length === 1
+                          ? lineName(unpriced[0])
+                          : undefined
+                        : missingArtwork.length === 1
+                          ? lineName(missingArtwork[0])
+                          : undefined,
                     )
                 : "Your order goes to Operations for artwork checking.")}
           </Text>
@@ -544,7 +557,12 @@ export default function CheckoutScreen() {
                     : `${run.runLabel.toUpperCase()} OF ${runs.length}`}
                 </Text>
                 <Text className="text-caption text-text-secondary">
-                  {formatPhp(run.subtotalMinor)}
+                  {(() => {
+                    // GRIDGO's price for the run. Null reads as "Not yet",
+                    // never as ₱0.00: a run with an unpriced line has no figure.
+                    const priced = gridgoPriceOrNull(run.subtotalMinor, settings?.serviceFeeRateBps);
+                    return priced == null ? "Not yet" : formatPhp(priced);
+                  })()}
                 </Text>
               </View>
 
@@ -552,6 +570,7 @@ export default function CheckoutScreen() {
                 <LineRow
                   key={line.id}
                   line={line}
+                  serviceFeeRateBps={settings?.serviceFeeRateBps ?? null}
                   busy={busy}
                   onEdit={() =>
                     router.push({
@@ -797,7 +816,12 @@ export default function CheckoutScreen() {
           ) : null}
 
           <View className="gg-card gap-1">
-            <SpecRow label="Items" value={formatPhp(totals.itemSubtotalMinor)} />
+            {/* The shops' figure plus GRIDGO's charge, as the order is written.
+                With no fee row, this is what makes Items + Delivery = Total. */}
+            <SpecRow
+              label="Items"
+              value={totals.gridgoItemsMinor == null ? "Not yet" : formatPhp(totals.gridgoItemsMinor)}
+            />
 
             {travel === "pickup" ? (
               <SpecRow label="Delivery" value="None — you collect" />
@@ -838,7 +862,13 @@ export default function CheckoutScreen() {
             </View>
           </View>
 
-          {totals.totalMinor == null ? (
+          {totals.totalMinor == null && unpriced.length ? (
+            <Text className="text-caption text-text-muted">
+              {unpriced.length === 1
+                ? `${lineName(unpriced[0])} has no price at its quantity, so the total lands once you change it.`
+                : "Some items have no price at their quantity, so the total lands once you change them."}
+            </Text>
+          ) : totals.totalMinor == null ? (
             <Text className="text-caption text-text-muted">
               GRIDGO charges delivery by the distance from where a run is printed to your
               drop-off, so the total lands once every item has an address with a map pin.
@@ -884,6 +914,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  */
 function LineRow({
   line,
+  serviceFeeRateBps,
   busy,
   onEdit,
   onArtwork,
@@ -891,6 +922,8 @@ function LineRow({
   onRemove,
 }: {
   line: CartLineRecord;
+  /** GRIDGO's rate; null while the charges are unread, and then no figure. */
+  serviceFeeRateBps: number | null;
   busy: boolean;
   onEdit: () => void;
   onArtwork: () => void;
@@ -899,6 +932,10 @@ function LineRow({
 }) {
   const options = lineOptionLabels(line).join(" · ");
   const name = lineName(line);
+  // The line at GRIDGO's price. A line GRIDGO could not price says why, in
+  // the same amber the row uses for missing artwork: it needs the client's
+  // hand, and "—" or ₱0.00 would not say so.
+  const priced = gridgoPriceOrNull(line.lineSubtotalMinor, serviceFeeRateBps);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -926,9 +963,13 @@ function LineRow({
                   {options}
                 </Text>
               ) : null}
-              <Text className="text-body text-text-secondary">
-                {line.lineSubtotalMinor == null ? "—" : formatPhp(line.lineSubtotalMinor)}
-              </Text>
+              {line.lineSubtotalMinor == null ? (
+                <Text className="text-caption text-warning">{unpricedLineReason(line)}</Text>
+              ) : (
+                <Text className="text-body text-text-secondary">
+                  {priced == null ? "" : formatPhp(priced)}
+                </Text>
+              )}
               <Text
                 className={
                   line.artworkFileId ? "text-caption text-text-muted" : "text-caption text-warning"

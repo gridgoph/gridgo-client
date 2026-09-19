@@ -5,6 +5,18 @@ import { CategorySampleCard, sampleCardSlots } from "@/components/CategorySample
 import { spacing, typography } from "@/constants/theme";
 import type { CatalogItem } from "@/lib/api";
 import type { ProductSubcategory } from "@/lib/productCategories";
+import { usePlatformSettings } from "@/store/platformSettings";
+
+const RATE_SETTINGS = {
+  issueWindowHours: 24,
+  serviceFeeRateBps: 1000,
+  deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+};
+
+beforeEach(() => {
+  usePlatformSettings.getState().reset();
+  usePlatformSettings.getState().adopt(RATE_SETTINGS);
+});
 
 function subcategory(name: string): ProductSubcategory {
   return { code: "flyers", name, examples: "Single sheets, event promos", productFamilyIds: [] };
@@ -125,8 +137,23 @@ describe("CategorySampleCard", () => {
       />,
     );
 
-    expect(screen.getByText(/From ₱400/)).toBeTruthy();
+    // GRIDGO's price: the shop's PHP 400.00 plus GRIDGO's 10%.
+    expect(screen.getByText("From ₱440.00")).toBeTruthy();
+    expect(screen.queryByText(/₱400/)).toBeNull();
     expect(screen.getByText("each")).toBeTruthy();
+  });
+
+  it("draws no figure at all while GRIDGO's rate is unread", async () => {
+    usePlatformSettings.getState().reset();
+    await render(
+      <CategorySampleCard
+        subcategory={subcategory("Flyers")}
+        listing={listing()}
+        onPress={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText(/₱/)).toBeNull();
   });
 
   /**

@@ -133,11 +133,17 @@ export type Order = {
   deadline: string | null;
   address: string;
   zone: string;
-  /** Product price plus GRIDGO's margin. Null until a supplier accepts. */
+  /**
+   * The shops' own figure for the items — what they are paid. Null until a
+   * supplier accepts. Never drawn on its own: the client reads it plus
+   * `serviceFeeMinor` (`orderItemsMinor` in `lib/orderState.ts`).
+   */
   subtotalMinor: number | null;
+  /** GRIDGO's charge on the items, as the order was written. */
+  serviceFeeMinor?: number | null;
   /** Distance band fee. Null until the supplier's shop is known. */
   deliveryFeeMinor: number | null;
-  /** Subtotal + delivery. Null until a supplier accepts. */
+  /** Subtotal + service fee + delivery. Null until a supplier accepts. */
   totalMinor: number | null;
   downpaymentMinor: number | null;
   balanceMinor: number | null;

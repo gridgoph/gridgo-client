@@ -413,6 +413,21 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText(/commission/i)).toBeNull();
   });
 
+  it("prints the items at GRIDGO's price when the order carries the shop's subtotal and the fee apart", async () => {
+    // A matched order as gridgo-api writes it: `subtotalMinor` is the shops'
+    // own figure and `serviceFeeMinor` GRIDGO's charge. The client reads one
+    // Print figure that, with delivery, is the Total — never the shop's ₱840.
+    setOrder({ subtotalMinor: 84000, serviceFeeMinor: 8400, deliveryFeeMinor: 7500, totalMinor: 99900 });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    await screen.findByText("Grand opening tarpaulin");
+    expect(screen.getByText("₱924.00")).toBeTruthy();
+    expect(screen.getByText("₱75.00")).toBeTruthy();
+    expect(screen.getByText("₱999.00")).toBeTruthy();
+    expect(screen.queryByText("₱840.00")).toBeNull();
+    expect(screen.queryByText("₱84.00")).toBeNull();
+  });
+
   it("asks for the downpayment by QR, and never for cash or credits", async () => {
     setOrder({
       state: "awaiting_downpayment",

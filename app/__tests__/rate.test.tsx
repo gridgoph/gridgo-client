@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import type { ReactElement } from "react";
 
-import RateOrderSheet from "@/app/order/rate";
+import RateOrderScreen from "@/app/order/rate";
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
@@ -21,7 +21,7 @@ describe("rating a finished order", () => {
   it("asks about quality, speed and value, and never about distance", async () => {
     // GRIDGO chose the shop and the client never saw where it was. A distance
     // question here asks somebody to rate a decision they did not make.
-    await render(wrap(<RateOrderSheet />));
+    await render(wrap(<RateOrderScreen />));
 
     expect(screen.getByText("Quality")).toBeTruthy();
     expect(screen.getByText("Speed")).toBeTruthy();
@@ -32,7 +32,7 @@ describe("rating a finished order", () => {
   it("cannot be sent until all three are answered", async () => {
     // The platform refuses a partial rating, so offering to send one would
     // walk the client into a refusal they cannot act on.
-    await render(wrap(<RateOrderSheet />));
+    await render(wrap(<RateOrderScreen />));
 
     const send = screen.getByText("Send rating");
     expect(send).toBeTruthy();
@@ -43,7 +43,7 @@ describe("rating a finished order", () => {
   it("says what each star would mean, not just how many there are", async () => {
     // Colour and shape alone are not a rating anyone can read back, and this
     // product does not communicate a state by shape alone.
-    await render(wrap(<RateOrderSheet />));
+    await render(wrap(<RateOrderScreen />));
 
     expect(screen.getByLabelText("Quality: 3 stars, About what I expected")).toBeTruthy();
     expect(screen.getByLabelText("Speed: 5 stars, Excellent")).toBeTruthy();
@@ -57,8 +57,20 @@ describe("rating a finished order", () => {
   it("says the comment is optional", async () => {
     // A required box turns a five-tap answer into a writing task, and what
     // comes back is "ok" from everyone who wanted to be finished.
-    await render(wrap(<RateOrderSheet />));
+    await render(wrap(<RateOrderScreen />));
 
-    expect(screen.getByText("Optional.")).toBeTruthy();
+    expect(screen.getByText(/^Optional\./)).toBeTruthy();
+  });
+});
+
+describe("the send bar", () => {
+  it("keeps the send button in a pinned bar and says what is still missing", async () => {
+    // The sheet this used to be sized itself to its content, and the third
+    // question and the button fell off a phone with no way to scroll them
+    // back. The bar is drawn beside the scroll, not inside it.
+    await render(wrap(<RateOrderScreen />));
+
+    expect(screen.getByTestId("rate-footer")).toBeTruthy();
+    expect(screen.getByText("Rate quality, speed and value to send.")).toBeTruthy();
   });
 });

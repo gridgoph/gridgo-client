@@ -41,6 +41,7 @@ import {
   isIssueWindowState,
   isProofApprovalState,
   isTrackingState,
+  orderItemsMinor,
   orderNextAction,
   orderTotalMinor,
   orderWaitingOn,
@@ -411,9 +412,11 @@ function MoneyCard({ order }: { order: api.Order }) {
 
   return (
     <View className="gg-card">
+      {/* Items at GRIDGO's price — the shops' figure plus GRIDGO's charge —
+          so Print + Delivery is the Total the client reads under it. */}
       <SpecRow
         label="Print"
-        value={order.subtotalMinor != null ? formatPhp(order.subtotalMinor) : "—"}
+        value={orderItemsMinor(order) != null ? formatPhp(orderItemsMinor(order) ?? 0) : "—"}
       />
       <SpecRow
         label="Delivery"

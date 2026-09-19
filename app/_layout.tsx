@@ -1,4 +1,5 @@
 import { ReceiptOcrHost } from "@/components/ReceiptOcrHost";
+import { useGridgoCharges } from "@/hooks/useGridgoCharges";
 import { useLiveNotifications } from "@/hooks/useLiveNotifications";
 import { ClerkProvider } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
@@ -75,7 +76,7 @@ export default function RootLayout() {
 function AppNavigation() {
   const scheme = useThemeName();
   const token = useThemeColors();
-  useAppFonts();
+  const fontsReady = useAppFonts();
   // Session drives Stack.Protected so sign-out / 401 / rejected role all leave
   // the signed-in area from anywhere (tabs + root stack siblings), not only at launch.
   const user = useSession((s) => s.user);
@@ -94,18 +95,24 @@ function AppNavigation() {
   usePushNotifications();
   useLiveNotifications();
 
+  // GRIDGO's charges, read as soon as a session exists: every price the app
+  // draws is the shop's figure plus GRIDGO's charge, from the first match row.
+  useGridgoCharges();
+
   // Keeps the window behind the navigator on canvas, so theme changes and
   // screen transitions never flash the wrong background.
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(token.canvas);
   }, [token.canvas]);
 
-  // The opening matches the legacy splash: start on the first frame, do not
-  // wait for fonts. Satoshi has ~1.8s before the wordmark, and the overlay
-  // covers any fallback under it.
+  // Hold the native splash until Satoshi is on the device. A release build
+  // embeds the files through the expo-font plugin, so this is the first
+  // frame. Expo Go still loads them at runtime; hiding earlier is how the
+  // welcome headline painted in the system UI font.
   useEffect(() => {
+    if (!fontsReady) return;
     void SplashScreen.hideAsync();
-  }, []);
+  }, [fontsReady]);
 
   // The opening plays once per launch, over everything. This layout mounts
   // once, so the flag is the whole gate — no route, no back-stack entry, and
@@ -303,21 +310,13 @@ function AppNavigation() {
                   }}
                 />
                 {/*
-                  Rating a finished job: a short question over an order already
-                  on display, with a keyboard in it. Same sheet treatment as
-                  asking for a proof change, and for the same reasons.
+                  Rating a finished job. It was a content-sized sheet like the
+                  proof-change ask, and on a phone three star questions plus a
+                  note outgrew the sheet with no way to scroll to the button.
+                  So it is an ordinary pushed screen with the checkout's shape:
+                  a scrolling form under a pinned commit bar.
                 */}
-                <Stack.Screen
-                  name="order/rate"
-                  options={{
-                    presentation: "formSheet",
-                    headerShown: false,
-                    sheetAllowedDetents: "fitToContents",
-                    sheetGrabberVisible: true,
-                    sheetCornerRadius: radius.lg,
-                    contentStyle: { backgroundColor: token.surface },
-                  }}
-                />
+                <Stack.Screen name="order/rate" options={pushedScreenOptions("Rate this order")} />
                 <Stack.Screen
                   name="design-system"
                   options={pushedScreenOptions("Design system")}

@@ -8,6 +8,7 @@ import { clearBoardCache } from "@/lib/shopBoards";
 import { useCart } from "@/store/cart";
 import { useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
+import { usePlatformSettings } from "@/store/platformSettings";
 
 const mockPush = jest.fn();
 
@@ -155,6 +156,12 @@ function renderInSafeArea(ui: ReactElement) {
 beforeEach(() => {
   mockPush.mockClear();
   clearBoardCache();
+  usePlatformSettings.getState().reset();
+  usePlatformSettings.getState().adopt({
+    issueWindowHours: 24,
+    serviceFeeRateBps: 1000,
+    deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+  });
   api.listOrders.mockReset();
   api.listOrders.mockResolvedValue([]);
   api.listCatalogShops.mockReset();

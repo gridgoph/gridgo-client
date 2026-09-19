@@ -51,8 +51,23 @@ export type PrintRun = {
   /** What the client calls this run. Never a shop. */
   runLabel: string;
   lines: CartLineRecord[];
-  subtotalMinor: number;
+  /**
+   * The shop's figure for the run, or null while any line in it has none.
+   * GRIDGO answers `lineSubtotalMinor: null` for a line its pricer refused;
+   * counting that as zero is what showed a lanyard at PHP 0.00.
+   */
+  subtotalMinor: number | null;
 };
+
+/** Adds figures that may be missing; one missing makes the sum missing. */
+function sumMinor(amounts: (number | null)[]): number | null {
+  let total = 0;
+  for (const amount of amounts) {
+    if (amount == null) return null;
+    total += amount;
+  }
+  return total;
+}
 
 /**
  * The basket by print run, in the order the runs were first started.
@@ -62,23 +77,18 @@ export type PrintRun = {
  * they are.
  */
 export function printRuns(lines: CartLineRecord[]): PrintRun[] {
-  const groups = new Map<string, PrintRun>();
+  const groups = new Map<string, CartLineRecord[]>();
   for (const line of lines) {
     const existing = groups.get(line.supplierId);
-    const amount = line.lineSubtotalMinor ?? 0;
-    if (existing) {
-      existing.lines.push(line);
-      existing.subtotalMinor += amount;
-      continue;
-    }
-    groups.set(line.supplierId, {
-      supplierId: line.supplierId,
-      runLabel: `Print run ${groups.size + 1}`,
-      lines: [line],
-      subtotalMinor: amount,
-    });
+    if (existing) existing.push(line);
+    else groups.set(line.supplierId, [line]);
   }
-  return [...groups.values()];
+  return [...groups.entries()].map(([supplierId, runLines], index) => ({
+    supplierId,
+    runLabel: `Print run ${index + 1}`,
+    lines: runLines,
+    subtotalMinor: sumMinor(runLines.map((line) => line.lineSubtotalMinor)),
+  }));
 }
 
 export type DeliveryLeg = {
@@ -90,9 +100,17 @@ export type DeliveryLeg = {
 };
 
 export type BasketTotals = {
-  itemSubtotalMinor: number;
+  /** The shops' own figure for the items. Null while any line has no price. */
+  itemSubtotalMinor: number | null;
   serviceFeeRateBps: number;
   serviceFeeMinor: number;
+  /**
+   * What the client is charged for the items: the shops' figure plus GRIDGO's
+   * charge, exactly as the server writes the order. This is the Items row —
+   * a client buys from GRIDGO, and there is no fee row for them to add up.
+   * Null while a line has no price or the platform's rate is unread.
+   */
+  gridgoItemsMinor: number | null;
   /** One leg per print run. Two runs is two drops and two fees. */
   legs: DeliveryLeg[];
   /** Null when any leg is still unpriced — a partial delivery total is a lie. */
@@ -123,9 +141,12 @@ export type TotalsInput = {
 export function basketTotals({ cart, settings, shopPoints }: TotalsInput): BasketTotals {
   const lines = cart?.lines ?? [];
   const groups = printRuns(lines);
-  const itemSubtotalMinor = groups.reduce((sum, group) => sum + group.subtotalMinor, 0);
+  const itemSubtotalMinor = sumMinor(groups.map((group) => group.subtotalMinor));
   const serviceFeeRateBps = settings?.serviceFeeRateBps ?? 0;
-  const serviceFeeMinor = settings ? roundBps(itemSubtotalMinor, serviceFeeRateBps) : 0;
+  const serviceFeeMinor =
+    settings && itemSubtotalMinor != null ? roundBps(itemSubtotalMinor, serviceFeeRateBps) : 0;
+  const gridgoItemsMinor =
+    settings && itemSubtotalMinor != null ? itemSubtotalMinor + serviceFeeMinor : null;
 
   const collecting = cart?.fulfillmentMode === "pickup";
   const legs: DeliveryLeg[] = collecting
@@ -158,8 +179,8 @@ export function basketTotals({ cart, settings, shopPoints }: TotalsInput): Baske
     : null;
 
   const totalMinor =
-    settings && deliveryFeeMinor != null
-      ? itemSubtotalMinor + serviceFeeMinor + deliveryFeeMinor
+    gridgoItemsMinor != null && deliveryFeeMinor != null
+      ? gridgoItemsMinor + deliveryFeeMinor
       : null;
   const downpaymentMinor = totalMinor == null ? null : roundBps(totalMinor, DOWNPAYMENT_RATE_BPS);
 
@@ -167,6 +188,7 @@ export function basketTotals({ cart, settings, shopPoints }: TotalsInput): Baske
     itemSubtotalMinor,
     serviceFeeRateBps,
     serviceFeeMinor,
+    gridgoItemsMinor,
     legs,
     deliveryFeeMinor,
     totalMinor,
@@ -174,6 +196,11 @@ export function basketTotals({ cart, settings, shopPoints }: TotalsInput): Baske
     balanceMinor:
       totalMinor == null || downpaymentMinor == null ? null : totalMinor - downpaymentMinor,
   };
+}
+
+/** Lines GRIDGO could not price — usually a quantity under the shop's minimum. */
+export function linesUnpriced(lines: CartLineRecord[]): CartLineRecord[] {
+  return lines.filter((line) => line.lineSubtotalMinor == null);
 }
 
 /** Lines still waiting for a file, so the sheet can name them. */
