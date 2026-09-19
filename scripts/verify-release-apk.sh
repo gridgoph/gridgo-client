@@ -118,14 +118,16 @@ fi
 grep -aqF -- "$EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" "$work/bundle.bin" ||
   fail "the production Clerk publishable key is not in $bundle"
 
-# CARTO dark tiles (`lib/cartoTiles.ts`): host plus a non-empty `?key=` query.
-# Never print the key; the host alone is in the bundle even when the key is missing.
+# lib/cartoTiles.ts emits `{s}.basemaps.cartocdn.com/...png?key=`. Never print
+# the key: fail on host + query shape, then a quiet presence check like Clerk.
+# A `?key=` shape alone is not enough — the JS bundle already contains other
+# query strings, so a keyless CARTO URL still passed this step.
 grep -aqF -- 'basemaps.cartocdn.com' "$work/bundle.bin" ||
-  fail "the CARTO tile host is not in $bundle"
+  fail "the CARTO dark-tile host is not in $bundle"
+grep -aqF -- '?key=' "$work/bundle.bin" ||
+  fail "the CARTO tile URL in $bundle is missing the ?key= query"
+grep -aqF -- "$EXPO_PUBLIC_CARTO_API_KEY" "$work/bundle.bin" ||
+  fail "the CARTO basemap key is not in $bundle — EXPO_PUBLIC_CARTO_API_KEY was not inlined at bundle time"
 
-if ! grep -aqE -- '[?]key=[^[:space:]&"'\''<>]+' "$work/bundle.bin"; then
-  fail "the CARTO tile URL in $bundle has no key query — EXPO_PUBLIC_CARTO_API_KEY was not set for the build step, so dark maps would show the API KEY REQUIRED watermark"
-fi
-
-echo "OK: the deployed API URL, Clerk production key, and CARTO tile URL are inlined in $bundle"
+echo "OK: the deployed API URL, Clerk production key, and CARTO basemap key are inlined in $bundle"
 echo "OK: $(basename "$apk") is a real signed release build"
