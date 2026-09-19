@@ -132,11 +132,11 @@ describe("the verify script checks the Clerk value in the built artifact", () =>
 });
 
 describe("the verify script checks the CARTO tile URL in the built artifact", () => {
-  it("requires the key and asserts host plus a non-empty query without printing it", () => {
+  it("requires the key and asserts host, query shape, and a quiet presence check", () => {
     expect(verifyScript).toMatch(/require_env EXPO_PUBLIC_CARTO_API_KEY/);
     expect(verifyScript).toMatch(/basemaps\.cartocdn\.com/);
-    expect(verifyScript).toContain("[?]key=");
-    expect(verifyScript).not.toMatch(
+    expect(verifyScript).toContain("?key=");
+    expect(verifyScript).toMatch(
       /grep -aqF -- "\$EXPO_PUBLIC_CARTO_API_KEY"/,
     );
   });

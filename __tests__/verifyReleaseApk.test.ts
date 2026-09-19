@@ -86,7 +86,33 @@ fi`,
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("the CARTO tile URL in assets/index.android.bundle has no key query");
+    expect(result.stderr).toContain("the CARTO tile URL in assets/index.android.bundle is missing the ?key= query");
+    expect(result.stderr).not.toContain("fixture-carto-key");
+  });
+
+  it("fails when some other ?key= is present but the CARTO key is not", () => {
+    const result = spawnSync("bash", [verifyScript, join(fixtureRoot, "fake.apk")], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${join(fixtureRoot, "bin")}${delimiter}${process.env.PATH ?? ""}`,
+        ANDROID_HOME: join(fixtureRoot, "missing-android-sdk"),
+        ANDROID_SDK_ROOT: join(fixtureRoot, "missing-android-sdk"),
+        ANDROID_KEYSTORE_PATH: join(fixtureRoot, "release.jks"),
+        ANDROID_KEYSTORE_PASSWORD: "fixture-password",
+        ANDROID_KEY_ALIAS: "fixture-alias",
+        EXPO_PUBLIC_API_URL: "https://api.fixture.invalid",
+        EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_live_fixture_value",
+        EXPO_PUBLIC_CARTO_API_KEY: "fixture-carto-key",
+        FAKE_BUNDLE_CONTENT:
+          "https://api.fixture.invalid pk_live_fixture_value https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png https://example.invalid/?key=unrelated",
+      },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "the CARTO basemap key is not in assets/index.android.bundle",
+    );
     expect(result.stderr).not.toContain("fixture-carto-key");
   });
 });
