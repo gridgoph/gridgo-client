@@ -6,6 +6,7 @@ import {
   printRuns,
   linesMissingArtwork,
   linesMissingDropoff,
+  linesUnpriced,
   roundBps,
 } from "@/lib/basket";
 
@@ -104,6 +105,17 @@ describe("printRuns", () => {
     expect(groups[0].lines.map((entry) => entry.id)).toEqual(["a", "c"]);
     expect(groups[0].subtotalMinor).toBe(4500);
   });
+
+  it("has no subtotal at all while one of its lines has no price", () => {
+    // GRIDGO answers `lineSubtotalMinor: null` for a line its pricer refused
+    // (a quantity under the shop's minimum). Adding it up as zero is what put
+    // "PHP 0.00" over a lanyard that costs PHP 50.00.
+    const groups = printRuns([
+      line({ id: "a", lineSubtotalMinor: 4000 }),
+      line({ id: "b", lineSubtotalMinor: null }),
+    ]);
+    expect(groups[0].subtotalMinor).toBeNull();
+  });
 });
 
 describe("basketTotals", () => {
@@ -118,6 +130,30 @@ describe("basketTotals", () => {
     expect(totals.serviceFeeMinor).toBe(10000);
     expect(totals.deliveryFeeMinor).toBe(2500);
     expect(totals.totalMinor).toBe(112500);
+  });
+
+  it("states the items at GRIDGO's price, so Items plus Delivery is the Total", () => {
+    const totals = basketTotals({ cart: cart(), settings: SETTINGS, shopPoints: POINTS });
+
+    // The shop's PHP 1,000.00 plus GRIDGO's 10% is what the client is charged
+    // for the items; there is no separate fee row for them to add up.
+    expect(totals.gridgoItemsMinor).toBe(110000);
+    expect(totals.gridgoItemsMinor! + totals.deliveryFeeMinor!).toBe(totals.totalMinor);
+  });
+
+  it("has no items figure and no total while a line has no price", () => {
+    const totals = basketTotals({
+      cart: cart({ lines: [line({ id: "a" }), line({ id: "b", lineSubtotalMinor: null })] }),
+      settings: SETTINGS,
+      shopPoints: POINTS,
+    });
+
+    expect(totals.itemSubtotalMinor).toBeNull();
+    expect(totals.gridgoItemsMinor).toBeNull();
+    expect(totals.totalMinor).toBeNull();
+    expect(totals.downpaymentMinor).toBeNull();
+    // Delivery is still known: the address is set and the run is one press.
+    expect(totals.deliveryFeeMinor).toBe(2500);
   });
 
   it("splits the total 75/25 the way checkout does", () => {
@@ -236,11 +272,17 @@ describe("basketTotals", () => {
     });
 
     expect(totals.serviceFeeMinor).toBe(0);
+    expect(totals.gridgoItemsMinor).toBeNull();
     expect(totals.totalMinor).toBeNull();
   });
 });
 
 describe("what the basket is still missing", () => {
+  it("names the lines GRIDGO could not price", () => {
+    const lines = [line({ id: "a" }), line({ id: "b", lineSubtotalMinor: null })];
+    expect(linesUnpriced(lines).map((entry) => entry.id)).toEqual(["b"]);
+  });
+
   it("names the lines with no file on them", () => {
     const lines = [line({ id: "a" }), line({ id: "b", artworkFileId: null })];
     expect(linesMissingArtwork(lines).map((entry) => entry.id)).toEqual(["b"]);

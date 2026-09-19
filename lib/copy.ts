@@ -116,6 +116,16 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "This order takes the QR downpayment and balance now. Pull it down to refresh, then pay the amount it asks for.";
       case "payment_method_not_allowed":
         return "GRIDGO takes payment by QR only — GCash, Maya or a bank e-wallet. There is no cash on delivery.";
+      // ---- basket: the shop's minimum run ----
+      case "below_minimum_quantity": {
+        const minimum =
+          typeof error.body === "object" && error.body && "minimumOrderQuantity" in error.body
+            ? Number((error.body as { minimumOrderQuantity: unknown }).minimumOrderQuantity)
+            : NaN;
+        return Number.isInteger(minimum) && minimum > 0
+          ? `This shop takes orders of ${minimum} and up. Change the quantity and try again.`
+          : "This shop takes a minimum quantity. Change the quantity and try again.";
+      }
       case "assignment_notification_required":
         return "This job has no final price yet, so there is nothing to pay. You get a notification the moment a supplier accepts it.";
       case "payment_already_submitted":

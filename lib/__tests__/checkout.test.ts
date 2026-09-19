@@ -76,6 +76,13 @@ describe("placeOrderBlockers", () => {
     expect(placeOrderBlockers({ ...READY, linesMissingDropoff: 1 })).toContain("address");
   });
 
+  it("stops a basket holding a line GRIDGO could not price", () => {
+    // A quantity under the shop's minimum has no price, and checkout would
+    // refuse it with `below_minimum_quantity`; the client is told first.
+    expect(placeOrderBlockers({ ...READY, linesUnpriced: 1 })).toContain("price");
+    expect(placeOrderBlockers({ ...READY, linesUnpriced: 0 })).toEqual([]);
+  });
+
   it("does not block on a missing checkout timing picker", () => {
     // When the job is wanted was asked on the when screen. Checkout no longer
     // carries Standard / Scheduled / Express, so a missing date here cannot
@@ -120,6 +127,15 @@ describe("blockerLine", () => {
     expect(blockerLine("artwork")).toContain("every item");
   });
 
+  it("tells the client to change the quantity on the item with no price", () => {
+    expect(blockerLine("price", "Lanyard/Sling Print")).toBe(
+      "Lanyard/Sling Print has no price at this quantity. Open it and change the quantity.",
+    );
+    expect(blockerLine("price")).toBe(
+      "One item has no price at this quantity. Open it and change the quantity.",
+    );
+  });
+
   it("says what to do, never what went wrong internally", () => {
     for (const blocker of [
       "empty",
@@ -129,6 +145,7 @@ describe("blockerLine", () => {
       "proof",
       "reference",
       "settings",
+      "price",
     ] as const) {
       const text = blockerLine(blocker);
       expect(text.length).toBeGreaterThan(0);

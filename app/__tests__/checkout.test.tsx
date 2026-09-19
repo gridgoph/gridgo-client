@@ -204,13 +204,15 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText("Add more to this run")).toBeTruthy();
   });
 
-  it("shows the payable total without naming GRIDGO's service fee", async () => {
+  it("prices the items at GRIDGO's price, so Items plus Delivery is the Total", async () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    // ₱40 items + 10% service fee + the under-5km delivery band. The fee is
-    // still inside the QR 75/25 and the total; it is not a row a client sees.
-    expect(screen.getAllByText("₱40.00").length).toBeGreaterThan(0);
+    // The shop's ₱40 plus GRIDGO's 10% is ₱44 — the line, the run header and
+    // the Items row all say so. The shop's own ₱40 never reaches the screen,
+    // and there is no fee row: ₱44 + ₱25 delivery = ₱69, and it adds up.
+    expect(screen.getAllByText("₱44.00")).toHaveLength(3);
+    expect(screen.queryByText(/₱40\.00/)).toBeNull();
     expect(screen.queryByText(/GRIDGO service fee/i)).toBeNull();
     expect(screen.queryByText(/10%/)).toBeNull();
     expect(screen.getByText("₱25.00")).toBeTruthy();
@@ -295,7 +297,8 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    expect(screen.getByText("Not yet")).toBeTruthy();
+    // Invoice and pinned commit bar withhold the same total.
+    expect(screen.getAllByText("Not yet")).toHaveLength(2);
     expect(screen.getByText("Set with your address")).toBeTruthy();
   });
 

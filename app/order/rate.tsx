@@ -2,10 +2,9 @@ import { usePreventRemove } from "expo-router/react-navigation";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { FormScreen } from "@/components/FormScreen";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StarRating } from "@/components/StarRating";
@@ -17,10 +16,12 @@ import {
   RATED_FACTORS,
   factorBlurb,
   factorLabel,
+  firstUnrated,
   isAlreadyRated,
   isComplete,
   ratingErrorMessage,
   toRequest,
+  type RatedFactor,
   type RatingScores,
 } from "@/lib/rating";
 
@@ -42,16 +43,20 @@ import {
  * of a business. It is what tells matching to send the next job to somebody
  * who did this one well.
  *
- * A sheet rather than a screen: it is a short question over an order already
- * on display, and the platform's own form sheet brings the drag-to-dismiss,
- * back gesture, keyboard avoidance and scrim with it. What is added on top is
- * the one thing the platform cannot know — that half-written feedback is worth
- * asking about before it is thrown away.
+ * A pushed screen with the checkout's shape: the questions scroll, and the
+ * one button that sends them stays pinned in a bar under the scroll. It was a
+ * form sheet sized to its content once, and on a phone the content was taller
+ * than the sheet — the third question and the button fell off the bottom with
+ * nothing to scroll them back. The bar is what makes the ending visible from
+ * the first star: you can always see what finishes this, the same way you can
+ * always see "Place this order" while filling in a checkout.
+ *
+ * What is added on top is the one thing the platform cannot know — that
+ * half-written feedback is worth asking about before it is thrown away.
  */
-export default function RateOrderSheet() {
+export default function RateOrderScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
 
   const [scores, setScores] = useState<RatingScores>(NO_SCORES);
   const [comment, setComment] = useState("");
@@ -87,10 +92,53 @@ export default function RateOrderSheet() {
   }, [ready, busy, orderId, scores, comment, router]);
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={{ paddingBottom: insets.bottom }}>
-      <View className="gap-6 px-4 pb-4 pt-5">
+    <FormScreen
+      footer={
+        <View testID="rate-footer" className="gap-3 border-t border-outline bg-surface px-4 pb-2 pt-3">
+          {error ? <Text className="text-body text-error">{error}</Text> : null}
+          {/*
+            The bar says what is still missing rather than sitting greyed out
+            with no reason: a disabled button that cannot say why is the one
+            control on the screen a person cannot act on.
+          */}
+          {!ready && !busy ? (
+            <Text className="text-caption text-text-muted">
+              {firstUnrated(scores) === "quality"
+                ? "Rate quality, speed and value to send."
+                : `Still to rate: ${factorLabel(firstUnrated(scores) as RatedFactor).toLowerCase()}.`}
+            </Text>
+          ) : null}
+          <PrimaryButton
+            label={busy ? "Sending…" : "Send rating"}
+            onPress={() => void send()}
+            disabled={!ready || busy}
+          />
+          <SecondaryButton
+            label="Not now"
+            onPress={() => (unsaved ? setConfirmDiscard(true) : router.back())}
+            disabled={busy}
+          />
+        </View>
+      }
+      overlay={
+        <ConfirmDialog
+          visible={confirmDiscard}
+          question="Discard what you wrote?"
+          body="Your stars and your note will not be sent. You can rate this order later from the order screen."
+          confirmLabel="Discard"
+          cancelLabel="Keep writing"
+          tone="destructive"
+          onConfirm={() => {
+            setConfirmDiscard(false);
+            router.back();
+          }}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      }
+    >
+      <View className="gg-page gap-6 pb-8 pt-2">
         <View className="gap-2">
-          <Text className="text-h2 text-text-primary">How did it go?</Text>
+          <Text className="text-h1 text-text-primary">How did it go?</Text>
           <Text className="text-body text-text-secondary">
             This decides who prints your next job. It is never shown to you as a shop name,
             and nobody sees who left it.
@@ -98,7 +146,7 @@ export default function RateOrderSheet() {
         </View>
 
         {RATED_FACTORS.map((factor) => (
-          <View key={factor} className="gap-2">
+          <View key={factor} className="gg-card gap-2 p-4">
             <Text className="text-body-lg text-text-primary">{factorLabel(factor)}</Text>
             <Text className="text-caption text-text-muted">{factorBlurb(factor)}</Text>
             <StarRating
@@ -118,7 +166,7 @@ export default function RateOrderSheet() {
           <Text className="text-body-lg text-text-primary">
             Anything worth passing on?
           </Text>
-          <Text className="text-caption text-text-muted">Optional.</Text>
+          <Text className="text-caption text-text-muted">Optional. The shop reads it without your name.</Text>
           <TextField
             value={comment}
             onChangeText={setComment}
@@ -128,36 +176,7 @@ export default function RateOrderSheet() {
             accessibilityLabel="Anything worth passing on, optional"
           />
         </View>
-
-        {error ? <Text className="text-body text-error">{error}</Text> : null}
-
-        <View className="gap-3">
-          <PrimaryButton
-            label={busy ? "Sending…" : "Send rating"}
-            onPress={() => void send()}
-            disabled={!ready || busy}
-          />
-          <SecondaryButton
-            label="Not now"
-            onPress={() => (unsaved ? setConfirmDiscard(true) : router.back())}
-            disabled={busy}
-          />
-        </View>
       </View>
-
-      <ConfirmDialog
-        visible={confirmDiscard}
-        question="Discard what you wrote?"
-        body="Your stars and your note will not be sent. You can rate this order later from the order screen."
-        confirmLabel="Discard"
-        cancelLabel="Keep writing"
-        tone="destructive"
-        onConfirm={() => {
-          setConfirmDiscard(false);
-          router.back();
-        }}
-        onCancel={() => setConfirmDiscard(false)}
-      />
-    </KeyboardAvoidingView>
+    </FormScreen>
   );
 }

@@ -4,6 +4,8 @@ import { Pressable, Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp, type CatalogOption, type CatalogOptionGroup } from "@/lib/api";
+import { gridgoPriceMinor } from "@/lib/clientPrice";
+import { useServiceFeeRateBps } from "@/store/platformSettings";
 
 type Props = {
   group: CatalogOptionGroup;
@@ -92,13 +94,18 @@ function OptionRow({
   first: boolean;
   onPress: () => void;
 }) {
+  // What this option adds is said at GRIDGO's price, the same figure the
+  // header climbs by when it is ticked. Null until the rate is read; the
+  // row then shows no amount rather than the shop's own.
+  const rate = useServiceFeeRateBps();
+  const delta = rate == null ? null : clientModifierMinor(option.priceModifierMinor, rate);
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole={required ? "radio" : "checkbox"}
       accessibilityState={{ checked: selected }}
       accessibilityLabel={`${option.label}, ${groupName}`}
-      accessibilityHint={modifierSpoken(option.priceModifierMinor)}
+      accessibilityHint={delta == null ? undefined : modifierSpoken(delta)}
       className={
         first
           ? "gg-touch flex-row items-center gap-3 px-4 py-3"
@@ -109,15 +116,15 @@ function OptionRow({
         <>
           <Marker required={required} selected={selected} />
           <Text className="min-w-0 flex-1 text-body text-text-primary">{option.label}</Text>
-          <Text
-            className={
-              option.priceModifierMinor > 0
-                ? "text-body text-text-primary"
-                : "text-caption text-text-muted"
-            }
-          >
-            {modifierLine(option.priceModifierMinor)}
-          </Text>
+          {delta == null ? null : (
+            <Text
+              className={
+                delta > 0 ? "text-body text-text-primary" : "text-caption text-text-muted"
+              }
+            >
+              {modifierLine(delta)}
+            </Text>
+          )}
           {pressed ? (
             <View pointerEvents="none" className="gg-pressed absolute inset-0" />
           ) : null}
@@ -158,6 +165,15 @@ function Marker({ required, selected }: { required: boolean; selected: boolean }
       <Check size={12} color={colors.accentOn} strokeWidth={3} />
     </View>
   );
+}
+
+/**
+ * A shop's modifier as GRIDGO charges it. The sign survives: a discount the
+ * shop gives is a discount at GRIDGO's rate too.
+ */
+export function clientModifierMinor(priceModifierMinor: number, serviceFeeRateBps: number): number {
+  const magnitude = gridgoPriceMinor(Math.abs(priceModifierMinor), serviceFeeRateBps);
+  return priceModifierMinor < 0 ? -magnitude : magnitude;
 }
 
 /** "+₱12.00" or "Included". Never "+₱0.00". */

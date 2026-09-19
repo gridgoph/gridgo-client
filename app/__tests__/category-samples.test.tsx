@@ -7,6 +7,7 @@ import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { clearProductCategoryCache } from "@/lib/api";
 import { clearBoardCache } from "@/lib/shopBoards";
 import { useCart } from "@/store/cart";
+import { usePlatformSettings } from "@/store/platformSettings";
 import { usePriorities } from "@/store/priorities";
 
 const mockPush = jest.fn();
@@ -140,6 +141,12 @@ beforeEach(() => {
   // from a cold read rather than the previous test's shop.
   clearBoardCache();
   useCart.getState().reset();
+  usePlatformSettings.getState().reset();
+  usePlatformSettings.getState().adopt({
+    issueWindowHours: 24,
+    serviceFeeRateBps: 1000,
+    deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+  });
   usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
 });
 
@@ -194,9 +201,11 @@ it("keeps current category prices when an old board request finishes late", asyn
   await firstRead;
   clearBoardCache();
   await act(async () => { await mockRefresh(); });
-  expect(screen.getAllByText(/999\.00/).length).toBeGreaterThan(0);
+  // The shop's ₱999.00 reads as GRIDGO's ₱1,098.90; the shop's figure is never drawn.
+  expect(screen.getAllByText(/1,098\.90/).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/999\.00/)).toBeNull();
   await act(async () => { finish(BOARD); });
-  expect(screen.getAllByText(/999\.00/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/1,098\.90/).length).toBeGreaterThan(0);
 });
 
 it("shows a newly published subcategory when its tree and board refresh", async () => {
