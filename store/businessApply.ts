@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import type { ClientAddress, User } from "@/lib/api";
+import { newIdempotencyKey } from "@/lib/api";
 import {
   applySteps,
   applyStepProblem,
@@ -50,6 +51,7 @@ export type BusinessApplyState = {
   showProblem: boolean;
   submitting: boolean;
   notice: ApplyNotice | null;
+  idempotencyKey: string;
 
   start: (user: User | null) => void;
   edit: (patch: Partial<BusinessApplyDraft>) => void;
@@ -69,6 +71,7 @@ const EMPTY = {
   showProblem: false,
   submitting: false,
   notice: null,
+  idempotencyKey: "",
 } as const;
 
 export const useBusinessApply = create<BusinessApplyState>((set, get) => ({
@@ -79,6 +82,7 @@ export const useBusinessApply = create<BusinessApplyState>((set, get) => ({
       ...EMPTY,
       steps: applySteps(user),
       draft: emptyApplyDraft(user),
+      idempotencyKey: newIdempotencyKey(),
     }),
 
   edit: (patch) =>
@@ -130,14 +134,14 @@ export const useBusinessApply = create<BusinessApplyState>((set, get) => ({
     // Where orders go is sent whole, so the application resolves the choice
     // against the list this step actually offered rather than trusting an id
     // the server would have to look up.
-    const address = addresses?.find((candidate) => candidate.id === draft.addressId) ?? null;
-    const outcome = await submitBusinessApply(businessApplyInput(draft, address));
+    const outcome = await submitBusinessApply(
+      businessApplyInput(draft),
+      get().idempotencyKey || newIdempotencyKey(),
+    );
 
     if (outcome.status === "ok") {
-      // The account really is a business now, so the session carries GRIDGO's
-      // answer rather than the app's guess at it. Never written locally on any
-      // other outcome: the next `/me` would overwrite it, and meanwhile the
-      // client would be told they are something the platform has not heard of.
+      // GRIDGO's answer is a pending case, not a converted account. The
+      // session carries that projection so Account can show pending.
       useSession.getState().setUser(outcome.value);
       set({ submitting: false, notice: null });
       return true;

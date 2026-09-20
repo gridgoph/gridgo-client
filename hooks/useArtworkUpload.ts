@@ -211,6 +211,7 @@ export function useArtworkUpload(
       uri: asset.uri,
       name: chosenName,
       mimeType: asset.mimeType ?? null,
+      file: "file" in asset ? (asset as { file?: Blob }).file : undefined,
     });
   }, [send, guard]);
 

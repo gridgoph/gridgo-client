@@ -27,6 +27,7 @@ jest.mock("@/hooks/useClerkApiSession", () => ({ useClerkApiSession: jest.fn() }
 jest.mock("@/hooks/useClientPreferences", () => ({ useClientPreferences: jest.fn() }));
 jest.mock("@/hooks/usePushNotifications", () => ({ usePushNotifications: jest.fn() }));
 jest.mock("@/hooks/useLiveNotifications", () => ({ useLiveNotifications: jest.fn() }));
+jest.mock("@/hooks/useSupportChatUnread", () => ({ useSupportChatUnread: jest.fn() }));
 jest.mock("@/components/BrandIntro", () => ({ BrandIntro: () => null }));
 jest.mock("@/store/theme", () => ({ useThemeStore: jest.fn() }));
 jest.mock("expo-splash-screen", () => ({

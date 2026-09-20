@@ -1,6 +1,7 @@
 import type { User } from "@/lib/api";
 import { clerkErrorCode, clerkErrorMessage, splitFullName } from "@/lib/clerkAuth";
 import { checkSignupField, EMPTY_SIGNUP, MIN_PASSWORD_LENGTH } from "@/lib/signup";
+import { canPickOnWeb, pickFileOnWeb } from "@/lib/webFilePick";
 
 /**
  * The half of a client's account Clerk owns: the photo, the sign-in email, the
@@ -217,16 +218,43 @@ export function portraitFile(asset: {
 }
 
 type PickedPortrait =
-  | { status: "ok"; asset: { uri: string; fileName?: string | null; mimeType?: string | null } }
+  | {
+      status: "ok";
+      asset: {
+        uri: string;
+        fileName?: string | null;
+        mimeType?: string | null;
+        file?: File;
+      };
+    }
   | { status: "cancelled" }
   | { status: "failed"; message: string };
 
 /**
  * Prefer the cropped photo library. A USB binary built before
  * `expo-image-picker` still has the artwork file picker, which can choose an
- * image without a rebuild.
+ * image without a rebuild. On web the native probe is empty, so a file input
+ * is what actually opens the dialog.
  */
 async function pickPortraitAsset(): Promise<PickedPortrait> {
+  if (canPickOnWeb()) {
+    try {
+      const picked = await pickFileOnWeb("image/*");
+      if (!picked) return { status: "cancelled" };
+      return {
+        status: "ok",
+        asset: {
+          uri: picked.uri,
+          fileName: picked.name,
+          mimeType: picked.mimeType,
+          file: picked.file,
+        },
+      };
+    } catch {
+      return { status: "failed", message: PORTRAIT_NEEDS_REBUILD };
+    }
+  }
+
   const ImagePicker = getImagePickerNative();
   if (ImagePicker) {
     try {
@@ -291,7 +319,8 @@ export async function changeClientPhoto(
   if (picked.status !== "ok") return picked;
 
   try {
-    await user.setProfileImage({ file: portraitFile(picked.asset) as unknown as Blob });
+    const file = picked.asset.file ?? (portraitFile(picked.asset) as unknown as Blob);
+    await user.setProfileImage({ file });
     // Clerk's own copy of the user is what every screen reads `imageUrl` from,
     // so it is re-read here rather than leaving the old picture on screen.
     await user.reload?.();

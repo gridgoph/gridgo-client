@@ -1,10 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import ChatListScreen from "@/app/chat/index";
 import ChatThreadScreen from "@/app/chat/[thread]";
-import { CHAT_NOT_LIVE } from "@/lib/chatThreads";
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -20,9 +19,26 @@ jest.mock("expo-router", () => ({
     canGoBack: () => mockCanGoBack,
   }),
   useLocalSearchParams: () => mockParams,
-  // Wrapped rather than passed by reference: `jest.mock` is hoisted above the
-  // `const` below, so the factory runs before `mockStackScreen` is assigned.
   Stack: { Screen: (props: { options?: unknown }) => mockStackScreen(props) },
+}));
+
+jest.mock("react-native-keyboard-controller", () => {
+  const { View } = require("react-native");
+  return { KeyboardAvoidingView: View };
+});
+
+const mockGetSupportChatMe = jest.fn(async () => ({ thread: null, messages: [] }));
+const mockSendSupportChatMessage = jest.fn();
+const mockMarkSupportChatRead = jest.fn(async () => ({ thread: null }));
+
+jest.mock("@/lib/api", () => ({
+  getSupportChatMe: (...args: unknown[]) => mockGetSupportChatMe(...args),
+  sendSupportChatMessage: (...args: unknown[]) => mockSendSupportChatMessage(...args),
+  markSupportChatRead: (...args: unknown[]) => mockMarkSupportChatRead(...args),
+}));
+
+jest.mock("@/lib/supportChatStream", () => ({
+  openSupportChatStream: () => ({ close: jest.fn() }),
 }));
 
 function renderInSafeArea(ui: ReactElement) {
@@ -46,54 +62,62 @@ beforeEach(() => {
   mockStackScreen.mockClear();
   mockParams = {};
   mockCanGoBack = true;
+  mockGetSupportChatMe.mockResolvedValue({ thread: null, messages: [] });
 });
 
-describe("the chat list", () => {
-  it("names all three counterparties and when each one starts", async () => {
+describe("the Operations conversation", () => {
+  it("opens the desk rather than the retired supplier, rider and Gridbot rows", async () => {
     await renderInSafeArea(<ChatListScreen />);
 
-    expect(screen.getByText("Supplier")).toBeTruthy();
-    expect(screen.getByText("Rider")).toBeTruthy();
-    expect(screen.getByText("Gridbot")).toBeTruthy();
-    expect(screen.getByText("Opens once a shop takes your job")).toBeTruthy();
-    expect(screen.getByText("Opens once your job is out for delivery")).toBeTruthy();
-  });
-
-  it("says messaging is not live rather than letting the client wait", async () => {
-    await renderInSafeArea(<ChatListScreen />);
-
-    expect(screen.getByText(CHAT_NOT_LIVE)).toBeTruthy();
-  });
-
-  it("opens a thread", async () => {
-    await renderInSafeArea(<ChatListScreen />);
-
-    fireEvent.press(screen.getByLabelText("Rider"));
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/chat/[thread]",
-      params: { thread: "rider" },
-    });
-  });
-});
-
-describe("a chat thread", () => {
-  it("shows an empty state, never a transcript", async () => {
-    mockParams = { thread: "supplier" };
-    await renderInSafeArea(<ChatThreadScreen />);
-
-    expect(screen.getByText("Supplier")).toBeTruthy();
+    expect(await screen.findByText("Operations")).toBeTruthy();
+    expect(screen.getByText("GRIDGO operations")).toBeTruthy();
     expect(screen.getByText("No messages yet")).toBeTruthy();
-    expect(screen.getByText(CHAT_NOT_LIVE)).toBeTruthy();
+    expect(screen.queryByText("Supplier")).toBeNull();
+    expect(screen.queryByText("Rider")).toBeNull();
+    expect(screen.queryByText("Gridbot")).toBeNull();
+    expect(screen.getByLabelText("Message Operations")).toBeTruthy();
+    expect(screen.getByLabelText("Send")).toBeTruthy();
+  });
+
+  it("sends a message to Operations", async () => {
+    mockSendSupportChatMessage.mockResolvedValue({
+      thread: { id: "t1", unreadCount: 0 },
+      message: {
+        id: "m1",
+        threadId: "t1",
+        senderUserId: "me",
+        senderRole: "client",
+        body: "Need a reprint.",
+        createdAt: "2026-09-20T03:00:00.000Z",
+        mine: true,
+      },
+    });
+    await renderInSafeArea(<ChatListScreen />);
+    await screen.findByText("Operations");
+
+    fireEvent.changeText(screen.getByPlaceholderText("Write to Operations"), "Need a reprint.");
+    await screen.findByDisplayValue("Need a reprint.");
+    fireEvent.press(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(mockSendSupportChatMessage).toHaveBeenCalledWith("Need a reprint.");
+    });
+    expect(await screen.findByText("Need a reprint.")).toBeTruthy();
+  });
+});
+
+describe("a chat thread route", () => {
+  it("renders Operations when the peer is ops", async () => {
+    mockParams = { thread: "ops" };
+    await renderInSafeArea(<ChatThreadScreen />);
+    expect(await screen.findByText("Operations")).toBeTruthy();
+    expect(screen.getByLabelText("Message Operations")).toBeTruthy();
   });
 
   it("grows its own way out when a deep link left no history behind it", async () => {
-    // The native stack hides its back control with an empty history, and this
-    // is not a tab, so without a headerLeft the client would have only OS
-    // gestures. Nothing is overridden when there is somewhere to go back to.
     mockCanGoBack = false;
-    mockParams = { thread: "gridbot" };
+    mockParams = { thread: "ops" };
     await renderInSafeArea(<ChatThreadScreen />);
-
     expect(mockStackScreen).toHaveBeenCalled();
     const options = mockStackScreen.mock.calls[0]?.[0].options as
       | { headerLeft?: () => unknown }
@@ -102,19 +126,18 @@ describe("a chat thread", () => {
   });
 
   it("leaves the platform back alone when there is history", async () => {
-    mockParams = { thread: "gridbot" };
+    mockParams = { thread: "ops" };
     await renderInSafeArea(<ChatThreadScreen />);
-
+    await screen.findByText("Operations");
     expect(mockStackScreen).not.toHaveBeenCalled();
   });
 
-  it("answers an unknown thread instead of rendering a blank one", async () => {
-    mockParams = { thread: "ops" };
+  it("answers a retired placeholder instead of rendering a blank one", async () => {
+    mockParams = { thread: "supplier" };
     await renderInSafeArea(<ChatThreadScreen />);
 
     expect(screen.getByText("No such conversation")).toBeTruthy();
-
-    fireEvent.press(screen.getByText("See all three"));
+    fireEvent.press(screen.getByText("Open Operations"));
     expect(mockReplace).toHaveBeenCalledWith("/chat");
   });
 });

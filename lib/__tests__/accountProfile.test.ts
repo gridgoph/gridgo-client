@@ -83,6 +83,19 @@ describe("the identity card", () => {
     expect(canApplyAsBusiness(BUSINESS)).toBe(false);
     expect(canApplyAsBusiness(null)).toBe(false);
   });
+
+  it("stops offering a new application while one is waiting", () => {
+    const pending: User = {
+      ...PERSONAL,
+      approvalCase: {
+        id: "apc_1",
+        kind: "business_client",
+        status: "pending",
+        version: 1,
+      },
+    };
+    expect(canApplyAsBusiness(pending)).toBe(false);
+  });
 });
 
 describe("correcting the details", () => {
@@ -191,10 +204,20 @@ describe("applying as a business", () => {
     ]);
   });
 
-  it("will not leave the first step without a business name", () => {
-    const draft = { orgName: "  ", contactName: "Ana", phone: "0917 123 4567", addressId: null };
+  it("will not leave the first step without a business name and nature", () => {
+    const draft = {
+      orgName: "  ",
+      nature: "",
+      accountType: "business" as const,
+      contactName: "Ana",
+      phone: "0917 123 4567",
+      addressId: null,
+    };
     expect(applyStepProblem("name", draft)).toContain("business name");
-    expect(applyStepProblem("name", { ...draft, orgName: "Bautista Trading" })).toBeNull();
+    expect(applyStepProblem("name", { ...draft, orgName: "Bautista Trading" })).toContain("what this business does");
+    expect(
+      applyStepProblem("name", { ...draft, orgName: "Bautista Trading", nature: "Events" }),
+    ).toBeNull();
   });
 
   it("says which of the two contact answers is wrong, not just that one is", () => {
@@ -202,6 +225,8 @@ describe("applying as a business", () => {
     // client to correct the field that is already right.
     const problems = applyContactProblems({
       orgName: "Bautista Trading",
+      nature: "Events",
+      accountType: "business",
       contactName: "Ana",
       phone: "12345",
       addressId: null,
@@ -211,50 +236,51 @@ describe("applying as a business", () => {
   });
 
   it("never blocks on the address — GRIDGO asks again at checkout", () => {
-    const draft = { orgName: "Bautista Trading", contactName: "Ana", phone: "0917", addressId: null };
+    const draft = {
+      orgName: "Bautista Trading",
+      nature: "Events",
+      accountType: "business" as const,
+      contactName: "Ana",
+      phone: "0917",
+      addressId: null,
+    };
     expect(applyStepProblem("where", draft)).toBeNull();
     expect(applyStepProblem("review", draft)).toBeNull();
   });
 
-  it("sends the chosen address whole, and marks it the default", () => {
-    const input = businessApplyInput(
-      {
-        orgName: " Bautista Trading ",
-        contactName: "Ana Bautista",
-        phone: "0917 123 4567",
-        addressId: ADDRESS.id,
-      },
-      ADDRESS,
-    );
+  it("sends the name, nature, and requested account type", () => {
+    const input = businessApplyInput({
+      orgName: " Bautista Trading ",
+      nature: " Events and merchandise ",
+      accountType: "organization",
+      contactName: "Ana Bautista",
+      phone: "0917 123 4567",
+      addressId: ADDRESS.id,
+    });
 
     expect(input).toEqual({
       businessName: "Bautista Trading",
-      contactName: "Ana Bautista",
-      contactPhone: "0917 123 4567",
-      address: {
-        label: "Office",
-        addressLine: "12 Quimpo Blvd, Talomo",
-        // Only lat/lng: GRIDGO refuses an address carrying anything else, and
-        // `OrderPoint` also has a label on it.
-        point: { lat: 7.07, lng: 125.61 },
-        isDefault: true,
-      },
+      businessNature: "Events and merchandise",
+      accountType: "organization",
     });
   });
 
-  it("leaves the address off when the client picked none", () => {
-    const input = businessApplyInput(
-      { orgName: "Bautista Trading", contactName: "Ana", phone: "0917 123 4567", addressId: null },
-      null,
-    );
-    expect(input.address).toBeUndefined();
-  });
-
-  it("hands back the switched-over account", async () => {
-    api.applyAsBusiness.mockResolvedValue(BUSINESS);
-    expect(await submitBusinessApply({ businessName: "Bautista Trading" })).toEqual({
+  it("hands back the pending account GRIDGO returned", async () => {
+    const pending = {
+      ...PERSONAL,
+      approvalCase: { id: "apc_1", kind: "business_client" as const, status: "pending" as const, version: 1 },
+    };
+    api.applyAsBusiness.mockResolvedValue(pending);
+    expect(await submitBusinessApply({
+      businessName: "Bautista Trading",
+      businessNature: "Events",
+    }, "apply-1")).toEqual({
       status: "ok",
-      value: BUSINESS,
+      value: pending,
     });
+    expect(api.applyAsBusiness).toHaveBeenCalledWith(
+      { businessName: "Bautista Trading", businessNature: "Events" },
+      "apply-1",
+    );
   });
 });

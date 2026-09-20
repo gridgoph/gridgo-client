@@ -48,7 +48,15 @@ export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
   const ready = listing ? readyInLine(listing.turnaroundHours) : null;
 
   return (
-    <View className="rounded-card border border-outline bg-surface">
+    <View className="flex-row items-start gap-3 rounded-card border border-outline bg-surface py-1 pr-4">
+      <View className="w-28 shrink-0">
+        <SamplePhoto
+          url={sampleUrl(listing)}
+          altText={listing?.photos[0]?.altText ?? subcategory.name}
+          emptyLabel="No sample"
+          gutter="tight"
+        />
+      </View>
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -58,17 +66,9 @@ export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
             : subcategory.name
         }
         accessibilityHint="Finds GRIDGO's printer for this"
-        className="flex-row items-start gap-3 py-1 pr-4"
+        className="min-w-0 flex-1 flex-row items-start gap-3"
         style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
       >
-        <View className="w-28 shrink-0">
-          <SamplePhoto
-            url={sampleUrl(listing)}
-            altText={listing?.photos[0]?.altText ?? subcategory.name}
-            emptyLabel="No sample"
-            gutter="tight"
-          />
-        </View>
         <View className="min-w-0 flex-1 gap-1 py-3">
           <Text className="text-body font-medium text-text-primary" numberOfLines={2}>
             {subcategory.name}
@@ -174,6 +174,12 @@ export function CategorySampleCard({
 
   return (
     <View className="overflow-hidden rounded-card border border-outline bg-surface">
+      <SamplePhoto
+        url={sampleUrl(listing)}
+        altText={listing?.photos[0]?.altText ?? subcategory.name}
+        emptyLabel="No sample"
+        ratio={photoRatio}
+      />
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -185,12 +191,6 @@ export function CategorySampleCard({
         accessibilityHint="Finds GRIDGO's printer for this"
         style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
       >
-        <SamplePhoto
-          url={sampleUrl(listing)}
-          altText={listing?.photos[0]?.altText ?? subcategory.name}
-          emptyLabel="No sample"
-          ratio={photoRatio}
-        />
         <View className="px-3 pb-3">
           <View
             testID="sample-card-copy"

@@ -16,6 +16,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import {
   accountHeadline,
   accountSubName,
+  businessApplicationPending,
   canApplyAsBusiness,
 } from "@/lib/accountProfile";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
@@ -72,6 +73,7 @@ export default function AccountScreen() {
   const headline = accountHeadline(user);
   const subName = accountSubName(user);
   const typeLabel = accountTypeOption(user?.accountType ?? "individual").label;
+  const applicationPending = businessApplicationPending(user);
   // Clerk always serves an imageUrl, including the generated initials avatar.
   // `hasImage` is what tells a real photo from that placeholder — same rule
   // as Your details. RN Image draws it; the picker is not on this screen.
@@ -132,10 +134,15 @@ export default function AccountScreen() {
               spending a colour on it would say something is wrong or right
               about being one kind rather than another.
             */}
-            <View className="flex-row">
+            <View className="flex-row flex-wrap gap-2">
               <View className="gg-chip border-outline">
                 <Text className="text-caption text-text-secondary">{typeLabel} client</Text>
               </View>
+              {applicationPending ? (
+                <View className="gg-chip border-outline">
+                  <Text className="text-caption text-text-secondary">Application pending</Text>
+                </View>
+              ) : null}
             </View>
           </Pressable>
 
@@ -157,10 +164,16 @@ export default function AccountScreen() {
               above already says Business — leaving it up would invite a client
               to apply for what they already are.
             */}
-            {canApplyAsBusiness(user) ? (
+            {applicationPending ? (
+              <DestinationRow
+                title="Business application"
+                detail="Waiting for Operations to review. You stay a personal client until they approve it"
+                onPress={() => router.push("/business-apply")}
+              />
+            ) : canApplyAsBusiness(user) ? (
               <DestinationRow
                 title="Apply as a business"
-                detail="Order under your company name, and put it on every job"
+                detail="Ask Operations to put your company or organization name on this account"
                 onPress={() => router.push("/business-apply")}
               />
             ) : null}

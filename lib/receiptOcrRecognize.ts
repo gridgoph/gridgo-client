@@ -82,12 +82,30 @@ function mimeFromUri(uri: string): string {
 
 export async function imageUriToDataUrl(uri: string): Promise<string> {
   if (uri.startsWith("data:")) return uri;
+  if (uri.startsWith("blob:")) {
+    const response = await fetch(uri);
+    if (!response.ok) throw new Error("That screenshot could not be read.");
+    const blob = await response.blob();
+    return blobToDataUrl(blob);
+  }
   const FileSystem = getFileSystemLegacyNative();
   if (!FileSystem) {
     throw new Error("Reading the screenshot needs the file system on this phone.");
   }
   const base64 = await FileSystem.readAsStringAsync(uri, { encoding: "base64" });
   return `data:${mimeFromUri(uri)};base64,${base64}`;
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("That screenshot could not be read."));
+    };
+    reader.onerror = () => reject(new Error("That screenshot could not be read."));
+    reader.readAsDataURL(blob);
+  });
 }
 
 /**
