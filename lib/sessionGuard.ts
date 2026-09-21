@@ -13,6 +13,8 @@
 export const AUTHENTICATED_ROOT_SCREENS = [
   "(tabs)",
   "order/[id]",
+  "order/receipt",
+  "order/physical-invoice",
   "design-system",
   "settings",
   "saved-places",

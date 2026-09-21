@@ -1,17 +1,30 @@
 import { FileCheck, TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import { Image, Pressable, Text, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Screen } from "@/components/Screen";
+import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { ProductPreview } from "@/components/ProductPreview";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { useArtworkUpload, type FormatGuard } from "@/hooks/useArtworkUpload";
-import { detectedProportions, detectedSummary, pageCountOffer } from "@/lib/artworkUpload";
-import { measuredSizeMilli, physicalSizeMilli, printResolution } from "@/lib/printResolution";
+import {
+  applyDetectedPages,
+  detectedProportions,
+  detectedSummary,
+  missingPageCountMessage,
+  pageCountOffer,
+} from "@/lib/artworkUpload";
+import {
+  artworkPrintSizeWarning,
+  measuredSizeMilli,
+  physicalSizeMilli,
+  printResolution,
+} from "@/lib/printResolution";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -65,6 +78,7 @@ export default function ArtworkScreen() {
   } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pagesDraft, setPagesDraft] = useState<string | null>(null);
 
   /**
    * The picker filter and its refusal, in the shop's words. Rebuilt only when
@@ -88,16 +102,23 @@ export default function ArtworkScreen() {
   const upload = useArtworkUpload({ fileId: line?.artworkFileId }, guard);
 
   // Put the file on the basket line as soon as GRIDGO holds it, so leaving this
-  // screen after a successful upload never loses what was just sent.
+  // screen after a successful upload never loses what was just sent. A per-page
+  // listing also takes the file's own page count in that same write — waiting
+  // for a tap is how a 30-page document was billed as one page. Later edits
+  // stay: this runs only while the file is not yet on the line.
   const stored = upload.state.fileId;
   useEffect(() => {
     if (!line || !stored || stored === line.artworkFileId || saving) return;
+    const pages = applyDetectedPages(upload.state.detected, item?.pricingUnit);
     void (async () => {
       setSaving(true);
       setSaveError(null);
       try {
         const updated = await run((cartId) =>
-          api.updateCartLine(cartId, line.id, { artworkFileId: stored }),
+          api.updateCartLine(cartId, line.id, {
+            artworkFileId: stored,
+            ...(pages != null ? { measurement: { pages } } : {}),
+          }),
         );
         adopt(updated);
       } catch (error) {
@@ -111,7 +132,7 @@ export default function ArtworkScreen() {
         setSaving(false);
       }
     })();
-  }, [stored, line?.id, line?.artworkFileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stored, upload.state.detected, line?.id, line?.artworkFileId, item?.pricingUnit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Take the file's page count as the quantity, when the client asks for it.
@@ -216,7 +237,6 @@ export default function ArtworkScreen() {
   }
 
   const size = typeof line.structuredSpec.size === "string" ? line.structuredSpec.size : "";
-  const warning = artworkFitWarning(size, measured ?? pixels);
   const summary = detectedSummary(detected);
 
   /*
@@ -243,10 +263,23 @@ export default function ArtworkScreen() {
     GRIDGO prints and the easiest to send a screenshot for.
   */
   const orderedSize =
-    measuredSizeMilli(line.measurement, item?.measureUnit) ?? physicalSizeMilli(size);
+    measuredSizeMilli(line.measurement, item?.measureUnit) ??
+    physicalSizeMilli(size, { subcategoryCode: item?.subcategoryCode });
   const resolution = printResolution(filePixels, orderedSize);
+  const printSizeWarning = artworkPrintSizeWarning(detected, orderedSize, size);
+  const warning = printSizeWarning
+    ? { message: printSizeWarning, blocking: false as const }
+    : artworkFitWarning(size, measured ?? pixels, orderedSize);
   const pageOffer = pageCountOffer(detected, item?.pricingUnit, line.measurement?.pages);
+  const unreadPages = missingPageCountMessage(
+    detected,
+    item?.pricingUnit,
+    line.measurement?.pages,
+    upload.state.contentType,
+  );
   const onLine = Boolean(line.artworkFileId);
+  const canCheckout = onLine && !saving && !unreadPages;
+  const asksPages = item?.pricingUnit === "per_page";
   const links = item ? linkFormats(item) : [];
   const uploads = item ? fileFormats(item) : [];
   const name = item?.name ?? "this item";
@@ -255,7 +288,12 @@ export default function ArtworkScreen() {
     <Screen edges={["bottom"]}>
       <StepTrailBar current="artwork" onStep={goStep} />
 
-      <ScrollView className="gg-screen" contentContainerClassName="gg-page pb-8 pt-4">
+      <KeyboardAwareScrollView
+        className="gg-screen"
+        contentContainerClassName="gg-page pb-8 pt-4"
+        bottomOffset={KEYBOARD_CARET_GAP}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text className="text-h1 text-text-primary">Your artwork</Text>
         <Text className="mt-3 text-body-lg text-text-secondary">
           For {name}
@@ -316,6 +354,41 @@ export default function ArtworkScreen() {
           belongs to the upload card until there is a file and to checkout
           after, and a third loud thing here would make all three quiet.
         */}
+        {asksPages ? (
+          <View className="mt-4 gap-2">
+            <Text className="text-overline text-text-muted">HOW MANY PAGES</Text>
+            <View className="gg-field flex-row items-center">
+              <TextInput
+                value={
+                  pagesDraft ??
+                  (line.measurement?.pages == null ? "" : String(line.measurement.pages))
+                }
+                onChangeText={(text) => setPagesDraft(text.replace(/[^0-9]/g, ""))}
+                onEndEditing={(event) => {
+                  const next = Number.parseInt(event.nativeEvent.text, 10);
+                  setPagesDraft(null);
+                  if (Number.isSafeInteger(next) && next > 0 && next !== line.measurement?.pages) {
+                    void setPageCount(next);
+                  }
+                }}
+                keyboardType="number-pad"
+                placeholder="0"
+                accessibilityLabel="How many pages"
+                className="min-w-0 flex-1 text-body-lg text-text-primary"
+                style={{ paddingStart: 16, paddingEnd: 8, includeFontPadding: false }}
+              />
+              <Text className="pe-4 text-body text-text-muted">pages</Text>
+            </View>
+            {unreadPages ? (
+              <Text className="text-body text-error">{unreadPages}</Text>
+            ) : (
+              <Text className="text-caption text-text-secondary">
+                Copies are set at checkout. This is how many pages each copy has.
+              </Text>
+            )}
+          </View>
+        ) : null}
+
         {pageOffer ? (
           <View className="mt-4 gap-2 rounded-field border border-outline bg-surface p-3">
             <Text className="text-body font-medium text-text-primary">
@@ -380,12 +453,12 @@ export default function ArtworkScreen() {
         {onLine ? (
           <Pressable
             onPress={() => router.replace("/checkout")}
-            disabled={saving}
+            disabled={!canCheckout}
             accessibilityRole="button"
             accessibilityLabel="Go to checkout"
-            accessibilityState={{ disabled: saving }}
-            className={saving ? "gg-btn-primary gg-disabled mt-8" : "gg-btn-primary mt-8"}
-            style={({ pressed }) => (pressed && !saving ? { opacity: 0.9 } : undefined)}
+            accessibilityState={{ disabled: !canCheckout }}
+            className={!canCheckout ? "gg-btn-primary gg-disabled mt-8" : "gg-btn-primary mt-8"}
+            style={({ pressed }) => (pressed && canCheckout ? { opacity: 0.9 } : undefined)}
           >
             <Text className="text-button text-action-yellow-on">
               {saving ? "Saving…" : "Go to checkout"}
@@ -410,7 +483,7 @@ export default function ArtworkScreen() {
             GRIDGO needs the file before it can print this.
           </Text>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

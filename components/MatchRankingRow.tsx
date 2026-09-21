@@ -23,21 +23,21 @@ type Props = {
  * the rank *is* the information. First beat second, and that is the sentence
  * the whole match rests on.
  *
- * Monochrome. The yellow on this screen belongs to nothing yet — the client
- * commits on the listing sheet — and an explanation is never the action.
+ * Change sits next to the overline, not at the far edge: that is the
+ * argument, not a second action. Continue, below the pick, is the yellow.
  */
 export function MatchRankingRow({ ranking, onChange }: Props) {
   const colors = useThemeColors();
 
   return (
     <View className="gap-2">
-      <View className="flex-row items-center justify-between gap-3">
-        <Text className="min-w-0 flex-1 text-overline text-text-muted">MATCHED ON</Text>
+      <View className="flex-row items-center gap-2">
+        <Text className="text-overline text-text-muted">MATCHED ON</Text>
         <Pressable
           onPress={onChange}
           accessibilityRole="button"
           accessibilityLabel="Change what GRIDGO matches on"
-          className="gg-touch flex-row items-center justify-end gap-1 pl-3"
+          className="gg-touch flex-row items-center gap-1"
           style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
         >
           <Text className="text-button text-text-primary">Change</Text>
@@ -45,8 +45,7 @@ export function MatchRankingRow({ ranking, onChange }: Props) {
             size={16}
             color={colors.textPrimary}
             strokeWidth={2.5}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
         </Pressable>
       </View>

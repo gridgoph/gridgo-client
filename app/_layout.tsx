@@ -290,6 +290,14 @@ function AppNavigation() {
                 <Stack.Screen name="chat/[thread]" options={pushedScreenOptions("Chat")} />
                 <Stack.Screen name="checkout" options={pushedScreenOptions("Checkout")} />
                 <Stack.Screen name="order/[id]" options={pushedScreenOptions("Order")} />
+                <Stack.Screen
+                  name="order/receipt"
+                  options={pushedScreenOptions("Receipt")}
+                />
+                <Stack.Screen
+                  name="order/physical-invoice"
+                  options={pushedScreenOptions("Physical invoice")}
+                />
                 {/*
                   Asking for a change to a proof is a real destination with a
                   keyboard in it, so it gets the platform's own sheet: drag to

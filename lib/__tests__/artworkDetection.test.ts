@@ -1,9 +1,12 @@
 import type { DetectedArtwork } from "@/lib/api";
 import {
+  applyDetectedPages,
   detectedPageQuantity,
   detectedProportions,
   detectedSummary,
+  missingPageCountMessage,
   pageCountOffer,
+  UNREADABLE_PAGE_COUNT,
 } from "@/lib/artworkUpload";
 
 function read(overrides: Partial<DetectedArtwork> = {}): DetectedArtwork {
@@ -111,5 +114,47 @@ describe("the page-count offer on a per-page listing", () => {
 
   it("stays quiet when the file would not say how many pages it has", () => {
     expect(pageCountOffer(read({ pageCount: null }), "per_page", 1)).toBeNull();
+  });
+});
+
+describe("applyDetectedPages", () => {
+  it("writes the file's page count onto a per-page line", () => {
+    expect(applyDetectedPages(read({ pageCount: 30 }), "per_page")).toBe(30);
+  });
+
+  it("does not write pages onto a listing that is not priced by the page", () => {
+    expect(applyDetectedPages(read({ pageCount: 30 }), "per_unit")).toBeNull();
+    expect(applyDetectedPages(read({ pageCount: 30 }), "per_area")).toBeNull();
+    expect(applyDetectedPages(read({ pageCount: 30 }), "per_package")).toBeNull();
+  });
+
+  it("does not invent a count for an image or a silent PDF", () => {
+    expect(applyDetectedPages(read({ kind: "raster", pageCount: 1 }), "per_page")).toBeNull();
+    expect(applyDetectedPages(read({ pageCount: null }), "per_page")).toBeNull();
+    expect(applyDetectedPages(null, "per_page")).toBeNull();
+  });
+});
+
+describe("missingPageCountMessage", () => {
+  it("blocks a per-page PDF that would not say how many pages it has", () => {
+    expect(missingPageCountMessage(read({ pageCount: null }), "per_page", null)).toBe(
+      UNREADABLE_PAGE_COUNT,
+    );
+    expect(missingPageCountMessage(read({ pageCount: null }), "per_page", undefined)).toBe(
+      UNREADABLE_PAGE_COUNT,
+    );
+    expect(
+      missingPageCountMessage(null, "per_page", null, "application/pdf"),
+    ).toBe(UNREADABLE_PAGE_COUNT);
+  });
+
+  it("lets checkout proceed once the line has a page count", () => {
+    expect(missingPageCountMessage(read({ pageCount: null }), "per_page", 1)).toBeNull();
+    expect(missingPageCountMessage(read({ pageCount: 30 }), "per_page", 30)).toBeNull();
+  });
+
+  it("does not block other pricing units", () => {
+    expect(missingPageCountMessage(read({ pageCount: null }), "per_unit", null)).toBeNull();
+    expect(missingPageCountMessage(read({ pageCount: null }), "per_area", null)).toBeNull();
   });
 });

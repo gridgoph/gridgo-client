@@ -4,6 +4,7 @@ import { SamplePhoto } from "@/components/SamplePhoto";
 import { spacing, typography } from "@/constants/theme";
 import { formatPhp } from "@/lib/api";
 import type { CatalogItem } from "@/lib/api";
+import { clientFromPriceMinorOf } from "@/lib/gridgoPrice";
 import { readyInLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import type { ProductSubcategory } from "@/lib/productCategories";
 
@@ -27,7 +28,7 @@ type CardProps = Props & {
 function moneyLine(listing: CatalogItem | null): { amount: string; unit: string } | null {
   if (!listing) return null;
   return {
-    amount: `From ${formatPhp(listing.fromPriceMinor)}`,
+    amount: `From ${formatPhp(clientFromPriceMinorOf(listing))}`,
     unit: unitLine(listing),
   };
 }

@@ -159,6 +159,48 @@ describe("presentNotification for a closed job", () => {
   });
 });
 
+describe("presentNotification rating reminder", () => {
+  it("asks for a rating without calling the job closed", () => {
+    const view = presentNotification(
+      note({
+        title: "How did it go?",
+        body: "Rate this job.",
+        type: "order_rate_reminder",
+        orderId: "ord_1",
+        orderTitle: "Flyers",
+        orderState: "completed",
+        fulfillmentMode: "delivery",
+      }),
+    );
+
+    expect(view.title).toBe("How did it go?");
+    expect(view.body).toMatch(/rate this job/i);
+    expect(view.body).not.toMatch(/nothing more is needed from you/);
+    expect(view.lane).toBe("need_you");
+    expect(view.hint).toMatch(/rate/i);
+  });
+});
+
+describe("presentNotification receipt ready", () => {
+  it("points at the acknowledgement receipt", () => {
+    const view = presentNotification(
+      note({
+        title: "Your receipt is ready",
+        body: "Open it.",
+        type: "order_receipt_ready",
+        orderId: "ord_1",
+        orderTitle: "Flyers",
+        orderState: "needs_qa",
+      }),
+    );
+
+    expect(view.title).toBe("Your receipt is ready");
+    expect(view.body).toMatch(/printing/);
+    expect(view.hint).toMatch(/receipt/i);
+    expect(view.lane).toBe("update");
+  });
+});
+
 describe("partitionInbox", () => {
   it("lifts collect-ready and pay-first above ordinary updates", () => {
     const ready = note({

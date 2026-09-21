@@ -21,6 +21,7 @@ import { PaymentProofRow } from "@/components/PaymentProofRow";
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
 import { StepTrail } from "@/components/StepTrail";
 import { SwipeToRemove } from "@/components/SwipeToRemove";
@@ -36,6 +37,8 @@ import {
   linesMissingDropoff,
   printRuns,
 } from "@/lib/basket";
+import { openReceiptAfterCheckout } from "@/lib/receipt";
+import { clearOrderFlow } from "@/lib/orderFlow";
 import {
   blockerLine,
   fulfilmentModeFor,
@@ -357,7 +360,8 @@ export default function CheckoutScreen() {
       });
       resetPayment();
       clearCart();
-      router.replace({ pathname: "/order/[id]", params: { id: order.id } });
+      clearOrderFlow();
+      openReceiptAfterCheckout(router, order.id);
     } catch (e) {
       setPlaceError(
         userFacingError(
@@ -563,6 +567,9 @@ export default function CheckoutScreen() {
                     router.push({ pathname: "/request/artwork", params: { lineId: line.id } })
                   }
                   onQuantity={(quantity) =>
+                    // Copies only. Pages live on measurement, and sending them
+                    // here would replace a 30-page document with whatever the
+                    // stepper last showed.
                     void change((id) => api.updateCartLine(id, line.id, { quantity }))
                   }
                   onRemove={() => setRemoving(line)}
@@ -797,7 +804,7 @@ export default function CheckoutScreen() {
           ) : null}
 
           <View className="gg-card gap-1">
-            <SpecRow label="Items" value={formatPhp(totals.itemSubtotalMinor)} />
+            <SpecRow label="Printing" value={formatPhp(totals.itemSubtotalMinor)} />
 
             {travel === "pickup" ? (
               <SpecRow label="Delivery" value="None — you collect" />
@@ -827,6 +834,12 @@ export default function CheckoutScreen() {
                 }
               />
             )}
+
+            <ServiceFeeRow
+              amountMinor={settings ? totals.serviceFeeMinor : null}
+              rateBps={settings?.serviceFeeRateBps ?? null}
+              pendingLabel="GRIDGO could not read its current charges"
+            />
 
             <View className="gg-divider my-2" />
 

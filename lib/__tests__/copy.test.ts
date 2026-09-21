@@ -76,6 +76,9 @@ describe("userFacingError", () => {
     ["invalid_password", /at least 8 characters/i],
     ["organization_name_required", /business or organization name/i],
     ["invitation_required", /not a GRIDGO client/i],
+    ["physical_invoice_already_requested", /already been requested/i],
+    ["physical_invoice_not_found", /no physical-invoice request/i],
+    ["invoice_not_found", /has not issued a receipt/i],
   ])("turns %s into a next step", (code, expected) => {
     const message = userFacingError(new ApiError(409, { error: code }), "fallback");
     expect(message).toMatch(expected);

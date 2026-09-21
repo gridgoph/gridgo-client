@@ -6,12 +6,11 @@ import { EmptyState } from "@/components/EmptyState";
 import { Screen } from "@/components/Screen";
 import { SupportChatConversation } from "@/components/SupportChatConversation";
 import { useThemeColors } from "@/hooks/useTheme";
-import { CHAT_LIST_ROUTE, chatThread } from "@/lib/chatThreads";
+import { CHAT_LIST_ROUTE, chatThread, isChatThreadId } from "@/lib/chatThreads";
 
 /**
- * Deep link into the Operations thread. Unknown peers used to name shops and
- * riders that GRIDGO never messaged; those routes now say so and send the
- * client to the desk that exists.
+ * One Operations conversation from history. Unknown peers used to name shops
+ * and riders; those routes still say so. `ops` is the latest thread.
  */
 export default function ChatThreadScreen() {
   const { thread: peer } = useLocalSearchParams<{ thread?: string }>();
@@ -46,8 +45,8 @@ export default function ChatThreadScreen() {
         <View className="gg-page pt-6">
           <EmptyState
             title="No such conversation"
-            body="GRIDGO carries one: Operations."
-            actionLabel="Open Operations"
+            body="GRIDGO carries Operations. Open your chat history to pick one, or start a new chat."
+            actionLabel="Open chat history"
             onAction={exitToChat}
           />
         </View>
@@ -58,7 +57,11 @@ export default function ChatThreadScreen() {
   return (
     <>
       {headerEscape}
-      <SupportChatConversation peerName={thread.name} peerRole={thread.role} />
+      <SupportChatConversation
+        threadId={isChatThreadId(peer) ? peer : undefined}
+        peerName={thread.name}
+        peerRole={thread.role}
+      />
     </>
   );
 }

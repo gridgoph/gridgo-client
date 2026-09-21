@@ -399,17 +399,25 @@ describe("OrderDetailScreen", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  it("shows the client's money as subtotal, delivery and total — never a commission", async () => {
+  it("shows printing, delivery and the snapshotted service fee", async () => {
+    setOrder({
+      subtotalMinor: 100000,
+      serviceFeeMinor: 10000,
+      serviceFeeRateBps: 1000,
+      deliveryFeeMinor: 2500,
+      totalMinor: 112500,
+    });
     await renderInSafeArea(<OrderDetailScreen />);
 
     await screen.findByText("Grand opening tarpaulin");
-    expect(screen.getByText("₱1,100.00")).toBeTruthy();
+    expect(screen.getAllByText("Printing").length).toBeGreaterThan(0);
+    expect(screen.getByText("₱1,000.00")).toBeTruthy();
+    expect(screen.getByText("Service fee · 10%")).toBeTruthy();
+    expect(screen.getByText("₱100.00")).toBeTruthy();
     expect(screen.getByText("₱25.00")).toBeTruthy();
     expect(screen.getByText("₱1,125.00")).toBeTruthy();
-    // The supplier's own price and GRIDGO's 10% are withheld by the server;
-    // a screen that renders either has misread the contract.
-    expect(screen.queryByText("₱1,000.00")).toBeNull();
-    expect(screen.queryByText("₱100.00")).toBeNull();
+    expect(screen.getByText("View receipt")).toBeTruthy();
+    expect(screen.getByText("Request a physical invoice")).toBeTruthy();
     expect(screen.queryByText(/commission/i)).toBeNull();
   });
 
@@ -489,7 +497,7 @@ describe("OrderDetailScreen", () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
     await screen.findByText("Grand opening tarpaulin");
-    expect(screen.getByText("Printing")).toBeTruthy();
+    expect(screen.getAllByText("Printing").length).toBeGreaterThan(0);
     expect(screen.getByText("Packaging")).toBeTruthy();
     expect(screen.getByText("Delivered")).toBeTruthy();
     // Retention is a hold-back on someone else's payout, and the shares are

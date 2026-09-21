@@ -39,6 +39,7 @@ const NEED_YOU_TYPES = new Set([
   "order_proof_approval",
   "supplier_assignment_final_price",
   "order_ready_for_pickup",
+  "order_rate_reminder",
 ]);
 
 function isCollect(notification: Notification): boolean {
@@ -150,6 +151,22 @@ function deliveryStamp(state: string | undefined): string | null {
   return null;
 }
 
+function rateReminderCopy(): { title: string; body: string; hint: string } {
+  return {
+    title: "How did it go?",
+    body: "Rate this job so GRIDGO can send your next one to a shop that did well by you. Open the order — the prompt sits under the summary.",
+    hint: "Open to rate",
+  };
+}
+
+function receiptReadyCopy(): { title: string; body: string; hint: string } {
+  return {
+    title: "Your receipt is ready",
+    body: "Open the receipt to see printing, delivery, the service fee, the total and your payment reference.",
+    hint: "Opens the receipt",
+  };
+}
+
 export function presentNotification(notification: Notification): PresentedNotification {
   const eventState = notification.eventState ?? notification.orderState;
   const event = notification.eventState ? { ...notification, orderState: eventState } : notification;
@@ -161,15 +178,20 @@ export function presentNotification(notification: Notification): PresentedNotifi
     : null;
   const collect = isCollect(notification);
   const hold = collectionHeld(notification);
-  const overlay = isJobComplete(eventState)
-    ? completeCopy(collect)
-    : collect
-    ? collectCopy(event, hold && eventState === notification.orderState)
-    : {
-        title: notification.title,
-        body: notification.body,
-        hint: notification.orderId ? "Opens this job" : null,
-      };
+  const overlay =
+    notification.type === "order_rate_reminder"
+      ? rateReminderCopy()
+      : notification.type === "order_receipt_ready"
+        ? receiptReadyCopy()
+        : isJobComplete(eventState)
+          ? completeCopy(collect)
+          : collect
+            ? collectCopy(event, hold && eventState === notification.orderState)
+            : {
+                title: notification.title,
+                body: notification.body,
+                hint: notification.orderId ? "Opens this job" : null,
+              };
   const collectReady =
     collect && notification.orderState === "awaiting_collection" && !hold;
   const needsYou =

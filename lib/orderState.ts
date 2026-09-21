@@ -328,13 +328,13 @@ export function latestNoteForState(
 
 /**
  * What the client owes in total, in PHP minor units, or null before a supplier
- * has accepted and the exact price exists. Subtotal + delivery — the server
- * has already added its margin into the subtotal, and never sends the split.
+ * has accepted and the exact price exists. Prefer the server total; otherwise
+ * printing + the snapshotted service fee + delivery.
  */
 export function orderTotalMinor(order: Order): number | null {
   if (order.totalMinor != null) return order.totalMinor;
   if (order.subtotalMinor == null) return null;
-  return order.subtotalMinor + (order.deliveryFeeMinor ?? 0);
+  return order.subtotalMinor + (order.serviceFeeMinor ?? 0) + (order.deliveryFeeMinor ?? 0);
 }
 
 /**

@@ -26,6 +26,7 @@
 
 import { pagePadding, spacing } from "@/constants/theme";
 import type { CatalogItem, ShopBoard } from "@/lib/api";
+import { clientFromPriceMinorOf } from "@/lib/gridgoPrice";
 import { samplePhotoUri } from "@/lib/listing";
 import type { ProductCategory, ProductSubcategory } from "@/lib/productCategories";
 import { listingsFor } from "@/lib/shopBoards";
@@ -59,7 +60,9 @@ function candidatesIn(category: ProductCategory, boards: ShopBoard[]): HomeSampl
       return listing ? { category, subcategory, listing } : null;
     })
     .filter((entry): entry is HomeSample => entry !== null)
-    .sort((left, right) => left.listing.fromPriceMinor - right.listing.fromPriceMinor);
+    .sort((left, right) =>
+      clientFromPriceMinorOf(left.listing) - clientFromPriceMinorOf(right.listing),
+    );
 }
 
 /**

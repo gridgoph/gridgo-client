@@ -204,18 +204,22 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText("Add more to this run")).toBeTruthy();
   });
 
-  it("shows the payable total without naming GRIDGO's service fee", async () => {
+  it("shows printing, delivery and the live service fee", async () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    // ₱40 items + 10% service fee + the under-5km delivery band. The fee is
-    // still inside the QR 75/25 and the total; it is not a row a client sees.
+    // ₱40 printing + 10% from GET /settings + the under-5km delivery band.
+    expect(screen.getByText("Printing")).toBeTruthy();
     expect(screen.getAllByText("₱40.00").length).toBeGreaterThan(0);
-    expect(screen.queryByText(/GRIDGO service fee/i)).toBeNull();
-    expect(screen.queryByText(/10%/)).toBeNull();
+    expect(await screen.findByText("Service fee · 10%")).toBeTruthy();
+    expect(screen.getByText("₱4.00")).toBeTruthy();
     expect(screen.getByText("₱25.00")).toBeTruthy();
-    // Invoice and pinned commit bar show the same total.
     expect(screen.getAllByText("₱69.00")).toHaveLength(2);
+
+    await fireEvent.press(screen.getByLabelText("Service fee · 10%"));
+    expect(
+      screen.getByText("The fee directly goes into improving app operations and customer care."),
+    ).toBeTruthy();
   });
 
   it("splits the payment 75/25 rather than asking for all of it", async () => {

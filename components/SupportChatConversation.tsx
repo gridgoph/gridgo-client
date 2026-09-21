@@ -18,15 +18,18 @@ const EMPTY_BODY =
   "Ask about a job, a payout, or anything GRIDGO needs to settle. Someone on the desk will write back here.";
 
 export function SupportChatConversation({
+  threadId,
   peerName = "Operations",
   peerRole = "GRIDGO operations",
 }: {
+  threadId?: string;
   peerName?: string;
   peerRole?: string;
 }) {
   const colors = useThemeColors();
   const setUnreadCount = useSupportChatStore((s) => s.setUnreadCount);
   const listRef = useRef<ScrollView>(null);
+  const [activeId, setActiveId] = useState<string | undefined>(threadId);
   const [messages, setMessages] = useState<api.SupportChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,20 +44,33 @@ export function SupportChatConversation({
   const load = useCallback(async () => {
     setError(null);
     try {
+      if (threadId) {
+        const detail = await api.getSupportChatThread(threadId);
+        setActiveId(detail.thread.id);
+        adopt(detail.messages);
+        const read = await api.markSupportChatRead(detail.thread.id);
+        if (typeof read.unreadCount === "number") setUnreadCount(read.unreadCount);
+        else {
+          const me = await api.getSupportChatMe();
+          setUnreadCount(me.unreadCount ?? me.threads?.reduce((sum, row) => sum + row.unreadCount, 0) ?? 0);
+        }
+        return;
+      }
       const me = await api.getSupportChatMe();
+      setActiveId(me.thread?.id);
       adopt(me.messages);
       if (me.thread) {
-        const read = await api.markSupportChatRead();
-        setUnreadCount(read.thread?.unreadCount ?? 0);
+        const read = await api.markSupportChatRead(me.thread.id);
+        setUnreadCount(read.unreadCount ?? me.unreadCount ?? 0);
       } else {
-        setUnreadCount(0);
+        setUnreadCount(me.unreadCount ?? 0);
       }
     } catch (err) {
       setError(userFacingError(err, "Could not open Operations. Check this phone’s connection and try again."));
     } finally {
       setLoading(false);
     }
-  }, [adopt, setUnreadCount]);
+  }, [adopt, setUnreadCount, threadId]);
 
   useEffect(() => {
     void load();
@@ -63,20 +79,21 @@ export function SupportChatConversation({
   useEffect(() => {
     const stream = openSupportChatStream({
       onEvent: (event) => {
+        if (activeId && event.thread.id !== activeId) return;
+        setActiveId(event.thread.id);
         setMessages((current) => {
           if (current.some((row) => row.id === event.message.id)) return current;
           return [...current, event.message];
         });
-        setUnreadCount(event.message.mine ? 0 : event.thread.unreadCount ?? 0);
         if (event.message.mine) return;
-        void api.markSupportChatRead().then((result) => {
-          setUnreadCount(result.thread?.unreadCount ?? 0);
+        void api.markSupportChatRead(event.thread.id).then((result) => {
+          if (typeof result.unreadCount === "number") setUnreadCount(result.unreadCount);
         }).catch(() => {});
         requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
       },
     });
     return () => stream.close();
-  }, [setUnreadCount]);
+  }, [activeId, setUnreadCount]);
 
   const send = useCallback(async () => {
     const body = draft.trim();
@@ -84,19 +101,19 @@ export function SupportChatConversation({
     setSending(true);
     setError(null);
     try {
-      const posted = await api.sendSupportChatMessage(body);
+      const posted = await api.sendSupportChatMessage(body, activeId);
+      setActiveId(posted.thread.id);
       setDraft("");
       setMessages((current) => (
         current.some((row) => row.id === posted.message.id) ? current : [...current, posted.message]
       ));
-      setUnreadCount(0);
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (err) {
       setError(userFacingError(err, "That did not reach Operations. Try sending it again."));
     } finally {
       setSending(false);
     }
-  }, [draft, sending, setUnreadCount]);
+  }, [activeId, draft, sending]);
 
   return (
     <Screen edges={["bottom"]}>

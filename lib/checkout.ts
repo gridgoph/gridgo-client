@@ -150,7 +150,7 @@ export const PAYMENT_SPLIT_NOTE =
   "You send 75% now and the rest before delivery. GRIDGO checks your reference against its wallet by hand, so it is confirmed in working hours rather than instantly.";
 
 export const INVOICE_NOTE =
-  "GRIDGO issues an invoice with this order, and you can open it from the order the moment it is placed.";
+  "GRIDGO issues a receipt with this order. You can open it the moment it is placed — printing, delivery, the service fee and your payment reference.";
 
 /** Screenshot rules, said before a client picks a file GRIDGO cannot store. */
 export const PROOF_ACCEPTED = "JPEG, PNG or WebP";

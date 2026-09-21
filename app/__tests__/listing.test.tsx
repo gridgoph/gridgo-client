@@ -22,6 +22,7 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     getCatalogItem: jest.fn(),
+    getSettings: jest.fn(),
   };
 });
 
@@ -100,6 +101,12 @@ beforeEach(() => {
   clearListingCache();
   useCart.getState().reset();
   api.getCatalogItem.mockReset();
+  api.getSettings.mockReset();
+  api.getSettings.mockResolvedValue({
+    serviceFeeRateBps: 4_500,
+    issueWindowHours: 24,
+    deliveryFeeBands: [],
+  });
 });
 
 describe("ListingScreen", () => {

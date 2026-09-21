@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
+import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
 import type { DevicePlatform } from "@/lib/push";
 
 /**
@@ -111,13 +112,6 @@ export type PriceRange = {
   deliveryFeeStatus: string;
 };
 
-/**
- * One print job as the client is allowed to see it.
- *
- * Money is subtotal, delivery and total only. The supplier's price and
- * GRIDGO's commission are withheld by the server's role projection — a field
- * for either of them here would be a misreading of the contract.
- */
 export type ProductionItem = {
   id: string;
   itemName: string;
@@ -131,6 +125,13 @@ export type ProductionItem = {
   mockupFileId: string | null;
 };
 
+/**
+ * One print job as the client is allowed to see it.
+ *
+ * Money is printing, the service fee, delivery and total. The shop's own
+ * price under a different name is still withheld — `subtotalMinor` is the
+ * print line, not the supplier settlement.
+ */
 export type Order = {
   id: string;
   /** Whether this order has already been rated, so a client is asked once. */
@@ -151,12 +152,21 @@ export type Order = {
   deadline: string | null;
   address: string;
   zone: string;
-  /** Product price plus GRIDGO's margin. Null until a supplier accepts. */
+  /** Printing — the items, without the service fee. Null until priced. */
   subtotalMinor: number | null;
+  /**
+   * GRIDGO's service fee on this order, snapshotted when it was priced.
+   * The live rate lives on `GET /settings`; this is the amount billed.
+   */
+  serviceFeeMinor?: number | null;
+  /** The rate this order was priced at, in basis points. */
+  serviceFeeRateBps?: number | null;
   /** Distance band fee. Null until the supplier's shop is known. */
   deliveryFeeMinor: number | null;
-  /** Subtotal + delivery. Null until a supplier accepts. */
+  /** Printing + service fee + delivery. Null until priced. */
   totalMinor: number | null;
+  /** The invoice number GRIDGO issued with this order, when one exists. */
+  invoiceNumber?: string | null;
   downpaymentMinor: number | null;
   balanceMinor: number | null;
   /** Supplier shop → delivery address, once both are known. */
@@ -1074,10 +1084,17 @@ export type CatalogItem = {
   name: string;
   description: string | null;
   basePriceMinor: number;
-  /** Base plus the cheapest option of every required group. */
+  /** Base plus the cheapest option of every required group. Shop / ops amount. */
   fromPriceMinor: number;
-  /** Only present when option ids were sent; null otherwise. */
+  /** Only present when option ids were sent; null otherwise. Shop / ops amount. */
   effectivePriceMinor: number | null;
+  /**
+   * GRIDGO amount for `fromPriceMinor` (shop + live service fee). Additive so
+   * supplier / web can keep reading the shop fields.
+   */
+  clientFromPriceMinor?: number | null;
+  /** GRIDGO amount for `effectivePriceMinor`. */
+  clientEffectivePriceMinor?: number | null;
   pricingUnit: CatalogPricingUnit;
   packageQty: number | null;
   /** What this listing must ask before it can be priced. */
@@ -1460,6 +1477,8 @@ export type CartLineRecord = {
   /** The listing as it stands now, priced for the options on this line. */
   listing: CatalogItem | null;
   lineSubtotalMinor: number | null;
+  /** GRIDGO amount for `lineSubtotalMinor` (shop + live service fee). */
+  clientLineSubtotalMinor?: number | null;
 };
 
 export type Cart = {
@@ -1896,6 +1915,36 @@ export async function getInvoice(orderId: string): Promise<Invoice> {
   return result.invoice;
 }
 
+export type { PhysicalInvoiceDraft, PhysicalInvoiceRequest };
+
+export async function getPhysicalInvoice(orderId: string): Promise<PhysicalInvoiceRequest | null> {
+  try {
+    const result = await request<{ request: PhysicalInvoiceRequest }>(
+      `/orders/${encodeURIComponent(orderId)}/physical-invoice`,
+    );
+    return result.request;
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.body as { error?: string } | null)?.error === "physical_invoice_not_found"
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function requestPhysicalInvoice(
+  orderId: string,
+  draft: PhysicalInvoiceDraft,
+): Promise<PhysicalInvoiceRequest> {
+  const result = await request<{ request: PhysicalInvoiceRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/physical-invoice`,
+    { method: "POST", body: JSON.stringify(draft) },
+  );
+  return result.request;
+}
+
 // ---------------------------------------------------------------------------
 // Files — see docs/STORAGE_API.md in gridgo-api for the authoritative contract
 // ---------------------------------------------------------------------------
@@ -2129,22 +2178,50 @@ export type SupportChatMessage = {
 };
 
 export async function getSupportChatMe(): Promise<{
+  threads?: SupportChatThread[];
   thread: SupportChatThread | null;
   messages: SupportChatMessage[];
+  unreadCount?: number;
 }> {
   return request("/support-chat/me");
 }
 
-export async function sendSupportChatMessage(body: string): Promise<{
+export async function getSupportChatThread(threadId: string): Promise<{
+  thread: SupportChatThread;
+  messages: SupportChatMessage[];
+}> {
+  return request(`/support-chat/threads/${encodeURIComponent(threadId)}`);
+}
+
+export async function openSupportChatThread(): Promise<{ thread: SupportChatThread }> {
+  return request("/support-chat/me/threads", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function sendSupportChatMessage(
+  body: string,
+  threadId?: string,
+): Promise<{
   thread: SupportChatThread;
   message: SupportChatMessage;
 }> {
   return request("/support-chat/me/messages", {
     method: "POST",
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, ...(threadId ? { threadId } : {}) }),
   });
 }
 
-export async function markSupportChatRead(): Promise<{ thread: SupportChatThread | null }> {
+export async function markSupportChatRead(threadId?: string): Promise<{
+  thread: SupportChatThread | null;
+  unreadCount?: number;
+}> {
+  if (threadId) {
+    return request(`/support-chat/threads/${encodeURIComponent(threadId)}/read`, {
+      method: "PATCH",
+      body: JSON.stringify({}),
+    });
+  }
   return request("/support-chat/me/read", { method: "PATCH", body: JSON.stringify({}) });
 }
