@@ -421,6 +421,23 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText(/commission/i)).toBeNull();
   });
 
+  it("names the shop's printing figure and the fee apart when the order carries no rate", async () => {
+    // A matched order as gridgo-api writes it: `subtotalMinor` is the shops'
+    // own figure and `serviceFeeMinor` GRIDGO's charge. An older order has
+    // no snapshotted rate, so the row is a plain "Service fee"; the three
+    // lines still add up to the Total, and no ₱924 stands in for two of them.
+    setOrder({ subtotalMinor: 84000, serviceFeeMinor: 8400, deliveryFeeMinor: 7500, totalMinor: 99900 });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    await screen.findByText("Grand opening tarpaulin");
+    expect(screen.getByText("₱840.00")).toBeTruthy();
+    expect(screen.getByText("Service fee")).toBeTruthy();
+    expect(screen.getByText("₱84.00")).toBeTruthy();
+    expect(screen.getByText("₱75.00")).toBeTruthy();
+    expect(screen.getByText("₱999.00")).toBeTruthy();
+    expect(screen.queryByText("₱924.00")).toBeNull();
+  });
+
   it("asks for the downpayment by QR, and never for cash or credits", async () => {
     setOrder({
       state: "awaiting_downpayment",

@@ -1,12 +1,12 @@
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 
+import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { spacing, typography } from "@/constants/theme";
-import { formatPhp } from "@/lib/api";
 import type { CatalogItem } from "@/lib/api";
-import { clientFromPriceMinorOf } from "@/lib/gridgoPrice";
 import { readyInLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import type { ProductSubcategory } from "@/lib/productCategories";
+import { useServiceFeeRateBps } from "@/store/platformSettings";
 
 type Props = {
   subcategory: ProductSubcategory;
@@ -25,10 +25,19 @@ type CardProps = Props & {
   showExamples?: boolean;
 };
 
-function moneyLine(listing: CatalogItem | null): { amount: string; unit: string } | null {
+/**
+ * The peso line: GRIDGO's price for the cheapest way this sells, and its unit.
+ * `spoken` is the same figure for the row's label; the drawn one goes through
+ * `GridgoPrice`, which waits for the rate rather than showing the shop's own.
+ */
+function moneyLine(
+  listing: CatalogItem | null,
+  rate: number | null,
+): { supplierMinor: number; spoken: string; unit: string } | null {
   if (!listing) return null;
   return {
-    amount: `From ${formatPhp(clientFromPriceMinorOf(listing))}`,
+    supplierMinor: listing.fromPriceMinor,
+    spoken: `from ${gridgoPriceLabel(listing.fromPriceMinor, rate)}`,
     unit: unitLine(listing),
   };
 }
@@ -45,7 +54,8 @@ function sampleUrl(listing: CatalogItem | null): string | null {
  * press's name. A client picking flyers is choosing the work, not the shop.
  */
 export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
-  const money = moneyLine(listing);
+  const rate = useServiceFeeRateBps();
+  const money = moneyLine(listing, rate);
   const ready = listing ? readyInLine(listing.turnaroundHours) : null;
 
   return (
@@ -63,7 +73,7 @@ export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
         accessibilityRole="button"
         accessibilityLabel={
           money
-            ? `${subcategory.name}, ${money.amount} ${money.unit}`
+            ? `${subcategory.name}, ${money.spoken} ${money.unit}`
             : subcategory.name
         }
         accessibilityHint="Finds GRIDGO's printer for this"
@@ -87,9 +97,13 @@ export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
         </View>
         {money ? (
           <View className="max-w-[42%] shrink-0 items-end gap-0.5 py-3">
-            <Text className="text-body font-medium text-text-primary" numberOfLines={1}>
-              {money.amount}
-            </Text>
+            <GridgoPrice
+              supplierMinor={money.supplierMinor}
+              prefix="From "
+              className="text-body font-medium text-text-primary"
+              numberOfLines={1}
+              waitingWidth="w-20"
+            />
             <Text className="text-right text-caption text-text-secondary" numberOfLines={2}>
               {money.unit}
             </Text>
@@ -171,7 +185,8 @@ export function CategorySampleCard({
 }: CardProps) {
   const { fontScale } = useWindowDimensions();
   const slots = sampleCardSlots(fontScale, showExamples);
-  const money = moneyLine(listing);
+  const rate = useServiceFeeRateBps();
+  const money = moneyLine(listing, rate);
 
   return (
     <View className="overflow-hidden rounded-card border border-outline bg-surface">
@@ -186,7 +201,7 @@ export function CategorySampleCard({
         accessibilityRole="button"
         accessibilityLabel={
           money
-            ? `${subcategory.name}, ${money.amount} ${money.unit}`
+            ? `${subcategory.name}, ${money.spoken} ${money.unit}`
             : subcategory.name
         }
         accessibilityHint="Finds GRIDGO's printer for this"
@@ -225,9 +240,14 @@ export function CategorySampleCard({
             <View style={{ height: slots.price, overflow: "hidden" }}>
               {money ? (
                 <>
-                  <Text className="text-text-primary" numberOfLines={1} style={textSlot}>
-                    {money.amount}
-                  </Text>
+                  <GridgoPrice
+                    supplierMinor={money.supplierMinor}
+                    prefix="From "
+                    className="text-text-primary"
+                    style={textSlot}
+                    numberOfLines={1}
+                    waitingWidth="w-20"
+                  />
                   <Text className="text-text-muted" numberOfLines={1} style={captionSlot}>
                     {money.unit}
                   </Text>

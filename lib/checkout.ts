@@ -163,6 +163,7 @@ export const PROOF_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export type PlaceOrderBlocker =
   | "empty"
+  | "price"
   | "artwork"
   | "address"
   | "schedule"
@@ -185,6 +186,7 @@ export const SWIPE_TO_DELETE_HINT = "Swipe left to delete";
  */
 export function placeOrderBlockers({
   lineCount,
+  linesUnpriced = 0,
   linesMissingArtwork,
   linesMissingDropoff,
   referenceOk,
@@ -192,6 +194,8 @@ export function placeOrderBlockers({
   hasSettings,
 }: {
   lineCount: number;
+  /** Lines GRIDGO answered with no price — checkout would refuse them too. */
+  linesUnpriced?: number;
   linesMissingArtwork: number;
   linesMissingDropoff: number;
   scheduledFor?: string | null;
@@ -202,6 +206,7 @@ export function placeOrderBlockers({
 }): PlaceOrderBlocker[] {
   const blockers: PlaceOrderBlocker[] = [];
   if (lineCount === 0) blockers.push("empty");
+  if (linesUnpriced > 0) blockers.push("price");
   if (linesMissingArtwork > 0) blockers.push("artwork");
   if (linesMissingDropoff > 0) blockers.push("address");
   if (!hasProof) blockers.push("proof");
@@ -214,6 +219,10 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
   switch (blocker) {
     case "empty":
       return "Add something to print first.";
+    case "price":
+      return detail
+        ? `${detail} has no price at this quantity. Open it and change the quantity.`
+        : "One item has no price at this quantity. Open it and change the quantity.";
     case "artwork":
       return detail
         ? `Attach artwork to ${detail} before you place this.`

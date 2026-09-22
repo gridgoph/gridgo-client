@@ -67,6 +67,8 @@ const publicApiUrlEnv =
   /EXPO_PUBLIC_API_URL:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_API_URL\s*\}\}/;
 const clerkPublishableEnv =
   /EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY\s*\}\}/;
+const cartoApiKeyEnv =
+  /EXPO_PUBLIC_CARTO_API_KEY:\s*\$\{\{\s*secrets\.EXPO_PUBLIC_CARTO_API_KEY\s*\}\}/;
 
 function stepEnv(step: string): string {
   return /\n\s+env:\n([\s\S]*?)\n\s+run:/.exec(step)?.[1] ?? "";
@@ -74,7 +76,7 @@ function stepEnv(step: string): string {
 
 function hasReleasePublicEnv(step: string): boolean {
   const env = stepEnv(step);
-  return publicApiUrlEnv.test(env) && clerkPublishableEnv.test(env);
+  return publicApiUrlEnv.test(env) && clerkPublishableEnv.test(env) && cartoApiKeyEnv.test(env);
 }
 
 describe("the release workflow bakes its public configuration into the bundle", () => {
@@ -82,18 +84,22 @@ describe("the release workflow bakes its public configuration into the bundle", 
     expect(apkSteps.filter((step) => step.includes("gradlew assembleRelease"))).toHaveLength(1);
   });
 
-  it("sets API and Clerk env on config, prebuild, and Gradle", () => {
+  it("sets API, Clerk, and CARTO env on config, prebuild, Gradle, and verify", () => {
     const config = apkSteps.find((step) => step.includes("expo config --type public"));
     const prebuild = apkSteps.find((step) => step.includes("expo prebuild"));
     const build = apkSteps.find((step) => step.includes("gradlew assembleRelease"));
+    const verify = apkSteps.find((step) => step.includes("scripts/verify-release-apk.sh"));
 
     expect(config).toBeDefined();
     expect(prebuild).toBeDefined();
     expect(build).toBeDefined();
+    expect(verify).toBeDefined();
     expect(hasReleasePublicEnv(config as string)).toBe(true);
     expect(hasReleasePublicEnv(prebuild as string)).toBe(true);
     expect(hasReleasePublicEnv(build as string)).toBe(true);
+    expect(hasReleasePublicEnv(verify as string)).toBe(true);
     expect(build).toContain("pk_live_*");
+    expect(build).toContain("EXPO_PUBLIC_CARTO_API_KEY is not set for the build step");
   });
 
   it("verifies the built APK rather than trusting the build", () => {
@@ -121,6 +127,17 @@ describe("the verify script checks the Clerk value in the built artifact", () =>
     expect(verifyScript).toMatch(/pk_live_\*/);
     expect(verifyScript).toMatch(
       /grep -aqF -- "\$EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY"/,
+    );
+  });
+});
+
+describe("the verify script checks the CARTO tile URL in the built artifact", () => {
+  it("requires the key and asserts host, query shape, and a quiet presence check", () => {
+    expect(verifyScript).toMatch(/require_env EXPO_PUBLIC_CARTO_API_KEY/);
+    expect(verifyScript).toMatch(/basemaps\.cartocdn\.com/);
+    expect(verifyScript).toContain("?key=");
+    expect(verifyScript).toMatch(
+      /grep -aqF -- "\$EXPO_PUBLIC_CARTO_API_KEY"/,
     );
   });
 });
@@ -206,6 +223,33 @@ describe("the release APK is built with Firebase, or not at all", () => {
   it("deletes it however the job ends", () => {
     const cleanup = apkSteps.find((step) => step.includes("rm -f") && step.includes("release.jks"));
     expect(cleanup).toContain("google-services.json");
+  });
+});
+
+describe("the release Gradle JVM is provisioned for a Hermes assemble", () => {
+  it("raises the signed-release job timeout past a slow runner's finish line", () => {
+    expect(apk).toMatch(/timeout-minutes:\s*90/);
+  });
+
+  it("overwrites Expo's 2g daemon heap after prebuild and before Gradle", () => {
+    const prebuild = apkSteps.findIndex((step) => step.includes("expo prebuild"));
+    const heap = apkSteps.findIndex((step) => step.includes("org.gradle.jvmargs"));
+    const build = apkSteps.findIndex((step) => step.includes("gradlew assembleRelease"));
+
+    expect(prebuild).toBeGreaterThanOrEqual(0);
+    expect(heap).toBeGreaterThan(prebuild);
+    expect(build).toBeGreaterThan(heap);
+
+    const heapStep = apkSteps[heap];
+    expect(heapStep).toContain(
+      "org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8",
+    );
+    expect(heapStep).toContain("grep '^org.gradle.jvmargs=' gradle.properties");
+  });
+
+  it("caps Gradle workers so four do not each claim the heap", () => {
+    const build = apkSteps.find((step) => step.includes("gradlew assembleRelease"));
+    expect(build).toContain("./gradlew assembleRelease --no-daemon --max-workers=2");
   });
 });
 

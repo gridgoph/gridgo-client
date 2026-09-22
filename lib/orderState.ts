@@ -327,14 +327,27 @@ export function latestNoteForState(
 }
 
 /**
+ * What the client is charged for the items: the shops' figure plus GRIDGO's
+ * charge, exactly as the order was written. The shops' figure on its own is
+ * what they are paid, and it never reaches the client as a price.
+ */
+export function orderItemsMinor(
+  order: Pick<Order, "subtotalMinor" | "serviceFeeMinor">,
+): number | null {
+  if (order.subtotalMinor == null) return null;
+  return order.subtotalMinor + (order.serviceFeeMinor ?? 0);
+}
+
+/**
  * What the client owes in total, in PHP minor units, or null before a supplier
- * has accepted and the exact price exists. Prefer the server total; otherwise
- * printing + the snapshotted service fee + delivery.
+ * has accepted and the exact price exists. The server's own total when it
+ * sends one; otherwise items at GRIDGO's price plus delivery.
  */
 export function orderTotalMinor(order: Order): number | null {
   if (order.totalMinor != null) return order.totalMinor;
-  if (order.subtotalMinor == null) return null;
-  return order.subtotalMinor + (order.serviceFeeMinor ?? 0) + (order.deliveryFeeMinor ?? 0);
+  const items = orderItemsMinor(order);
+  if (items == null) return null;
+  return items + (order.deliveryFeeMinor ?? 0);
 }
 
 /**

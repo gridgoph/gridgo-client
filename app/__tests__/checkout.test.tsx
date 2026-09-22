@@ -209,6 +209,9 @@ describe("CheckoutScreen", () => {
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
     // ₱40 printing + 10% from GET /settings + the under-5km delivery band.
+    // The line and the run header say ₱44 — GRIDGO's price, as the listing
+    // did — while the breakdown names the shop's ₱40 and the fee separately.
+    expect(screen.getAllByText("₱44.00").length).toBeGreaterThan(0);
     expect(screen.getByText("Printing")).toBeTruthy();
     expect(screen.getAllByText("₱40.00").length).toBeGreaterThan(0);
     expect(await screen.findByText("Service fee · 10%")).toBeTruthy();
@@ -299,7 +302,8 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    expect(screen.getByText("Not yet")).toBeTruthy();
+    // Invoice and pinned commit bar withhold the same total.
+    expect(screen.getAllByText("Not yet")).toHaveLength(2);
     expect(screen.getByText("Set with your address")).toBeTruthy();
   });
 

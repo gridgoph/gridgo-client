@@ -85,6 +85,18 @@ describe("userFacingError", () => {
     expect(message).not.toContain(code);
   });
 
+  it("names the shop's minimum when GRIDGO refuses a quantity under it", () => {
+    const message = userFacingError(
+      new ApiError(409, { error: "below_minimum_quantity", minimumOrderQuantity: 10 }),
+      "fallback",
+    );
+    expect(message).toBe("This shop takes orders of 10 and up. Change the quantity and try again.");
+    // The API's detail may be missing on an older deployment; the sentence still stands.
+    expect(userFacingError(new ApiError(409, { error: "below_minimum_quantity" }), "fallback")).toBe(
+      "This shop takes a minimum quantity. Change the quantity and try again.",
+    );
+  });
+
   it("tells a client refused cash on delivery what GRIDGO does take", () => {
     const message = userFacingError(
       new ApiError(400, { error: "payment_method_not_allowed" }),

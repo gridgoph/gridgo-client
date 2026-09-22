@@ -251,16 +251,20 @@ describe("what a quantity means", () => {
     expect(unitLine({ ...FLYERS, pricingUnit: "whole_job" })).toBe("for the job");
   });
 
-  it("puts the unit on the category starting price", () => {
-    expect(startingPriceLine(FLYERS)).toBe("From ₱25.00 per pack of 100");
+  it("puts the unit on the category starting price, at GRIDGO's price", () => {
+    // The shop's ₱25.00 plus GRIDGO's 10%; the shop's own figure is never the line.
+    expect(startingPriceLine(FLYERS, 1000)).toBe("From ₱27.50 per pack of 100");
     expect(
-      startingPriceLine({
-        ...FLYERS,
-        fromPriceMinor: 4000,
-        pricingUnit: "per_area",
-        measureUnit: "ft",
-      }),
-    ).toBe("From ₱40.00 per sq ft");
+      startingPriceLine(
+        {
+          ...FLYERS,
+          fromPriceMinor: 4000,
+          pricingUnit: "per_area",
+          measureUnit: "ft",
+        },
+        1000,
+      ),
+    ).toBe("From ₱44.00 per sq ft");
   });
 
   it("marks the starting price up to the GRIDGO figure the client is shown", () => {

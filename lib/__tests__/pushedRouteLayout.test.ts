@@ -22,12 +22,13 @@ jest.mock("@/hooks/useTheme", () => ({
   useThemeName: () => "dark",
   useThemeColors: () => jest.requireActual("@/constants/theme").colors.dark,
 }));
-jest.mock("@/hooks/useAppFonts", () => ({ useAppFonts: jest.fn() }));
+jest.mock("@/hooks/useAppFonts", () => ({ useAppFonts: jest.fn(() => true) }));
 jest.mock("@/hooks/useClerkApiSession", () => ({ useClerkApiSession: jest.fn() }));
 jest.mock("@/hooks/useClientPreferences", () => ({ useClientPreferences: jest.fn() }));
 jest.mock("@/hooks/usePushNotifications", () => ({ usePushNotifications: jest.fn() }));
 jest.mock("@/hooks/useLiveNotifications", () => ({ useLiveNotifications: jest.fn() }));
 jest.mock("@/hooks/useSupportChatUnread", () => ({ useSupportChatUnread: jest.fn() }));
+jest.mock("@/hooks/useGridgoCharges", () => ({ useGridgoCharges: jest.fn() }));
 jest.mock("@/components/BrandIntro", () => ({ BrandIntro: () => null }));
 jest.mock("@/store/theme", () => ({ useThemeStore: jest.fn() }));
 jest.mock("expo-splash-screen", () => ({

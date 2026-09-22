@@ -38,6 +38,8 @@ jest.mock("@/lib/api", () => {
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { usePlatformSettings } = require("@/store/platformSettings");
 
 const RANKED: MatchReason[] = [
   { code: "ranked_speed", factor: "speed", rank: 1, weight: 0.5, detail: "0 jobs ahead; about 48 hours" },
@@ -133,6 +135,12 @@ beforeEach(() => {
   api.matchNextShop.mockReset();
   clearMatchPrefetch();
   useCart.getState().reset();
+  usePlatformSettings.getState().reset();
+  usePlatformSettings.getState().adopt({
+    issueWindowHours: 24,
+    serviceFeeRateBps: 1000,
+    deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+  });
   usePriorities.setState({ ranking: ["speed", "quality", "cost", "distance"], loaded: true });
 });
 
@@ -247,7 +255,11 @@ describe("MatchScreen", () => {
     await screen.findByText("GRIDGO’s pick for flyers");
 
     expect(screen.getByText("1 FLYERS LISTING")).toBeTruthy();
-    fireEvent.press(screen.getByLabelText("Flyers, from ₱25.00 per pack of 100"));
+    // GRIDGO's price: the shop's PHP 25.00 plus GRIDGO's 10%. The shop's own
+    // figure is what it is paid, and it never reaches a client's screen.
+    expect(screen.getByText("₱27.50 per pack of 100")).toBeTruthy();
+    expect(screen.queryByText(/₱25\.00/)).toBeNull();
+    fireEvent.press(screen.getByLabelText("Flyers, ₱27.50 per pack of 100"));
 
     // No shop name travels with the listing.
     expect(mockPush).toHaveBeenCalledWith({

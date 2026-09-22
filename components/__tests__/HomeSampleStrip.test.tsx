@@ -6,6 +6,18 @@ import type { CatalogItem } from "@/lib/api";
 import { homeSampleCardWidth } from "@/lib/homeSamples";
 import type { HomeSample } from "@/lib/homeSamples";
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
+import { usePlatformSettings } from "@/store/platformSettings";
+
+const RATE_SETTINGS = {
+  issueWindowHours: 24,
+  serviceFeeRateBps: 1000,
+  deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+};
+
+beforeEach(() => {
+  usePlatformSettings.getState().reset();
+  usePlatformSettings.getState().adopt(RATE_SETTINGS);
+});
 
 const category = PRODUCT_CATEGORY_SEED[0];
 
@@ -72,7 +84,8 @@ describe("HomeSampleStrip", () => {
       <HomeSampleStrip samples={[sample("sci_1")]} loading={false} onPick={() => undefined} />,
     );
 
-    expect(screen.getByText(/From ₱400/)).toBeTruthy();
+    expect(screen.getByText("From ₱440.00")).toBeTruthy();
+    expect(screen.queryByText(/₱400/)).toBeNull();
     expect(screen.getByText("per pack of 100")).toBeTruthy();
     expect(screen.queryByText(/Shop/)).toBeNull();
   });

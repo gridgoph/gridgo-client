@@ -6,6 +6,7 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorScreenState } from "@/components/ErrorState";
+import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { MatchCard } from "@/components/MatchCard";
 import { MatchRankingRow } from "@/components/MatchRankingRow";
 import { MatchingWait } from "@/components/MatchingWait";
@@ -13,10 +14,9 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { formatPhp, type CatalogItem, type MatchResult } from "@/lib/api";
+import { type CatalogItem, type MatchResult } from "@/lib/api";
 import { formatDeadline } from "@/lib/deadline";
 import { userFacingError } from "@/lib/copy";
-import { clientFromPriceMinorOf } from "@/lib/gridgoPrice";
 import { readyInLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import { matchDistanceMeters } from "@/lib/match";
 import { clearMatchPrefetch, takeMatch } from "@/lib/matchPrefetch";
@@ -26,6 +26,7 @@ import { PRIORITIES_ROUTE } from "@/lib/priorities";
 import { findCategory } from "@/lib/productCategories";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
+import { usePlatformSettings, useServiceFeeRateBps } from "@/store/platformSettings";
 import { usePriorities } from "@/store/priorities";
 
 /**
@@ -131,6 +132,16 @@ export default function MatchScreen() {
     if (!subcategory || !category) return;
     rememberOrderFlow({ categoryCode: category, subcategoryCode: subcategory });
   }, [subcategory, category]);
+
+  // GRIDGO's rate, so the listings can be priced as the client will pay them.
+  // Held by the store after the first read; a failure keeps the rows waiting
+  // rather than letting a shop's own figure through.
+  const loadSettings = usePlatformSettings((state) => state.load);
+  useEffect(() => {
+    loadSettings().catch(() => {
+      /* The rows stay on their skeleton; the sheet retries. */
+    });
+  }, [loadSettings]);
 
   const subcategoryName = useMemo(() => {
     const found = findCategory(api.productCategoriesNow(), category ?? "")?.subcategories.find(
@@ -336,17 +347,21 @@ export default function MatchScreen() {
  *
  * The sample leads, because it is real work off the press that would run this
  * and it is what a client reads first. "From" appears only when a step can push
- * the price up — a fixed price that says "from" is a price nobody trusts.
+ * the price up — a fixed price that says "from" is a price nobody trusts. The
+ * figure is GRIDGO's price, never the shop's: what the shop typed is what the
+ * shop is paid, and a client is buying from GRIDGO.
  */
 function ListingRow({ item, onPress }: { item: CatalogItem; onPress: () => void }) {
   const colors = useThemeColors();
+  const rate = useServiceFeeRateBps();
   const ready = readyInLine(item.turnaroundHours);
+  const from = item.fromPriceMinor !== item.basePriceMinor ? "From " : "";
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${item.name}, from ${formatPhp(clientFromPriceMinorOf(item))} ${unitLine(item)}`}
+      accessibilityLabel={`${item.name}, ${from.toLowerCase()}${gridgoPriceLabel(item.fromPriceMinor, rate)} ${unitLine(item)}`}
       className="gg-card-flush flex-row items-center gap-3 p-3"
     >
       {({ pressed }) => (
@@ -361,10 +376,12 @@ function ListingRow({ item, onPress }: { item: CatalogItem; onPress: () => void 
           </View>
           <View className="min-w-0 flex-1 gap-1">
             <Text className="text-body-lg font-medium text-text-primary">{item.name}</Text>
-            <Text className="text-body text-text-secondary">
-              {item.fromPriceMinor !== item.basePriceMinor ? "From " : ""}
-              {formatPhp(clientFromPriceMinorOf(item))} {unitLine(item)}
-            </Text>
+            <GridgoPrice
+              supplierMinor={item.fromPriceMinor}
+              prefix={from}
+              suffix={` ${unitLine(item)}`}
+              className="text-body text-text-secondary"
+            />
             {ready ? <Text className="text-caption text-text-muted">{ready}</Text> : null}
           </View>
           <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />

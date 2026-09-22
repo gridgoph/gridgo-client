@@ -8,6 +8,7 @@ import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { clearProductCategoryCache } from "@/lib/api";
 import { clearBoardCache } from "@/lib/shopBoards";
 import { useCart } from "@/store/cart";
+import { usePlatformSettings } from "@/store/platformSettings";
 import { usePriorities } from "@/store/priorities";
 
 const mockPush = jest.fn();
@@ -141,6 +142,12 @@ beforeEach(() => {
   // from a cold read rather than the previous test's shop.
   clearBoardCache();
   useCart.getState().reset();
+  usePlatformSettings.getState().reset();
+  usePlatformSettings.getState().adopt({
+    issueWindowHours: 24,
+    serviceFeeRateBps: 1000,
+    deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+  });
   usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
 });
 
@@ -243,7 +250,9 @@ describe("CategoryScreen", () => {
     await renderInSafeArea(<CategoryScreen />);
     await screen.findByText("GRIDGO PRINTS THESE NOW");
 
-    expect(screen.getByText("From ₱280.00")).toBeTruthy();
+    // GRIDGO's price for the shop's ₱280.00 listing; the shop's own is not drawn.
+    expect(screen.getByText("From ₱308.00")).toBeTruthy();
+    expect(screen.queryByText(/₱280\.00/)).toBeNull();
     expect(screen.getByText("each")).toBeTruthy();
     // A shop count is a number nobody can act on, and it makes GRIDGO read as
     // a directory rather than the counter the client is buying from.

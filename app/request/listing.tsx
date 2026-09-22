@@ -8,13 +8,14 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ErrorScreenState } from "@/components/ErrorState";
+import { GridgoPrice } from "@/components/GridgoPrice";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
-import { formatPhp, type CatalogItem, type MeasureUnit, type MeasurementKind } from "@/lib/api";
+import { type CatalogItem, type MeasureUnit, type MeasurementKind } from "@/lib/api";
 import {
   EMPTY_MEASUREMENT,
   belowMinimumOrder,
@@ -54,8 +55,14 @@ import { isFullListing, listingNow, takeListing } from "@/lib/listingCache";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { useCart } from "@/store/cart";
+import { usePlatformSettings } from "@/store/platformSettings";
 
 const MAX_QUANTITY = 500;
+
+/** Where the quantity starts: the least the shop will run, or one. */
+function orderFloor(item: CatalogItem | null): number {
+  return item?.minimumOrderQuantity ?? 1;
+}
 
 /**
  * GRIDGO's order sheet for one thing, filled in.
@@ -171,8 +178,22 @@ export default function ListingScreen() {
       setSelection(restored);
       setQuantity(editing.quantity);
       setMeasured(toDraft(editing.measurement));
+    } else if (item) {
+      // A fresh sheet opens at the least the shop will run. Opening at one
+      // with a note underneath let a quantity GRIDGO cannot price into the
+      // basket, where it showed as "—" and a total of delivery alone.
+      setQuantity((current) => Math.max(current, orderFloor(item)));
     }
   }
+
+  // GRIDGO's rate, so the price on this sheet is what the client will pay.
+  // Normally already held from launch; a sheet opened cold reads it here.
+  const loadSettings = usePlatformSettings((state) => state.load);
+  useEffect(() => {
+    loadSettings().catch(() => {
+      /* The price waits on its skeleton rather than showing the shop's own. */
+    });
+  }, [loadSettings]);
 
   /**
    * Back to GRIDGO's pick for this job, or to the start of choosing what to
@@ -262,6 +283,12 @@ export default function ListingScreen() {
     setBusy(true);
     setSaveError(null);
     try {
+      // A line reopened after the shop raised its minimum can still sit under
+      // it. GRIDGO would refuse the save; say so here, in the same words.
+      if (runMinimum) {
+        setSaveError(`This shop takes orders of ${runMinimum} and up. Change the quantity first.`);
+        return;
+      }
       const optionIds = selectedOptionIds(item, selection);
       const structuredSpec = {
         size: boundValue(item, selection, "size"),
@@ -355,8 +382,14 @@ export default function ListingScreen() {
           <Text className="text-caption text-text-muted">GRIDGO</Text>
           <Text className="mt-1 text-h2 text-text-primary">{item.name}</Text>
 
+          {/* GRIDGO's price for one unit as configured — the shop's figure
+              plus GRIDGO's charge, never the shop's figure on its own. */}
           <View className="mt-3 flex-row items-baseline gap-2">
-            <Text className="text-h1 text-text-primary">{formatPhp(unit)}</Text>
+            <GridgoPrice
+              supplierMinor={unit}
+              className="text-h1 text-text-primary"
+              waitingWidth="w-28"
+            />
             <Text className="text-body text-text-secondary">{unitLine(item)}</Text>
           </View>
           {ready ? (
@@ -473,12 +506,17 @@ export default function ListingScreen() {
             <Text className="text-overline text-text-muted">HOW MANY</Text>
             <Stepper
               value={quantity}
+              min={orderFloor(item)}
               onChange={setQuantity}
               caption={quantityLine(item, quantity)}
             />
-            {runMinimum ? (
-              <Text className="text-caption text-text-muted">
-                This shop takes orders of {runMinimum} and up.
+            {orderFloor(item) > 1 ? (
+              <Text
+                className={
+                  runMinimum ? "text-caption text-warning" : "text-caption text-text-muted"
+                }
+              >
+                This shop takes orders of {orderFloor(item)} and up.
               </Text>
             ) : null}
           </View>
@@ -516,9 +554,11 @@ export default function ListingScreen() {
           <Text className="text-body text-text-secondary">
             {quantityLine(item, quantity)}
           </Text>
-          <Text className="text-h3 text-text-primary">
-            {total == null ? "—" : formatPhp(total)}
-          </Text>
+          <GridgoPrice
+            supplierMinor={total}
+            className="text-h3 text-text-primary"
+            waitingWidth="w-24"
+          />
         </View>
 
         <Pressable
@@ -659,14 +699,17 @@ function MeasureInput({
 
 function Stepper({
   value,
+  min = 1,
   onChange,
   caption,
 }: {
   value: number;
+  /** The least the shop will run; the minus stops here. */
+  min?: number;
   onChange: (next: number) => void;
   caption: string;
 }) {
-  const atMin = value <= 1;
+  const atMin = value <= min;
   const atMax = value >= MAX_QUANTITY;
 
   return (
@@ -676,7 +719,7 @@ function Stepper({
           icon="minus"
           disabled={atMin}
           label="One fewer"
-          onPress={() => onChange(Math.max(1, value - 1))}
+          onPress={() => onChange(Math.max(min, value - 1))}
         />
         <Text className="min-w-16 text-center text-h2 text-text-primary">{value}</Text>
         <StepButton

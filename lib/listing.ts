@@ -21,6 +21,7 @@ import {
   type CatalogPhoto,
   type LineMeasurement,
 } from "@/lib/api";
+import { gridgoPriceMinor } from "@/lib/clientPrice";
 import { clientFromPriceMinorOf, gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { lineTotalMinor, squareUnitWord, unitWord } from "@/lib/measurement";
 
@@ -177,11 +178,15 @@ export function unitLine(
   }
 }
 
-/** "From ₱400.00 per pack of 100" — the starting price on a category row. */
+/**
+ * "From ₱440.00 per pack of 100" — the starting price on a category row, at
+ * GRIDGO's price. Takes the rate rather than reading it, so it stays pure.
+ */
 export function startingPriceLine(
   item: Pick<CatalogItem, "fromPriceMinor" | "pricingUnit" | "packageQty" | "measureUnit">,
+  serviceFeeRateBps: number,
 ): string {
-  return `From ${formatPhp(item.fromPriceMinor)} ${unitLine(item)}`;
+  return `From ${formatPhp(gridgoPriceMinor(item.fromPriceMinor, serviceFeeRateBps))} ${unitLine(item)}`;
 }
 
 /**
