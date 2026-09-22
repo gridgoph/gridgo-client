@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 import { RECEIPT_OCR_HTML } from "@/lib/receiptOcrHtml";
@@ -14,6 +14,9 @@ import {
 /** Expo Go supplies the browser/Worker/WASM runtime; no native OCR module. */
 export function ReceiptOcrHost() {
   const request = useSyncExternalStore(subscribeReceiptOcr, pendingReceiptOcr);
+  // Checkout on Expo web runs Tesseract in-page. A hidden WebView iframe
+  // never posts ready/result, so do not mount one there.
+  if (Platform.OS === "web") return null;
   // A timeout/replacement destroys the old worker with its WebView. Its late
   // messages cannot finish the next receipt, even when it is the same image.
   return request ? <ReceiptOcrJob key={request.id} request={request} /> : null;

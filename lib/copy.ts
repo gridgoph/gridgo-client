@@ -152,6 +152,12 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "Say what needs to change. Operations reworks the artwork from this reason.";
       case "proof_decision_not_allowed":
         return "There is no proof waiting on your decision right now. Pull this order again to see where it got to.";
+      case "physical_invoice_already_requested":
+        return "A physical invoice has already been requested for this order.";
+      case "physical_invoice_not_found":
+        return "There is no physical-invoice request on this order yet.";
+      case "invoice_not_found":
+        return "GRIDGO has not issued a receipt for this order yet.";
 
       // ---- creating an account ----
       case "email_already_registered":

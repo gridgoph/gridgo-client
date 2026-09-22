@@ -8,7 +8,7 @@
  * gridgo-api for the contract these states mirror.
  */
 
-import { ApiError, type DetectedArtwork } from "@/lib/api";
+import { ApiError, type DetectedArtwork, type StoredFile } from "@/lib/api";
 
 export type ArtworkPhase =
   | "empty"
@@ -46,6 +46,27 @@ export type ArtworkUploadState = {
   /** What went wrong and what to do about it. */
   error: string | null;
 };
+
+/**
+ * Fill in what the storage record already knows about a file on the line.
+ *
+ * Opening the artwork screen with only a file id used to leave size, format
+ * and detection empty, so every check on this screen stood down.
+ */
+export function artworkStateFromStoredFile(
+  file: StoredFile,
+  prev: ArtworkUploadState,
+): ArtworkUploadState {
+  if (prev.fileId !== file.fileId) return prev;
+  if (prev.phase !== "stored" && prev.phase !== "attached") return prev;
+  return {
+    ...prev,
+    fileName: file.originalFilename || prev.fileName,
+    size: file.size ?? prev.size,
+    contentType: file.detectedContentType || prev.contentType,
+    detected: file.detected ?? prev.detected,
+  };
+}
 
 export const EMPTY_ARTWORK: ArtworkUploadState = {
   phase: "empty",
@@ -268,15 +289,30 @@ export function detectedPageQuantity(detected: DetectedArtwork | null): number |
 
 
 /**
+ * The page count to write onto a per-page line from the file itself.
+ *
+ * Detection is the source of truth the first time the file lands: a 30-page
+ * PDF priced by the page is 30, and leaving the line at one is how a client
+ * pays for a thirtieth of their own document. Null when this listing is not
+ * billed by the page, or the file would not say how many pages it has — we
+ * never invent a count, and we never write pages onto a per-unit or per-area
+ * job just because the artwork happens to be a PDF.
+ */
+export function applyDetectedPages(
+  detected: DetectedArtwork | null,
+  pricingUnit: string | null | undefined,
+): number | null {
+  if (pricingUnit !== "per_page") return null;
+  return detectedPageQuantity(detected);
+}
+
+/**
  * The offer to take the page count from the file itself.
  *
- * A document priced by the page is billed pages times copies, and those are
- * two different numbers — a client who left the page count at one is about to
- * buy a tenth of their own document. GRIDGO knows the real figure by the time
- * the file lands, so it says so.
- *
- * An offer rather than a rewrite: somebody may deliberately want two pages of
- * a ten-page file, and a number that changes itself is a total nobody chose.
+ * Auto-apply writes the detected count when the file lands. This offer is
+ * what remains after that: a client who then changed the line to two pages
+ * of a ten-page file can take the file's figure back, and a count that
+ * failed to save still has a way onto the line.
  *
  * Null when there is nothing to offer — another pricing unit, no page count,
  * or a page count the line already carries.
@@ -293,4 +329,32 @@ export function pageCountOffer(
     ? `This order is set to ${currentPages} ${currentPages === 1 ? "page" : "pages"}.`
     : "This order has no page count yet.";
   return { pages, message: `Your file has ${pages} pages. ${has}` };
+}
+
+/** Shown when a per-page PDF would not say how many pages it has. */
+export const UNREADABLE_PAGE_COUNT =
+  "GRIDGO could not read the page count; enter pages";
+
+/**
+ * Whether a per-page line may leave artwork for checkout.
+ *
+ * A file we could count is already being written onto the line. A PDF we
+ * could not count, with no pages on the line, is the one case that must not
+ * proceed — the price would be a guess, and a guess of one page is how a
+ * thesis is billed as a flyer.
+ *
+ * Null when checkout is allowed. The sentence when it is not.
+ */
+export function missingPageCountMessage(
+  detected: DetectedArtwork | null,
+  pricingUnit: string | null | undefined,
+  currentPages: number | null | undefined,
+  contentType?: string | null,
+): string | null {
+  if (pricingUnit !== "per_page") return null;
+  if (Number.isSafeInteger(currentPages) && (currentPages as number) >= 1) return null;
+  const pdf = detected?.kind === "pdf" || contentType === "application/pdf";
+  if (!pdf) return null;
+  if (detectedPageQuantity(detected)) return null;
+  return UNREADABLE_PAGE_COUNT;
 }

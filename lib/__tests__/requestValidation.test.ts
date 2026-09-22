@@ -104,6 +104,12 @@ describe("describeArtworkFile", () => {
     expect(facts.every((fact) => fact.tone === "neutral")).toBe(true);
   });
 
+  it("still reports a byte count when the format has not landed yet", () => {
+    expect(
+      describeArtworkFile({ originalFilename: "WorkHard.png", size: 492_000 }).map((fact) => fact.id),
+    ).toEqual(["name", "size"]);
+  });
+
   it("flags a file small enough to be a screen export", () => {
     const facts = describeArtworkFile({
       originalFilename: "banner.png",

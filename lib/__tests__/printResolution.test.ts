@@ -1,4 +1,5 @@
 import {
+  artworkPrintSizeWarning,
   measuredSizeMilli,
   physicalSizeMilli,
   pixelsNeeded,
@@ -32,6 +33,40 @@ describe("reading a size label as a physical size", () => {
     expect(physicalSizeMilli("3 x 6 bananas")).toBeNull();
     // Two different units in one pair is a label nobody can act on.
     expect(physicalSizeMilli("3 ft x 6 mm")).toBeNull();
+  });
+
+  it("reads the size codes the shop listings actually bind", () => {
+    expect(physicalSizeMilli("A2")).toEqual({ width: 420_000, height: 594_000 });
+    expect(physicalSizeMilli("Short")).toEqual({ width: 215_900, height: 279_400 });
+    expect(physicalSizeMilli("standard")).toBeNull();
+    expect(
+      physicalSizeMilli("standard", { subcategoryCode: "business_cards" }),
+    ).toEqual({ width: 88_900, height: 50_800 });
+  });
+});
+
+describe("when the file is not the product size", () => {
+  const screenshot = { widthMilli: 190_500, heightMilli: 423_300 };
+
+  it("warns a screenshot that is not the ordered card", () => {
+    const warning = artworkPrintSizeWarning(
+      screenshot,
+      physicalSizeMilli("standard", { subcategoryCode: "business_cards" }),
+      "standard",
+    );
+    expect(warning).toContain("190.5 × 423.3 mm");
+    expect(warning).toContain("standard");
+    expect(warning).toContain("do not match");
+  });
+
+  it("stays quiet when the file is the product", () => {
+    expect(
+      artworkPrintSizeWarning(
+        { widthMilli: 148_000, heightMilli: 210_000 },
+        physicalSizeMilli("A5"),
+        "A5",
+      ),
+    ).toBeNull();
   });
 });
 

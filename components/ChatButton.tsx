@@ -4,19 +4,20 @@ import { HeaderIconButton } from "@/components/HeaderIconButton";
 
 type Props = {
   onPress: () => void;
+  /** Unread from Operations. Omit when the count is zero. */
+  count?: number;
 };
 
 /**
- * The way into the people attached to a job — supplier, rider, Gridbot.
- *
- * No count and no dot. GRIDGO is not carrying messages yet, so there is no
- * unread number to show; a badge here would be decoration pretending to be
- * data, which is the one thing this app does not do. When messages are real,
- * a count goes through `HeaderIconButton`'s `count` prop exactly as Cart's
- * does, and nothing else here changes.
+ * The way into Operations. A count is only a count — never a decorative dot.
  */
-export function ChatButton({ onPress }: Props) {
+export function ChatButton({ onPress, count }: Props) {
   return (
-    <HeaderIconButton icon={MessageSquare} accessibilityLabel="Chat" onPress={onPress} />
+    <HeaderIconButton
+      icon={MessageSquare}
+      accessibilityLabel="Chat"
+      onPress={onPress}
+      count={count}
+    />
   );
 }

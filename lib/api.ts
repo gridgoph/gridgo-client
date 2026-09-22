@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
+import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
 import type { DevicePlatform } from "@/lib/push";
 
 /**
@@ -23,6 +24,19 @@ export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin"
  */
 export type AccountType = "individual" | "business" | "organization";
 
+export type ApprovalCaseSummary = {
+  id: string;
+  kind: "business_client" | "supplier" | "rider";
+  status: "pending" | "approved" | "rejected" | "suspended";
+  version: number;
+  applicationRevision?: number;
+  submittedAt?: string | null;
+  decidedAt?: string | null;
+  rejectionReason?: string | null;
+  suspensionReason?: string | null;
+  updatedAt?: string;
+};
+
 export type User = {
   id: string;
   email: string;
@@ -39,6 +53,11 @@ export type User = {
    * Absent from deployments whose `/me` does not version yet.
    */
   version?: number;
+  /**
+   * The client's business/organization application, when one exists.
+   * Attached from `GET /me` or the `business_client` row on `GET /auth/me`.
+   */
+  approvalCase?: ApprovalCaseSummary | null;
 };
 
 /** A map point on an order. Absent until the platform knows one. */
@@ -93,13 +112,6 @@ export type PriceRange = {
   deliveryFeeStatus: string;
 };
 
-/**
- * One print job as the client is allowed to see it.
- *
- * Money is subtotal, delivery and total only. The supplier's price and
- * GRIDGO's commission are withheld by the server's role projection — a field
- * for either of them here would be a misreading of the contract.
- */
 export type ProductionItem = {
   id: string;
   itemName: string;
@@ -113,6 +125,13 @@ export type ProductionItem = {
   mockupFileId: string | null;
 };
 
+/**
+ * One print job as the client is allowed to see it.
+ *
+ * Money is printing, the service fee, delivery and total. The shop's own
+ * price under a different name is still withheld — `subtotalMinor` is the
+ * print line, not the supplier settlement.
+ */
 export type Order = {
   id: string;
   /** Whether this order has already been rated, so a client is asked once. */
@@ -139,12 +158,19 @@ export type Order = {
    * `serviceFeeMinor` (`orderItemsMinor` in `lib/orderState.ts`).
    */
   subtotalMinor: number | null;
-  /** GRIDGO's charge on the items, as the order was written. */
+  /**
+   * GRIDGO's charge on the items, as the order was written. The live rate
+   * lives on `GET /settings`; this is the amount billed.
+   */
   serviceFeeMinor?: number | null;
+  /** The rate this order was priced at, in basis points. */
+  serviceFeeRateBps?: number | null;
   /** Distance band fee. Null until the supplier's shop is known. */
   deliveryFeeMinor: number | null;
   /** Subtotal + service fee + delivery. Null until a supplier accepts. */
   totalMinor: number | null;
+  /** The invoice number GRIDGO issued with this order, when one exists. */
+  invoiceNumber?: string | null;
   downpaymentMinor: number | null;
   balanceMinor: number | null;
   /** Supplier shop → delivery address, once both are known. */
@@ -431,6 +457,11 @@ export type ResolveApiBaseInput = {
    * phone: USB reverse maps the phone's own 127.0.0.1 to this machine.
    */
   isDevice?: boolean | null;
+  /**
+   * Expo-web page hostname. `client.localhost` must call the API on that same
+   * host — `127.0.0.1` is a different site and Chromium blocks the fetch.
+   */
+  pageHostname?: string | null;
 };
 
 /**
@@ -438,10 +469,11 @@ export type ResolveApiBaseInput = {
  *
  * Precedence:
  * 1. Non-empty `envUrl` (trailing slash stripped)
- * 2. Hostname from Expo dev-server `hostUri` + `apiPort`
- * 3. If that hostname is loopback and platform is Android:
+ * 2. On web, the page hostname + `apiPort` (Clerk isolation hosts)
+ * 3. Hostname from Expo dev-server `hostUri` + `apiPort`
+ * 4. If that hostname is loopback and platform is Android:
  *    emulator → `10.0.2.2`; physical USB phone → `127.0.0.1` (adb reverse)
- * 4. `http://127.0.0.1:<apiPort>`
+ * 5. `http://127.0.0.1:<apiPort>`
  */
 export function resolveApiBase({
   envUrl,
@@ -449,11 +481,16 @@ export function resolveApiBase({
   hostUri,
   platformOS,
   isDevice,
+  pageHostname,
 }: ResolveApiBaseInput): string {
   const trimmedUrl = envUrl?.trim().replace(/\/$/, "");
   if (trimmedUrl) return trimmedUrl;
 
   const port = envPort?.trim() || DEFAULT_API_PORT;
+  const pageHost = pageHostname?.trim();
+  if (platformOS === "web" && pageHost) {
+    return httpApiOrigin(pageHost, port);
+  }
   const hostname = hostnameFromHostUri(hostUri);
 
   if (hostname) {
@@ -472,6 +509,18 @@ export function resolveApiBase({
 
 function isLoopbackHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function httpApiOrigin(hostname: string, port: string): string {
+  const host =
+    hostname.startsWith("[") || !hostname.includes(":") ? hostname : `[${hostname}]`;
+  return `http://${host}:${port}`;
+}
+
+function readWebPageHostname(): string | null {
+  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  const hostname = window.location.hostname?.trim();
+  return hostname || null;
 }
 
 /** Take host:port or a full URL and return just the hostname. */
@@ -538,6 +587,7 @@ export function getApiBase(): string {
     hostUri: readExpoDevHostUri(),
     platformOS: Platform.OS,
     isDevice: Constants.isDevice,
+    pageHostname: readWebPageHostname(),
   });
 }
 
@@ -839,8 +889,28 @@ export async function unregisterDevice(token: string): Promise<void> {
 }
 
 export async function me(options?: RequestOptions): Promise<User> {
-  const result = await request<{ user: User }>("/auth/me", {}, options);
-  return result.user;
+  const result = await request<{ user: User; approvalCases?: ApprovalCaseSummary[] }>(
+    "/auth/me",
+    {},
+    options,
+  );
+  return withBusinessApplication(result.user, result.approvalCases);
+}
+
+function withBusinessApplication(
+  user: User,
+  approvalCases?: ApprovalCaseSummary[] | ApprovalCaseSummary | null,
+): User {
+  // A probe can answer `{ user: null }`; there is nothing to fold onto then.
+  if (!user) return user;
+  const list = Array.isArray(approvalCases)
+    ? approvalCases
+    : approvalCases
+      ? [approvalCases]
+      : [];
+  const businessCase =
+    list.find((item) => item.kind === "business_client") ?? user.approvalCase ?? null;
+  return { ...user, approvalCase: businessCase };
 }
 
 /**
@@ -1020,10 +1090,17 @@ export type CatalogItem = {
   name: string;
   description: string | null;
   basePriceMinor: number;
-  /** Base plus the cheapest option of every required group. */
+  /** Base plus the cheapest option of every required group. Shop / ops amount. */
   fromPriceMinor: number;
-  /** Only present when option ids were sent; null otherwise. */
+  /** Only present when option ids were sent; null otherwise. Shop / ops amount. */
   effectivePriceMinor: number | null;
+  /**
+   * GRIDGO amount for `fromPriceMinor` (shop + live service fee). Additive so
+   * supplier / web can keep reading the shop fields.
+   */
+  clientFromPriceMinor?: number | null;
+  /** GRIDGO amount for `effectivePriceMinor`. */
+  clientEffectivePriceMinor?: number | null;
   pricingUnit: CatalogPricingUnit;
   packageQty: number | null;
   /** What this listing must ask before it can be priced. */
@@ -1406,6 +1483,8 @@ export type CartLineRecord = {
   /** The listing as it stands now, priced for the options on this line. */
   listing: CatalogItem | null;
   lineSubtotalMinor: number | null;
+  /** GRIDGO amount for `lineSubtotalMinor` (shop + live service fee). */
+  clientLineSubtotalMinor?: number | null;
 };
 
 export type Cart = {
@@ -1525,9 +1604,9 @@ export async function saveAddress(input: {
 // The account itself
 //
 // `GET /me` is the client account as GRIDGO holds it, `PATCH /me` corrects the
-// parts this app is allowed to change, and `POST /me/business-apply` is how a
-// personal account becomes a business one. Everything about the account goes
-// through these three, so the contract lives in one place.
+// parts this app is allowed to change, and `POST /me/business-application` is
+// how a personal account asks Operations to become a business or organization.
+// The account type does not change until that case is approved.
 //
 // A correction carries the version it was read at, and GRIDGO **requires** it:
 // a `PATCH` without `expectedVersion` is refused outright, and one carrying a
@@ -1546,52 +1625,83 @@ export type AccountPatch = {
   orgName?: string;
 };
 
-/**
- * Where orders go, sent whole rather than by id.
- *
- * `POST /me/business-apply` takes an address body and matches it against the
- * ones already saved — same label, line and point is the same address — so
- * sending a saved one back sets it as the default without making a duplicate.
- */
-export type BusinessApplyAddress = {
-  label: string;
-  addressLine: string;
-  point: { lat: number; lng: number };
-  isDefault?: boolean;
-};
-
-/** What a personal client sends to trade under a business name. */
+/** What a personal client sends to ask Operations for a business account. */
 export type BusinessApplyInput = {
   businessName: string;
-  /** Omitted where the account's own name and number already stand. */
-  contactName?: string;
-  contactPhone?: string;
-  address?: BusinessApplyAddress;
+  businessNature: string;
+  accountType?: Extract<AccountType, "business" | "organization">;
 };
 
 /** The account, re-read. Carries the `version` every correction must quote. */
 export async function getAccount(): Promise<User> {
-  const result = await request<{ user: User }>("/me");
-  return result.user;
+  const result = await request<{ user: User; approvalCase?: ApprovalCaseSummary | null }>("/me");
+  return withBusinessApplication(result.user, result.approvalCase);
 }
 
 export async function patchAccount(
   patch: AccountPatch,
   expectedVersion: number,
 ): Promise<User> {
-  const result = await request<{ user: User }>("/me", {
+  const result = await request<{ user: User; approvalCase?: ApprovalCaseSummary | null }>("/me", {
     method: "PATCH",
     body: JSON.stringify({ expectedVersion, ...patch }),
   });
-  return result.user;
+  return withBusinessApplication(result.user, result.approvalCase);
 }
 
-export async function applyAsBusiness(input: BusinessApplyInput): Promise<User> {
-  const result = await request<{ user: User }>("/me/business-apply", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-  return result.user;
+export function newIdempotencyKey(): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return uuid;
+  return `apply-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/**
+ * Submit a pending business/organization application.
+ *
+ * Posts `POST /me/business-application`. The account stays personal until
+ * Operations approves the case. A replay of the same idempotency key, or a
+ * 409 for an already-pending case, is treated as the current account.
+ */
+export async function applyAsBusiness(
+  input: BusinessApplyInput,
+  idempotencyKey: string,
+): Promise<User> {
+  try {
+    await request("/me/business-application", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({
+        businessName: input.businessName,
+        businessNature: input.businessNature,
+        ...(input.accountType ? { accountType: input.accountType } : {}),
+      }),
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      const existing = approvalCaseFromError(error);
+      if (existing?.status === "pending") return getAccount();
+      if (existing?.status === "rejected") {
+        await request("/me/approval-cases/business-client/reapply", {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify({
+            expectedVersion: existing.version,
+            correctionSummary: `${input.accountType ?? "business"}: ${input.businessName}. ${input.businessNature}`,
+          }),
+        });
+        return getAccount();
+      }
+    }
+    throw error;
+  }
+  return getAccount();
+}
+
+function approvalCaseFromError(error: ApiError): ApprovalCaseSummary | null {
+  if (typeof error.body !== "object" || error.body == null) return null;
+  const caseBody = (error.body as { approvalCase?: ApprovalCaseSummary }).approvalCase;
+  if (!caseBody || typeof caseBody !== "object") return null;
+  return caseBody;
 }
 
 export type MatchInput = {
@@ -1811,6 +1921,36 @@ export async function getInvoice(orderId: string): Promise<Invoice> {
   return result.invoice;
 }
 
+export type { PhysicalInvoiceDraft, PhysicalInvoiceRequest };
+
+export async function getPhysicalInvoice(orderId: string): Promise<PhysicalInvoiceRequest | null> {
+  try {
+    const result = await request<{ request: PhysicalInvoiceRequest }>(
+      `/orders/${encodeURIComponent(orderId)}/physical-invoice`,
+    );
+    return result.request;
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.body as { error?: string } | null)?.error === "physical_invoice_not_found"
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function requestPhysicalInvoice(
+  orderId: string,
+  draft: PhysicalInvoiceDraft,
+): Promise<PhysicalInvoiceRequest> {
+  const result = await request<{ request: PhysicalInvoiceRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/physical-invoice`,
+    { method: "POST", body: JSON.stringify(draft) },
+  );
+  return result.request;
+}
+
 // ---------------------------------------------------------------------------
 // Files — see docs/STORAGE_API.md in gridgo-api for the authoritative contract
 // ---------------------------------------------------------------------------
@@ -1821,6 +1961,8 @@ export type UploadAsset = {
   name: string;
   /** Picker MIME. iOS often reports a generic type; the server decides. */
   mimeType?: string | null;
+  /** Browser `File` from the web picker. Required for `FormData` on web. */
+  file?: Blob;
 };
 
 export type UploadHandle = {
@@ -1829,6 +1971,23 @@ export type UploadHandle = {
   /** Abandon the transfer (client left the screen, or chose another file). */
   cancel: () => void;
 };
+
+async function uploadFilePart(asset: UploadAsset): Promise<Blob> {
+  if (asset.file) return asset.file;
+  if (Platform.OS === "web") {
+    const response = await fetch(asset.uri);
+    const blob = await response.blob();
+    return new File([blob], asset.name, {
+      type: asset.mimeType || blob.type || "application/octet-stream",
+    });
+  }
+  // React Native's FormData takes this shape for a file part and streams it.
+  return {
+    uri: asset.uri,
+    name: asset.name,
+    type: asset.mimeType || "application/octet-stream",
+  } as unknown as Blob;
+}
 
 /**
  * Stream one file to `POST /files`.
@@ -1852,15 +2011,11 @@ export function uploadFile(
   const done = (async () => {
     const auth = await resolveToken();
     assertLiveGeneration(owner);
+    const filePart = await uploadFilePart(asset);
     return new Promise<StoredFile>((resolve, reject) => {
       const form = new FormData();
       form.append("purpose", purpose);
-      // React Native's FormData takes this shape for a file part and streams it.
-      form.append("file", {
-        uri: asset.uri,
-        name: asset.name,
-        type: asset.mimeType || "application/octet-stream",
-      } as unknown as Blob);
+      form.append("file", filePart);
 
       xhr.open("POST", `${getApiBase()}/files`);
       xhr.responseType = "text";
@@ -1998,4 +2153,81 @@ export function formatPhp(minor: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+export type SupportChatPartyRole = "client" | "supplier" | "rider";
+export type SupportChatSenderRole = SupportChatPartyRole | "ops_admin" | "super_admin";
+
+export type SupportChatThread = {
+  id: string;
+  partyUserId: string;
+  partyRole: SupportChatPartyRole;
+  partyName?: string | null;
+  partyEmail?: string | null;
+  lastMessageAt?: string | null;
+  lastMessagePreview?: string | null;
+  lastMessageSenderRole?: SupportChatSenderRole | null;
+  unreadCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SupportChatMessage = {
+  id: string;
+  threadId: string;
+  senderUserId: string;
+  senderRole: SupportChatSenderRole;
+  senderName?: string | null;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+};
+
+export async function getSupportChatMe(): Promise<{
+  threads?: SupportChatThread[];
+  thread: SupportChatThread | null;
+  messages: SupportChatMessage[];
+  unreadCount?: number;
+}> {
+  return request("/support-chat/me");
+}
+
+export async function getSupportChatThread(threadId: string): Promise<{
+  thread: SupportChatThread;
+  messages: SupportChatMessage[];
+}> {
+  return request(`/support-chat/threads/${encodeURIComponent(threadId)}`);
+}
+
+export async function openSupportChatThread(): Promise<{ thread: SupportChatThread }> {
+  return request("/support-chat/me/threads", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function sendSupportChatMessage(
+  body: string,
+  threadId?: string,
+): Promise<{
+  thread: SupportChatThread;
+  message: SupportChatMessage;
+}> {
+  return request("/support-chat/me/messages", {
+    method: "POST",
+    body: JSON.stringify({ body, ...(threadId ? { threadId } : {}) }),
+  });
+}
+
+export async function markSupportChatRead(threadId?: string): Promise<{
+  thread: SupportChatThread | null;
+  unreadCount?: number;
+}> {
+  if (threadId) {
+    return request(`/support-chat/threads/${encodeURIComponent(threadId)}/read`, {
+      method: "PATCH",
+      body: JSON.stringify({}),
+    });
+  }
+  return request("/support-chat/me/read", { method: "PATCH", body: JSON.stringify({}) });
 }

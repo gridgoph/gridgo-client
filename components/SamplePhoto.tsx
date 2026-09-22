@@ -1,8 +1,9 @@
 import { ImageOff, Image as ImageIcon } from "lucide-react-native";
 import { useState } from "react";
-import { Image, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 
 import { CropMarkFrame } from "@/components/CropMarkFrame";
+import { SamplePhotoViewer } from "@/components/SamplePhotoViewer";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
 
@@ -35,6 +36,9 @@ type Props = {
  * machine running it will refuse them on a phone — an empty grey square would
  * read as a shop with nothing to show, which is a different and much worse
  * thing than a link that expired.
+ *
+ * A stored photo is a press: the tile stays the board, and the loupe is a
+ * full-screen pinch so a client can read the print rather than the thumbnail.
  */
 export function SamplePhoto({
   url,
@@ -47,7 +51,10 @@ export function SamplePhoto({
   // The failure is remembered against the url that failed, so a different
   // sample in the same frame starts clean rather than inheriting a refusal.
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const failed = failedUrl !== null && failedUrl === url;
+  const alt = altText || "Sample photo";
+  const canOpen = Boolean(url && !failed);
 
   // Native aspectRatio, not `aspect-[4/3]`: that arbitrary class has shipped as
   // a silent no-op in this pipeline before, and a frame with no ratio collapses.
@@ -58,13 +65,29 @@ export function SamplePhoto({
       <View className="w-full" style={{ aspectRatio }}>
         {url && !failed ? (
           <View collapsable={false} style={{ width: "100%", height: "100%" }}>
-            <Image
-              source={{ uri: url }}
-              accessibilityLabel={altText || "Sample photo"}
-              resizeMode="cover"
+            <Pressable
+              onPress={() => setOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${alt} larger`}
+              accessibilityHint="Opens the sample full screen so you can pinch to zoom"
               style={{ width: "100%", height: "100%" }}
-              onError={() => setFailedUrl(url ?? null)}
-            />
+            >
+              <Image
+                source={{ uri: url }}
+                accessibilityLabel={alt}
+                resizeMode="cover"
+                style={{ width: "100%", height: "100%" }}
+                onError={() => setFailedUrl(url ?? null)}
+              />
+            </Pressable>
+            {canOpen ? (
+              <SamplePhotoViewer
+                uri={url}
+                alt={alt}
+                open={open}
+                onClose={() => setOpen(false)}
+              />
+            ) : null}
           </View>
         ) : failed ? (
           <View className="flex-1 items-center justify-center gap-1 p-3">

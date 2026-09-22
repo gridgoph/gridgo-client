@@ -1,6 +1,7 @@
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
 import {
   basketTotals,
+  clientLineAmountMinor,
   deliveryFeeForDistance,
   DOWNPAYMENT_RATE_BPS,
   printRuns,
@@ -92,11 +93,14 @@ describe("deliveryFeeForDistance", () => {
 
 describe("printRuns", () => {
   it("keeps one press's lines together and adds them up", () => {
-    const groups = printRuns([
-      line({ id: "a", lineSubtotalMinor: 4000 }),
-      line({ id: "b", supplierId: "other", lineSubtotalMinor: 1000 }),
-      line({ id: "c", lineSubtotalMinor: 500 }),
-    ]);
+    const groups = printRuns(
+      [
+        line({ id: "a", lineSubtotalMinor: 4000 }),
+        line({ id: "b", supplierId: "other", lineSubtotalMinor: 1000 }),
+        line({ id: "c", lineSubtotalMinor: 500 }),
+      ],
+      1000,
+    );
 
     // A run is named by where it sits in the basket, never by whose press it
     // is: the client is buying from GRIDGO.
@@ -104,6 +108,26 @@ describe("printRuns", () => {
     expect(JSON.stringify(groups)).not.toMatch(/Printshop|Lovis/i);
     expect(groups[0].lines.map((entry) => entry.id)).toEqual(["a", "c"]);
     expect(groups[0].subtotalMinor).toBe(4500);
+    expect(groups[0].clientSubtotalMinor).toBe(4950);
+    expect(groups[1].subtotalMinor).toBe(1000);
+    expect(groups[1].clientSubtotalMinor).toBe(1100);
+  });
+});
+
+describe("clientLineAmountMinor", () => {
+  it("prefers the API's GRIDGO field when it is a safe integer", () => {
+    expect(
+      clientLineAmountMinor({ lineSubtotalMinor: 4000, clientLineSubtotalMinor: 4400 }, 1000),
+    ).toBe(4400);
+  });
+
+  it("marks a shop line up with the live rate", () => {
+    expect(clientLineAmountMinor({ lineSubtotalMinor: 4000 }, 1000)).toBe(4400);
+    expect(clientLineAmountMinor({ lineSubtotalMinor: 1_200 }, 4_500)).toBe(1_740);
+  });
+
+  it("leaves an unpriced line as not yet priced", () => {
+    expect(clientLineAmountMinor({ lineSubtotalMinor: null }, 1000)).toBeNull();
   });
 
   it("has no subtotal at all while one of its lines has no price", () => {
@@ -128,8 +152,10 @@ describe("basketTotals", () => {
 
     expect(totals.itemSubtotalMinor).toBe(100000);
     expect(totals.serviceFeeMinor).toBe(10000);
+    expect(totals.clientItemSubtotalMinor).toBe(110000);
     expect(totals.deliveryFeeMinor).toBe(2500);
     expect(totals.totalMinor).toBe(112500);
+    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor! + totals.deliveryFeeMinor!);
   });
 
   it("states the items at GRIDGO's price, so Items plus Delivery is the Total", () => {
@@ -210,7 +236,9 @@ describe("basketTotals", () => {
 
     expect(totals.legs).toEqual([]);
     expect(totals.deliveryFeeMinor).toBe(0);
+    expect(totals.clientItemSubtotalMinor).toBe(110000);
     expect(totals.totalMinor).toBe(110000);
+    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor);
   });
 
   it("prices one leg per shop, because two shops is two drops", () => {
@@ -229,6 +257,8 @@ describe("basketTotals", () => {
     expect(totals.legs[0].feeMinor).toBe(2500);
     expect(totals.legs[1].feeMinor).toBe(7500);
     expect(totals.deliveryFeeMinor).toBe(10000);
+    expect(totals.clientItemSubtotalMinor).toBe(110000);
+    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor! + totals.deliveryFeeMinor!);
   });
 
   it("charges each shop for the farthest drop it has to reach", () => {

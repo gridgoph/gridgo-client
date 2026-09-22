@@ -23,6 +23,9 @@ const MM_PER_INCH = 25.4;
 
 /** Named paper, portrait, in whole millimetres. */
 const NAMED_SIZES: Record<string, { width: number; height: number }> = {
+  a0: { width: 841, height: 1189 },
+  a1: { width: 594, height: 841 },
+  a2: { width: 420, height: 594 },
   a3: { width: 297, height: 420 },
   a4: { width: 210, height: 297 },
   a5: { width: 148, height: 210 },
@@ -32,6 +35,22 @@ const NAMED_SIZES: Record<string, { width: number; height: number }> = {
   letter: { width: 216, height: 279 },
   legal: { width: 216, height: 356 },
   tabloid: { width: 279, height: 432 },
+};
+
+/**
+ * Listing size codes that are not a paper name or a measured pair.
+ * A shop writes "Standard" on a business card; the trim is still 3.5 × 2 in.
+ */
+const SIZE_ALIASES: Record<string, string> = {
+  short: "8.5x11 in",
+  long: "8.5x13 in",
+  folio: "8.5x13 in",
+  "30x40": "30x40 in",
+};
+
+const SUBCATEGORY_SIZE_ALIASES: Record<string, Record<string, string>> = {
+  business_cards: { standard: "3.5x2 in" },
+  posters_standees: { pullup: "85x200 cm" },
 };
 
 /** How many millimetres one of each unit the size labels use is worth. */
@@ -57,9 +76,17 @@ const UNIT_MM: Record<string, number> = {
  * measured is not a size this can reason about, and guessing one would produce
  * a confident resolution warning about a dimension GRIDGO invented.
  */
-export function physicalSizeMilli(label: string): { width: number; height: number } | null {
+export function physicalSizeMilli(
+  label: string,
+  options?: { subcategoryCode?: string | null },
+): { width: number; height: number } | null {
   const text = label.trim().toLowerCase();
   if (!text) return null;
+
+  const subcategory = options?.subcategoryCode ?? "";
+  const alias =
+    SUBCATEGORY_SIZE_ALIASES[subcategory]?.[text] ?? SIZE_ALIASES[text];
+  if (alias) return physicalSizeMilli(alias);
 
   // "A4 sheet", "A5" — the qualifier does not change the paper.
   const named = NAMED_SIZES[text.split(/\s+/)[0]];
@@ -172,6 +199,41 @@ export function pixelsNeeded(
   };
 }
 
+function formatMilliAsMm(widthMilli: number, heightMilli: number): string {
+  const width = Math.round(widthMilli / 100) / 10;
+  const height = Math.round(heightMilli / 100) / 10;
+  return `${width} × ${height} mm`;
+}
+
+/**
+ * When the file's own millimetres are not the product the client ordered.
+ *
+ * A screenshot at 96 DPI reports 190 × 423 mm and still looks like a flyer on
+ * the phone. The product may be A5, a 3.5 × 2 in card, or a 3 × 6 ft tarp —
+ * those are not the same piece of paper, and that has to be said here, as a
+ * warning, before checkout. Never a block: the shop can still trim or refuse.
+ */
+export function artworkPrintSizeWarning(
+  detected: { widthMilli?: number | null; heightMilli?: number | null } | null | undefined,
+  sizeMilli: { width: number; height: number } | null,
+  label?: string | null,
+): string | null {
+  if (!detected?.widthMilli || !detected.heightMilli || !sizeMilli) return null;
+  const file = [detected.widthMilli, detected.heightMilli].sort((a, b) => a - b);
+  const product = [sizeMilli.width, sizeMilli.height].sort((a, b) => a - b);
+  const tolerance = 2 * MILLI;
+  if (Math.abs(file[0] - product[0]) <= tolerance && Math.abs(file[1] - product[1]) <= tolerance) {
+    return null;
+  }
+  const productWords = label?.trim()
+    ? `${label.trim()} (${formatMilliAsMm(sizeMilli.width, sizeMilli.height)})`
+    : formatMilliAsMm(sizeMilli.width, sizeMilli.height);
+  return (
+    `This file is ${formatMilliAsMm(detected.widthMilli, detected.heightMilli)} and the product is ` +
+    `${productWords}. They do not match. You can send it as it is — the shop will tell you if it ` +
+    `needs a new file.`
+  );
+}
 
 /**
  * The physical size a *measured* line was ordered at.

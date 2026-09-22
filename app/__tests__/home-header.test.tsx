@@ -90,7 +90,7 @@ describe("Home's header controls", () => {
     expect(mockPush).toHaveBeenCalledWith("/chat");
   });
 
-  it("puts no unread badge on chat, because there is no count to show", async () => {
+  it("puts no unread badge on chat when Operations has nothing waiting", async () => {
     // The cart's badge is data; a dot on chat would be decoration wearing
     // data's clothes. Scoped to the control, because Home carries other
     // numerals of its own — the how-it-works rail counts its steps.

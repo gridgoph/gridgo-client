@@ -54,6 +54,13 @@ export default function NotificationsScreen() {
           notification.orderId
             ? () => {
                 void markRead(notification.id);
+                if (notification.type === "order_receipt_ready") {
+                  router.push({
+                    pathname: "/order/receipt",
+                    params: { orderId: notification.orderId },
+                  });
+                  return;
+                }
                 router.push(`/order/${notification.orderId}`);
               }
             : null

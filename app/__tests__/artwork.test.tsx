@@ -26,11 +26,23 @@ jest.mock("@/hooks/useArtworkUpload", () => ({
       ? {
           phase: "stored",
           fileId: initial.fileId,
-          fileName: "poster.pdf",
+          fileName: "WorkHard.png",
           progress: null,
           error: null,
-          size: null,
-          contentType: null,
+          size: 492_000,
+          contentType: "image/png",
+          detected: {
+            kind: "raster",
+            pageCount: 1,
+            pixelWidth: 720,
+            pixelHeight: 1600,
+            dpi: 96,
+            measureUnit: "mm",
+            widthMilli: 190_500,
+            heightMilli: 423_300,
+            pageSize: null,
+            orientation: "portrait",
+          },
         }
       : {
           phase: "empty",
@@ -40,6 +52,7 @@ jest.mock("@/hooks/useArtworkUpload", () => ({
           error: null,
           size: null,
           contentType: null,
+          detected: null,
         },
     pick: mockPick,
     retry: jest.fn(),
@@ -182,6 +195,34 @@ describe("ArtworkScreen", () => {
     expect(screen.getByLabelText("Go to checkout")).toBeTruthy();
     // And the card stops being the button, because it is now a report.
     expect(screen.queryByLabelText("Choose your artwork file")).toBeNull();
+  });
+
+  it("warns when the file millimetres are not the product size", async () => {
+    const cards: CatalogItem = {
+      ...ITEM,
+      id: "sci_cards",
+      subcategoryCode: "business_cards",
+      name: "Business cards",
+    };
+    useCart.setState({
+      cart: cart({
+        lines: [
+          line({
+            catalogItemId: cards.id,
+            listing: cards,
+            artworkFileId: "file_art",
+            structuredSpec: { size: "standard" },
+          }),
+        ],
+      }),
+    });
+    await renderInSafeArea(<ArtworkScreen />);
+
+    expect(screen.getByText("Size")).toBeTruthy();
+    expect(screen.getByText("480 KB")).toBeTruthy();
+    expect(screen.getByText(/We read this as 190\.5 × 423\.3 mm/)).toBeTruthy();
+    expect(screen.getByText("Check the size before you send this")).toBeTruthy();
+    expect(screen.getByText(/do not match/)).toBeTruthy();
   });
 
   it("opens the picker from the card itself", async () => {

@@ -10,8 +10,12 @@
  * checkout was bigger than Items + Delivery by an amount nobody named.
  *
  * Every peso drawn for a client goes through here. One rule, the platform's
- * own rounding, no "service fee" row: a client buys from GRIDGO the way they
- * buy from any shop, and GRIDGO's charge sits inside the shelf price.
+ * own rounding: a client buys from GRIDGO the way they buy from any shop, so
+ * GRIDGO's charge sits inside every figure they read — the listing's "From",
+ * the match card, and Printing on checkout, order detail and the receipt,
+ * where Printing + Delivery = Total. The `Service fee · N%` row names the
+ * rate and carries no peso amount (`ServiceFeeRow explainOnly`), because
+ * GRIDGO's cut in pesos appears on no client screen.
  *
  * The order-level figure the server charges is `itemSubtotalMinor +
  * serviceFeeMinor` (`lib/basket.ts`); per-line figures use the same rule per

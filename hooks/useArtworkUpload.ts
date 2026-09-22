@@ -7,6 +7,7 @@ import {
   ARTWORK_MAX_MIB,
   EMPTY_ARTWORK,
   artworkErrorMessage,
+  artworkStateFromStoredFile,
   normalizeFileName,
   type ArtworkUploadState,
 } from "@/lib/artworkUpload";
@@ -85,6 +86,29 @@ export function useArtworkUpload(
       handleRef.current?.cancel();
     };
   }, []);
+
+  /**
+   * A file already on the line has an id and nothing else until we ask.
+   *
+   * Opening this screen from checkout (or after a refresh) used to leave the
+   * card without a byte count, a format, or the file's own millimetres — so
+   * every size check stood down. The storage record already has those facts.
+   */
+  useEffect(() => {
+    const fileId = initial?.fileId;
+    if (!fileId) return;
+    let cancelled = false;
+    void api
+      .getFile(fileId)
+      .then((file) => {
+        if (cancelled || !aliveRef.current) return;
+        setState((prev) => artworkStateFromStoredFile(file, prev));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [initial?.fileId]);
 
   const send = useCallback(async (asset: api.UploadAsset) => {
     lastAssetRef.current = asset;
@@ -211,6 +235,7 @@ export function useArtworkUpload(
       uri: asset.uri,
       name: chosenName,
       mimeType: asset.mimeType ?? null,
+      file: "file" in asset ? (asset as { file?: Blob }).file : undefined,
     });
   }, [send, guard]);
 

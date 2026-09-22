@@ -1,6 +1,7 @@
 import { ReceiptOcrHost } from "@/components/ReceiptOcrHost";
 import { useGridgoCharges } from "@/hooks/useGridgoCharges";
 import { useLiveNotifications } from "@/hooks/useLiveNotifications";
+import { useSupportChatUnread } from "@/hooks/useSupportChatUnread";
 import { ClerkProvider } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import "../global.css";
@@ -29,6 +30,7 @@ import { useClientPreferences } from "@/hooks/useClientPreferences";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
+import { bounceToIsolatedDevWebHost, GRIDGO_DEV_WEB_HOST } from "@/lib/devWebHost";
 import {
   androidEdgeToEdgeHeaderOptions,
   pushedScreenOptions,
@@ -61,6 +63,10 @@ function navigationTheme(scheme: ThemeName): Theme {
 }
 
 export default function RootLayout() {
+  if (bounceToIsolatedDevWebHost(GRIDGO_DEV_WEB_HOST)) {
+    return null;
+  }
+
   const publishableKey = resolveClerkPublishableKey(
     Constants.expoConfig?.extra?.clerkPublishableKey,
     __DEV__,
@@ -94,6 +100,7 @@ function AppNavigation() {
   // permission — only `PushEnableCard` does that, and only from a tap.
   usePushNotifications();
   useLiveNotifications();
+  useSupportChatUnread();
 
   // GRIDGO's charges, read as soon as a session exists: every price the app
   // draws is the shop's figure plus GRIDGO's charge, from the first match row.
@@ -282,16 +289,22 @@ function AppNavigation() {
                   options={pushedScreenOptions("Artwork")}
                 />
                 {/*
-                  Everyone attached to a job — supplier, rider, Gridbot. Header
-                  only, never a tab: this is correspondence about work already
-                  in flight, not one of the four places the app lives. The band
-                  names the area rather than the thread, so the thread screen's
-                  own heading (the counterparty) is not written twice.
+                  Operations. Header only, never a tab: this is correspondence
+                  about work already in flight, not one of the four places the
+                  app lives. The band names the area; the screen names the desk.
                 */}
                 <Stack.Screen name="chat/index" options={pushedScreenOptions("Chat")} />
                 <Stack.Screen name="chat/[thread]" options={pushedScreenOptions("Chat")} />
                 <Stack.Screen name="checkout" options={pushedScreenOptions("Checkout")} />
                 <Stack.Screen name="order/[id]" options={pushedScreenOptions("Order")} />
+                <Stack.Screen
+                  name="order/receipt"
+                  options={pushedScreenOptions("Receipt")}
+                />
+                <Stack.Screen
+                  name="order/physical-invoice"
+                  options={pushedScreenOptions("Physical invoice")}
+                />
                 {/*
                   Asking for a change to a proof is a real destination with a
                   keyboard in it, so it gets the platform's own sheet: drag to

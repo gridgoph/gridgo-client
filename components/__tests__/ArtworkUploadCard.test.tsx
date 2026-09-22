@@ -74,6 +74,33 @@ describe("ArtworkUploadCard", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it("shows the file size and a resolution note once the file is stored", async () => {
+    await render(
+      <ArtworkUploadCard
+        state={state({
+          phase: "stored",
+          fileId: "file_1",
+          fileName: "WorkHard.png",
+          size: 492_000,
+          contentType: "image/png",
+        })}
+        onPick={jest.fn()}
+        onRetry={jest.fn()}
+        onCancel={jest.fn()}
+        resolution={{
+          dpi: 87,
+          target: 300,
+          verdict: "low",
+          message: "At 87 DPI this will look blocky at that size.",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Size")).toBeTruthy();
+    expect(screen.getByText("480 KB")).toBeTruthy();
+    expect(screen.getByText(/blocky at that size/)).toBeTruthy();
+  });
+
   it("offers nothing to press on a read-only surface", async () => {
     await render(
       <ArtworkUploadCard

@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { CartButton } from "@/components/CartButton";
 import { ChatButton } from "@/components/ChatButton";
 import { cartLineCount, useCart } from "@/store/cart";
+import { useSupportChatStore } from "@/store/supportChat";
 
 /**
  * Cart and chat, as one object, for every tab header.
@@ -15,11 +16,15 @@ import { cartLineCount, useCart } from "@/store/cart";
 export function ClientHeaderActions() {
   const router = useRouter();
   const count = useCart(cartLineCount);
+  const unread = useSupportChatStore((s) => s.unreadCount);
 
   return (
     <View className="flex-row items-center">
       <CartButton count={count} onPress={() => router.push("/checkout")} />
-      <ChatButton onPress={() => router.push("/chat")} />
+      <ChatButton
+        onPress={() => router.push("/chat")}
+        count={unread > 0 ? unread : undefined}
+      />
     </View>
   );
 }

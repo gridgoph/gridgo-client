@@ -399,33 +399,47 @@ describe("OrderDetailScreen", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  it("shows the client's money as subtotal, delivery and total — never a commission", async () => {
+  it("shows GRIDGO printing and delivery, and the fee without a peso amount", async () => {
+    // The same sheet the receipt draws: Printing carries GRIDGO's charge, so
+    // Printing + Delivery = Total and neither the shop's own ₱1,000.00 nor
+    // the ₱100.00 cut is a line a client could read as a charge.
+    setOrder({
+      subtotalMinor: 100000,
+      serviceFeeMinor: 10000,
+      serviceFeeRateBps: 1000,
+      deliveryFeeMinor: 2500,
+      totalMinor: 112500,
+    });
     await renderInSafeArea(<OrderDetailScreen />);
 
     await screen.findByText("Grand opening tarpaulin");
+    expect(screen.getAllByText("Printing").length).toBeGreaterThan(0);
     expect(screen.getByText("₱1,100.00")).toBeTruthy();
-    expect(screen.getByText("₱25.00")).toBeTruthy();
-    expect(screen.getByText("₱1,125.00")).toBeTruthy();
-    // The supplier's own price and GRIDGO's 10% are withheld by the server;
-    // a screen that renders either has misread the contract.
+    expect(screen.getByText("Service fee · 10%")).toBeTruthy();
     expect(screen.queryByText("₱1,000.00")).toBeNull();
     expect(screen.queryByText("₱100.00")).toBeNull();
+    expect(screen.getByText("₱25.00")).toBeTruthy();
+    expect(screen.getByText("₱1,125.00")).toBeTruthy();
+    expect(screen.getByText("View receipt")).toBeTruthy();
+    expect(screen.getByText("Request a physical invoice")).toBeTruthy();
     expect(screen.queryByText(/commission/i)).toBeNull();
   });
 
-  it("prints the items at GRIDGO's price when the order carries the shop's subtotal and the fee apart", async () => {
+  it("still folds the fee into printing when the order carries no rate", async () => {
     // A matched order as gridgo-api writes it: `subtotalMinor` is the shops'
-    // own figure and `serviceFeeMinor` GRIDGO's charge. The client reads one
-    // Print figure that, with delivery, is the Total — never the shop's ₱840.
+    // own figure and `serviceFeeMinor` GRIDGO's charge. An older order has no
+    // snapshotted rate, so the row is a plain "Service fee" — it still names
+    // the fee and still shows no amount, and Printing + Delivery = Total.
     setOrder({ subtotalMinor: 84000, serviceFeeMinor: 8400, deliveryFeeMinor: 7500, totalMinor: 99900 });
     await renderInSafeArea(<OrderDetailScreen />);
 
     await screen.findByText("Grand opening tarpaulin");
     expect(screen.getByText("₱924.00")).toBeTruthy();
-    expect(screen.getByText("₱75.00")).toBeTruthy();
-    expect(screen.getByText("₱999.00")).toBeTruthy();
+    expect(screen.getByText("Service fee")).toBeTruthy();
     expect(screen.queryByText("₱840.00")).toBeNull();
     expect(screen.queryByText("₱84.00")).toBeNull();
+    expect(screen.getByText("₱75.00")).toBeTruthy();
+    expect(screen.getByText("₱999.00")).toBeTruthy();
   });
 
   it("asks for the downpayment by QR, and never for cash or credits", async () => {
@@ -504,7 +518,7 @@ describe("OrderDetailScreen", () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
     await screen.findByText("Grand opening tarpaulin");
-    expect(screen.getByText("Printing")).toBeTruthy();
+    expect(screen.getAllByText("Printing").length).toBeGreaterThan(0);
     expect(screen.getByText("Packaging")).toBeTruthy();
     expect(screen.getByText("Delivered")).toBeTruthy();
     // Retention is a hold-back on someone else's payout, and the shares are

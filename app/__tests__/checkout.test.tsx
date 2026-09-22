@@ -204,20 +204,64 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText("Add more to this run")).toBeTruthy();
   });
 
-  it("prices the items at GRIDGO's price, so Items plus Delivery is the Total", async () => {
+  it("shows GRIDGO printing, delivery and total without adding the fee twice", async () => {
+    await renderInSafeArea(<CheckoutScreen />);
+    await screen.findByText("WHAT GRIDGO IS PRINTING");
+    await screen.findByText("Service fee · 10%");
+
+    // ₱40 shop + live 10% = ₱44 GRIDGO printing + the under-5km delivery band.
+    expect(screen.getByText("Printing")).toBeTruthy();
+    expect(screen.getAllByText("₱44.00").length).toBeGreaterThan(0);
+    expect(screen.queryByText("₱40.00")).toBeNull();
+    expect(screen.queryByText("₱4.00")).toBeNull();
+    expect(screen.getByText("₱25.00")).toBeTruthy();
+    expect(screen.getAllByText("₱69.00")).toHaveLength(2);
+
+    await fireEvent.press(await screen.findByLabelText("Service fee · 10%"));
+    expect(
+      screen.getByText("The fee directly goes into improving app operations and customer care."),
+    ).toBeTruthy();
+  });
+
+  it("shows GRIDGO amounts on each print run and a GRIDGO printing total", async () => {
+    const two = cart({
+      lines: [
+        line({ id: "a", lineSubtotalMinor: 4000 }),
+        line({
+          id: "b",
+          supplierId: "other",
+          catalogItemId: "sci_cards",
+          listing: { ...listing(), id: "sci_cards", name: "Cards" },
+          lineSubtotalMinor: 2000,
+        }),
+      ],
+    });
+    api.getCart.mockResolvedValue(two);
+    useCart.setState({ cart: two });
+    await renderInSafeArea(<CheckoutScreen />);
+    await screen.findByText("PRINT RUN 1 OF 2");
+    await screen.findByText("Service fee · 10%");
+
+    expect(screen.getByText("Flyers")).toBeTruthy();
+    expect(screen.getByText("Cards")).toBeTruthy();
+    expect(screen.getAllByText("₱44.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("₱22.00").length).toBeGreaterThan(0);
+    expect(screen.getByText("₱66.00")).toBeTruthy();
+    expect(screen.queryByText("₱40.00")).toBeNull();
+    expect(screen.queryByText("₱20.00")).toBeNull();
+    expect(screen.queryByText("₱6.00")).toBeNull();
+  });
+
+  it("says why a line GRIDGO has not priced yet", async () => {
+    const unpriced = cart({
+      lines: [line({ lineSubtotalMinor: null, clientLineSubtotalMinor: null })],
+    });
+    api.getCart.mockResolvedValue(unpriced);
+    useCart.setState({ cart: unpriced });
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    // The shop's ₱40 plus GRIDGO's 10% is ₱44 — the line, the run header and
-    // the Items row all say so. The shop's own ₱40 never reaches the screen,
-    // and there is no fee row: ₱44 + ₱25 delivery = ₱69, and it adds up.
-    expect(screen.getAllByText("₱44.00")).toHaveLength(3);
-    expect(screen.queryByText(/₱40\.00/)).toBeNull();
-    expect(screen.queryByText(/GRIDGO service fee/i)).toBeNull();
-    expect(screen.queryByText(/10%/)).toBeNull();
-    expect(screen.getByText("₱25.00")).toBeTruthy();
-    // Invoice and pinned commit bar show the same total.
-    expect(screen.getAllByText("₱69.00")).toHaveLength(2);
+    expect(screen.getByText(/No price for this pick/)).toBeTruthy();
   });
 
   it("splits the payment 75/25 rather than asking for all of it", async () => {
@@ -346,6 +390,7 @@ describe("CheckoutScreen", () => {
     useCart.setState({ cartId: "cart_1", cart: collecting, loading: false, busy: false, error: null });
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
+    await screen.findByText("Service fee · 10%");
 
     expect(screen.getByText("GRIDGO Office")).toBeTruthy();
     expect(screen.getByText("Poblacion District, Davao City")).toBeTruthy();
@@ -355,6 +400,10 @@ describe("CheckoutScreen", () => {
     ).toBeTruthy();
     expect(screen.getByLabelText("Open GRIDGO Office in Maps")).toBeTruthy();
     expect(screen.getByText("You collect at GRIDGO Office. No delivery charge.")).toBeTruthy();
+    expect(screen.getByText("None — you collect")).toBeTruthy();
+    expect(screen.getAllByText("₱44.00").length).toBeGreaterThan(0);
+    expect(screen.queryByText("₱40.00")).toBeNull();
+    expect(screen.queryByText("₱4.00")).toBeNull();
 
     // One collect-at point, whoever printed it, and never a shop counter.
     expect(screen.queryByText(/Lovis/i)).toBeNull();

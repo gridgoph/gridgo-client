@@ -19,9 +19,11 @@ import {
   type CatalogOption,
   type CatalogOptionGroup,
   type CatalogPhoto,
+  type LineMeasurement,
 } from "@/lib/api";
 import { gridgoPriceMinor } from "@/lib/clientPrice";
-import { squareUnitWord, unitWord } from "@/lib/measurement";
+import { clientFromPriceMinorOf, gridgoAmountMinor } from "@/lib/gridgoPrice";
+import { lineTotalMinor, squareUnitWord, unitWord } from "@/lib/measurement";
 
 /** Chosen option id per group id. One per group — every group is single-select. */
 export type ListingSelection = Record<string, string>;
@@ -121,6 +123,39 @@ export function unitPriceMinor(item: CatalogItem, selection: ListingSelection): 
 }
 
 /**
+ * The unit price the client is shown: the shop figure plus GRIDGO's fee.
+ *
+ * Shop arithmetic stays in `unitPriceMinor` so the sheet and the server's
+ * `effectivePriceMinor` still agree. This wrapper is the only place the
+ * listing sheet marks that figure up.
+ */
+export function clientUnitPriceMinor(
+  item: CatalogItem,
+  selection: ListingSelection,
+  serviceFeeRateBps: number,
+): number {
+  return gridgoAmountMinor(unitPriceMinor(item, selection), serviceFeeRateBps) ?? 0;
+}
+
+/**
+ * The listing-sheet running total the client is shown.
+ *
+ * Priced as the shop would, then marked up — the same order checkout uses
+ * (fee on the line, not a second formula on the unit).
+ */
+export function clientLineTotalMinor(
+  item: CatalogItem,
+  quantity: number,
+  measurement: LineMeasurement | null,
+  shopUnitPriceMinor: number,
+  serviceFeeRateBps: number,
+): number | null {
+  const shopTotal = lineTotalMinor(item, quantity, measurement, shopUnitPriceMinor);
+  if (shopTotal == null) return null;
+  return gridgoAmountMinor(shopTotal, serviceFeeRateBps);
+}
+
+/**
  * What the price on the sheet is the price of — the listing's own unit, in
  * the client's words. Mirrors the six `pricingUnit` values the API stores.
  */
@@ -152,6 +187,20 @@ export function startingPriceLine(
   serviceFeeRateBps: number,
 ): string {
   return `From ${formatPhp(gridgoPriceMinor(item.fromPriceMinor, serviceFeeRateBps))} ${unitLine(item)}`;
+}
+
+/**
+ * The starting price the client is shown. Reads the API's GRIDGO field when
+ * present, otherwise applies the same markup as `gridgoAmountMinor`.
+ */
+export function clientStartingPriceLine(
+  item: Pick<
+    CatalogItem,
+    "fromPriceMinor" | "clientFromPriceMinor" | "pricingUnit" | "packageQty" | "measureUnit"
+  >,
+  serviceFeeRateBps?: number | null,
+): string {
+  return `From ${formatPhp(clientFromPriceMinorOf(item, serviceFeeRateBps))} ${unitLine(item)}`;
 }
 
 /**
@@ -360,9 +409,14 @@ export type ArtworkFitWarning = {
 export function artworkFitWarning(
   size: string,
   artwork: { width: number; height: number } | null,
+  sizeMilli?: { width: number; height: number } | null,
 ): ArtworkFitWarning | null {
   if (!artwork || !artwork.width || !artwork.height) return null;
-  const target = trimRatio(size);
+  const target =
+    trimRatio(size) ??
+    (sizeMilli && sizeMilli.width && sizeMilli.height
+      ? sizeMilli.width / sizeMilli.height
+      : null);
   if (target == null) return null;
 
   const actual = artwork.width / artwork.height;

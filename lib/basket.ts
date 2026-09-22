@@ -19,6 +19,7 @@
  */
 
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
+import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { haversineMetres, type GeoPoint } from "@/lib/tracking";
 
 /**
@@ -57,6 +58,8 @@ export type PrintRun = {
    * counting that as zero is what showed a lanyard at PHP 0.00.
    */
   subtotalMinor: number | null;
+  /** GRIDGO sum for this run, or null while any line in it has none. */
+  clientSubtotalMinor: number | null;
 };
 
 /** Adds figures that may be missing; one missing makes the sum missing. */
@@ -70,13 +73,30 @@ function sumMinor(amounts: (number | null)[]): number | null {
 }
 
 /**
+ * What a client-facing surface shows for one basket line.
+ *
+ * Prefer the API's `clientLineSubtotalMinor` when it is a safe integer.
+ * Otherwise apply `gridgoAmountMinor` — the same half-up markup listing
+ * already uses. A null shop line is not yet priced.
+ */
+export function clientLineAmountMinor(
+  line: Pick<CartLineRecord, "lineSubtotalMinor" | "clientLineSubtotalMinor">,
+  serviceFeeRateBps: number,
+): number | null {
+  if (Number.isSafeInteger(line.clientLineSubtotalMinor)) {
+    return line.clientLineSubtotalMinor as number;
+  }
+  return gridgoAmountMinor(line.lineSubtotalMinor, serviceFeeRateBps);
+}
+
+/**
  * The basket by print run, in the order the runs were first started.
  *
  * A run is one press, so the split is what decides delivery: two runs is two
  * drops and two fees. The client is told that; they are not told whose presses
  * they are.
  */
-export function printRuns(lines: CartLineRecord[]): PrintRun[] {
+export function printRuns(lines: CartLineRecord[], serviceFeeRateBps = 0): PrintRun[] {
   const groups = new Map<string, CartLineRecord[]>();
   for (const line of lines) {
     const existing = groups.get(line.supplierId);
@@ -88,6 +108,9 @@ export function printRuns(lines: CartLineRecord[]): PrintRun[] {
     runLabel: `Print run ${index + 1}`,
     lines: runLines,
     subtotalMinor: sumMinor(runLines.map((line) => line.lineSubtotalMinor)),
+    clientSubtotalMinor: sumMinor(
+      runLines.map((line) => clientLineAmountMinor(line, serviceFeeRateBps)),
+    ),
   }));
 }
 
@@ -111,6 +134,11 @@ export type BasketTotals = {
    * Null while a line has no price or the platform's rate is unread.
    */
   gridgoItemsMinor: number | null;
+  /**
+   * Same figure as `gridgoItemsMinor`. Checkout and receipt read this name
+   * for GRIDGO printing; keep both so older tests and the sheet agree.
+   */
+  clientItemSubtotalMinor: number | null;
   /** One leg per print run. Two runs is two drops and two fees. */
   legs: DeliveryLeg[];
   /** Null when any leg is still unpriced — a partial delivery total is a lie. */
@@ -140,13 +168,14 @@ export type TotalsInput = {
  */
 export function basketTotals({ cart, settings, shopPoints }: TotalsInput): BasketTotals {
   const lines = cart?.lines ?? [];
-  const groups = printRuns(lines);
-  const itemSubtotalMinor = sumMinor(groups.map((group) => group.subtotalMinor));
   const serviceFeeRateBps = settings?.serviceFeeRateBps ?? 0;
+  const groups = printRuns(lines, serviceFeeRateBps);
+  const itemSubtotalMinor = sumMinor(groups.map((group) => group.subtotalMinor));
   const serviceFeeMinor =
     settings && itemSubtotalMinor != null ? roundBps(itemSubtotalMinor, serviceFeeRateBps) : 0;
   const gridgoItemsMinor =
     settings && itemSubtotalMinor != null ? itemSubtotalMinor + serviceFeeMinor : null;
+  const clientItemSubtotalMinor = gridgoItemsMinor;
 
   const collecting = cart?.fulfillmentMode === "pickup";
   const legs: DeliveryLeg[] = collecting
@@ -189,6 +218,7 @@ export function basketTotals({ cart, settings, shopPoints }: TotalsInput): Baske
     serviceFeeRateBps,
     serviceFeeMinor,
     gridgoItemsMinor,
+    clientItemSubtotalMinor,
     legs,
     deliveryFeeMinor,
     totalMinor,

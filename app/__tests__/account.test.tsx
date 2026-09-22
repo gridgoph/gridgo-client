@@ -120,6 +120,25 @@ describe("the identity card", () => {
     expect(screen.queryByText("Theme")).toBeNull();
   });
 
+  it("shows a pending application without turning the account into a business", async () => {
+    signedIn({
+      ...CLIENT,
+      approvalCase: {
+        id: "apc_1",
+        kind: "business_client",
+        status: "pending",
+        version: 1,
+      },
+    });
+
+    await renderAccount();
+
+    expect(screen.getByText("Personal client")).toBeTruthy();
+    expect(screen.getByText("Application pending")).toBeTruthy();
+    expect(screen.getByLabelText("Business application")).toBeTruthy();
+    expect(screen.queryByLabelText("Apply as a business")).toBeNull();
+  });
+
   it("names a business by its business name, and stops offering the upgrade", async () => {
     signedIn({ ...CLIENT, accountType: "business", orgName: "Bautista Trading" });
 

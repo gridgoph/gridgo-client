@@ -9,12 +9,14 @@ import { useCart } from "@/store/cart";
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockNavigate = jest.fn();
+const mockDismissTo = jest.fn();
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({
     push: mockPush,
     replace: mockReplace,
     navigate: mockNavigate,
+    dismissTo: mockDismissTo,
     back: jest.fn(),
   }),
   useFocusEffect: (effect: () => void) => {
@@ -215,9 +217,10 @@ describe("placing the order", () => {
       }),
     );
     expect(api.setCartFulfilment).not.toHaveBeenCalled();
-    expect(mockReplace).toHaveBeenCalledWith({
-      pathname: "/order/[id]",
-      params: { id: "ord_1" },
+    expect(mockDismissTo).toHaveBeenCalledWith("/(tabs)/orders");
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/order/receipt",
+      params: { orderId: "ord_1", from: "checkout" },
     });
   });
 });

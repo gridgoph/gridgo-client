@@ -137,7 +137,12 @@ export function usePaymentProof(cartId: string | null, paymentStore = useCheckou
     });
     readReference(asset.uri, isCurrent);
     const handle = api.uploadFile(
-      { uri: asset.uri, name: fileName, mimeType: asset.mimeType ?? null },
+      {
+        uri: asset.uri,
+        name: fileName,
+        mimeType: asset.mimeType ?? null,
+        file: "file" in asset ? (asset as { file?: Blob }).file : undefined,
+      },
       "payment_proof",
       (fraction) => {
         if (isCurrent()) setProof((prev) => (prev.phase === "sending" ? { ...prev, progress: fraction } : prev));

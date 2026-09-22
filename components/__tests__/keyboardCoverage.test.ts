@@ -37,10 +37,17 @@ describe("keyboard coverage contract", () => {
    * its two inputs — the payment reference and an issue description — are
    * inside `PaymentPanel` and `IssueWindowCard`, and the route's own source
    * mentions neither `TextInput` nor `TextField`.
+   *
+   * A component that carries its own keyboard-controller shell around its
+   * field (`SupportChatConversation`, a chat composer over a message list) is
+   * the shell, not a bare field, so a route that only shows it is covered.
    */
   const inputComponents = sourceFiles(componentsDir)
     .filter((file) => !file.includes("__tests__"))
-    .filter((file) => /<TextInput\b|<TextField\b/.test(readFileSync(file, "utf8")))
+    .filter((file) => {
+      const source = readFileSync(file, "utf8");
+      return /<TextInput\b|<TextField\b/.test(source) && !isKeyboardAware(source);
+    })
     .map((file) => file.split("/").pop()!.replace(/\.tsx?$/, ""));
 
   it("finds the components that carry a field", () => {
