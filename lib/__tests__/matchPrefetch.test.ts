@@ -32,6 +32,12 @@ describe("match prefetch", () => {
     expect(api.matchShop).toHaveBeenCalledTimes(2);
   });
 
+  it("does not reuse a match for a different date", async () => {
+    prefetchMatch({ ...input, deadline: null });
+    takeMatch({ ...input, deadline: "2026-10-16T10:00:00.000Z" });
+    expect(api.matchShop).toHaveBeenCalledTimes(2);
+  });
+
   it("drops a failed match so the screen can retry", async () => {
     api.matchShop.mockRejectedValueOnce(new Error("offline"));
     await expect(prefetchMatch(input)).rejects.toThrow("offline");

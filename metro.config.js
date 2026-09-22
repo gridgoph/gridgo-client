@@ -31,6 +31,7 @@ const wrapped = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const next = wrapped ?? context.resolveRequest;
+  
   if (platform === "web" && /^zustand($|\/)/.test(moduleName)) {
     // Node's own resolution takes the `require` branch of the exports map,
     // which is the CommonJS build. Handing Metro the resolved path is exact:
@@ -40,6 +41,19 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       filePath: require.resolve(moduleName, { paths: [__dirname] }),
     };
   }
+
+  // Fallback for lucide-react-native's broken ESM exports where it looks for non-existent .mjs files
+  if (/^lucide-react-native($|\/)/.test(moduleName)) {
+    try {
+      return {
+        type: "sourceFile",
+        filePath: require.resolve(moduleName, { paths: [__dirname] }),
+      };
+    } catch (e) {
+      // If require.resolve fails, let it fall through to default resolution
+    }
+  }
+  
   return next(context, moduleName, platform);
 };
 

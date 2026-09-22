@@ -1,80 +1,44 @@
 /**
- * Who a client can message, and — the part that matters while there is no
- * message backend — *when* each conversation starts carrying anything.
- *
- * GRIDGO is not carrying messages yet. That is a fact, not a loading state, so
- * this module holds the honest version of it rather than letting three screens
- * each invent their own. The rule from the rest of the app applies here
- * unchanged: never render an empty surface as if it were merely quiet. A
- * client who reads "no messages yet" waits for one; a client who reads
- * "messaging is not switched on yet" does not.
- *
- * The second line on every row is the real content of this screen. Supplier,
- * Rider and Gridbot are not three identical dead threads — they open at three
- * different points of a job, and saying so turns a placeholder into a small
- * map of who the client will end up talking to.
- *
- * When a backend lands, `opensWhen` stays (it is still true) and the empty
- * copy below is what gets replaced by messages.
+ * Who a client can message: Operations. History is many conversations with
+ * that one desk — never the unused supplier, rider or Gridbot placeholders.
  */
 
-export type ChatPeer = "supplier" | "rider" | "gridbot";
+export type ChatPeer = "ops";
 
 export type ChatThread = {
   peer: ChatPeer;
-  /** What the client calls this counterparty. */
   name: string;
-  /** Who they are to the job, in one line. */
   role: string;
-  /** The point in a job at which this conversation starts. */
-  opensWhen: string;
-  /** What will arrive here, said in the thread's own empty state. */
-  willCarry: string;
+  id?: string;
 };
+
+export const CHAT_PEER: ChatPeer = "ops";
 
 export const CHAT_THREADS: readonly ChatThread[] = [
   {
-    peer: "supplier",
-    name: "Supplier",
-    role: "The shop printing your job",
-    opensWhen: "Opens once a shop takes your job",
-    willCarry:
-      "Questions from the shop printing your job — a proof detail, a material swap, anything that needs your call.",
-  },
-  {
-    peer: "rider",
-    name: "Rider",
-    role: "Whoever is carrying your delivery",
-    opensWhen: "Opens once your job is out for delivery",
-    willCarry:
-      "Notes from the rider carrying your delivery — gate access, a landmark, where to hand it over.",
-  },
-  {
-    peer: "gridbot",
-    name: "Gridbot",
-    role: "GRIDGO's help desk",
-    opensWhen: "Opens once GRIDGO's help desk goes live",
-    willCarry:
-      "Answers about a job — where it has got to, what a state means, what happens next.",
+    peer: "ops",
+    name: "Operations",
+    role: "GRIDGO operations",
   },
 ] as const;
 
-/** The one sentence that keeps this screen honest. Say it, do not imply it. */
-export const CHAT_NOT_LIVE =
-  "GRIDGO is not carrying messages yet, so nothing will arrive here today.";
+const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** Where order news actually reaches a client in the meantime. */
-export const CHAT_MEANWHILE = "Until then, every update on a job arrives in Notifications.";
+export function isChatThreadId(value: string | undefined): value is string {
+  return Boolean(value && THREAD_ID.test(value));
+}
 
 export function chatThread(peer: string | undefined): ChatThread | null {
+  if (isChatThreadId(peer)) {
+    return { ...CHAT_THREADS[0], id: peer };
+  }
   return CHAT_THREADS.find((thread) => thread.peer === peer) ?? null;
 }
 
 export const CHAT_LIST_ROUTE = "/chat";
-
-/**
- * The dynamic route, not an interpolated path. Expo Router types hrefs, and
- * the `{ pathname, params }` form is the one that keeps a peer checked against
- * `ChatPeer` all the way to the screen instead of becoming a bare string.
- */
 export const CHAT_THREAD_ROUTE = "/chat/[thread]";
+export const CHAT_OPS_PARAMS = { thread: CHAT_PEER } as const;
+
+export function chatThreadRoute(threadId: string): { pathname: "/chat/[thread]"; params: { thread: string } } {
+  return { pathname: "/chat/[thread]", params: { thread: threadId } };
+}

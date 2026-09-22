@@ -24,6 +24,7 @@ import { ProofDecision } from "@/components/ProofDecision";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonLine, SkeletonList, SkeletonPill } from "@/components/Skeleton";
+import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -41,7 +42,6 @@ import {
   isIssueWindowState,
   isProofApprovalState,
   isTrackingState,
-  orderItemsMinor,
   orderNextAction,
   orderTotalMinor,
   orderWaitingOn,
@@ -50,6 +50,7 @@ import {
 import { isJobComplete } from "@/lib/jobComplete";
 import { installmentUnderReview, payableInstallment, paymentInstallment } from "@/lib/payment";
 import { canRate } from "@/lib/rating";
+import { printingMinor, showsServiceFee } from "@/lib/serviceFee";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
@@ -352,7 +353,11 @@ export default function OrderDetailScreen() {
             <SpecRow label="Artwork" value={order.artworkName || "Not uploaded"} />
           </View>
 
-          <MoneyCard order={order} />
+          <MoneyCard order={order} onOpenReceipt={() =>
+            router.push({ pathname: "/order/receipt", params: { orderId: order.id } })
+          } onRequestInvoice={() =>
+            router.push({ pathname: "/order/physical-invoice", params: { orderId: order.id } })
+          } />
         </View>
 
         {!showsOwnPreview ? (
@@ -382,10 +387,20 @@ export default function OrderDetailScreen() {
  *
  * Two shapes, because there are two truths. Before a supplier accepts there is
  * no exact price, so the card shows the platform's range and says why delivery
- * is missing from it. After acceptance it shows subtotal, delivery and total —
- * the three figures the client is owed and the only three the server sends.
+ * is missing from it. After acceptance it shows the receipt's own figures:
+ * Printing with GRIDGO's charge already inside it, then delivery, then total.
+ * The service-fee row names the rate and shows no peso amount, because the
+ * amount is not a second charge — see `lib/serviceFee.ts`.
  */
-function MoneyCard({ order }: { order: api.Order }) {
+function MoneyCard({
+  order,
+  onOpenReceipt,
+  onRequestInvoice,
+}: {
+  order: api.Order;
+  onOpenReceipt: () => void;
+  onRequestInvoice: () => void;
+}) {
   const total = orderTotalMinor(order);
   const range = order.priceRange;
 
@@ -409,35 +424,51 @@ function MoneyCard({ order }: { order: api.Order }) {
 
   const downpayment = paymentInstallment(order, "downpayment");
   const balance = paymentInstallment(order, "balance");
+  const showFee = showsServiceFee(order);
 
   return (
-    <View className="gg-card">
-      {/* Items at GRIDGO's price — the shops' figure plus GRIDGO's charge —
-          so Print + Delivery is the Total the client reads under it. */}
-      <SpecRow
-        label="Print"
-        value={orderItemsMinor(order) != null ? formatPhp(orderItemsMinor(order) ?? 0) : "—"}
-      />
-      <SpecRow
-        label="Delivery"
-        value={order.deliveryFeeMinor != null ? formatPhp(order.deliveryFeeMinor) : "—"}
-      />
-      {downpayment ? (
+    <View className="gap-3">
+      <View className="gg-card">
         <SpecRow
-          label={`Downpayment · ${installmentStatusLabel(downpayment.status)}`}
-          value={downpayment.amountMinor != null ? formatPhp(downpayment.amountMinor) : "—"}
+          label="Printing"
+          value={
+            order.subtotalMinor != null
+              ? formatPhp(printingMinor(order.subtotalMinor, order.serviceFeeMinor))
+              : "—"
+          }
         />
-      ) : null}
-      {balance ? (
         <SpecRow
-          label={`Balance · ${installmentStatusLabel(balance.status)}`}
-          value={balance.amountMinor != null ? formatPhp(balance.amountMinor) : "—"}
+          label="Delivery"
+          value={
+            order.fulfillmentMode === "pickup"
+              ? "None — you collect"
+              : order.deliveryFeeMinor != null
+                ? formatPhp(order.deliveryFeeMinor)
+                : "—"
+          }
         />
-      ) : null}
-      <View className="flex-row items-baseline justify-between gap-4 pt-3">
-        <Text className="text-body-lg text-text-secondary">Total</Text>
-        <Text className="text-h3 text-text-primary">{formatPhp(total)}</Text>
+        {showFee ? (
+          <ServiceFeeRow explainOnly rateBps={order.serviceFeeRateBps ?? null} />
+        ) : null}
+        {downpayment ? (
+          <SpecRow
+            label={`Downpayment · ${installmentStatusLabel(downpayment.status)}`}
+            value={downpayment.amountMinor != null ? formatPhp(downpayment.amountMinor) : "—"}
+          />
+        ) : null}
+        {balance ? (
+          <SpecRow
+            label={`Balance · ${installmentStatusLabel(balance.status)}`}
+            value={balance.amountMinor != null ? formatPhp(balance.amountMinor) : "—"}
+          />
+        ) : null}
+        <View className="flex-row items-baseline justify-between gap-4 pt-3">
+          <Text className="text-body-lg text-text-secondary">Total</Text>
+          <Text className="text-h3 text-text-primary">{formatPhp(total)}</Text>
+        </View>
       </View>
+      <SecondaryButton label="View receipt" onPress={onOpenReceipt} />
+      <SecondaryButton label="Request a physical invoice" onPress={onRequestInvoice} />
     </View>
   );
 }

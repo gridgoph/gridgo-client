@@ -71,14 +71,11 @@ export function ArtworkUploadCard({
   const colors = useThemeColors();
   const chip = artworkChip(state);
   const busy = isArtworkBusy(state);
-  const facts =
-    state.size != null && state.contentType
-      ? describeArtworkFile({
-          originalFilename: state.fileName,
-          detectedContentType: state.contentType,
-          size: state.size,
-        })
-      : [];
+  const facts = describeArtworkFile({
+    originalFilename: state.fileName || null,
+    detectedContentType: state.contentType,
+    size: state.size,
+  });
   /*
     The byte count is a proxy, and only worth showing while there is nothing
     better. Once GRIDGO has read the real pixel dimensions and the client has
@@ -88,6 +85,7 @@ export function ArtworkUploadCard({
   */
   const thinFile =
     !resolution && facts.some((fact) => fact.id === "size" && fact.tone === "warn");
+  const showFacts = facts.length > 0 || Boolean(resolution) || thinFile;
 
   // Empty and idle is the only state where tapping the card has one obvious
   // meaning. Once a file is on it the card is a report with its own controls,
@@ -120,7 +118,7 @@ export function ArtworkUploadCard({
 
       {state.phase === "sending" ? <ProgressBar fraction={state.progress} /> : null}
 
-      {facts.length ? (
+      {showFacts ? (
         <View className="gg-panel gap-2">
           {facts.map((fact) => (
             <View key={fact.id} className="flex-row items-baseline justify-between gap-4">

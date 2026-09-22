@@ -16,6 +16,9 @@ import {
   selectedOptionIds,
   specGroups,
   trimRatio,
+  clientLineTotalMinor,
+  clientStartingPriceLine,
+  clientUnitPriceMinor,
   startingPriceLine,
   unitLine,
   unitPriceMinor,
@@ -190,6 +193,36 @@ describe("unitPriceMinor", () => {
     };
     expect(unitPriceMinor(discounted, { g_size: "o_a5" })).toBe(0);
   });
+
+  it("marks the shop unit up to the GRIDGO price the client is shown", () => {
+    const tarp: CatalogItem = {
+      ...FLYERS,
+      basePriceMinor: 1_200,
+      fromPriceMinor: 1_200,
+      pricingUnit: "per_area",
+      measureUnit: "ft",
+      optionGroups: [],
+    };
+    expect(unitPriceMinor(tarp, {})).toBe(1_200);
+    expect(clientUnitPriceMinor(tarp, {}, 4_500)).toBe(1_740);
+    expect(clientUnitPriceMinor(tarp, {}, 1_000)).toBe(1_320);
+  });
+
+  it("marks the listing total up after the shop line is priced", () => {
+    const tarp: CatalogItem = {
+      ...FLYERS,
+      basePriceMinor: 1_200,
+      fromPriceMinor: 1_200,
+      pricingUnit: "per_area",
+      measureUnit: "ft",
+      measurementKind: "area",
+      optionGroups: [],
+    };
+    // One square foot at ₱12.00. The sticky total is the GRIDGO line, not shop.
+    expect(clientLineTotalMinor(tarp, 1, { width: 1_000, height: 1_000 }, 1_200, 4_500)).toBe(1_740);
+    expect(clientLineTotalMinor(tarp, 1, { width: 1_000, height: 1_000 }, 1_200, 1_000)).toBe(1_320);
+    expect(clientLineTotalMinor(tarp, 1, null, 1_200, 4_500)).toBeNull();
+  });
 });
 
 describe("what a quantity means", () => {
@@ -232,6 +265,20 @@ describe("what a quantity means", () => {
         1000,
       ),
     ).toBe("From ₱44.00 per sq ft");
+  });
+
+  it("marks the starting price up to the GRIDGO figure the client is shown", () => {
+    const tarp = {
+      ...FLYERS,
+      fromPriceMinor: 1_200,
+      pricingUnit: "per_area" as const,
+      measureUnit: "ft" as const,
+    };
+    expect(clientStartingPriceLine(tarp, 4_500)).toBe("From ₱17.40 per sq ft");
+    expect(clientStartingPriceLine(tarp, 1_000)).toBe("From ₱13.20 per sq ft");
+    expect(clientStartingPriceLine({ ...tarp, clientFromPriceMinor: 1_740 })).toBe(
+      "From ₱17.40 per sq ft",
+    );
   });
 });
 
@@ -368,6 +415,16 @@ describe("artworkFitWarning", () => {
   it("names the orientation when the proportions are wrong as well", () => {
     const warning = artworkFitWarning("A5", { width: 1920, height: 1080 });
     expect(warning?.message).toContain("Your file is landscape and the size is portrait");
+  });
+
+  it("uses a resolved measurement when the size label has no ratio of its own", () => {
+    // Business-card listings bind "standard", not "3.5x2 in". The millimetres
+    // still have a proportion, and a tall screenshot is still the wrong shape.
+    const warning = artworkFitWarning("standard", { width: 1905, height: 4233 }, {
+      width: 88_900,
+      height: 50_800,
+    });
+    expect(warning?.message).toContain("cropped");
   });
 
   it("stays quiet when it has not seen the artwork or cannot measure the size", () => {

@@ -10,6 +10,8 @@
  * `jest.mock` of the JS package is used.
  */
 
+import { canPickOnWeb, pickFileOnWeb } from "@/lib/webFilePick";
+
 type DocumentPickerNative = typeof import("expo-document-picker");
 type DateTimePickerNative = typeof import("@react-native-community/datetimepicker");
 type FileSystemLegacyNative = typeof import("expo-file-system/legacy");
@@ -62,8 +64,36 @@ function inJest(): boolean {
   return typeof process !== "undefined" && Boolean(process.env.JEST_WORKER_ID);
 }
 
+function webDocumentPicker(): DocumentPickerNative {
+  return {
+    getDocumentAsync: async (options?: { type?: string | string[] }) => {
+      const accept = Array.isArray(options?.type)
+        ? options.type.join(",")
+        : options?.type || "*/*";
+      const picked = await pickFileOnWeb(accept);
+      if (!picked) return { canceled: true, assets: [] };
+      return {
+        canceled: false,
+        assets: [
+          {
+            uri: picked.uri,
+            name: picked.name,
+            mimeType: picked.mimeType ?? undefined,
+            size: picked.size ?? undefined,
+            file: picked.file,
+          },
+        ],
+      };
+    },
+  } as DocumentPickerNative;
+}
+
 export function getDocumentPickerNative(): DocumentPickerNative | null {
   if (documentPickerNative !== undefined) return documentPickerNative;
+  if (canPickOnWeb()) {
+    documentPickerNative = webDocumentPicker();
+    return documentPickerNative;
+  }
   if (!inJest() && !optionalNative("ExpoDocumentPicker")) {
     documentPickerNative = null;
     return null;

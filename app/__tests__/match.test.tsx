@@ -11,9 +11,16 @@ import { usePriorities } from "@/store/priorities";
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
 
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ push: mockPush, back: mockBack, replace: jest.fn() }),
+  useRouter: () => ({
+    push: mockPush,
+    back: mockBack,
+    replace: mockReplace,
+    canGoBack: () => mockCanGoBack(),
+  }),
   useLocalSearchParams: () => ({ subcategory: "flyers", category: "marketing_collateral" }),
 }));
 
@@ -120,6 +127,8 @@ function renderInSafeArea(ui: ReactElement) {
 beforeEach(() => {
   mockPush.mockClear();
   mockBack.mockClear();
+  mockReplace.mockClear();
+  mockCanGoBack.mockReturnValue(true);
   api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
   api.getProductCategories.mockResolvedValue(PRODUCT_CATEGORY_SEED);
   api.matchShop.mockResolvedValue(match("user_lovis", "Lovis Printshop"));
@@ -259,6 +268,18 @@ describe("MatchScreen", () => {
     });
   });
 
+  it("continues into the first listing from the foot of the match", async () => {
+    await renderInSafeArea(<MatchScreen />);
+    await screen.findByText("GRIDGO’s pick for flyers");
+
+    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/request/listing",
+      params: { itemId: "user_lovis_flyers" },
+    });
+  });
+
   it("says plainly when GRIDGO cannot print this yet", async () => {
     api.matchShop.mockRejectedValue(
       new api.ApiError(404, { error: "match_not_found", message: "No approved open shop." }),
@@ -275,5 +296,21 @@ describe("MatchScreen", () => {
 
     expect(await screen.findByText("GRIDGO could not answer")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
+  });
+
+  it("says when nobody can make the date, and Change my date goes back to pick one", async () => {
+    api.matchShop.mockRejectedValue(
+      new api.ApiError(409, {
+        error: "deadline_not_met",
+        earliestAvailable: "2026-10-16T03:55:00.000Z",
+      }),
+    );
+    await renderInSafeArea(<MatchScreen />);
+
+    expect(await screen.findByText("Nobody can finish flyers by then")).toBeTruthy();
+    expect(screen.getByText(/The soonest anyone can do it/)).toBeTruthy();
+
+    fireEvent.press(screen.getByText("Change my date"));
+    expect(mockBack).toHaveBeenCalled();
   });
 });

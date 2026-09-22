@@ -90,6 +90,12 @@ describe("pushTargetRoute", () => {
     expect(pushTargetRoute(parsePushData({ orderId: "ord_demo_1" }))).toBe("/order/ord_demo_1");
   });
 
+  it("opens the receipt when that is what the update is about", () => {
+    expect(
+      pushTargetRoute(parsePushData({ type: "order_receipt_ready", orderId: "ord_demo_1" })),
+    ).toBe("/order/receipt?orderId=ord_demo_1");
+  });
+
   it("opens the list when there is no job behind the update", () => {
     expect(pushTargetRoute(parsePushData({ type: "account_update" }))).toBe(
       "/(tabs)/notifications",

@@ -1,7 +1,9 @@
 import { ApiError } from "@/lib/api";
+import type { StoredFile } from "@/lib/api";
 import {
   artworkChip,
   artworkErrorMessage,
+  artworkStateFromStoredFile,
   artworkStatusLine,
   EMPTY_ARTWORK,
   isArtworkBusy,
@@ -99,5 +101,43 @@ describe("normalizeFileName", () => {
     expect(normalizeFileName(null)).toBe("artwork");
     expect(normalizeFileName("  ")).toBe("artwork");
     expect(normalizeFileName(" banner.pdf ")).toBe("banner.pdf");
+  });
+});
+
+describe("artworkStateFromStoredFile", () => {
+  it("fills size, format and detection for a file already on the line", () => {
+    const prev = state({ phase: "stored", fileId: "file_art", fileName: "artwork" });
+    const next = artworkStateFromStoredFile(
+      {
+        fileId: "file_art",
+        originalFilename: "WorkHard.png",
+        detectedContentType: "image/png",
+        size: 492_000,
+        detected: {
+          kind: "raster",
+          pageCount: 1,
+          pixelWidth: 720,
+          pixelHeight: 1600,
+          dpi: 96,
+          measureUnit: "mm",
+          widthMilli: 190_500,
+          heightMilli: 423_300,
+          pageSize: null,
+          orientation: "portrait",
+        },
+      } as StoredFile,
+      prev,
+    );
+    expect(next.size).toBe(492_000);
+    expect(next.contentType).toBe("image/png");
+    expect(next.detected?.widthMilli).toBe(190_500);
+    expect(next.fileName).toBe("WorkHard.png");
+  });
+
+  it("does not overwrite an in-flight upload", () => {
+    const sending = state({ phase: "sending", fileId: "file_art", fileName: "next.png" });
+    expect(
+      artworkStateFromStoredFile({ fileId: "file_art", size: 12 } as StoredFile, sending),
+    ).toBe(sending);
   });
 });

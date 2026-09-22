@@ -31,9 +31,11 @@ import {
   unitWord,
   type MeasurementDraft,
 } from "@/lib/measurement";
+import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import {
   addOnGroups,
   boundValue,
+  clientUnitPriceMinor,
   firstMissingGroup,
   fileFormats,
   formatSentence,
@@ -68,10 +70,10 @@ function orderFloor(item: CatalogItem | null): number {
  * Same reading as the preview a shop sees of its own listing in
  * gridgo-supplier: sample, price, ready-in, what to do before ordering, the
  * numbered steps, then the extras. The difference is that here the boxes tick
- * and the price moves — and the price it moves to is the press's own
- * arithmetic, base plus the modifiers it published, not an estimate GRIDGO made
- * up. Whose press it is stays GRIDGO's business: the eyebrow over the name says
- * GRIDGO, because GRIDGO is who the client is buying from.
+ * and the price moves — and the price it moves to is GRIDGO's, the shop figure
+ * plus the live service fee, not the press's own rate. Whose press it is stays
+ * GRIDGO's business: the eyebrow over the name says GRIDGO, because GRIDGO is
+ * who the client is buying from.
  *
  * Nothing is pre-ticked. A sheet that opens with A5 already chosen shows a
  * price the client has not agreed to, and the whole point of the steps is that
@@ -106,13 +108,14 @@ export default function ListingScreen() {
   const [showMissing, setShowMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [feeRateBps, setFeeRateBps] = useState<number | null>(null);
 
   const loadSequence = useRef(0);
   const load = useCallback(() => {
     const sequence = ++loadSequence.current;
     if (!itemId) return;
     const cached = listingNow(itemId);
-    return takeListing(itemId).then((read) => {
+    const listing = takeListing(itemId).then((read) => {
       if (sequence !== loadSequence.current) return;
       setItem(read);
       setError(null);
@@ -128,6 +131,13 @@ export default function ListingScreen() {
         ),
       );
     });
+    const settings = api.getSettings().then((read) => {
+      if (sequence !== loadSequence.current) return;
+      if (Number.isInteger(read.serviceFeeRateBps)) setFeeRateBps(read.serviceFeeRateBps);
+    }).catch(() => {
+      // The sheet can still price from the listing's own GRIDGO fields.
+    });
+    return Promise.all([listing, settings]);
   }, [itemId]);
 
   useLiveRefresh(["catalog", "services", "settings"], load);
@@ -240,12 +250,23 @@ export default function ListingScreen() {
   const addOns = addOnGroups(item);
   const complete = isSelectionComplete(item, selection);
   const missing = firstMissingGroup(item, selection);
-  const unit = unitPriceMinor(item, selection);
+  const shopUnit = unitPriceMinor(item, selection);
   const kind = measurementKind(item);
   const measurement = toMeasurement(kind, measured);
-  // Null while a measured listing has no measurement yet. Drawn as "—" rather
-  // than as zero, because a zero in the price line reads as free.
-  const total = lineTotalMinor(item, quantity, measurement, unit);
+  // Shop first, then GRIDGO's fee — the same order checkout uses. Null while a
+  // measured listing has no measurement yet. Drawn as "—" rather than as zero,
+  // because a zero in the price line reads as free.
+  const shopTotal = lineTotalMinor(item, quantity, measurement, shopUnit);
+  const unit =
+    feeRateBps == null
+      ? (item.clientEffectivePriceMinor ?? item.clientFromPriceMinor ?? shopUnit)
+      : clientUnitPriceMinor(item, selection, feeRateBps);
+  const total =
+    shopTotal == null
+      ? null
+      : feeRateBps == null
+        ? shopTotal
+        : gridgoAmountMinor(shopTotal, feeRateBps);
   const sized = isMeasurementComplete(item, measured);
   const atMinimum = minimumApplies(item, measurement);
   const runMinimum = belowMinimumOrder(item, quantity);

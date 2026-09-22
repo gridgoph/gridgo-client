@@ -34,7 +34,18 @@ export const RECEIPT_OCR_HTML = `<!DOCTYPE html>
         var canvas = document.createElement("canvas");
         canvas.width = Math.round(img.naturalWidth * scale);
         canvas.height = Math.round(img.naturalHeight * scale);
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // Merchant QR receipts print the id in light grey. Stretch contrast
+        // so Tesseract can see DWQM…-style tokens, not only bold Ref. No.
+        var image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var data = image.data;
+        for (var i = 0; i < data.length; i += 4) {
+          var y = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          var v = Math.max(0, Math.min(255, (y - 128) * 1.6 + 128));
+          data[i] = data[i + 1] = data[i + 2] = v;
+        }
+        ctx.putImageData(image, 0, 0);
         return canvas;
       }
       var busy = false;

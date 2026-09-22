@@ -21,6 +21,7 @@ function keyOf(input: api.MatchInput): string {
   return JSON.stringify({
     subcategoryCode: input.subcategoryCode,
     cartId: input.cartId ?? null,
+    deadline: input.deadline ?? null,
     dropoff: dropoff
       ? { lat: dropoff.lat, lng: dropoff.lng, label: dropoff.label ?? null }
       : null,

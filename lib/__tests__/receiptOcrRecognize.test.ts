@@ -1,4 +1,5 @@
 import {
+  canRecognizeInBrowser,
   completeReceiptOcr,
   enqueueReceiptOcr,
   failReceiptOcr,
@@ -11,6 +12,10 @@ const mockReadImage = jest.fn();
 jest.mock("@/lib/nativeModules", () => ({
   getFileSystemLegacyNative: () => ({ readAsStringAsync: mockReadImage }),
 }));
+
+it("does not take the in-page Tesseract path under Jest (native host)", () => {
+  expect(canRecognizeInBrowser()).toBe(false);
+});
 
 describe("receipt OCR jobs", () => {
   afterEach(() => {

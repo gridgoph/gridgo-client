@@ -15,6 +15,7 @@ import type { ClientAddress, OrderPoint } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { prefetchMatch } from "@/lib/matchPrefetch";
 import { useCart } from "@/store/cart";
+import { useJobDeadline } from "@/store/jobDeadline";
 
 /**
  * Where is this going?
@@ -73,6 +74,7 @@ export default function WhereScreen() {
         prefetchMatch({
           subcategoryCode: subcategory,
           dropoff,
+          deadline: useJobDeadline.getState().by,
           cartId: cart.id,
         });
       }

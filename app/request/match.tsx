@@ -10,6 +10,7 @@ import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { MatchCard } from "@/components/MatchCard";
 import { MatchRankingRow } from "@/components/MatchRankingRow";
 import { MatchingWait } from "@/components/MatchingWait";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
@@ -18,7 +19,7 @@ import { formatDeadline } from "@/lib/deadline";
 import { userFacingError } from "@/lib/copy";
 import { readyInLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import { matchDistanceMeters } from "@/lib/match";
-import { takeMatch } from "@/lib/matchPrefetch";
+import { clearMatchPrefetch, takeMatch } from "@/lib/matchPrefetch";
 import { prefetchListing, rememberListing } from "@/lib/listingCache";
 import { rememberOrderFlow } from "@/lib/orderFlow";
 import { PRIORITIES_ROUTE } from "@/lib/priorities";
@@ -58,8 +59,9 @@ export default function MatchScreen() {
 
   const ranking = usePriorities((state) => state.ranking);
   const cart = useCart((state) => state.cart);
-  const cartId = useCart((state) => state.cartId);
   const dropoff = cart?.defaultDropoff ?? null;
+  const dropoffKey =
+    dropoff == null ? "" : `${dropoff.lat},${dropoff.lng}`;
   const deadline = useJobDeadline((state) => state.by);
 
   const [match, setMatch] = useState<MatchResult | null>(null);
@@ -72,9 +74,14 @@ export default function MatchScreen() {
     if (!subcategory) return;
     setLoading(true);
     try {
+      // Read the basket at call time. Subscribing to `cartId` would rematch
+      // the moment the listing sheet warms a cart — the client already has
+      // an answer, and that second call is how "nobody can finish by then"
+      // landed after they had already taken the pick.
+      const { cartId, cart: liveCart } = useCart.getState();
       const result = await takeMatch({
         subcategoryCode: subcategory,
-        dropoff,
+        dropoff: liveCart?.defaultDropoff ?? null,
         deadline,
         ...(cartId ? { cartId } : {}),
       });
@@ -104,7 +111,9 @@ export default function MatchScreen() {
     } finally {
       setLoading(false);
     }
-  }, [subcategory, dropoff, cartId, deadline]);
+    // `dropoffKey` is the pin, not the object: a cart hydrate that keeps the
+    // same coordinates must not look like a new drop-off.
+  }, [subcategory, dropoffKey, deadline]);
 
   // Deliberately not `useFocusEffect`: coming back from a listing sheet must
   // not re-run the match and quietly move the client to a different shop.
@@ -141,6 +150,20 @@ export default function MatchScreen() {
     return found?.name ?? "this";
   }, [category, subcategory]);
 
+  const openListing = useCallback(
+    (item: CatalogItem) => {
+      rememberListing(item);
+      prefetchListing(item.id);
+      // No shop name travels with the listing: the sheet it opens is
+      // GRIDGO's, and the press behind it is GRIDGO's business.
+      router.push({
+        pathname: "/request/listing",
+        params: { itemId: item.id },
+      });
+    },
+    [router],
+  );
+
   if (error === "dropoff_required") {
     return (
       <Redirect
@@ -169,7 +192,17 @@ export default function MatchScreen() {
                 : "Change your date and GRIDGO will look again."
             }
             actionLabel="Change my date"
-            onAction={() => router.back()}
+            onAction={() => {
+              clearMatchPrefetch();
+              if (router.canGoBack()) {
+                router.back();
+                return;
+              }
+              router.replace({
+                pathname: "/request/when",
+                params: { subcategory: subcategory ?? "", category: category ?? "" },
+              });
+            }}
           />
         </View>
       </Screen>
@@ -283,16 +316,7 @@ export default function MatchScreen() {
             <ListingRow
               key={item.id}
               item={item}
-              onPress={() => {
-                rememberListing(item);
-                prefetchListing(item.id);
-                // No shop name travels with the listing: the sheet it opens is
-                // GRIDGO's, and the press behind it is GRIDGO's business.
-                router.push({
-                  pathname: "/request/listing",
-                  params: { itemId: item.id },
-                });
-              }}
+              onPress={() => openListing(item)}
             />
           ))}
         </View>
@@ -303,6 +327,17 @@ export default function MatchScreen() {
           </Text>
         ) : null}
       </ScrollView>
+
+      <View className="gg-page gap-3 pb-2 pt-2">
+        <PrimaryButton
+          label="Continue"
+          onPress={() => {
+            const first = match.listings[0];
+            if (first) openListing(first);
+          }}
+          disabled={match.listings.length === 0}
+        />
+      </View>
     </Screen>
   );
 }

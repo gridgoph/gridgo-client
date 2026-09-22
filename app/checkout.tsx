@@ -21,6 +21,7 @@ import { PaymentProofRow } from "@/components/PaymentProofRow";
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
 import { StepTrail } from "@/components/StepTrail";
 import { SwipeToRemove } from "@/components/SwipeToRemove";
@@ -30,6 +31,7 @@ import * as api from "@/lib/api";
 import { formatPhp, type CartLineRecord } from "@/lib/api";
 import {
   basketTotals,
+  clientLineAmountMinor,
   lineName,
   lineOptionLabels,
   linesMissingArtwork,
@@ -38,6 +40,8 @@ import {
   printRuns,
 } from "@/lib/basket";
 import { gridgoPriceOrNull, unpricedLineReason } from "@/lib/clientPrice";
+import { openReceiptAfterCheckout } from "@/lib/receipt";
+import { clearOrderFlow } from "@/lib/orderFlow";
 import {
   blockerLine,
   fulfilmentModeFor,
@@ -216,7 +220,8 @@ export default function CheckoutScreen() {
   );
 
   const lines = useMemo(() => cart?.lines ?? [], [cart]);
-  const runs = useMemo(() => printRuns(lines), [lines]);
+  const feeRateBps = settings?.serviceFeeRateBps ?? 0;
+  const runs = useMemo(() => printRuns(lines, feeRateBps), [lines, feeRateBps]);
   const totals = useMemo(
     () => basketTotals({ cart, settings, shopPoints }),
     [cart, settings, shopPoints],
@@ -364,7 +369,8 @@ export default function CheckoutScreen() {
       });
       resetPayment();
       clearCart();
-      router.replace({ pathname: "/order/[id]", params: { id: order.id } });
+      clearOrderFlow();
+      openReceiptAfterCheckout(router, order.id);
     } catch (e) {
       setPlaceError(
         userFacingError(
@@ -582,6 +588,9 @@ export default function CheckoutScreen() {
                     router.push({ pathname: "/request/artwork", params: { lineId: line.id } })
                   }
                   onQuantity={(quantity) =>
+                    // Copies only. Pages live on measurement, and sending them
+                    // here would replace a 30-page document with whatever the
+                    // stepper last showed.
                     void change((id) => api.updateCartLine(id, line.id, { quantity }))
                   }
                   onRemove={() => setRemoving(line)}
@@ -816,11 +825,13 @@ export default function CheckoutScreen() {
           ) : null}
 
           <View className="gg-card gap-1">
-            {/* The shops' figure plus GRIDGO's charge, as the order is written.
-                With no fee row, this is what makes Items + Delivery = Total. */}
             <SpecRow
-              label="Items"
-              value={totals.gridgoItemsMinor == null ? "Not yet" : formatPhp(totals.gridgoItemsMinor)}
+              label="Printing"
+              value={
+                totals.clientItemSubtotalMinor == null
+                  ? "Not yet"
+                  : formatPhp(totals.clientItemSubtotalMinor)
+              }
             />
 
             {travel === "pickup" ? (
@@ -851,6 +862,14 @@ export default function CheckoutScreen() {
                 }
               />
             )}
+
+            {/* The fee is on the printing figure, so it is unknown while
+                that is — never ₱0.00 for a basket with an unpriced line. */}
+            <ServiceFeeRow
+              explainOnly
+              rateBps={settings?.serviceFeeRateBps ?? null}
+              pendingLabel={settings ? "Not yet" : "GRIDGO could not read its current charges"}
+            />
 
             <View className="gg-divider my-2" />
 
@@ -932,10 +951,9 @@ function LineRow({
 }) {
   const options = lineOptionLabels(line).join(" · ");
   const name = lineName(line);
-  // The line at GRIDGO's price. A line GRIDGO could not price says why, in
-  // the same amber the row uses for missing artwork: it needs the client's
-  // hand, and "—" or ₱0.00 would not say so.
   const priced = gridgoPriceOrNull(line.lineSubtotalMinor, serviceFeeRateBps);
+  const clientAmount =
+    priced ?? (serviceFeeRateBps == null ? null : clientLineAmountMinor(line, serviceFeeRateBps));
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -967,7 +985,7 @@ function LineRow({
                 <Text className="text-caption text-warning">{unpricedLineReason(line)}</Text>
               ) : (
                 <Text className="text-body text-text-secondary">
-                  {priced == null ? "" : formatPhp(priced)}
+                  {clientAmount == null ? "—" : formatPhp(clientAmount)}
                 </Text>
               )}
               <Text

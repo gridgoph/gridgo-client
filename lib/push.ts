@@ -118,7 +118,11 @@ export function parsePushData(raw: unknown): PushData {
  * fetches the order as it always does.
  */
 export function pushTargetRoute(data: PushData): string {
-  return data.orderId ? `/order/${data.orderId}` : "/(tabs)/notifications";
+  if (!data.orderId) return "/(tabs)/notifications";
+  if (data.type === "order_receipt_ready") {
+    return `/order/receipt?orderId=${encodeURIComponent(data.orderId)}`;
+  }
+  return `/order/${data.orderId}`;
 }
 
 /**

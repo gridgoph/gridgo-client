@@ -16,10 +16,16 @@ import type { ClientAddress } from "@/lib/api";
 import {
   applyContactProblems,
   applyStepProblem,
+  businessApplicationPending,
   type ApplyStepId,
 } from "@/lib/accountProfile";
+import { ACCOUNT_TYPES } from "@/lib/signup";
 import { useBusinessApply } from "@/store/businessApply";
 import { useSession } from "@/store/session";
+
+const APPLY_TYPES = ACCOUNT_TYPES.filter(
+  (option) => option.value === "business" || option.value === "organization",
+);
 
 /**
  * Turning a personal account into a business one.
@@ -88,13 +94,17 @@ export default function BusinessApplyScreen() {
     if (applied) router.back();
   }
 
+  if (businessApplicationPending(user)) {
+    return <PendingApplication />;
+  }
+
   return (
     <FormScreen
       overlay={
         <LoadingOverlay
           visible={submitting}
-          label="Switching your account over…"
-          body="GRIDGO is putting your business name on the account."
+          label="Sending your application…"
+          body="Operations will review this before the account becomes a business."
         />
       }
     >
@@ -103,21 +113,64 @@ export default function BusinessApplyScreen() {
 
         {stepId === "name" ? (
           <StepShell
-            heading="What is the business called?"
-            body="This is the name suppliers and riders see on every job you order, and the name on your account from here on."
+            heading={
+              draft.accountType === "organization"
+                ? "What is the organization called?"
+                : "What is the business called?"
+            }
+            body="Operations reviews this before GRIDGO puts the name on the account. You keep ordering as a personal client until they approve it."
           >
+            <View className="gap-3" accessibilityRole="radiogroup">
+              {APPLY_TYPES.map((option) => {
+                const selected = draft.accountType === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={option.label}
+                    onPress={() =>
+                      edit({ accountType: option.value as "business" | "organization" })
+                    }
+                    className={selected ? "gg-panel-high gap-1" : "gg-card gap-1"}
+                  >
+                    <Text className="text-body-lg font-medium text-text-primary">
+                      {option.label}
+                    </Text>
+                    <Text className="text-caption text-text-secondary">{option.hint}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             <FormField
-              label="Business name"
-              error={problem}
+              label={draft.accountType === "organization" ? "Organization name" : "Business name"}
+              error={problem && !draft.orgName.trim() ? problem : null}
               helper="Exactly as you trade — GRIDGO prints it as you type it."
             >
               <TextField
                 value={draft.orgName}
                 onChangeText={(orgName) => edit({ orgName })}
-                placeholder="Bautista Trading"
-                accessibilityLabel="Business name"
+                placeholder={
+                  draft.accountType === "organization" ? "San Pedro Parish" : "Bautista Trading"
+                }
+                accessibilityLabel={
+                  draft.accountType === "organization" ? "Organization name" : "Business name"
+                }
                 autoCapitalize="words"
                 autoFocus
+              />
+            </FormField>
+            <FormField
+              label="What do you do?"
+              error={problem && draft.orgName.trim() ? problem : null}
+              helper="A short line Operations can review — events, merchandise, a school office."
+            >
+              <TextField
+                value={draft.nature}
+                onChangeText={(nature) => edit({ nature })}
+                placeholder="Events and corporate merchandise"
+                accessibilityLabel="What do you do?"
+                autoCapitalize="sentences"
               />
             </FormField>
           </StepShell>
@@ -210,10 +263,14 @@ export default function BusinessApplyScreen() {
         {stepId === "review" ? (
           <StepShell
             heading="Is this right?"
-            body="GRIDGO puts this on your account and on every job from here on. Nothing has been changed yet."
+            body="This goes to Operations as an application. Nothing on the account changes until they approve it."
           >
             <View className="gg-card gap-4">
-              <ReviewRow label="Business name" value={draft.orgName.trim() || "—"} />
+              <ReviewRow
+                label={draft.accountType === "organization" ? "Organization" : "Business"}
+                value={draft.orgName.trim() || "—"}
+              />
+              <ReviewRow label="What you do" value={draft.nature.trim() || "—"} />
               <ReviewRow
                 label="Contact person"
                 value={draft.contactName.trim() || user?.name || "—"}
@@ -234,7 +291,7 @@ export default function BusinessApplyScreen() {
 
             {notice ? (
               <ErrorState
-                label={notice.notOpenYet ? "Not open yet" : "Not switched over"}
+                label={notice.notOpenYet ? "Not open yet" : "Not sent"}
                 body={notice.message}
                 retryLabel={notice.notOpenYet ? "Check again" : "Try again"}
                 onRetry={() => void finish()}
@@ -246,7 +303,7 @@ export default function BusinessApplyScreen() {
         <View className="gap-3">
           {last ? (
             <PrimaryButton
-              label={submitting ? "Applying…" : "Apply as a business"}
+              label={submitting ? "Sending…" : "Send application"}
               disabled={submitting}
               onPress={() => void finish()}
             />
@@ -255,6 +312,30 @@ export default function BusinessApplyScreen() {
           )}
           {index > 0 ? <SecondaryButton label="Back" onPress={back} /> : null}
         </View>
+      </View>
+    </FormScreen>
+  );
+}
+
+function PendingApplication() {
+  return (
+    <FormScreen>
+      <View className="gg-page gap-8 pb-16 pt-4">
+        <View className="gap-3">
+          <Text className="text-h1 text-text-primary">Application sent</Text>
+          <Text className="text-body-lg text-text-secondary">
+            Operations is reviewing this. You stay a personal client and can keep
+            ordering until they approve the business or organization account.
+          </Text>
+        </View>
+        <View className="gg-card gap-2">
+          <Text className="text-body-lg font-medium text-text-primary">Waiting for a decision</Text>
+          <Text className="text-body text-text-muted">
+            GRIDGO will update this account when Operations decides. Nothing here
+            needs doing in the meantime.
+          </Text>
+        </View>
+        <PrimaryButton label="Back to account" onPress={() => router.back()} />
       </View>
     </FormScreen>
   );

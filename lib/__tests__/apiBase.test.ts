@@ -172,6 +172,28 @@ describe("resolveApiBase", () => {
       }),
     ).toBe("http://10.0.0.4:9999");
   });
+
+  it("on web uses the page host so *.localhost isolation can reach the API", () => {
+    expect(
+      resolveApiBase({
+        envUrl: undefined,
+        envPort: "8787",
+        hostUri: "localhost:8081",
+        platformOS: "web",
+        pageHostname: "client.localhost",
+      }),
+    ).toBe("http://client.localhost:8787");
+
+    expect(
+      resolveApiBase({
+        envUrl: "https://api.example.com",
+        envPort: "8787",
+        hostUri: "localhost:8081",
+        platformOS: "web",
+        pageHostname: "client.localhost",
+      }),
+    ).toBe("https://api.example.com");
+  });
 });
 
 describe("hostnameFromHostUri", () => {

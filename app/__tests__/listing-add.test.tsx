@@ -34,6 +34,7 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     getCatalogItem: jest.fn(),
+    getSettings: jest.fn(),
     createCart: jest.fn(),
     addCartLine: jest.fn(),
     getCart: jest.fn(),
@@ -108,6 +109,12 @@ function renderInSafeArea(ui: ReactElement) {
 beforeEach(() => {
   mockReplace.mockClear();
   api.getCatalogItem.mockClear();
+  api.getSettings.mockReset();
+  api.getSettings.mockResolvedValue({
+    serviceFeeRateBps: 1_000,
+    issueWindowHours: 24,
+    deliveryFeeBands: [],
+  });
   api.createCart.mockClear();
   api.addCartLine.mockClear();
   api.getCart.mockClear();

@@ -176,25 +176,30 @@ const PRINTABLE_TYPES: Record<string, string> = {
 const THIN_FILE_BYTES = 200 * 1024;
 
 export function describeArtworkFile(file: {
-  originalFilename: string;
-  detectedContentType: string;
-  size: number;
+  originalFilename?: string | null;
+  detectedContentType?: string | null;
+  size?: number | null;
 }): ArtworkFact[] {
-  const facts: ArtworkFact[] = [
-    { id: "name", label: "File", value: file.originalFilename, tone: "neutral" },
-    {
+  const facts: ArtworkFact[] = [];
+  if (file.originalFilename) {
+    facts.push({ id: "name", label: "File", value: file.originalFilename, tone: "neutral" });
+  }
+  if (file.detectedContentType) {
+    facts.push({
       id: "format",
       label: "Format",
       value: PRINTABLE_TYPES[file.detectedContentType] ?? "Printable file",
       tone: "neutral",
-    },
-    {
+    });
+  }
+  if (typeof file.size === "number") {
+    facts.push({
       id: "size",
       label: "Size",
       value: formatBytes(file.size),
       tone: file.size < THIN_FILE_BYTES ? "warn" : "neutral",
-    },
-  ];
+    });
+  }
   return facts;
 }
 

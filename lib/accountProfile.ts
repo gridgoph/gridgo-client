@@ -51,7 +51,7 @@ export const ACCOUNT_NOT_OPEN_YET =
   "GRIDGO has not opened account changes on this app yet. Nothing here is lost — check again shortly, and ask Operations to correct anything that cannot wait.";
 
 export const BUSINESS_APPLY_NOT_OPEN_YET =
-  "GRIDGO has not opened business accounts on this app yet. Your answers stay on this screen — check again shortly, or ask Operations to switch the account over.";
+  "GRIDGO has not opened business applications on this app yet. Your answers stay on this screen — check again shortly, or ask Operations to review the account.";
 
 /** The record moved under the client. Says so, and what to do about it. */
 export const ACCOUNT_STALE =
@@ -305,6 +305,8 @@ export type ApplyStep = { id: ApplyStepId; label: string };
 
 export type BusinessApplyDraft = {
   orgName: string;
+  nature: string;
+  accountType: Extract<AccountType, "business" | "organization">;
   contactName: string;
   phone: string;
   /** A saved address, or null where the client has none yet. */
@@ -314,6 +316,8 @@ export type BusinessApplyDraft = {
 export function emptyApplyDraft(user: User | null): BusinessApplyDraft {
   return {
     orgName: user?.orgName?.trim() ?? "",
+    nature: "",
+    accountType: "business",
     contactName: user?.name?.trim() ?? "",
     phone: user?.phone?.trim() ?? "",
     addressId: null,
@@ -354,12 +358,20 @@ export function applyStepProblem(
   draft: BusinessApplyDraft,
 ): string | null {
   switch (step) {
-    case "name":
-      return checkSignupField("orgName", {
+    case "name": {
+      const name = checkSignupField("orgName", {
         ...EMPTY_SIGNUP,
-        accountType: "business",
+        accountType: draft.accountType,
         orgName: draft.orgName,
       }).reason;
+      if (name) return name;
+      if (!draft.nature.trim()) {
+        return draft.accountType === "organization"
+          ? "Say what this organization does."
+          : "Say what this business does.";
+      }
+      return null;
+    }
     case "contact":
       return (
         applyContactProblems(draft).contactName ?? applyContactProblems(draft).phone ?? null
@@ -388,46 +400,25 @@ export function applyContactProblems(draft: BusinessApplyDraft): {
 }
 
 /**
- * Draft → exactly the body `POST /me/business-apply` wants.
+ * Draft → exactly the body `POST /me/business-application` wants.
  *
- * The chosen address is sent whole. GRIDGO matches it against the ones already
- * saved, so a saved address comes back as itself rather than as a duplicate,
- * and `isDefault` is what makes it the place orders go from here on.
- *
- * `accountType` is left off: it defaults to `business` server-side, and
- * business is the only upgrade this screen offers. An organization is a
- * different declaration with different wording, and offering it behind a
- * button that says "Apply as a business" would be the screen lying about what
- * it does.
+ * Address and contact stay on the account; they do not convert the type.
+ * Operations reads the name, nature, and requested account type from the case.
  */
-export function businessApplyInput(
-  draft: BusinessApplyDraft,
-  address: ClientAddress | null,
-): api.BusinessApplyInput {
-  const contactName = draft.contactName.trim();
-  const contactPhone = draft.phone.trim();
-  const input: api.BusinessApplyInput = { businessName: draft.orgName.trim() };
-
-  if (contactName) input.contactName = contactName;
-  if (contactPhone) input.contactPhone = contactPhone;
-  if (address) {
-    input.address = {
-      label: address.label,
-      addressLine: address.addressLine,
-      // Only lat/lng: GRIDGO refuses an address body carrying anything it did
-      // not ask for, and `OrderPoint` also carries a label.
-      point: { lat: address.point.lat, lng: address.point.lng },
-      isDefault: true,
-    };
-  }
-  return input;
+export function businessApplyInput(draft: BusinessApplyDraft): api.BusinessApplyInput {
+  return {
+    businessName: draft.orgName.trim(),
+    businessNature: draft.nature.trim(),
+    accountType: draft.accountType,
+  };
 }
 
 export async function submitBusinessApply(
   input: api.BusinessApplyInput,
+  idempotencyKey: string,
 ): Promise<AccountOutcome<User>> {
   try {
-    return { status: "ok", value: await api.applyAsBusiness(input) };
+    return { status: "ok", value: await api.applyAsBusiness(input, idempotencyKey) };
   } catch (error) {
     if (isRouteAbsent(error)) return { status: "not_open_yet" };
     return {
@@ -435,7 +426,7 @@ export async function submitBusinessApply(
       field: refusedField(error),
       message: userFacingError(
         error,
-        "GRIDGO could not switch your account over. Try again in a moment.",
+        "GRIDGO could not send that application. Try again in a moment.",
       ),
     };
   }
@@ -499,8 +490,23 @@ export function accountSubName(user: User | null): string | null {
   return name && name !== headline ? name : null;
 }
 
-/** True while this account may still be upgraded from this app. */
+/** The live business/organization application, if this client has one. */
+export function businessApplication(
+  user: User | null,
+): api.ApprovalCaseSummary | null {
+  const approval = user?.approvalCase;
+  if (!approval || approval.kind !== "business_client") return null;
+  return approval;
+}
+
+export function businessApplicationPending(user: User | null): boolean {
+  return businessApplication(user)?.status === "pending";
+}
+
+/** True while this account may still send a new application from this app. */
 export function canApplyAsBusiness(user: User | null): boolean {
   if (!user) return false;
-  return (user.accountType ?? "individual") === "individual";
+  if ((user.accountType ?? "individual") !== "individual") return false;
+  const status = businessApplication(user)?.status;
+  return status !== "pending" && status !== "approved";
 }

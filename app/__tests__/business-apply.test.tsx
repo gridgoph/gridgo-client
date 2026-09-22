@@ -75,9 +75,12 @@ describe("applying as a business", () => {
   it("walks the steps, sends what GRIDGO asked for, and lands back on Account", async () => {
     api.applyAsBusiness.mockResolvedValue({
       ...CLIENT,
-      accountType: "business",
-      orgName: "Bautista Trading",
-      version: 4,
+      approvalCase: {
+        id: "apc_1",
+        kind: "business_client",
+        status: "pending",
+        version: 1,
+      },
     });
 
     await renderInSafeArea(<BusinessApplyScreen />);
@@ -86,6 +89,7 @@ describe("applying as a business", () => {
     // name and a number, and retyping them is friction, not diligence.
     expect(screen.getByText("What is the business called?")).toBeTruthy();
     fireEvent.changeText(screen.getByLabelText("Business name"), "Bautista Trading");
+    fireEvent.changeText(screen.getByLabelText("What do you do?"), "Events and merchandise");
     await waitFor(() =>
       expect(screen.getByLabelText("Business name").props.value).toBe("Bautista Trading"),
     );
@@ -104,25 +108,22 @@ describe("applying as a business", () => {
     expect(screen.getByText("ana@bautista.ph")).toBeTruthy();
 
     // The primary action carries its verb as its label, not an aria name.
-    fireEvent.press(screen.getByText("Apply as a business"));
+    fireEvent.press(screen.getByText("Send application"));
 
     await waitFor(() => expect(api.applyAsBusiness).toHaveBeenCalled());
-    expect(api.applyAsBusiness).toHaveBeenCalledWith({
-      businessName: "Bautista Trading",
-      contactName: "Ana Bautista",
-      contactPhone: "+639171234567",
-      address: {
-        label: "Office",
-        addressLine: "12 Quimpo Blvd, Talomo",
-        point: { lat: 7.07, lng: 125.61 },
-        isDefault: true,
+    expect(api.applyAsBusiness).toHaveBeenCalledWith(
+      {
+        businessName: "Bautista Trading",
+        businessNature: "Events and merchandise",
+        accountType: "business",
       },
-    });
+      expect.any(String),
+    );
 
-    // The session carries GRIDGO's answer, never the app's guess at it, so the
-    // identity card is a business the moment the client is back on it.
-    await waitFor(() => expect(useSession.getState().user?.accountType).toBe("business"));
-    expect(useSession.getState().user?.orgName).toBe("Bautista Trading");
+    // The session stays personal. GRIDGO's answer is the pending case.
+    await waitFor(() => expect(useSession.getState().user?.approvalCase?.status).toBe("pending"));
+    expect(useSession.getState().user?.accountType).toBe("individual");
+    expect(useSession.getState().user?.orgName).toBeUndefined();
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
   });
 });
