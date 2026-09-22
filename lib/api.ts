@@ -901,6 +901,8 @@ function withBusinessApplication(
   user: User,
   approvalCases?: ApprovalCaseSummary[] | ApprovalCaseSummary | null,
 ): User {
+  // A probe can answer `{ user: null }`; there is nothing to fold onto then.
+  if (!user) return user;
   const list = Array.isArray(approvalCases)
     ? approvalCases
     : approvalCases
