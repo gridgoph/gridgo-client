@@ -31,6 +31,7 @@ import * as api from "@/lib/api";
 import { formatPhp, type CartLineRecord } from "@/lib/api";
 import {
   basketTotals,
+  clientLineAmountMinor,
   lineName,
   lineOptionLabels,
   linesMissingArtwork,
@@ -219,7 +220,8 @@ export default function CheckoutScreen() {
   );
 
   const lines = useMemo(() => cart?.lines ?? [], [cart]);
-  const runs = useMemo(() => printRuns(lines), [lines]);
+  const feeRateBps = settings?.serviceFeeRateBps ?? 0;
+  const runs = useMemo(() => printRuns(lines, feeRateBps), [lines, feeRateBps]);
   const totals = useMemo(
     () => basketTotals({ cart, settings, shopPoints }),
     [cart, settings, shopPoints],
@@ -823,11 +825,13 @@ export default function CheckoutScreen() {
           ) : null}
 
           <View className="gg-card gap-1">
-            {/* The shops' own figure; the fee row below names GRIDGO's charge. A
-                basket with an unpriced line has no printing figure yet. */}
             <SpecRow
               label="Printing"
-              value={totals.itemSubtotalMinor == null ? "Not yet" : formatPhp(totals.itemSubtotalMinor)}
+              value={
+                totals.clientItemSubtotalMinor == null
+                  ? "Not yet"
+                  : formatPhp(totals.clientItemSubtotalMinor)
+              }
             />
 
             {travel === "pickup" ? (
@@ -862,7 +866,7 @@ export default function CheckoutScreen() {
             {/* The fee is on the printing figure, so it is unknown while
                 that is — never ₱0.00 for a basket with an unpriced line. */}
             <ServiceFeeRow
-              amountMinor={settings && totals.itemSubtotalMinor != null ? totals.serviceFeeMinor : null}
+              explainOnly
               rateBps={settings?.serviceFeeRateBps ?? null}
               pendingLabel={settings ? "Not yet" : "GRIDGO could not read its current charges"}
             />
@@ -947,10 +951,9 @@ function LineRow({
 }) {
   const options = lineOptionLabels(line).join(" · ");
   const name = lineName(line);
-  // The line at GRIDGO's price. A line GRIDGO could not price says why, in
-  // the same amber the row uses for missing artwork: it needs the client's
-  // hand, and "—" or ₱0.00 would not say so.
   const priced = gridgoPriceOrNull(line.lineSubtotalMinor, serviceFeeRateBps);
+  const clientAmount =
+    priced ?? (serviceFeeRateBps == null ? null : clientLineAmountMinor(line, serviceFeeRateBps));
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -982,7 +985,7 @@ function LineRow({
                 <Text className="text-caption text-warning">{unpricedLineReason(line)}</Text>
               ) : (
                 <Text className="text-body text-text-secondary">
-                  {priced == null ? "" : formatPhp(priced)}
+                  {clientAmount == null ? "—" : formatPhp(clientAmount)}
                 </Text>
               )}
               <Text

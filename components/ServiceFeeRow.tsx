@@ -8,23 +8,38 @@ import {
 } from "@/lib/serviceFee";
 
 type Props = {
-  amountMinor: number | null;
+  amountMinor?: number | null;
   rateBps: number | null;
   /** Shown when the amount is not known yet. */
   pendingLabel?: string;
+  /**
+   * Tap-to-explain only. Printing already includes the fee, so this row
+   * must not show a peso amount that looks like a second charge.
+   */
+  explainOnly?: boolean;
 };
 
 /**
- * Printing + delivery's missing third line.
+ * Printing + delivery's missing third line — or, on client checkout and
+ * receipt, an explainer for a fee that is already inside Printing.
  *
- * The amount is the row. Tapping it is how a client asks what the fee is
- * for — the explainer is not a second yellow control, and it is not on
- * screen until they ask.
+ * The amount is the row when this is a charged split. Tapping it is how a
+ * client asks what the fee is for — the explainer is not a second yellow
+ * control, and it is not on screen until they ask.
  */
-export function ServiceFeeRow({ amountMinor, rateBps, pendingLabel = "—" }: Props) {
+export function ServiceFeeRow({
+  amountMinor,
+  rateBps,
+  pendingLabel = "—",
+  explainOnly = false,
+}: Props) {
   const [open, setOpen] = useState(false);
   const label = serviceFeeLabel(rateBps);
-  const value = amountMinor == null ? pendingLabel : formatPhp(amountMinor);
+  const value = explainOnly
+    ? null
+    : amountMinor == null
+      ? pendingLabel
+      : formatPhp(amountMinor);
 
   return (
     <View className="border-b border-outline-subtle">
@@ -37,7 +52,9 @@ export function ServiceFeeRow({ amountMinor, rateBps, pendingLabel = "—" }: Pr
         className="flex-row items-baseline justify-between gap-4 py-3"
       >
         <Text className="text-body text-text-secondary">{label}</Text>
-        <Text className="shrink text-body text-text-primary">{value}</Text>
+        {value != null ? (
+          <Text className="shrink text-body text-text-primary">{value}</Text>
+        ) : null}
       </Pressable>
       {open ? (
         <Text className="pb-3 text-caption text-text-muted">{SERVICE_FEE_EXPLAINER}</Text>

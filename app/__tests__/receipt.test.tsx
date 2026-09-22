@@ -93,17 +93,18 @@ describe("order receipt", () => {
     });
   });
 
-  it("shows print, delivery, service fee, total and the payment reference", async () => {
+  it("shows GRIDGO printing, delivery and total without adding the fee twice", async () => {
     await render(wrap(<OrderReceiptScreen />));
 
     expect(await screen.findByText("Order receipt")).toBeTruthy();
     expect(screen.getByText("GG-20260824-0001")).toBeTruthy();
     expect(screen.getByText("Printing")).toBeTruthy();
-    expect(screen.getAllByText("₱40.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("₱44.00").length).toBeGreaterThan(0);
+    expect(screen.queryByText("₱40.00")).toBeNull();
     expect(screen.getByText("Delivery")).toBeTruthy();
     expect(screen.getByText("₱25.00")).toBeTruthy();
     expect(screen.getByText("Service fee · 10%")).toBeTruthy();
-    expect(screen.getByText("₱4.00")).toBeTruthy();
+    expect(screen.queryByText("₱4.00")).toBeNull();
     expect(screen.getByText("₱69.00")).toBeTruthy();
     expect(screen.getByText("1234567890123")).toBeTruthy();
     expect(screen.getByText("Request a physical invoice")).toBeTruthy();

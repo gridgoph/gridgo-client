@@ -32,8 +32,8 @@ import { formatTimelineStamp } from "@/lib/relativeTime";
  * The acknowledgement that this order was placed.
  *
  * The invoice snapshot already exists on GRIDGO. This screen is the first
- * place a client can open it: print, delivery, the service fee, the total,
- * and the payment reference they sent.
+ * place a client can open it: GRIDGO printing, delivery, the total, and the
+ * payment reference they sent. The snapshotted fee is already inside printing.
  */
 export default function OrderReceiptScreen() {
   const { orderId, from } = useLocalSearchParams<{ orderId: string; from?: string }>();
@@ -197,10 +197,7 @@ export default function OrderReceiptScreen() {
                   : formatPhp(view.money.deliveryFeeMinor)
               }
             />
-            <ServiceFeeRow
-              amountMinor={view.money.serviceFeeMinor}
-              rateBps={view.money.serviceFeeRateBps}
-            />
+            <ServiceFeeRow explainOnly rateBps={view.money.serviceFeeRateBps} />
             <View className="flex-row items-baseline justify-between gap-4 pt-3">
               <Text className="text-body-lg text-text-secondary">Total</Text>
               <Text className="text-h3 text-text-primary">{formatPhp(view.money.totalMinor)}</Text>

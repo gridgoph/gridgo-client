@@ -34,7 +34,7 @@ const invoice: Invoice = {
 };
 
 describe("receiptFromInvoice", () => {
-  it("shows print, delivery, service fee, total and the job reference", () => {
+  it("shows GRIDGO printing, delivery and total from the invoice snapshot", () => {
     const view = receiptFromInvoice(invoice, {
       payments: {
         initial: {
@@ -51,7 +51,7 @@ describe("receiptFromInvoice", () => {
     expect(view.invoiceNumber).toBe("GG-20260824-0001");
     expect(view.orderReference).toBe("3FF0-128E-105A");
     expect(view.money).toEqual({
-      printingMinor: 4000,
+      printingMinor: 4400,
       deliveryFeeMinor: 2500,
       serviceFeeMinor: 400,
       serviceFeeRateBps: 1000,
@@ -59,6 +59,7 @@ describe("receiptFromInvoice", () => {
     });
     expect(view.paymentReference).toBe("1234567890123");
     expect(view.lines[0]?.name).toBe("Flyers");
+    expect(view.lines[0]?.amountLabel).toBe("₱44.00");
   });
 });
 
@@ -100,5 +101,23 @@ describe("receiptFromOrder", () => {
         totalMinor: null,
       } as Order),
     ).toBeNull();
+  });
+
+  it("folds the snapshotted fee into printing so the receipt does not charge it twice", () => {
+    const view = receiptFromOrder({
+      id: "ord_1",
+      title: "Flyers",
+      quantity: 100,
+      subtotalMinor: 4000,
+      serviceFeeMinor: 400,
+      serviceFeeRateBps: 1000,
+      deliveryFeeMinor: 2500,
+      totalMinor: 6900,
+      createdAt: "2026-08-24T00:00:00.000Z",
+    } as Order);
+
+    expect(view?.money.printingMinor).toBe(4400);
+    expect(view?.money.totalMinor).toBe(6900);
+    expect(view?.lines[0]?.amountLabel).toBe("₱44.00");
   });
 });

@@ -1,13 +1,17 @@
 /**
  * The client's acknowledgement receipt, from the invoice snapshot.
  *
- * `GET /orders/:id/invoice` is the authority: print, delivery, the service
+ * `GET /orders/:id/invoice` is the authority: print, delivery, the snapshotted
  * fee, the total, and the invoice number. The order adds the payment
  * reference the client typed and the job reference they already know.
+ *
+ * Client surfaces show GRIDGO printing (shop items + the snapshotted fee),
+ * then delivery, then total. The fee is not a third charge on top of print.
  */
 
 import type { Invoice, Order, OrderPayments } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
+import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { orderReference } from "@/lib/orderReference";
 import { showsServiceFee } from "@/lib/serviceFee";
 
@@ -76,6 +80,7 @@ export function paymentReferenceOf(
 }
 
 export function receiptFromInvoice(invoice: Invoice, order?: Order | null): ReceiptView {
+  const printingMinor = invoice.itemSubtotalMinor + invoice.serviceFeeMinor;
   return {
     invoiceNumber: invoice.invoiceNumber,
     orderId: invoice.orderId,
@@ -85,10 +90,12 @@ export function receiptFromInvoice(invoice: Invoice, order?: Order | null): Rece
       id: line.id,
       name: line.itemName,
       quantity: line.quantity,
-      amountLabel: formatPhp(line.amountMinor),
+      amountLabel: formatPhp(
+        gridgoAmountMinor(line.amountMinor, invoice.serviceFeeRateBps) ?? line.amountMinor,
+      ),
     })),
     money: {
-      printingMinor: invoice.itemSubtotalMinor,
+      printingMinor,
       deliveryFeeMinor: invoice.deliveryFeeMinor,
       serviceFeeMinor: invoice.serviceFeeMinor,
       serviceFeeRateBps: invoice.serviceFeeRateBps,
@@ -108,16 +115,17 @@ export function receiptFromOrder(order: Order): ReceiptView | null {
   if (order.subtotalMinor == null || order.totalMinor == null) return null;
   const serviceFeeMinor = order.serviceFeeMinor ?? 0;
   const serviceFeeRateBps = order.serviceFeeRateBps ?? 0;
+  const printingMinor = order.subtotalMinor + serviceFeeMinor;
   return {
     invoiceNumber: order.invoiceNumber ?? "",
     orderId: order.id,
     orderReference: orderReference(order.id),
     issuedAt: order.createdAt,
     lines: order.title
-      ? [{ id: order.id, name: order.title, quantity: order.quantity, amountLabel: formatPhp(order.subtotalMinor) }]
+      ? [{ id: order.id, name: order.title, quantity: order.quantity, amountLabel: formatPhp(printingMinor) }]
       : [],
     money: {
-      printingMinor: order.subtotalMinor,
+      printingMinor,
       deliveryFeeMinor: order.deliveryFeeMinor ?? 0,
       serviceFeeMinor,
       serviceFeeRateBps,

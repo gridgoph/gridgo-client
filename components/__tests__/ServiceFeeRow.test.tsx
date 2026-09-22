@@ -14,4 +14,15 @@ describe("ServiceFeeRow", () => {
     await fireEvent.press(screen.getByLabelText("Service fee · 10%"));
     expect(screen.getByText(SERVICE_FEE_EXPLAINER)).toBeTruthy();
   });
+
+  it("explains the fee without showing a peso amount when printing already includes it", async () => {
+    await render(<ServiceFeeRow explainOnly rateBps={1000} />);
+
+    expect(screen.getByText("Service fee · 10%")).toBeTruthy();
+    expect(screen.queryByText("₱4.00")).toBeNull();
+    expect(screen.queryByText("—")).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText("Service fee · 10%"));
+    expect(screen.getByText(SERVICE_FEE_EXPLAINER)).toBeTruthy();
+  });
 });
