@@ -42,7 +42,6 @@ export function SupportChatConversation({
   }, []);
 
   const load = useCallback(async () => {
-    setError(null);
     try {
       if (threadId) {
         const detail = await api.getSupportChatThread(threadId);
@@ -73,6 +72,7 @@ export function SupportChatConversation({
   }, [adopt, setUnreadCount, threadId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- A network read on mount: every state it sets lands after the response, not in the effect body.
     void load();
   }, [load]);
 
@@ -129,6 +129,7 @@ export function SupportChatConversation({
               label="Could not load chat"
               body={error}
               onRetry={() => {
+                setError(null);
                 setLoading(true);
                 void load();
               }}
