@@ -13,7 +13,7 @@ import type { Invoice, Order, OrderPayments } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { orderReference } from "@/lib/orderReference";
-import { showsServiceFee } from "@/lib/serviceFee";
+import { printingMinor, showsServiceFee } from "@/lib/serviceFee";
 
 export const RECEIPT_HEADLINE = "Order receipt";
 export const RECEIPT_BLURB =
@@ -80,7 +80,7 @@ export function paymentReferenceOf(
 }
 
 export function receiptFromInvoice(invoice: Invoice, order?: Order | null): ReceiptView {
-  const printingMinor = invoice.itemSubtotalMinor + invoice.serviceFeeMinor;
+  const printing = printingMinor(invoice.itemSubtotalMinor, invoice.serviceFeeMinor);
   return {
     invoiceNumber: invoice.invoiceNumber,
     orderId: invoice.orderId,
@@ -95,7 +95,7 @@ export function receiptFromInvoice(invoice: Invoice, order?: Order | null): Rece
       ),
     })),
     money: {
-      printingMinor,
+      printingMinor: printing,
       deliveryFeeMinor: invoice.deliveryFeeMinor,
       serviceFeeMinor: invoice.serviceFeeMinor,
       serviceFeeRateBps: invoice.serviceFeeRateBps,
@@ -115,17 +115,17 @@ export function receiptFromOrder(order: Order): ReceiptView | null {
   if (order.subtotalMinor == null || order.totalMinor == null) return null;
   const serviceFeeMinor = order.serviceFeeMinor ?? 0;
   const serviceFeeRateBps = order.serviceFeeRateBps ?? 0;
-  const printingMinor = order.subtotalMinor + serviceFeeMinor;
+  const printing = printingMinor(order.subtotalMinor, serviceFeeMinor);
   return {
     invoiceNumber: order.invoiceNumber ?? "",
     orderId: order.id,
     orderReference: orderReference(order.id),
     issuedAt: order.createdAt,
     lines: order.title
-      ? [{ id: order.id, name: order.title, quantity: order.quantity, amountLabel: formatPhp(printingMinor) }]
+      ? [{ id: order.id, name: order.title, quantity: order.quantity, amountLabel: formatPhp(printing) }]
       : [],
     money: {
-      printingMinor,
+      printingMinor: printing,
       deliveryFeeMinor: order.deliveryFeeMinor ?? 0,
       serviceFeeMinor,
       serviceFeeRateBps,

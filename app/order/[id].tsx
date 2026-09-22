@@ -50,6 +50,7 @@ import {
 import { isJobComplete } from "@/lib/jobComplete";
 import { installmentUnderReview, payableInstallment, paymentInstallment } from "@/lib/payment";
 import { canRate } from "@/lib/rating";
+import { printingMinor, showsServiceFee } from "@/lib/serviceFee";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
@@ -386,8 +387,10 @@ export default function OrderDetailScreen() {
  *
  * Two shapes, because there are two truths. Before a supplier accepts there is
  * no exact price, so the card shows the platform's range and says why delivery
- * is missing from it. After acceptance it shows printing, delivery, the
- * service fee and total — the figures on the receipt.
+ * is missing from it. After acceptance it shows the receipt's own figures:
+ * Printing with GRIDGO's charge already inside it, then delivery, then total.
+ * The service-fee row names the rate and shows no peso amount, because the
+ * amount is not a second charge — see `lib/serviceFee.ts`.
  */
 function MoneyCard({
   order,
@@ -421,14 +424,18 @@ function MoneyCard({
 
   const downpayment = paymentInstallment(order, "downpayment");
   const balance = paymentInstallment(order, "balance");
-  const showFee = order.serviceFeeMinor != null || order.serviceFeeRateBps != null;
+  const showFee = showsServiceFee(order);
 
   return (
     <View className="gap-3">
       <View className="gg-card">
         <SpecRow
           label="Printing"
-          value={order.subtotalMinor != null ? formatPhp(order.subtotalMinor) : "—"}
+          value={
+            order.subtotalMinor != null
+              ? formatPhp(printingMinor(order.subtotalMinor, order.serviceFeeMinor))
+              : "—"
+          }
         />
         <SpecRow
           label="Delivery"
@@ -441,10 +448,7 @@ function MoneyCard({
           }
         />
         {showFee ? (
-          <ServiceFeeRow
-            amountMinor={order.serviceFeeMinor ?? null}
-            rateBps={order.serviceFeeRateBps ?? null}
-          />
+          <ServiceFeeRow explainOnly rateBps={order.serviceFeeRateBps ?? null} />
         ) : null}
         {downpayment ? (
           <SpecRow

@@ -44,3 +44,19 @@ export function showsServiceFee(input: {
 }): boolean {
   return input.serviceFeeMinor != null || input.serviceFeeRateBps != null;
 }
+
+/**
+ * What the client is charged for printing: the shop's items with GRIDGO's
+ * charge already inside them.
+ *
+ * Checkout, order detail and the receipt all state Printing this way, so the
+ * three readings of one order agree to the centavo and Printing + Delivery =
+ * Total on each of them. The fee is never a second line on top of it — the
+ * row that names it is `ServiceFeeRow explainOnly`, label and rate only.
+ */
+export function printingMinor(
+  itemSubtotalMinor: number,
+  serviceFeeMinor: number | null | undefined,
+): number {
+  return itemSubtotalMinor + (serviceFeeMinor ?? 0);
+}

@@ -399,7 +399,10 @@ describe("OrderDetailScreen", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  it("shows printing, delivery and the snapshotted service fee", async () => {
+  it("shows GRIDGO printing and delivery, and the fee without a peso amount", async () => {
+    // The same sheet the receipt draws: Printing carries GRIDGO's charge, so
+    // Printing + Delivery = Total and neither the shop's own ₱1,000.00 nor
+    // the ₱100.00 cut is a line a client could read as a charge.
     setOrder({
       subtotalMinor: 100000,
       serviceFeeMinor: 10000,
@@ -411,9 +414,10 @@ describe("OrderDetailScreen", () => {
 
     await screen.findByText("Grand opening tarpaulin");
     expect(screen.getAllByText("Printing").length).toBeGreaterThan(0);
-    expect(screen.getByText("₱1,000.00")).toBeTruthy();
+    expect(screen.getByText("₱1,100.00")).toBeTruthy();
     expect(screen.getByText("Service fee · 10%")).toBeTruthy();
-    expect(screen.getByText("₱100.00")).toBeTruthy();
+    expect(screen.queryByText("₱1,000.00")).toBeNull();
+    expect(screen.queryByText("₱100.00")).toBeNull();
     expect(screen.getByText("₱25.00")).toBeTruthy();
     expect(screen.getByText("₱1,125.00")).toBeTruthy();
     expect(screen.getByText("View receipt")).toBeTruthy();
@@ -421,21 +425,21 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText(/commission/i)).toBeNull();
   });
 
-  it("names the shop's printing figure and the fee apart when the order carries no rate", async () => {
+  it("still folds the fee into printing when the order carries no rate", async () => {
     // A matched order as gridgo-api writes it: `subtotalMinor` is the shops'
-    // own figure and `serviceFeeMinor` GRIDGO's charge. An older order has
-    // no snapshotted rate, so the row is a plain "Service fee"; the three
-    // lines still add up to the Total, and no ₱924 stands in for two of them.
+    // own figure and `serviceFeeMinor` GRIDGO's charge. An older order has no
+    // snapshotted rate, so the row is a plain "Service fee" — it still names
+    // the fee and still shows no amount, and Printing + Delivery = Total.
     setOrder({ subtotalMinor: 84000, serviceFeeMinor: 8400, deliveryFeeMinor: 7500, totalMinor: 99900 });
     await renderInSafeArea(<OrderDetailScreen />);
 
     await screen.findByText("Grand opening tarpaulin");
-    expect(screen.getByText("₱840.00")).toBeTruthy();
+    expect(screen.getByText("₱924.00")).toBeTruthy();
     expect(screen.getByText("Service fee")).toBeTruthy();
-    expect(screen.getByText("₱84.00")).toBeTruthy();
+    expect(screen.queryByText("₱840.00")).toBeNull();
+    expect(screen.queryByText("₱84.00")).toBeNull();
     expect(screen.getByText("₱75.00")).toBeTruthy();
     expect(screen.getByText("₱999.00")).toBeTruthy();
-    expect(screen.queryByText("₱924.00")).toBeNull();
   });
 
   it("asks for the downpayment by QR, and never for cash or credits", async () => {
