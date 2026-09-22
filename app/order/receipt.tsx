@@ -219,7 +219,7 @@ export default function OrderReceiptScreen() {
           ) : null}
         </View>
 
-        {canRate(order) ? (
+        {order && canRate(order) ? (
           <View className="gg-card gap-3 p-4">
             <Text className="text-h3 text-text-primary">How did it go?</Text>
             <Text className="text-body text-text-secondary">

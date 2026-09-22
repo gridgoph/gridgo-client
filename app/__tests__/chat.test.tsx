@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import ChatListScreen from "@/app/chat/index";
 import ChatThreadScreen from "@/app/chat/[thread]";
+import type * as api from "@/lib/api";
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -31,11 +32,22 @@ jest.mock("react-native-keyboard-controller", () => {
   return { KeyboardAvoidingView: View };
 });
 
-const mockGetSupportChatMe = jest.fn(async () => ({ thread: null, threads: [], messages: [], unreadCount: 0 }));
+type SupportChatMe = Awaited<ReturnType<typeof api.getSupportChatMe>>;
+type SupportChatRead = Awaited<ReturnType<typeof api.markSupportChatRead>>;
+
+const mockGetSupportChatMe = jest.fn<Promise<SupportChatMe>, unknown[]>(async () => ({
+  thread: null,
+  threads: [],
+  messages: [],
+  unreadCount: 0,
+}));
 const mockGetSupportChatThread = jest.fn();
 const mockOpenSupportChatThread = jest.fn();
 const mockSendSupportChatMessage = jest.fn();
-const mockMarkSupportChatRead = jest.fn(async () => ({ thread: null, unreadCount: 0 }));
+const mockMarkSupportChatRead = jest.fn<Promise<SupportChatRead>, unknown[]>(async () => ({
+  thread: null,
+  unreadCount: 0,
+}));
 
 jest.mock("@/lib/api", () => ({
   getSupportChatMe: (...args: unknown[]) => mockGetSupportChatMe(...args),
