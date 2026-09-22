@@ -226,6 +226,33 @@ describe("the release APK is built with Firebase, or not at all", () => {
   });
 });
 
+describe("the release Gradle JVM is provisioned for a Hermes assemble", () => {
+  it("raises the signed-release job timeout past a slow runner's finish line", () => {
+    expect(apk).toMatch(/timeout-minutes:\s*90/);
+  });
+
+  it("overwrites Expo's 2g daemon heap after prebuild and before Gradle", () => {
+    const prebuild = apkSteps.findIndex((step) => step.includes("expo prebuild"));
+    const heap = apkSteps.findIndex((step) => step.includes("org.gradle.jvmargs"));
+    const build = apkSteps.findIndex((step) => step.includes("gradlew assembleRelease"));
+
+    expect(prebuild).toBeGreaterThanOrEqual(0);
+    expect(heap).toBeGreaterThan(prebuild);
+    expect(build).toBeGreaterThan(heap);
+
+    const heapStep = apkSteps[heap];
+    expect(heapStep).toContain(
+      "org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8",
+    );
+    expect(heapStep).toContain("grep '^org.gradle.jvmargs=' gradle.properties");
+  });
+
+  it("caps Gradle workers so four do not each claim the heap", () => {
+    const build = apkSteps.find((step) => step.includes("gradlew assembleRelease"));
+    expect(build).toContain("./gradlew assembleRelease --no-daemon --max-workers=2");
+  });
+});
+
 describe("a pull request never produces a signed release build", () => {
   it("fences the signing job off from the pull_request trigger", () => {
     expect(apk).toMatch(/if:\s*github\.event_name\s*!=\s*'pull_request'/);
