@@ -155,7 +155,7 @@ describe("basketTotals", () => {
     expect(totals.clientItemSubtotalMinor).toBe(110000);
     expect(totals.deliveryFeeMinor).toBe(2500);
     expect(totals.totalMinor).toBe(112500);
-    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor + totals.deliveryFeeMinor!);
+    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor! + totals.deliveryFeeMinor!);
   });
 
   it("states the items at GRIDGO's price, so Items plus Delivery is the Total", () => {
@@ -258,7 +258,7 @@ describe("basketTotals", () => {
     expect(totals.legs[1].feeMinor).toBe(7500);
     expect(totals.deliveryFeeMinor).toBe(10000);
     expect(totals.clientItemSubtotalMinor).toBe(110000);
-    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor + totals.deliveryFeeMinor!);
+    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor! + totals.deliveryFeeMinor!);
   });
 
   it("charges each shop for the farthest drop it has to reach", () => {
