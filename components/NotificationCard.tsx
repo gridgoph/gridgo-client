@@ -97,9 +97,7 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
       {!read ? (
         <View
           className="absolute inset-0 flex-row items-center justify-end rounded-card bg-surface-variant pr-5"
-          // Three spellings for three runtimes: iOS, Android, and the web
-          // renderer, which honours neither of the native two.
-          aria-hidden
+          // aria-hidden hides it from assistive tech on iOS, Android, and web.
           aria-hidden
         >
           <Check size={18} color={colors.textMuted} strokeWidth={2} />
