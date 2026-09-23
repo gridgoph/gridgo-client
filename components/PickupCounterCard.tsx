@@ -36,8 +36,7 @@ export function PickupCounterCard({ order }: Props) {
       {/* The one accent, and only once the walk is genuinely all that is left. */}
       <View
         style={{ width: 3, backgroundColor: owes ? colors.outline : colors.brand }}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
+        aria-hidden
       />
 
       <View className="min-w-0 flex-1 gap-4 p-4">
@@ -60,8 +59,7 @@ export function PickupCounterCard({ order }: Props) {
             size={18}
             color={colors.textMuted}
             strokeWidth={2}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
           <View className="min-w-0 flex-1 gap-0.5">
             <Text className="text-body font-medium text-text-primary">
@@ -77,8 +75,7 @@ export function PickupCounterCard({ order }: Props) {
             size={18}
             color={colors.textMuted}
             strokeWidth={2}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
           <Text className="min-w-0 flex-1 text-caption text-text-muted">
             Anyone can collect on your behalf. They need the name the order was
@@ -98,8 +95,7 @@ export function PickupCounterCard({ order }: Props) {
             size={16}
             color={colors.textPrimary}
             strokeWidth={2}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
         </Pressable>
       </View>

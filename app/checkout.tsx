@@ -440,8 +440,7 @@ export default function CheckoutScreen() {
                 size={20}
                 color={colors.textPrimary}
                 strokeWidth={2}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
+                aria-hidden
               />
             </Pressable>
             <Pressable
@@ -730,8 +729,7 @@ export default function CheckoutScreen() {
                 size={16}
                 color={colors.textPrimary}
                 strokeWidth={2}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
+                aria-hidden
               />
               <Text className="min-w-0 flex-1 text-button text-text-primary">
                 Show the QR to scan
@@ -740,8 +738,7 @@ export default function CheckoutScreen() {
                 size={16}
                 color={colors.textMuted}
                 strokeWidth={2}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
+                aria-hidden
               />
             </View>
           </Pressable>
@@ -1074,8 +1071,7 @@ function CollectAtGridgo({ runCount }: { runCount: number }) {
           size={16}
           color={colors.textPrimary}
           strokeWidth={2}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
+          aria-hidden
         />
         <View className="min-w-0 flex-1 gap-0.5">
           <Text className="text-body font-medium text-text-primary">
@@ -1105,8 +1101,7 @@ function CollectAtGridgo({ runCount }: { runCount: number }) {
           size={16}
           color={colors.textMuted}
           strokeWidth={2.5}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
+          aria-hidden
         />
       </Pressable>
     </View>

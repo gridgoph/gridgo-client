@@ -196,8 +196,7 @@ export function SupportChatConversation({
                 size={18}
                 color={colors.accentOn}
                 strokeWidth={2}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
+                aria-hidden
               />
             </Pressable>
           </View>

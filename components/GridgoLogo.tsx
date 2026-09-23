@@ -231,8 +231,7 @@ export function GridgoLogo({ size = 28, role }: LogoProps) {
             // the same number whether the role is a word or the rider pill.
             style={{ height: metrics.roleLineHeight }}
             className="justify-center self-start"
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
+            aria-hidden
           >
             {role === "rider" ? (
               <View

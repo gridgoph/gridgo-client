@@ -99,8 +99,7 @@ export default function SettingsScreen() {
               <ChevronRight
                 size={20}
                 color={colors.textMuted}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
+                aria-hidden
               />
             </Pressable>
           </View>
