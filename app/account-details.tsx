@@ -523,8 +523,7 @@ function IdentityRow({
       <ChevronRight
         size={20}
         color={colors.textMuted}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
+        aria-hidden
       />
     </Pressable>
   );

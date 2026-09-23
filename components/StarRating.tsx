@@ -65,8 +65,7 @@ export function StarRating({
         className={value ? "text-body text-text-primary" : "text-body text-text-muted"}
         // The stars already announce themselves; this would be the same news
         // twice on the way through.
-        accessibilityElementsHidden
-        importantForAccessibility="no"
+        aria-hidden
       >
         {starWord(value)}
       </Text>

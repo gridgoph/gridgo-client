@@ -81,8 +81,7 @@ export function HeaderIconButton({ icon: Icon, accessibilityLabel, onPress, coun
               size={GLYPH}
               color={colors.textPrimary}
               strokeWidth={1.75}
-              accessibilityElementsHidden
-              importantForAccessibility="no"
+              aria-hidden
             />
             {badge > 0 ? (
               <View

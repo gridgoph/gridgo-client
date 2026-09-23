@@ -37,7 +37,7 @@ export function GoogleButton({ onPress, disabled }: Props) {
 
 function GoogleMark() {
   return (
-    <View accessibilityElementsHidden>
+    <View aria-hidden>
       <Svg width={18} height={18} viewBox="0 0 18 18">
         <Path
           fill="#4285F4"

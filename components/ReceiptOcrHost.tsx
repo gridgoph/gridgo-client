@@ -55,8 +55,7 @@ function ReceiptOcrJob({ request }: { request: ReceiptOcrRequest }) {
       pointerEvents="none"
       collapsable={false}
       style={{ position: "absolute", width: 16, height: 16, opacity: 0.01 }}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
     >
       <WebView
         ref={view}

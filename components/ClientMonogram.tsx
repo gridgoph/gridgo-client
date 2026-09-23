@@ -41,8 +41,7 @@ export function ClientMonogram({ name, size = 56, imageUrl }: Props) {
     <View
       className="items-center justify-center overflow-hidden rounded-card border border-outline bg-surface-variant"
       style={{ width: size, height: size }}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
     >
       {imageUrl ? (
         <Image

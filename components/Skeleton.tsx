@@ -105,8 +105,7 @@ type LineProps = {
 export function SkeletonLine({ width, height = "h-4" }: LineProps) {
   return (
     <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
       className={`${width} ${height} overflow-hidden rounded-sm bg-surface-variant`}
     >
       <Sweep />
@@ -122,8 +121,7 @@ export function SkeletonLine({ width, height = "h-4" }: LineProps) {
 export function SkeletonBlock({ className = "h-24 w-full" }: { className?: string }) {
   return (
     <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
       className={`${className} overflow-hidden rounded-sm bg-surface-variant`}
     >
       <Sweep />
@@ -135,8 +133,7 @@ export function SkeletonBlock({ className = "h-24 w-full" }: { className?: strin
 export function SkeletonPill({ width = "w-28" }: { width?: string }) {
   return (
     <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
       className={`${width} h-7 overflow-hidden rounded-pill bg-surface-variant`}
     >
       <Sweep />
@@ -148,8 +145,7 @@ export function SkeletonPill({ width = "w-28" }: { width?: string }) {
 export function SkeletonCard() {
   return (
     <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
       className="gg-card gap-3"
     >
       <SkeletonLine width="w-2/3" height="h-5" />
@@ -182,8 +178,7 @@ export function SkeletonList({ count = 3 }: { count?: number }) {
 export function SkeletonOrderCard() {
   return (
     <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
       className="gg-card"
     >
       <View className="flex-row">
@@ -222,8 +217,7 @@ export function SkeletonOrderList({ count = 3 }: { count?: number }) {
 export function SkeletonHomeDocket({ count = 2 }: { count?: number }) {
   return (
     <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
       className="gg-card-flush"
     >
       {Array.from({ length: count }, (_, index) => (

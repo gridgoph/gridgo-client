@@ -213,8 +213,7 @@ function SavedAddressRow({
             size={18}
             color={colors.textMuted}
             strokeWidth={2}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
           <View className="min-w-0 flex-1">
             <Text className="text-body-lg font-medium text-text-primary">{address.label}</Text>

@@ -167,8 +167,7 @@ export function ArtworkUploadCard({
             size={16}
             color={emphasis === "primary" ? colors.actionYellowOn : colors.textPrimary}
             strokeWidth={2.5}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
           <Text
             className={
