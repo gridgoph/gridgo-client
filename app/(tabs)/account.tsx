@@ -123,8 +123,7 @@ export default function AccountScreen() {
               <ChevronRight
                 size={20}
                 color={colors.textMuted}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
+                aria-hidden
               />
             </View>
             {/*
@@ -270,8 +269,7 @@ function DestinationRow({
       <ChevronRight
         size={20}
         color={colors.textMuted}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
+        aria-hidden
       />
     </Pressable>
   );

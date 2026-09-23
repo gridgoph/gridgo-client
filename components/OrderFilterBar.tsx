@@ -73,8 +73,7 @@ export function OrderFilterBar({
           size={18}
           color={colors.textMuted}
           strokeWidth={2}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
+          aria-hidden
         />
         <TextInput
           className="h-12 flex-1 text-body text-text-primary"
@@ -138,8 +137,7 @@ export function OrderFilterBar({
             size={16}
             color={colors.textPrimary}
             strokeWidth={2}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
         </Pressable>
       </View>

@@ -150,8 +150,7 @@ function Marker({ required, selected }: { required: boolean; selected: boolean }
     return (
       <View
         className={`h-[18px] w-[18px] border border-outline ${shape}`}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
+        aria-hidden
       />
     );
   }
@@ -159,8 +158,7 @@ function Marker({ required, selected }: { required: boolean; selected: boolean }
   return (
     <View
       className={`h-[18px] w-[18px] items-center justify-center border border-accent bg-accent ${shape}`}
-      accessibilityElementsHidden
-      importantForAccessibility="no"
+      aria-hidden
     >
       <Check size={12} color={colors.accentOn} strokeWidth={3} />
     </View>

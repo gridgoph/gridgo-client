@@ -353,8 +353,7 @@ export function DeadlineCalendar({
             key={`${letter}-${index}`}
             className="text-center text-caption text-text-muted"
             style={{ width: cell }}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           >
             {letter}
           </Text>
@@ -478,8 +477,7 @@ const MonthPage = memo(function MonthPage({
     <View
       style={{ width: page, flexDirection: "row", flexWrap: "wrap" }}
       pointerEvents={interactive ? "auto" : "none"}
-      accessibilityElementsHidden={!interactive}
-      importantForAccessibility={interactive ? "auto" : "no-hide-descendants"}
+      aria-hidden={!interactive}
     >
       {days.map((day) => (
         <DayCell
@@ -619,8 +617,7 @@ const DayCell = memo(function DayCell({
             fontVariant: ["tabular-nums"],
           }}
           allowFontScaling={false}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
+          aria-hidden
         >
           {day.day}
         </Text>

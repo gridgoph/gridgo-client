@@ -69,8 +69,7 @@ export function DropoffLocator({ editor }: { editor: Editor }) {
               size={18}
               color={colors.textPrimary}
               strokeWidth={2}
-              accessibilityElementsHidden
-              importantForAccessibility="no"
+              aria-hidden
             />
             <View className="min-w-0 flex-1">
               <Text className="text-body-lg font-medium text-text-primary">
@@ -119,8 +118,7 @@ function SearchHitRow({
             size={18}
             color={colors.textMuted}
             strokeWidth={2}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
           <View className="min-w-0 flex-1">
             <Text className="text-body font-medium text-text-primary">{hit.label}</Text>

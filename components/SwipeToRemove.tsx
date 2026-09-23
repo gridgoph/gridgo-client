@@ -139,8 +139,7 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
             size={18}
             color={colors.error}
             strokeWidth={2}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
           <Text className="text-button text-error">Remove</Text>
         </Pressable>

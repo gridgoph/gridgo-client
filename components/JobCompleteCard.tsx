@@ -99,8 +99,7 @@ function CompletedMark({ size }: { size: number }) {
   return (
     <View
       style={{ width: size, height: size }}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
     >
       {Array.from({ length: 9 }, (_, cell) => {
         const x = (CENTRES[cell % 3] / 100) * size;

@@ -334,8 +334,7 @@ export default function ArtworkScreen() {
                 size={14}
                 color={colors.textMuted}
                 strokeWidth={2}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
+                aria-hidden
               />
             </View>
             <Text className="min-w-0 flex-1 text-caption text-text-muted">
@@ -431,8 +430,7 @@ export default function ArtworkScreen() {
                 size={16}
                 color={colors.warning}
                 strokeWidth={2}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
+                aria-hidden
               />
             </View>
             <View className="min-w-0 flex-1 gap-1">

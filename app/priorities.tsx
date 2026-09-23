@@ -123,8 +123,7 @@ export default function PrioritiesScreen() {
                 size={14}
                 color={colors.textSecondary}
                 strokeWidth={2}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
+                aria-hidden
               />
               <Text className="text-caption text-text-secondary">Start over</Text>
             </Pressable>
@@ -201,8 +200,7 @@ function PriorityCard({
             ? "h-8 w-8 items-center justify-center rounded-pill bg-accent"
             : "h-8 w-8 items-center justify-center rounded-pill border border-outline"
         }
-        accessibilityElementsHidden
-        importantForAccessibility="no"
+        aria-hidden
       >
         <Text
           className={

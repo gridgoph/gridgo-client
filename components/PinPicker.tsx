@@ -32,8 +32,7 @@ export function PinPicker({ caption }: PinPickerProps) {
         size={20}
         color={colors.textMuted}
         strokeWidth={2}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
+        aria-hidden
       />
       <Text className="text-center text-body text-text-secondary">
         The map needs the GRIDGO app on your phone.

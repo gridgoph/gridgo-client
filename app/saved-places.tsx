@@ -151,8 +151,7 @@ function PlaceRow({
           <ChevronRight
             size={20}
             color={colors.textMuted}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
           {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
         </>
@@ -191,8 +190,7 @@ function InviteRow({
           <ChevronRight
             size={20}
             color={colors.textMuted}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
+            aria-hidden
           />
           {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
         </>
@@ -212,8 +210,7 @@ function PlaceIcon({
     size: 18,
     color,
     strokeWidth: 2,
-    accessibilityElementsHidden: true,
-    importantForAccessibility: "no" as const,
+    "aria-hidden": true,
   };
   if (kind === "home") return <Home {...props} />;
   if (kind === "work") return <Briefcase {...props} />;

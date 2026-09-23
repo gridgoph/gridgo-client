@@ -81,8 +81,7 @@ function ToneMark({ icon, tone }: { icon: OrderActionIcon | OrderStatusIcon; ton
   return (
     <View
       testID="home-action-mark"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      aria-hidden
       className="h-10 w-10 shrink-0 items-center justify-center rounded-pill"
     >
       <View

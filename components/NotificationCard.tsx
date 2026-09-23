@@ -97,11 +97,8 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
       {!read ? (
         <View
           className="absolute inset-0 flex-row items-center justify-end rounded-card bg-surface-variant pr-5"
-          // Three spellings for three runtimes: iOS, Android, and the web
-          // renderer, which honours neither of the native two.
+          // aria-hidden hides it from assistive tech on iOS, Android, and web.
           aria-hidden
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
         >
           <Check size={18} color={colors.textMuted} strokeWidth={2} />
           <Text className="ml-2 text-caption text-text-muted">Mark read</Text>
@@ -138,8 +135,7 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
                 {spine ? (
                   <View
                     style={{ width: 3, backgroundColor: spine }}
-                    accessibilityElementsHidden
-                    importantForAccessibility="no"
+                    aria-hidden
                   />
                 ) : null}
                 <View className="min-w-0 flex-1 gap-4 p-4">
@@ -150,8 +146,7 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
                           {!read ? (
                             <View
                               className="h-2 w-2 rounded-pill bg-accent"
-                              accessibilityElementsHidden
-                              importantForAccessibility="no"
+                              aria-hidden
                             />
                           ) : null}
                           <Text className="flex-1 text-overline text-text-muted" numberOfLines={1}>
@@ -163,8 +158,7 @@ export function NotificationCard({ notification, read, onOpen, onMarkRead }: Pro
                         {!read && !presented.stamp ? (
                           <View
                             className="h-2 w-2 rounded-pill bg-accent"
-                            accessibilityElementsHidden
-                            importantForAccessibility="no"
+                            aria-hidden
                           />
                         ) : null}
                         <Text

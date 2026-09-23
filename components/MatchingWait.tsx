@@ -107,8 +107,7 @@ export function MatchingWait({ thing, size = 156 }: Props) {
     >
       <View
         style={{ width: size, height: size }}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
+        aria-hidden
       >
         <Field size={size} />
         {reducedMotion ? (
