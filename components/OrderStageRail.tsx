@@ -33,8 +33,10 @@ type Props = {
    * `full` is the notification rail — icon discs and a connector.
    * `compact` is the same four stages as segments under a summary row, where
    * a 56pt rail three times over would push the rest of Home off the screen.
+   * `meter` is the segments alone, for a card that names the stage in words
+   * beside it — the notification card's top strip.
    */
-  variant?: "full" | "compact";
+  variant?: "full" | "compact" | "meter";
 };
 
 /**
@@ -61,6 +63,30 @@ export function OrderStageRail({ currentIndex, kind = "delivery", variant = "ful
   if (!current) return null;
 
   const label = `Stage ${currentIndex + 1} of ${stages.length}: ${current.label}`;
+
+  if (variant === "meter") {
+    return (
+      <View
+        className="flex-row items-center gap-0.5"
+        accessibilityRole="progressbar"
+        accessibilityLabel={label}
+      >
+        {stages.map((stage, index) =>
+          index <= currentIndex ? (
+            <View key={stage.key} className="h-1.5 w-3 rounded-pill bg-accent" />
+          ) : (
+            // Not `bg-outline`: in Dark that is within a shade of the unread
+            // card's surface, and the unreached half of the meter vanished.
+            <View
+              key={stage.key}
+              className="h-1.5 w-3 rounded-pill"
+              style={{ backgroundColor: colors.textMuted, opacity: 0.35 }}
+            />
+          ),
+        )}
+      </View>
+    );
+  }
 
   if (variant === "compact") {
     return (
