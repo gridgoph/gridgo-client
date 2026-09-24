@@ -2213,16 +2213,24 @@ export async function openSupportChatThread(): Promise<{ thread: SupportChatThre
   });
 }
 
+/**
+ * `newThread` starts a fresh conversation with this message rather than
+ * adding to the latest one — ignored when `threadId` names a thread.
+ */
 export async function sendSupportChatMessage(
   body: string,
   threadId?: string,
+  options?: { newThread?: boolean },
 ): Promise<{
   thread: SupportChatThread;
   message: SupportChatMessage;
 }> {
   return request("/support-chat/me/messages", {
     method: "POST",
-    body: JSON.stringify({ body, ...(threadId ? { threadId } : {}) }),
+    body: JSON.stringify({
+      body,
+      ...(threadId ? { threadId } : options?.newThread ? { newThread: true } : {}),
+    }),
   });
 }
 
