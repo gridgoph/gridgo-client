@@ -120,5 +120,8 @@ describe("Account destinations", () => {
 
     fireEvent.press(screen.getByLabelText("Settings"));
     expect(mockPush).toHaveBeenCalledWith("/settings");
+
+    fireEvent.press(screen.getByLabelText("Report a problem"));
+    expect(mockPush).toHaveBeenCalledWith("/report-problem");
   });
 });

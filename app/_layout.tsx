@@ -380,6 +380,14 @@ function AppNavigation() {
                   name="business-apply"
                   options={pushedScreenOptions("Apply as a business")}
                 />
+                {/*
+                  A bug report, sent to Operations as a chat message. The band
+                  names the task; the form opens straight on what happened.
+                */}
+                <Stack.Screen
+                  name="report-problem"
+                  options={pushedScreenOptions("Report a problem")}
+                />
               </Stack.Protected>
             </Stack>
             <ReceiptOcrHost />
