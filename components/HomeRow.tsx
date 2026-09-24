@@ -14,12 +14,12 @@ import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { OrderStageRail } from "@/components/OrderStageRail";
-import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import {
   getOrderStateMeta,
   orderNextAction,
+  orderWaitingOn,
   type OrderActionIcon,
   type OrderStatusIcon,
   type OrderStatusTone,
@@ -171,66 +171,151 @@ export function HomeActionRow({ order, onPress }: { order: Order; onPress: () =>
 }
 
 /**
- * A job that is not waiting on the client — where it has got to, at a glance.
+ * A job in progress — where it has got to, at a glance.
  *
- * It answers the one question a person opens the app to ask about a job that
- * needs nothing from them: where is it. That takes three facts and no more.
- * What it is, so they recognise it. When it last moved, so a job that has sat
- * still for a week is visible as one. And how far along it is, on the four
- * coarse stages — the same rail the notifications draw, in its compact form,
- * because three full rails would push the start menu off the screen.
+ * Led by the state in words ("Out for delivery", "Checking your payment"),
+ * the same grammar as the docket above it, which leads with the verb: the
+ * question for a live job is where it is, and the job's name is the subline
+ * that says which. The tone icon beside the state is the colour signal and
+ * never the only one.
  *
- * The chip and the rail are not the same fact twice. The rail is deliberately
- * coarse; the chip is the precise state, and the difference between "Printing"
- * and "Checking your payment" is exactly what a client needs. When the state
- * is one this app does not know, `orderStageIndex` returns null and no rail is
- * drawn at all — an invented position is worse than none.
+ * Under that, the four coarse stages on the compact rail, then what happens
+ * next in a sentence — who has the job and what they are doing with it — and
+ * the supplier's promised date when there is one. The rail is deliberately
+ * coarse and the headline is the precise state; the difference between
+ * "Printing" and "Checking your payment" is exactly what a client needs. An
+ * unknown state draws no rail at all — an invented position is worse than
+ * none. GRIDGO publishes no ETA, so nothing here estimates one.
  *
- * Money, quantity and reorder stay off: Orders owns the full card, and this is
- * a summary. A tap opens the job.
+ * Money, quantity and reorder stay off: Orders owns the full card. A tap
+ * opens the job.
  */
 export function HomeJobRow({ order, onPress }: { order: Order; onPress: () => void }) {
+  const colors = useThemeColors();
   const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
   const kind = fulfilmentRailKind(order.fulfillmentMode);
   const stage = orderStageIndex(order.state, order.fulfillmentMode);
   const moved = order.updatedAt ? formatRelativeTime(order.updatedAt) : null;
+  const next = orderWaitingOn(order);
+  const promised = shortDate(order.promisedDate);
+  const StateIcon = ICONS[meta.icon];
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${order.title}, ${meta.label}`}
-      className="gg-card gg-touch"
+      accessibilityLabel={`${meta.label}, ${order.title}`}
+      className="gg-card-flush gg-touch"
     >
       {({ pressed }) => (
         <>
-          <View className="flex-row items-baseline gap-3">
-            <Text
-              className="min-w-0 flex-1 text-body-lg font-medium text-text-primary"
-              numberOfLines={2}
-            >
+          <View className="px-4 pt-4">
+            <View className="flex-row items-center gap-2">
+              <StateIcon size={16} color={colors[TONE_TOKEN[meta.tone]]} strokeWidth={2.25} />
+              <Text
+                className="min-w-0 flex-1 text-body-lg font-bold text-text-primary"
+                numberOfLines={1}
+              >
+                {meta.label}
+              </Text>
+              {moved ? (
+                <Text className="shrink-0 text-caption text-text-muted">{moved}</Text>
+              ) : null}
+            </View>
+            <Text className="mt-0.5 text-body text-text-secondary" numberOfLines={1}>
               {order.title}
             </Text>
-            {moved ? (
-              <Text className="shrink-0 text-caption text-text-muted">{moved}</Text>
+
+            {stage != null ? (
+              <View className="mt-4">
+                <OrderStageRail currentIndex={stage} kind={kind} variant="compact" />
+              </View>
             ) : null}
           </View>
 
-          <View className="mt-3 flex-row">
-            <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
-          </View>
+          {next || promised ? (
+            <>
+              <View className="mt-4 gg-divider" />
+              <View className="flex-row items-center gap-3 px-4 py-3">
+                <View className="min-w-0 flex-1">
+                  {next ? (
+                    <Text className="text-body text-text-secondary" numberOfLines={2}>
+                      {next}
+                    </Text>
+                  ) : null}
+                  {promised ? (
+                    <Text className={next ? "mt-1 text-caption text-text-muted" : "text-caption text-text-muted"}>
+                      Promised by {promised}
+                    </Text>
+                  ) : null}
+                </View>
+                <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+              </View>
+            </>
+          ) : (
+            <View className="h-4" />
+          )}
 
-          {stage != null ? (
-            <View className="mt-4">
-              <OrderStageRail currentIndex={stage} kind={kind} variant="compact" />
-            </View>
-          ) : null}
-
-          {pressed ? (
-            <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-card" />
-          ) : null}
+          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
         </>
       )}
     </Pressable>
   );
+}
+
+/**
+ * A finished job, as one quiet line.
+ *
+ * Nothing more will happen to it, so it does not get a card, a rail or a
+ * colour-filled chip to compete with live work — three finished cards used to
+ * push "Start a print" off the first screen. The check mark, the word
+ * ("Completed", "Delivered", "Collected") and the success colour still say the
+ * same thing three ways, so the row reads in grayscale. A tap reopens the job,
+ * which is where the receipt and a reorder live.
+ */
+export function HomeFinishedRow({ order, onPress }: { order: Order; onPress: () => void }) {
+  const colors = useThemeColors();
+  const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
+  const when = order.updatedAt ? formatRelativeTime(order.updatedAt) : null;
+  const status = when && when !== "—" ? `${meta.label} ${lowerFirst(when)}` : meta.label;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${order.title}, ${status}`}
+      className="gg-touch flex-row items-center gap-3 px-4 py-3"
+    >
+      {({ pressed }) => (
+        <>
+          <View aria-hidden>
+            <CircleCheck size={18} color={colors[TONE_TOKEN[meta.tone]]} strokeWidth={2} />
+          </View>
+          <View className="min-w-0 flex-1">
+            <Text className="text-body text-text-primary" numberOfLines={1}>
+              {order.title}
+            </Text>
+            <Text className="text-caption text-text-muted" numberOfLines={1}>
+              {status}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+/** "Yesterday" → "yesterday", so it reads inside "Completed yesterday". A date keeps its month's capital. */
+function lowerFirst(value: string): string {
+  return value === "Yesterday" || value === "Just now" ? value.toLowerCase() : value;
+}
+
+/** "28 Sep" — the day a promise falls on, without the year or a time. */
+function shortDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date.toLocaleDateString("en-PH", { day: "numeric", month: "short" });
 }
