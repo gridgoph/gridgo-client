@@ -4,6 +4,7 @@ import {
   isGroupUnread,
   partitionInbox,
   presentNotification,
+  timelineRows,
 } from "@/lib/notificationPresentation";
 
 function note(partial: Partial<Notification> & Pick<Notification, "title" | "body">): Notification {
@@ -232,8 +233,8 @@ describe("groupInbox", () => {
     expect(groups[0].orderId).toBe("ord_1F09");
     expect(groups[0].latest.id).toBe("e");
     expect(groups[0].items.map((item) => item.id)).toEqual(["e", "d", "c", "b", "a"]);
-    // The payment line belongs to the job, so the card says it once.
-    expect(presentNotification(groups[0].latest).paymentLine).toMatch(/^Now: final payment/);
+    // The payment callout belongs to the job, so the card says it once.
+    expect(presentNotification(groups[0].latest).callout?.title).toMatch(/^Final payment ₱336\.25/);
   });
 
   it("keeps a row with no job as its own card, and orders cards by their newest update", () => {
@@ -335,5 +336,124 @@ describe("partitionInbox", () => {
     expect(updates.map((group) => group.items.map((item) => item.id))).toEqual([
       ["ntf_print", "ntf_proof"],
     ]);
+  });
+});
+
+describe("presentNotification stage and callout", () => {
+  it("names the stage in words for the card's top strip", () => {
+    const view = presentNotification(
+      note({ title: "Printing has started", body: "On the press.", orderId: "ord_1", orderState: "production" }),
+    );
+    expect(view.stageLabel).toBe("Printing");
+    expect(presentNotification(note({ title: "News", body: "A broadcast." })).stageLabel).toBeNull();
+  });
+
+  it("calls a collect job's stage by the counter's name, not the door's", () => {
+    const view = presentNotification(
+      note({
+        title: "Ready for pickup",
+        body: "At the counter.",
+        type: "order_ready_for_pickup",
+        orderId: "ord_1",
+        orderState: "awaiting_collection",
+        fulfillmentMode: "pickup",
+        collectHold: false,
+      }),
+    );
+    expect(view.stageLabel).toBe("Counter");
+    expect(view.callout).toMatchObject({ tone: "success", title: "Collect at GRIDGO Office" });
+  });
+
+  it("asks a held collect job to pay before travelling, in a callout", () => {
+    const view = presentNotification(
+      note({
+        title: "Ready for pickup",
+        body: "Settle the remaining balance first.",
+        type: "order_ready_for_pickup",
+        orderId: "ord_1",
+        orderState: "awaiting_collection",
+        fulfillmentMode: "pickup",
+        collectHold: true,
+      }),
+    );
+    expect(view.callout).toMatchObject({ tone: "warning", icon: "wallet" });
+    expect(view.callout?.title).toMatch(/before you travel/);
+    // The body no longer repeats what the callout says.
+    expect(view.body).not.toMatch(/balance/i);
+  });
+
+  it("asks for the thing an update is about while the job still waits on it", () => {
+    const view = presentNotification(
+      note({
+        title: "Artwork needs a fix",
+        body: "The bleed is missing.",
+        type: "order_client_correction",
+        orderId: "ord_1",
+        orderState: "client_correction",
+      }),
+    );
+    expect(view.callout).toMatchObject({ tone: "warning", icon: "upload", title: "Replace the artwork" });
+  });
+
+  it("drops the ask once the job has moved past it", () => {
+    const view = presentNotification(
+      note({
+        title: "Supplier assigned and final price ready",
+        body: "Review the final price and submit the digital downpayment.",
+        type: "supplier_assignment_final_price",
+        orderId: "ord_1",
+        orderState: "production",
+      }),
+    );
+    expect(view.callout).toBeNull();
+  });
+
+  it("has nothing to call out on a plain progress update", () => {
+    const view = presentNotification(
+      note({ title: "Printing has started", body: "On the press.", orderId: "ord_1", orderState: "production" }),
+    );
+    expect(view.callout).toBeNull();
+  });
+});
+
+describe("timelineRows", () => {
+  const at = (day: number, hour: number, minute = 0) =>
+    new Date(2026, 8, day, hour, minute).toISOString();
+  const row = (id: string, when: string) => note({ id, title: `Update ${id}`, body: "", at: when });
+  const now = new Date(2026, 8, 20, 18, 0).getTime();
+
+  it("heads each day once and says a time only where it changes", () => {
+    const rows = timelineRows(
+      [
+        row("d", at(20, 13)),
+        row("c", at(20, 11)),
+        row("b", at(20, 11)),
+        row("a", at(19, 10)),
+        row("z", at(12, 9)),
+      ],
+      now,
+    );
+
+    expect(rows.map((r) => (r.kind === "day" ? `# ${r.label}` : r.key))).toEqual([
+      "# Today",
+      "d",
+      "c",
+      "b",
+      "# Yesterday",
+      "a",
+      `# ${new Date(2026, 8, 12).toLocaleDateString("en-PH", { day: "numeric", month: "short" })}`,
+      "z",
+    ]);
+    const entries = rows.filter((r) => r.kind === "entry");
+    expect(entries.map((r) => r.time === null)).toEqual([false, false, true, false, false]);
+    // A shared time is still spoken exactly.
+    expect(entries[2].exact).toBe(entries[1].exact);
+    expect(entries[2].exact).not.toBe("—");
+  });
+
+  it("files an unreadable stamp under its own heading rather than guessing a day", () => {
+    const rows = timelineRows([row("x", "not a date")], now);
+    expect(rows[0]).toMatchObject({ kind: "day", label: "Date unknown" });
+    expect(rows[1]).toMatchObject({ kind: "entry", time: null });
   });
 });
