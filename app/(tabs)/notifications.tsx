@@ -15,9 +15,16 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
 import { userFacingError } from "@/lib/copy";
-import type { Notification } from "@/lib/api";
-import { partitionInbox } from "@/lib/notificationPresentation";
-import { isNotificationRead, useNotifications } from "@/store/notifications";
+import {
+  isGroupUnread,
+  partitionInbox,
+  type NotificationGroup,
+} from "@/lib/notificationPresentation";
+import {
+  countUnreadGroups,
+  isNotificationRead,
+  useNotifications,
+} from "@/store/notifications";
 
 /**
  * Every update on the client's jobs.
@@ -26,11 +33,17 @@ import { isNotificationRead, useNotifications } from "@/store/notifications";
  * replaces it. Stage rails come from `orderTitle` / `orderState` /
  * `fulfillmentMode` on the notification itself — this screen does not wait
  * on `GET /orders`.
+ *
+ * One card per job (`groupInbox`): the API keeps a row per order step, and a
+ * card per row buried the inbox under one job's history. Unread, the count
+ * and the lane all follow the job's newest row; opening or swiping a card
+ * marks every row in it read.
  */
 export default function NotificationsScreen() {
   const router = useRouter();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
-  const { items, loading, error, refresh, readIds, markRead, markAllRead } = useNotifications();
+  const { items, loading, error, refresh, readIds, markManyRead, markAllRead } =
+    useNotifications();
 
   useLiveRefresh(["notifications"], refresh, { refreshOnFocus: false });
 
@@ -40,20 +53,22 @@ export default function NotificationsScreen() {
     }, [refresh]),
   );
 
-  const unreadCount = items.filter((item) => !isNotificationRead(item, readIds)).length;
+  const unreadCount = countUnreadGroups(items, readIds);
   const { needYou, updates } = partitionInbox(items);
   const splitInbox = needYou.length > 0 && updates.length > 0;
 
-  function renderRow(notification: Notification) {
+  function renderRow(group: NotificationGroup) {
+    const notification = group.latest;
+    const markGroupRead = () => void markManyRead(group.items.map((item) => item.id));
     return (
       <NotificationCard
-        key={notification.id}
-        notification={notification}
-        read={isNotificationRead(notification, readIds)}
+        key={group.key}
+        group={group}
+        read={!isGroupUnread(group, (item) => isNotificationRead(item, readIds))}
         onOpen={
           notification.orderId
             ? () => {
-                void markRead(notification.id);
+                markGroupRead();
                 if (notification.type === "order_receipt_ready") {
                   router.push({
                     pathname: "/order/receipt",
@@ -65,7 +80,7 @@ export default function NotificationsScreen() {
               }
             : null
         }
-        onMarkRead={() => void markRead(notification.id)}
+        onMarkRead={markGroupRead}
       />
     );
   }

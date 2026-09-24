@@ -141,7 +141,7 @@ Prefer these modules over burying rules in screens:
 - `store/cart.ts` — the basket lives on GRIDGO; only its id is on the phone. `ensure()` shares **one** in-flight `POST /me/carts` so a warm-up and the tap that overtakes it cannot each create a basket and drop the first item in the loser. `warm()` is that create started from the listing sheet while the client is still ticking options — "Add to my order" was two round trips and is now one, which is the whole of the reported "Saving…" hang. Never re-read the cart after a mutation: the response *is* the basket. Line add/save navigates as soon as the line id exists.
 - `store/requestDraft.ts` — in-progress request (Zustand + AsyncStorage)
 - `store/theme.ts` — system/light/dark preference persistence
-- `store/notifications.ts` — account-scoped inbox cache and optimistic read overlay. See [Live resource updates](docs/REALTIME_UPDATES.md) for ownership, refresh and push navigation invariants.
+- `store/notifications.ts` — account-scoped inbox cache and optimistic read overlay. The tab draws **one card per job** (`groupInbox` in `lib/notificationPresentation.ts`), never one per row: the API keeps a row per order step and each carries the job's live payment line. A card's unread state, lane and the tab badge follow the job's newest row; opening or swiping it marks every row read (`markManyRead`, one `PATCH` per row). Collapsing pushes per job in the Android tray needs `android.notification.tag` from gridgo-api — the tray draws a backgrounded message without running app code. See [Live resource updates](docs/REALTIME_UPDATES.md) for ownership, refresh and push navigation invariants.
 
 ### Push notifications
 

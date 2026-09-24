@@ -222,15 +222,84 @@ export function presentNotification(notification: Notification): PresentedNotifi
   };
 }
 
+/**
+ * Every row the inbox holds about one job, drawn as one card.
+ *
+ * The API writes a durable row per order step, and each row carries the job's
+ * *current* payment line, reference and rail. Drawn one card per row, one job
+ * filled the screen with near-identical cards repeating the same "Now:" line.
+ * So rows sharing an `orderId` fold into one group: the newest row speaks for
+ * the job and the rest are its history. A row with no job stays on its own.
+ * The rows themselves are untouched — they are the record of what the client
+ * was told and when, and read state stays per row on the server.
+ */
+export type NotificationGroup = {
+  /** Stable React key: the job, or the lone row. */
+  key: string;
+  orderId: string | null;
+  /** The newest row. Its copy, rail and lane are the card's. */
+  latest: Notification;
+  /** Every row in the group, newest first — `items[0]` is `latest`. */
+  items: Notification[];
+};
+
+function newestFirst(items: Notification[]): Notification[] {
+  return items
+    .map((item, index) => ({ item, index, time: Date.parse(item.at) }))
+    .sort((a, b) => {
+      const ta = Number.isFinite(a.time) ? a.time : -Infinity;
+      const tb = Number.isFinite(b.time) ? b.time : -Infinity;
+      if (ta === tb) return a.index - b.index;
+      return tb > ta ? 1 : -1;
+    })
+    .map(({ item }) => item);
+}
+
+/** Fold the inbox into one group per job, newest job first. */
+export function groupInbox(items: Notification[]): NotificationGroup[] {
+  const groups: NotificationGroup[] = [];
+  const byOrder = new Map<string, NotificationGroup>();
+  for (const item of newestFirst(items)) {
+    const orderId = item.orderId || null;
+    const existing = orderId ? byOrder.get(orderId) : undefined;
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+    const group: NotificationGroup = {
+      key: orderId ? `order:${orderId}` : `note:${item.id}`,
+      orderId,
+      latest: item,
+      items: [item],
+    };
+    groups.push(group);
+    if (orderId) byOrder.set(orderId, group);
+  }
+  return groups;
+}
+
+/**
+ * A group is unread when its newest row is: the card changes when the job
+ * does, not once per event. Older rows left unread underneath are swept up
+ * when the card is opened or swiped.
+ */
+export function isGroupUnread(
+  group: NotificationGroup,
+  isRead: (notification: Notification) => boolean,
+): boolean {
+  return !isRead(group.latest);
+}
+
+/** Split the grouped inbox by what the job's newest row asks of the client. */
 export function partitionInbox(items: Notification[]): {
-  needYou: Notification[];
-  updates: Notification[];
+  needYou: NotificationGroup[];
+  updates: NotificationGroup[];
 } {
-  const needYou: Notification[] = [];
-  const updates: Notification[] = [];
-  for (const item of items) {
-    if (presentNotification(item).lane === "need_you") needYou.push(item);
-    else updates.push(item);
+  const needYou: NotificationGroup[] = [];
+  const updates: NotificationGroup[] = [];
+  for (const group of groupInbox(items)) {
+    if (presentNotification(group.latest).lane === "need_you") needYou.push(group);
+    else updates.push(group);
   }
   return { needYou, updates };
 }
