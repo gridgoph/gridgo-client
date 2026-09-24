@@ -126,6 +126,16 @@ export function userFacingError(error: unknown, fallback: string): string {
           ? `This shop takes orders of ${minimum} and up. Change the quantity and try again.`
           : "This shop takes a minimum quantity. Change the quantity and try again.";
       }
+      // ---- basket: the press's widest print ----
+      case "printer_cap_exceeded": {
+        const cap =
+          typeof error.body === "object" && error.body && "printerMaxWidthFeet" in error.body
+            ? Number((error.body as { printerMaxWidthFeet: unknown }).printerMaxWidthFeet)
+            : NaN;
+        return Number.isInteger(cap) && cap > 0
+          ? `This printer prints up to ${cap} ft wide. Make it ${cap} ft wide or less and try again.`
+          : "This is wider than this printer prints. Make it narrower and try again.";
+      }
       case "assignment_notification_required":
         return "This job has no final price yet, so there is nothing to pay. You get a notification the moment a supplier accepts it.";
       case "payment_already_submitted":

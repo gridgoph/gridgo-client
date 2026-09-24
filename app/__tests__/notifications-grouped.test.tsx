@@ -115,15 +115,22 @@ describe("NotificationsScreen, one card per job", () => {
     await renderInSafeArea(<NotificationsScreen />);
 
     expect(await screen.findByText("Out for delivery")).toBeTruthy();
-    expect(screen.getAllByText(/^Now: final payment/)).toHaveLength(1);
+    // The payment is the one thing to know, said once, as the card's callout.
+    expect(screen.getAllByTestId("notification-callout")).toHaveLength(1);
+    expect(screen.getAllByText("Final payment ₱336.25 is being checked")).toHaveLength(1);
+    expect(screen.getByText("Do not pay again.")).toBeTruthy();
     expect(screen.getAllByLabelText(/^Stage \d of 4/)).toHaveLength(1);
+    // The stage sits in the card's top strip, in words beside the meter.
+    expect(screen.getByText("ON THE WAY TO YOU")).toBeTruthy();
     expect(screen.getByText("Show 4 earlier updates")).toBeTruthy();
     // Earlier steps stay folded until asked for.
     expect(screen.queryByText("Printing has started")).toBeNull();
     // A broadcast has no job, so it stays a card of its own.
     expect(screen.getByText("Holiday hours")).toBeTruthy();
-    // Two cards unread, not six rows.
+    // Two cards unread, not six rows — each carries the unread spine.
     expect(screen.getByText("2 unread")).toBeTruthy();
+    expect(screen.getAllByTestId("notification-unread-spine", { includeHiddenElements: true })).toHaveLength(2);
+    expect(screen.getByLabelText("Mark all as read")).toBeTruthy();
   });
 
   it("reads as read once the job's newest update is read", async () => {
@@ -136,6 +143,8 @@ describe("NotificationsScreen, one card per job", () => {
     await screen.findByText("Out for delivery");
     expect(screen.queryByText("1 unread")).toBeNull();
     expect(screen.queryByText(/unread/)).toBeNull();
+    expect(screen.queryByTestId("notification-unread-spine", { includeHiddenElements: true })).toBeNull();
+    expect(screen.queryByLabelText("Mark all as read")).toBeNull();
   });
 
   it("marks every update in the card read from the accessibility action", async () => {
@@ -181,6 +190,16 @@ describe("NotificationsScreen, one card per job", () => {
     for (const title of titles) {
       expect(within(timeline).getByText(title)).toBeTruthy();
     }
+    // The day is a heading, said once, not a stamp repeated on every row.
+    const day = new Date("2026-09-20T13:00:00+08:00").toLocaleDateString("en-PH", {
+      day: "numeric",
+      month: "short",
+    });
+    expect(within(timeline).getAllByText(day)).toHaveLength(1);
+    // Each row still carries its exact stamp for a screen reader.
+    expect(
+      within(timeline).getByLabelText(/^Printing has started, .*(AM|PM)$/),
+    ).toBeTruthy();
     expect(screen.getByText("Hide earlier updates")).toBeTruthy();
     // Unfolding is reading the history, not opening the job.
     expect(mockPush).not.toHaveBeenCalled();

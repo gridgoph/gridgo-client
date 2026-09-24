@@ -1,5 +1,17 @@
 import { Image } from "expo-image";
-import { Check, ChevronDown, ChevronRight, ChevronUp } from "lucide-react-native";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Clock,
+  PackageCheck,
+  SquarePen,
+  Star,
+  Upload,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { Animated, PanResponder, Pressable, Text, View } from "react-native";
 
@@ -10,14 +22,40 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { notificationImageUrl, type Notification } from "@/lib/api";
 import {
   presentNotification,
+  timelineRows,
+  type NotificationCallout,
+  type NotificationCalloutIcon,
   type NotificationGroup,
 } from "@/lib/notificationPresentation";
-import { formatTimelineStamp } from "@/lib/relativeTime";
+import type { OrderStatusTone } from "@/lib/orderState";
+import { formatRelativeTime, formatTimelineStamp } from "@/lib/relativeTime";
+
+/** Timeline point: its size, and its drop to sit on the title's first line. */
+const DOT_SIZE = 8;
+const DOT_TOP = 6;
 
 /** Past this much of a drag, letting go marks the row read. */
 const DISMISS_DISTANCE = 96;
 /** Below this the gesture is a scroll, not a swipe. */
 const HORIZONTAL_INTENT = 12;
+
+const CALLOUT_ICONS = {
+  wallet: Wallet,
+  clock: Clock,
+  upload: Upload,
+  "square-pen": SquarePen,
+  "package-check": PackageCheck,
+  star: Star,
+} satisfies Record<NotificationCalloutIcon, LucideIcon>;
+
+/** Semantic tone → the theme colour it is drawn in. `neutral` carries no signal. */
+const TONE_TOKEN = {
+  success: "success",
+  warning: "warning",
+  error: "error",
+  info: "info",
+  neutral: "textSecondary",
+} as const satisfies Record<OrderStatusTone, string>;
 
 type Props = {
   /** One job's rows (or one lone row); the newest speaks for the card. */
@@ -29,16 +67,24 @@ type Props = {
 };
 
 /**
- * One job's updates, as a counter docket or a door slip.
+ * One job's updates, read top to bottom in the order a client asks about them.
  *
- * The newest update is the card: its stamp, title, body, the job's payment
- * line (once), the reference and the rail. Earlier updates about the same job
- * sit behind "Show N earlier updates", newest first, as the job's timeline —
- * a card per update repeated the same payment line five times for one job.
+ * 1. Where it is: a four-segment meter and the stage in words, with how long
+ *    ago it moved. The meter used to be a full rail at the foot of the card,
+ *    below everything a client had to read past to reach it.
+ * 2. What happened: the newest update's title, and at most two lines of it.
+ *    The whole text is in the accessibility label, and the order holds the rest.
+ * 3. What to do or know, when there is one thing: a toned callout, not bold
+ *    body text, because it is the reason to open the card and it read as more
+ *    paragraph. Its copy and tone are `presentNotification`'s.
+ * 4. Which job: the reference and the job's name, quietly, at the foot.
  *
- * Collect jobs stamp COLLECT and ride a Counter rail; door jobs stay on
- * Dispatch / Delivered. Unread is still ink, not gold. The full date and
- * time stay, because an update about a deadline is worth an exact stamp.
+ * Earlier updates about the same job sit behind "Show N earlier updates", as
+ * a connected timeline grouped by day (`timelineRows`).
+ *
+ * Unread is an ink spine down the card's leading edge and a heavier title, not
+ * gold: the screen's yellow is the "+". In Light the unread surface is the
+ * same white as a read one, so the spine is what carries it there.
  *
  * Swiping the row left marks it read — every update in it — which is the
  * legacy gesture. A gesture is never the only way to do a thing here: tapping
@@ -62,8 +108,13 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
   const [translateX] = useState(() => new Animated.Value(0));
   const presented = presentNotification(notification);
   const picture = notificationImageUrl(notification.imageUrl);
-  const spine =
-    presented.collectReady ? colors.brand : presented.collectHold ? colors.outline : null;
+  // A row with no job is GRIDGO speaking, and says so rather than leaving the
+  // strip empty beside its time.
+  const where =
+    presented.stamp ??
+    presented.stageLabel?.toUpperCase() ??
+    (notification.orderId ? null : "FROM GRIDGO");
+  const exact = formatTimelineStamp(notification.at);
 
   const responder = useMemo(
     () =>
@@ -102,6 +153,20 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
     [read, onMarkRead, translateX],
   );
 
+  const spoken = [
+    read ? null : "Unread",
+    where,
+    presented.title,
+    presented.body,
+    presented.callout
+      ? [presented.callout.title, presented.callout.detail].filter(Boolean).join(". ")
+      : null,
+    presented.jobLine,
+    exact,
+  ]
+    .filter(Boolean)
+    .join(". ");
+
   return (
     <View className="relative">
       {/*
@@ -124,6 +189,7 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
         {...(read ? {} : responder.panHandlers)}
       >
         <View
+          testID={read ? "notification-card-read" : "notification-card-unread"}
           className={
             read
               ? "gg-card-flush"
@@ -131,8 +197,12 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
           }
         >
           <View className="flex-row">
-            {spine ? (
-              <View style={{ width: 3, backgroundColor: spine }} aria-hidden />
+            {!read ? (
+              <View
+                testID="notification-unread-spine"
+                style={{ width: 3, backgroundColor: colors.accent }}
+                aria-hidden
+              />
             ) : null}
             <View className="min-w-0 flex-1">
               {/*
@@ -143,7 +213,7 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
               <Pressable
                 onPress={onOpen ?? undefined}
                 accessibilityRole={onOpen ? "button" : undefined}
-                accessibilityLabel={`${read ? "" : "Unread. "}${presented.stamp ? `${presented.stamp}. ` : ""}${presented.title}. ${presented.body}${presented.paymentLine ? `. ${presented.paymentLine}` : ""}`}
+                accessibilityLabel={spoken}
                 accessibilityHint={onOpen ? presented.hint ?? "Opens this job" : undefined}
                 accessibilityActions={read ? undefined : [{ name: "markRead", label: "Mark read" }]}
                 onAccessibilityAction={(event) => {
@@ -152,48 +222,41 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
               >
                 {({ pressed }) => (
                   <>
-                    <View className="gap-4 p-4">
-                      <View className="flex-row items-start gap-3">
-                        <View className="flex-1 gap-1">
-                          {presented.stamp ? (
-                            <View className="flex-row items-center gap-2">
-                              {!read ? (
-                                <View
-                                  className="h-2 w-2 rounded-pill bg-accent"
-                                  aria-hidden
-                                />
-                              ) : null}
-                              <Text className="flex-1 text-overline text-text-muted" numberOfLines={1}>
-                                {presented.stamp}
-                              </Text>
-                            </View>
-                          ) : null}
-                          <View className="flex-row items-center gap-2">
-                            {!read && !presented.stamp ? (
-                              <View
-                                className="h-2 w-2 rounded-pill bg-accent"
-                                aria-hidden
-                              />
-                            ) : null}
-                            <Text
-                              className={
-                                read
-                                  ? "flex-1 text-body-lg text-text-primary"
-                                  : "flex-1 text-body-lg font-medium text-text-primary"
-                              }
-                            >
-                              {presented.title}
-                            </Text>
-                          </View>
-                          <Text className="text-body text-text-secondary">{presented.body}</Text>
-                          {presented.paymentLine ? <Text className="text-body font-medium text-text-primary">{presented.paymentLine}</Text> : null}
-                          <Text className="text-caption text-text-muted">
-                            {formatTimelineStamp(notification.at)}
-                          </Text>
-                        </View>
-                        {onOpen ? (
-                          <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+                    <View className="gap-3 p-4">
+                      {/* Where the job is, and when it last moved. */}
+                      <View className="min-h-4 flex-row items-center gap-2">
+                        {presented.railKind && presented.stageIndex != null ? (
+                          <OrderStageRail
+                            currentIndex={presented.stageIndex}
+                            kind={presented.railKind}
+                            variant="meter"
+                          />
                         ) : null}
+                        <Text
+                          className="min-w-0 flex-1 text-overline text-text-muted"
+                          numberOfLines={1}
+                        >
+                          {where ?? ""}
+                        </Text>
+                        <Text className="shrink-0 text-caption text-text-muted">
+                          {formatRelativeTime(notification.at)}
+                        </Text>
+                      </View>
+
+                      <View className="gap-1">
+                        <Text
+                          className={
+                            read
+                              ? "text-body-lg text-text-primary"
+                              : "text-body-lg font-bold text-text-primary"
+                          }
+                          numberOfLines={2}
+                        >
+                          {presented.title}
+                        </Text>
+                        <Text className="text-body text-text-secondary" numberOfLines={2}>
+                          {presented.body}
+                        </Text>
                       </View>
 
                       {picture ? (
@@ -205,33 +268,26 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
                         />
                       ) : null}
 
-                      {presented.jobLine || presented.reference || presented.railKind ? (
-                        <View className="gap-3 border-t border-outline-subtle pt-4">
-                          {/*
-                            Which job this is about: its reference as a tag, then
-                            its name. The tag is what a client quotes back to
-                            Operations, so it is the same shape as on the order.
-                          */}
-                          {presented.jobLine || presented.reference ? (
-                            <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-                              {presented.reference ? (
-                                <OrderReference id={notification.orderId} />
-                              ) : null}
-                              {presented.jobLine ? (
-                                <Text
-                                  className="shrink text-caption text-text-muted"
-                                  numberOfLines={1}
-                                >
-                                  {presented.jobLine}
-                                </Text>
-                              ) : null}
-                            </View>
+                      {presented.callout ? <Callout callout={presented.callout} /> : null}
+
+                      {/*
+                        Which job this is about: its reference as a tag, then its
+                        name. The tag is what a client quotes back to Operations,
+                        so it is the same shape as on the order.
+                      */}
+                      {presented.reference || presented.jobLine || onOpen ? (
+                        <View className="flex-row items-center gap-2">
+                          {presented.reference ? (
+                            <OrderReference id={notification.orderId} />
                           ) : null}
-                          {presented.railKind ? (
-                            <OrderStageRail
-                              currentIndex={presented.stageIndex}
-                              kind={presented.railKind}
-                            />
+                          <Text
+                            className="min-w-0 flex-1 text-caption text-text-secondary"
+                            numberOfLines={1}
+                          >
+                            {presented.jobLine ?? ""}
+                          </Text>
+                          {onOpen ? (
+                            <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
                           ) : null}
                         </View>
                       ) : null}
@@ -259,13 +315,47 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
 }
 
 /**
+ * The one thing to do or know, as a toned panel: an icon and a short line on
+ * a soft wash of the tone's own colour, the same construction as the Home
+ * docket's mark. Colour never carries it alone — the words say it, and the
+ * icon repeats it in shape.
+ */
+function Callout({ callout }: { callout: NotificationCallout }) {
+  const colors = useThemeColors();
+  const color = colors[TONE_TOKEN[callout.tone]];
+  const Icon = CALLOUT_ICONS[callout.icon];
+
+  return (
+    <View testID="notification-callout" className="flex-row gap-3 overflow-hidden rounded-field p-3">
+      <View
+        pointerEvents="none"
+        className="absolute inset-0"
+        style={{ backgroundColor: color, opacity: 0.12 }}
+        aria-hidden
+      />
+      <View className="pt-0.5" aria-hidden>
+        <Icon size={18} color={color} strokeWidth={2} />
+      </View>
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text className="text-body font-medium text-text-primary">{callout.title}</Text>
+        {callout.detail ? (
+          <Text className="text-caption text-text-secondary">{callout.detail}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/**
  * The rest of the job's story, folded under the newest update.
  *
- * A real sequence, so it is drawn as one: a hairline spine with a hollow
- * point per update, newest first, each stamped with its exact time. Titles
- * only — the bodies repeat what the head of the card already says, and the
- * order screen holds the full record. Opening the list is a routine control,
- * so it stays in ink rather than spending the screen's yellow.
+ * A real sequence, so it is drawn as one: a hairline spine through a hollow
+ * point per update, newest first. The day is said once as a heading and a
+ * time only where it changes, because the API writes several rows in one
+ * minute and a stamp on each repeated itself down the list. Titles only — the
+ * bodies repeat what the head of the card already says, and the order screen
+ * holds the full record. Opening the list is a routine control, so it stays
+ * in ink rather than spending the screen's yellow.
  */
 function EarlierUpdates({
   items,
@@ -281,6 +371,20 @@ function EarlierUpdates({
     ? "Hide earlier updates"
     : `Show ${items.length} earlier ${items.length === 1 ? "update" : "updates"}`;
   const Chevron = expanded ? ChevronUp : ChevronDown;
+  const rows = expanded ? timelineRows(items) : [];
+  // The connector is muted ink, not `outline`: in Dark that is within a shade
+  // of the unread card's surface and the line disappeared between the points.
+  // It is pinned to each row's edges rather than grown with `flex-1`, which
+  // collapses to nothing in a row sized by its text.
+  const connector = {
+    position: "absolute" as const,
+    left: DOT_SIZE / 2 - 0.5,
+    width: 1,
+    backgroundColor: colors.textMuted,
+    opacity: 0.4,
+  };
+  const firstEntry = rows.findIndex((row) => row.kind === "entry");
+  const lastEntry = rows.length - 1 - [...rows].reverse().findIndex((row) => row.kind === "entry");
 
   return (
     <View className="border-t border-outline-subtle">
@@ -293,7 +397,7 @@ function EarlierUpdates({
       >
         {({ pressed }) => (
           <>
-            <Text className="flex-1 text-body font-medium text-text-primary">{label}</Text>
+            <Text className="flex-1 text-body text-text-secondary">{label}</Text>
             <Chevron size={18} color={colors.textMuted} strokeWidth={2} />
             {pressed ? (
               <View pointerEvents="none" className="gg-pressed absolute inset-0" />
@@ -304,21 +408,57 @@ function EarlierUpdates({
 
       {expanded ? (
         <View className="px-4 pb-4" testID="notification-timeline">
-          {items.map((item, index) => {
-            const last = index === items.length - 1;
-            return (
-              <View key={item.id} className="flex-row gap-3">
-                <View className="w-2 items-center" aria-hidden>
-                  <View className="mt-1.5 h-2 w-2 rounded-pill border border-outline bg-surface" />
-                  {last ? null : <View className="w-px flex-1 bg-outline" />}
+          {rows.map((row, index) => {
+            const lineAbove = index > firstEntry;
+            const lineBelow = index < lastEntry;
+
+            if (row.kind === "day") {
+              return (
+                <View key={row.key} className="flex-row gap-3">
+                  <View className="w-2" aria-hidden>
+                    {lineAbove && lineBelow ? (
+                      <View style={[connector, { top: 0, bottom: 0 }]} />
+                    ) : null}
+                  </View>
+                  <Text
+                    className={
+                      index === 0
+                        ? "flex-1 pb-2 text-caption font-medium text-text-muted"
+                        : "flex-1 pb-2 pt-1 text-caption font-medium text-text-muted"
+                    }
+                  >
+                    {row.label}
+                  </Text>
                 </View>
-                <View className={last ? "flex-1 gap-0.5" : "flex-1 gap-0.5 pb-3"}>
-                  <Text className="text-body text-text-secondary">
-                    {presentNotification(item).title}
-                  </Text>
-                  <Text className="text-caption text-text-muted">
-                    {formatTimelineStamp(item.at)}
-                  </Text>
+              );
+            }
+
+            return (
+              <View
+                key={row.key}
+                className="flex-row gap-3"
+                accessible
+                accessibilityLabel={`${row.title}, ${row.exact}`}
+              >
+                <View className="w-2" aria-hidden>
+                  {lineAbove ? <View style={[connector, { top: 0, height: DOT_TOP }]} /> : null}
+                  <View
+                    className="h-2 w-2 rounded-pill border border-text-muted"
+                    style={{ marginTop: DOT_TOP }}
+                  />
+                  {lineBelow ? (
+                    <View style={[connector, { top: DOT_TOP + DOT_SIZE, bottom: 0 }]} />
+                  ) : null}
+                </View>
+                <View
+                  className={
+                    index === lastEntry
+                      ? "min-w-0 flex-1 flex-row items-baseline gap-3"
+                      : "min-w-0 flex-1 flex-row items-baseline gap-3 pb-3"
+                  }
+                >
+                  <Text className="min-w-0 flex-1 text-body text-text-primary">{row.title}</Text>
+                  <Text className="shrink-0 text-caption text-text-muted">{row.time ?? ""}</Text>
                 </View>
               </View>
             );

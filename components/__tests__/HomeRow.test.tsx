@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
-import { HomeActionRow, HomeJobRow } from "@/components/HomeRow";
+import { HomeActionRow, HomeFinishedRow, HomeJobRow } from "@/components/HomeRow";
 import type { Order } from "@/lib/api";
 
 function order(overrides: Partial<Order> = {}): Order {
@@ -78,7 +78,7 @@ describe("HomeJobRow", () => {
     expect(screen.queryByText("production")).toBeNull();
     expect(screen.queryByText(/₱/)).toBeNull();
     expect(screen.queryByText(/Qty/)).toBeNull();
-    expect(screen.getByLabelText("Grand opening tarpaulin, In production")).toBeTruthy();
+    expect(screen.getByLabelText("In production, Grand opening tarpaulin")).toBeTruthy();
   });
 
   /**
@@ -122,5 +122,48 @@ describe("HomeActionRow tap", () => {
 
     fireEvent.press(screen.getByLabelText("Replace the artwork, Grand opening tarpaulin"));
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("HomeJobRow's next step", () => {
+  it("says what happens next and the promised date, never an estimate", async () => {
+    await render(
+      <HomeJobRow
+        order={order({ state: "production", promisedDate: "2026-09-28T17:00:00+08:00" })}
+        onPress={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Your job is on the press.")).toBeTruthy();
+    expect(screen.getByText(/^Promised by 28 Sep$|^Promised by Sep 28$/)).toBeTruthy();
+    expect(screen.queryByText(/ETA|min away/)).toBeNull();
+  });
+});
+
+describe("HomeFinishedRow", () => {
+  it("is one quiet line: the name, the word and when, with no rail", async () => {
+    await render(
+      <HomeFinishedRow
+        order={order({ state: "completed", updatedAt: new Date(Date.now() - 3 * 3_600_000).toISOString() })}
+        onPress={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Grand opening tarpaulin")).toBeTruthy();
+    expect(screen.getByText("Completed 3h ago")).toBeTruthy();
+    expect(screen.queryByLabelText(/^Stage \d of 4/)).toBeNull();
+    expect(screen.queryByText("Printing")).toBeNull();
+    expect(screen.getByLabelText("Grand opening tarpaulin, Completed 3h ago")).toBeTruthy();
+  });
+
+  it("says Collected for a job fetched from the counter", async () => {
+    await render(
+      <HomeFinishedRow
+        order={order({ state: "delivered", fulfillmentMode: "pickup", updatedAt: new Date(Date.now() - 30 * 3_600_000).toISOString() })}
+        onPress={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Collected yesterday")).toBeTruthy();
   });
 });

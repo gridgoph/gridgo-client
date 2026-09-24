@@ -204,6 +204,16 @@ export default function AccountScreen() {
               detail="Theme, and the introduction to GRIDGO"
               onPress={() => router.push("/settings")}
             />
+            {/*
+              Goes to the Operations desk as a chat message, so the reply turns
+              up in Chat like any other — the line says so, because a report
+              that vanishes into a form is one nobody sends twice.
+            */}
+            <DestinationRow
+              title="Report a problem"
+              detail="Tell Operations what went wrong. They reply in Chat"
+              onPress={() => router.push("/report-problem")}
+            />
           </View>
 
           <View className="pt-2">
