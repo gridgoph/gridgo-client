@@ -6,11 +6,12 @@ it("keeps historical event stage separate from a current payment action", () => 
   expect(view.title).toBe(event.title);
   expect(view.body).toBe(event.body);
   expect(view.stageIndex).toBe(1);
-  expect(view.paymentLine).toContain("₱775.00");
+  expect(view.callout).toMatchObject({ tone: "warning", icon: "wallet" });
+  expect(view.callout?.title).toContain("₱775.00");
   expect(view.lane).toBe("need_you");
 });
 it("describes pending review without asking for another transfer", () => {
   const view = presentNotification({ ...event, paymentAction: { installment: "final_online", status: "pending_confirmation", amountMinor: 77500 } });
-  expect(view.paymentLine).toContain("Do not pay again");
+  expect(view.callout).toMatchObject({ tone: "info", detail: "Do not pay again." });
   expect(view.lane).toBe("update");
 });

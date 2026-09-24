@@ -189,6 +189,19 @@ beforeEach(() => {
 });
 
 describe("CheckoutScreen", () => {
+  it("shows each line's projected ready date, not its press time or requested schedule", async () => {
+    const projected = cart({
+      scheduledFor: "2026-09-30T06:00:00.000Z",
+      lines: [line({ promiseBy: "2026-09-26T06:00:00.000Z" })],
+    });
+    api.getCart.mockResolvedValue(projected);
+    useCart.setState({ cart: projected });
+    await renderInSafeArea(<CheckoutScreen />);
+
+    expect(await screen.findByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
+    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+  });
+
   it("groups the order as GRIDGO's print run, not a shop's", async () => {
     await renderInSafeArea(<CheckoutScreen />);
 

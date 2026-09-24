@@ -4,7 +4,7 @@ import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { spacing, typography } from "@/constants/theme";
 import type { CatalogItem } from "@/lib/api";
-import { readyInLine, samplePhotoUri, unitLine } from "@/lib/listing";
+import { printTimeLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import type { ProductSubcategory } from "@/lib/productCategories";
 import { useServiceFeeRateBps } from "@/store/platformSettings";
 
@@ -56,7 +56,7 @@ function sampleUrl(listing: CatalogItem | null): string | null {
 export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
   const rate = useServiceFeeRateBps();
   const money = moneyLine(listing, rate);
-  const ready = listing ? readyInLine(listing.turnaroundHours) : null;
+  const pressTime = listing ? printTimeLine(listing.turnaroundHours) : null;
 
   return (
     <View className="flex-row items-start gap-3 rounded-card border border-outline bg-surface py-1 pr-4">
@@ -89,9 +89,9 @@ export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
               {subcategory.examples}
             </Text>
           ) : null}
-          {ready ? (
-            <Text className="text-caption text-text-muted" numberOfLines={1}>
-              {ready}
+          {pressTime ? (
+            <Text className="text-caption text-text-muted">
+              {pressTime}
             </Text>
           ) : null}
         </View>

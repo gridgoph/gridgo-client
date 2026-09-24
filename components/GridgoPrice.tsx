@@ -2,7 +2,7 @@ import { Text, View, type StyleProp, type TextStyle } from "react-native";
 
 import { SkeletonLine } from "@/components/Skeleton";
 import { formatPhp } from "@/lib/api";
-import { gridgoPriceOrNull } from "@/lib/clientPrice";
+import { clientAmountMinor } from "@/lib/gridgoPrice";
 import { useServiceFeeRateBps } from "@/store/platformSettings";
 
 type Props = {
@@ -25,7 +25,7 @@ type Props = {
  *
  * The same figure on every surface — the match rows, the sheet's header, the
  * commit bar, the basket — so it is one component rather than one
- * `formatPhp(gridgoPriceMinor(...))` per screen. While GRIDGO's rate has not
+ * `formatPhp(clientAmountMinor(...))` per screen. While GRIDGO's rate has not
  * been read yet it draws a short skeleton line, never the shop's own number:
  * a figure that jumps up by ten percent a moment later is worse than a figure
  * that arrives late. A price that does not exist is "—", as elsewhere.
@@ -57,7 +57,7 @@ export function GridgoPrice({
   return (
     <Text className={className} style={style} numberOfLines={numberOfLines}>
       {prefix}
-      {formatPhp(gridgoPriceOrNull(supplierMinor, rate) ?? 0)}
+      {formatPhp(clientAmountMinor(supplierMinor, rate))}
       {suffix}
     </Text>
   );
@@ -69,6 +69,6 @@ export function gridgoPriceLabel(
   serviceFeeRateBps: number | null,
 ): string {
   if (supplierMinor == null) return "no price";
-  const priced = gridgoPriceOrNull(supplierMinor, serviceFeeRateBps);
+  const priced = clientAmountMinor(supplierMinor, serviceFeeRateBps);
   return priced == null ? "price loading" : formatPhp(priced);
 }

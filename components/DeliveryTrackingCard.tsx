@@ -9,7 +9,6 @@ import { StatusChip } from "@/components/StatusChip";
 import { useRoute } from "@/hooks/useRoute";
 import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
-import { formatDeadline } from "@/lib/deadline";
 import {
   isGeoPoint,
   summarizeTracking,
@@ -29,8 +28,9 @@ const POLL_MS = 30_000;
  *
  * Everything shown is something the platform actually returned. There is no
  * live ETA on GRIDGO, so none is invented: the card gives the distance left,
- * the real age of the position, and the date the supplier promised. An
- * out-of-date position is labelled as one, in words as well as colour.
+ * the real age of the position. The order specification owns the client
+ * ready-by promise. An out-of-date position is labelled as one, in words
+ * as well as colour.
  */
 export function DeliveryTrackingCard({ order }: Props) {
   const [ping, setPing] = useState<RiderPing | null>(null);
@@ -133,11 +133,6 @@ export function DeliveryTrackingCard({ order }: Props) {
         <View className="gap-1 pt-1">
           {dropoff?.label ? (
             <Text className="text-caption text-text-muted">Delivering to {dropoff.label}</Text>
-          ) : null}
-          {order.promisedDate ? (
-            <Text className="text-caption text-text-muted">
-              Promised by {formatDeadline(order.promisedDate)}
-            </Text>
           ) : null}
         </View>
 

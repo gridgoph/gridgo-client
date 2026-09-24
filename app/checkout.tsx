@@ -21,6 +21,7 @@ import { PaymentProofRow } from "@/components/PaymentProofRow";
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ReadyTime } from "@/components/ReadyTime";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
 import { StepTrail } from "@/components/StepTrail";
@@ -31,7 +32,6 @@ import * as api from "@/lib/api";
 import { formatPhp, type CartLineRecord } from "@/lib/api";
 import {
   basketTotals,
-  clientLineAmountMinor,
   lineName,
   lineOptionLabels,
   linesMissingArtwork,
@@ -39,7 +39,8 @@ import {
   linesUnpriced,
   printRuns,
 } from "@/lib/basket";
-import { gridgoPriceOrNull, unpricedLineReason } from "@/lib/clientPrice";
+import { unpricedLineReason } from "@/lib/clientPrice";
+import { clientAmountMinor } from "@/lib/gridgoPrice";
 import { openReceiptAfterCheckout } from "@/lib/receipt";
 import { clearOrderFlow } from "@/lib/orderFlow";
 import {
@@ -67,6 +68,7 @@ import {
   gridgoOfficeMapUrl,
 } from "@/lib/gridgoOffice";
 import { samplePhotoUri } from "@/lib/listing";
+import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { checkPaymentReference, DIGITAL_ONLY_NOTICE } from "@/lib/payment";
@@ -565,7 +567,7 @@ export default function CheckoutScreen() {
                   {(() => {
                     // GRIDGO's price for the run. Null reads as "Not yet",
                     // never as ₱0.00: a run with an unpriced line has no figure.
-                    const priced = gridgoPriceOrNull(run.subtotalMinor, settings?.serviceFeeRateBps);
+                    const priced = clientAmountMinor(run.subtotalMinor, settings?.serviceFeeRateBps);
                     return priced == null ? "Not yet" : formatPhp(priced);
                   })()}
                 </Text>
@@ -948,9 +950,8 @@ function LineRow({
 }) {
   const options = lineOptionLabels(line).join(" · ");
   const name = lineName(line);
-  const priced = gridgoPriceOrNull(line.lineSubtotalMinor, serviceFeeRateBps);
-  const clientAmount =
-    priced ?? (serviceFeeRateBps == null ? null : clientLineAmountMinor(line, serviceFeeRateBps));
+  const readyBy = readyByDate(line.promiseBy);
+  const clientAmount = clientAmountMinor(line.lineSubtotalMinor, serviceFeeRateBps);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -958,7 +959,7 @@ function LineRow({
         <Pressable
           onPress={onEdit}
           accessibilityRole="button"
-          accessibilityLabel={`${name}. Change what you picked.`}
+          accessibilityLabel={`${name}. Change what you picked.${readyBy ? ` Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
           className="gg-touch"
           style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
         >
@@ -973,6 +974,7 @@ function LineRow({
             </View>
             <View className="min-w-0 flex-1 gap-1">
               <Text className="text-body-lg font-medium text-text-primary">{name}</Text>
+              <ReadyTime promiseBy={line.promiseBy} />
               {options ? (
                 <Text className="text-caption text-text-muted" numberOfLines={2}>
                   {options}

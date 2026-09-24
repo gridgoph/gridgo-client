@@ -22,6 +22,7 @@ import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
 import { PushEnableCard } from "@/components/PushEnableCard";
+import { ReadyTime } from "@/components/ReadyTime";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonLine, SkeletonList, SkeletonPill } from "@/components/Skeleton";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
@@ -338,9 +339,7 @@ export default function OrderDetailScreen() {
             {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
             </> : null}
             <SpecRow label="Deadline" value={formatDeadline(order.deadline)} />
-            {order.promisedDate ? (
-              <SpecRow label="Supplier promised" value={formatDeadline(order.promisedDate)} />
-            ) : null}
+            <ReadyTime promiseBy={order.promiseBy} />
             {/* A collected job is not going to the address they shopped with.
                 Naming that address here is how a client ends up waiting at home
                 for something sitting on our counter. */}

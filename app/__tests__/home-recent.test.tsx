@@ -98,15 +98,19 @@ beforeEach(() => {
   } as never);
 });
 
-describe("Home's recent snapshot", () => {
-  it("shows a compact status row, not a full order card", async () => {
+describe("Home's in-progress snapshot", () => {
+  it("leads a live job with its state in words and what happens next", async () => {
     api.listOrders.mockResolvedValue([order()]);
 
     await renderInSafeArea(<HomeScreen />);
 
-    expect(await screen.findByText("YOUR JOBS")).toBeTruthy();
+    expect(await screen.findByText("IN PROGRESS")).toBeTruthy();
     expect(screen.getByText("Grand opening tarpaulin")).toBeTruthy();
     expect(screen.getByText("In production")).toBeTruthy();
+    expect(screen.getByText("Your job is on the press.")).toBeTruthy();
+    expect(screen.getByLabelText("Stage 2 of 4: Printing")).toBeTruthy();
+    expect(screen.getByText("View all")).toBeTruthy();
+    expect(screen.queryByText("RECENTLY FINISHED")).toBeNull();
     expect(screen.queryByText("production")).toBeNull();
     expect(screen.queryByText("NEEDS YOU")).toBeNull();
     expect(screen.queryByText("Order this again")).toBeNull();

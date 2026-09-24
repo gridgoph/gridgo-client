@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -11,13 +11,18 @@ import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { NotificationCard } from "@/components/NotificationCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
-import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonList } from "@/components/Skeleton";
-import { StatusChip } from "@/components/StatusChip";
 import { userFacingError } from "@/lib/copy";
-import type { Notification } from "@/lib/api";
-import { partitionInbox } from "@/lib/notificationPresentation";
-import { isNotificationRead, useNotifications } from "@/store/notifications";
+import {
+  isGroupUnread,
+  partitionInbox,
+  type NotificationGroup,
+} from "@/lib/notificationPresentation";
+import {
+  countUnreadGroups,
+  isNotificationRead,
+  useNotifications,
+} from "@/store/notifications";
 
 /**
  * Every update on the client's jobs.
@@ -26,11 +31,17 @@ import { isNotificationRead, useNotifications } from "@/store/notifications";
  * replaces it. Stage rails come from `orderTitle` / `orderState` /
  * `fulfillmentMode` on the notification itself — this screen does not wait
  * on `GET /orders`.
+ *
+ * One card per job (`groupInbox`): the API keeps a row per order step, and a
+ * card per row buried the inbox under one job's history. Unread, the count
+ * and the lane all follow the job's newest row; opening or swiping a card
+ * marks every row in it read.
  */
 export default function NotificationsScreen() {
   const router = useRouter();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
-  const { items, loading, error, refresh, readIds, markRead, markAllRead } = useNotifications();
+  const { items, loading, error, refresh, readIds, markManyRead, markAllRead } =
+    useNotifications();
 
   useLiveRefresh(["notifications"], refresh, { refreshOnFocus: false });
 
@@ -40,20 +51,22 @@ export default function NotificationsScreen() {
     }, [refresh]),
   );
 
-  const unreadCount = items.filter((item) => !isNotificationRead(item, readIds)).length;
+  const unreadCount = countUnreadGroups(items, readIds);
   const { needYou, updates } = partitionInbox(items);
   const splitInbox = needYou.length > 0 && updates.length > 0;
 
-  function renderRow(notification: Notification) {
+  function renderRow(group: NotificationGroup) {
+    const notification = group.latest;
+    const markGroupRead = () => void markManyRead(group.items.map((item) => item.id));
     return (
       <NotificationCard
-        key={notification.id}
-        notification={notification}
-        read={isNotificationRead(notification, readIds)}
+        key={group.key}
+        group={group}
+        read={!isGroupUnread(group, (item) => isNotificationRead(item, readIds))}
         onOpen={
           notification.orderId
             ? () => {
-                void markRead(notification.id);
+                markGroupRead();
                 if (notification.type === "order_receipt_ready") {
                   router.push({
                     pathname: "/order/receipt",
@@ -65,7 +78,7 @@ export default function NotificationsScreen() {
               }
             : null
         }
-        onMarkRead={() => void markRead(notification.id)}
+        onMarkRead={markGroupRead}
       />
     );
   }
@@ -75,8 +88,31 @@ export default function NotificationsScreen() {
       <ScrollView className="gg-screen">
         <View className="gg-page gap-4 pt-4" style={{ paddingBottom: tabPad }}>
           <ScreenHeader title="Notifications" />
+          {/*
+            How many cards are new, and the way to clear them, on one line. It
+            was a blue clock pill up here and a full-width button at the foot
+            of the list: a clock says "waiting", which unread is not, and the
+            button sat below every card it would clear. The ink tick is the
+            unread spine's colour, so the count and the cards read as one fact.
+          */}
           {unreadCount > 0 ? (
-            <StatusChip tone="info" label={`${unreadCount} unread`} icon="clock" />
+            <View className="min-h-11 flex-row items-center gap-2">
+              <View className="h-3 w-[3px] rounded-pill bg-accent" aria-hidden />
+              <Text className="flex-1 text-body font-medium text-text-primary">
+                {`${unreadCount} unread`}
+              </Text>
+              {unreadCount > 1 ? (
+                <Pressable
+                  onPress={() => void markAllRead()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mark all as read"
+                  className="gg-touch justify-center"
+                  style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+                >
+                  <Text className="text-button text-text-primary">Mark all as read</Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
 
           {/*
@@ -107,22 +143,16 @@ export default function NotificationsScreen() {
 
           {needYou.length ? (
             <View className="gap-3">
-              <Text className="text-overline text-text-muted">NEEDS YOU</Text>
+              <SectionHead label="NEEDS YOU" count={needYou.length} />
               {needYou.map(renderRow)}
             </View>
           ) : null}
 
           {updates.length ? (
             <View className="gap-3">
-              {splitInbox ? (
-                <Text className="text-overline text-text-muted">UPDATES</Text>
-              ) : null}
+              {splitInbox ? <SectionHead label="UPDATES" /> : null}
               {updates.map(renderRow)}
             </View>
-          ) : null}
-
-          {unreadCount > 1 ? (
-            <SecondaryButton label="Mark all as read" onPress={() => void markAllRead()} />
           ) : null}
 
           {!items.length && !loading && !error ? (
@@ -134,5 +164,19 @@ export default function NotificationsScreen() {
         </View>
       </ScrollView>
     </TabScreen>
+  );
+}
+
+/** Home's section head: a quiet overline, and a count where the number is the point. */
+function SectionHead({ label, count }: { label: string; count?: number }) {
+  return (
+    <View className="mt-2 flex-row items-center gap-2">
+      <Text className="text-overline text-text-muted">{label}</Text>
+      {count != null && count > 0 ? (
+        <View className="rounded-pill border border-outline bg-surface px-2 py-0.5">
+          <Text className="text-caption text-text-secondary">{count}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 }

@@ -10,6 +10,7 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OrderDetailScreen from "@/app/order/[id]";
+import { OrderCard } from "@/components/OrderCard";
 import type { Order } from "@/lib/api";
 import { useOrderPayment } from "@/store/checkoutPayment";
 
@@ -235,6 +236,29 @@ describe("OrderDetailScreen", () => {
     });
   });
 
+  it("shows the same client promise in the order summary", async () => {
+    await render(
+      <OrderCard
+        order={{ ...baseOrder, promiseBy: "2026-09-26T06:00:00.000Z" }}
+        onPress={() => undefined}
+      />,
+    );
+    expect(screen.getByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
+    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+  });
+
+  it.each(["production", "out_for_delivery"])("uses only the client promise in %s", async (state) => {
+    setOrder({
+      state,
+      promiseBy: "2026-09-26T06:00:00.000Z",
+      promisedDate: "2026-09-25T06:00:00.000Z",
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+    expect(await screen.findByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
+    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.queryByText(/Supplier promised|Promised by/)).toBeNull();
+  });
+
   it("updates an already open order from a silent event without push or navigation", async () => {
     setOrder({ title: "Before the server update" });
     await renderInSafeArea(<OrderDetailScreen />);
@@ -423,6 +447,22 @@ describe("OrderDetailScreen", () => {
     expect(screen.getByText("View receipt")).toBeTruthy();
     expect(screen.getByText("Request a physical invoice")).toBeTruthy();
     expect(screen.queryByText(/commission/i)).toBeNull();
+  });
+
+  it("keeps the Flyers pack at the same ₱440 printing amount after checkout", async () => {
+    setOrder({
+      title: "Flyers", quantity: 1, subtotalMinor: 40000,
+      serviceFeeMinor: 4000, serviceFeeRateBps: 1000,
+      deliveryFeeMinor: 0, totalMinor: 44000,
+      downpaymentMinor: 33000, balanceMinor: 11000, payments: {},
+      fulfillmentMode: "pickup",
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+    await screen.findByText("Flyers");
+    expect(screen.getAllByText("₱440.00")).toHaveLength(2);
+    expect(screen.getByText("Service fee · 10%")).toBeTruthy();
+    expect(screen.queryByText("₱484.00")).toBeNull();
+    expect(screen.queryByText("₱400.00")).toBeNull();
   });
 
   it("still folds the fee into printing when the order carries no rate", async () => {

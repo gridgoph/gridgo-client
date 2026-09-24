@@ -185,6 +185,8 @@ export type Order = {
   issueWindowOpenedAt?: string | null;
   issueWindowExpiresAt?: string | null;
   promisedDate: string | null;
+  /** Client promise, projected by GRIDGO with the queue and working calendar. */
+  promiseBy?: string | null;
   /** Display string only — never file identity. See docs/STORAGE_API.md. */
   artworkName: string | null;
   /** Stored artwork ids, newest last. Empty is valid. */
@@ -1115,6 +1117,13 @@ export type CatalogItem = {
   minimumLengthMilli: number | null;
   /** The least the shop will run at all. */
   minimumOrderQuantity: number | null;
+  /**
+   * The widest job this press prints, in whole feet (1–20). Tarpaulin &
+   * Outdoor Banners only; null elsewhere and on a listing that has not set it.
+   * GRIDGO refuses a wider line with `printer_cap_exceeded` — see
+   * `lib/printerWidth.ts`.
+   */
+  printerMaxWidthFeet?: number | null;
   priceTiers: CatalogPriceTier[];
   speedTiers: CatalogSpeedTier[];
   pricingBasis: string;
@@ -1435,7 +1444,7 @@ export type ClientAddress = {
 /** How busy the matched shop is, counted from the jobs actually in front. */
 export type MatchQueue = {
   jobsAhead: number;
-  /** The shop's own turnaround plus everything queued before this job. */
+  /** Elapsed wait including the queue, working calendar and platform allowance. */
   estimatedHours: number;
 };
 
@@ -1452,6 +1461,8 @@ export type MatchReason = {
 export type MatchResult = {
   shop: ShopBoard;
   queue: MatchQueue;
+  /** Absolute client promise; older deployments may only send queue.estimatedHours. */
+  promiseBy?: string | null;
   reasons: MatchReason[];
   listings: CatalogItem[];
   /** How many other shops could have printed it. */
@@ -1468,6 +1479,8 @@ export type ServiceLevel = "standard" | "scheduled";
 
 export type CartLineRecord = {
   id: string;
+  /** Queue-and-calendar projection for this configured line; absent on older APIs. */
+  promiseBy?: string | null;
   supplierId: string;
   catalogItemId: string;
   quantity: number;
@@ -2206,16 +2219,24 @@ export async function openSupportChatThread(): Promise<{ thread: SupportChatThre
   });
 }
 
+/**
+ * `newThread` starts a fresh conversation with this message rather than
+ * adding to the latest one — ignored when `threadId` names a thread.
+ */
 export async function sendSupportChatMessage(
   body: string,
   threadId?: string,
+  options?: { newThread?: boolean },
 ): Promise<{
   thread: SupportChatThread;
   message: SupportChatMessage;
 }> {
   return request("/support-chat/me/messages", {
     method: "POST",
-    body: JSON.stringify({ body, ...(threadId ? { threadId } : {}) }),
+    body: JSON.stringify({
+      body,
+      ...(threadId ? { threadId } : options?.newThread ? { newThread: true } : {}),
+    }),
   });
 }
 

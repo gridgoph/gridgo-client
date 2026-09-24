@@ -11,7 +11,7 @@ import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { HomeCategoryRow } from "@/components/HomeCategoryRow";
 import { HomeSampleStrip } from "@/components/HomeSampleStrip";
 import { HomeSearchEntry } from "@/components/HomeSearchEntry";
-import { HomeActionRow, HomeJobRow } from "@/components/HomeRow";
+import { HomeActionRow, HomeFinishedRow, HomeJobRow } from "@/components/HomeRow";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SkeletonHomeDocket } from "@/components/Skeleton";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
@@ -20,16 +20,13 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { pickHomeSamples } from "@/lib/homeSamples";
-import { orderNeedsClient } from "@/lib/orderState";
+import { homeJobs } from "@/lib/homeJobs";
 import { type ProductCategory } from "@/lib/productCategories";
 import { HOME_BOARDS, loadCategoryBoards } from "@/lib/shopBoards";
 import { useCart } from "@/store/cart";
 import { useNotifications } from "@/store/notifications";
 import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
-
-/** Snapshot, not a list. Orders is one tab away. */
-const RECENT_LIMIT = 3;
 
 /**
  * Home answers two questions, in this order: is anything waiting on me, and
@@ -39,12 +36,15 @@ const RECENT_LIMIT = 3;
  * the full cards, search, filters, sort and reorder. Repeating those cards
  * here is what stretched a handful of jobs across five or six screens.
  *
- * Waiting jobs therefore lead with the next verb, grouped as one docket — a
- * flush list, because the question there is "which of these, and what do I
- * do". Jobs that need nothing are the other question, "where has it got to",
- * so they are separate cards carrying the compact stage rail. They only appear
- * when nothing needs the client; otherwise they live on Orders, one tap away
- * through "View all".
+ * Jobs come in three shapes, in the order they matter (`lib/homeJobs.ts`).
+ * Waiting jobs lead with the next verb, grouped as one docket — a flush list,
+ * because the question there is "which of these, and what do I do". Jobs in
+ * progress are the other question, "where has it got to", so they are cards
+ * led by the state in words, with the compact stage rail and what happens
+ * next. Finished jobs are one quiet line each: three finished cards used to
+ * look exactly like live work and push the start menu off the first screen.
+ * Each group is capped; the rest live on Orders, one tap away through
+ * "View all".
  *
  * Starting is one section, in the order a person arrives in: search first for
  * someone who already knows they want a tarpaulin, then the five categories
@@ -136,8 +136,11 @@ export default function HomeScreen() {
     }, [load]),
   );
 
-  const needsClient = orders.filter(orderNeedsClient);
-  const recent = needsClient.length === 0 ? orders.slice(0, RECENT_LIMIT) : [];
+  const jobs = homeJobs(orders);
+  const showJobs = !loading && !error;
+  // "View all" rides on whichever of the two quieter sections comes first.
+  // The docket never needs it: every waiting job is already on it.
+  const viewAllOn = jobs.inProgress.length ? "inProgress" : "finished";
 
   // Nothing on press: the one moment Home has room to introduce the platform
   // rather than report on it.
@@ -240,11 +243,11 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
-          {!loading && !error && needsClient.length ? (
+          {showJobs && jobs.needsYou.length ? (
             <View className="mt-8 gap-3">
-              <SectionHead label="NEEDS YOU" count={needsClient.length} />
+              <SectionHead label="NEEDS YOU" count={jobs.needsYou.length} />
               <View className="gg-card-flush">
-                {needsClient.map((order, index) => (
+                {jobs.needsYou.map((order, index) => (
                   <View key={order.id}>
                     {index > 0 ? <View className="gg-divider" /> : null}
                     <HomeActionRow order={order} onPress={() => router.push(`/order/${order.id}`)} />
@@ -254,37 +257,45 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
-          {!loading && !error && recent.length ? (
+          {showJobs && jobs.inProgress.length ? (
             <View className="mt-8 gap-3">
-              {/*
-                The section head carries the way out. Home shows three jobs and
-                says so by offering the rest rather than by silently stopping
-                at three — "View all" is the one place the design system spends
-                the brand token, and it is a small link, not a fill.
-              */}
               <SectionHead
-                label="YOUR JOBS"
-                action={
-                  orders.length > recent.length ? (
-                    <Pressable
-                      onPress={() => router.navigate("/(tabs)/orders")}
-                      accessibilityRole="button"
-                      accessibilityLabel={`View all ${orders.length} jobs`}
-                      className="gg-touch justify-center"
-                      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-                    >
-                      <Text className="text-button text-brand">View all</Text>
-                    </Pressable>
-                  ) : null
-                }
+                label="IN PROGRESS"
+                count={jobs.inProgressTotal}
+                action={viewAllOn === "inProgress" ? <ViewAll total={orders.length} /> : null}
               />
               <View className="gap-3">
-                {recent.map((order) => (
+                {jobs.inProgress.map((order) => (
                   <HomeJobRow
                     key={order.id}
                     order={order}
                     onPress={() => router.push(`/order/${order.id}`)}
                   />
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {showJobs && jobs.finished.length ? (
+            <View className="mt-8 gap-3">
+              {/*
+                Finished work is a flush list of one-line rows, not cards: it
+                is there to be found again, not to be watched. No count — how
+                many jobs a client has finished answers nothing on Home.
+              */}
+              <SectionHead
+                label="RECENTLY FINISHED"
+                action={viewAllOn === "finished" ? <ViewAll total={orders.length} /> : null}
+              />
+              <View className="gg-card-flush">
+                {jobs.finished.map((order, index) => (
+                  <View key={order.id}>
+                    {index > 0 ? <View className="gg-divider" /> : null}
+                    <HomeFinishedRow
+                      order={order}
+                      onPress={() => router.push(`/order/${order.id}`)}
+                    />
+                  </View>
                 ))}
               </View>
             </View>
@@ -309,7 +320,11 @@ export default function HomeScreen() {
 
           {categories.length ? (
             <View className="mt-8 gap-3">
-              <SectionHead label="START A PRINT" />
+              {/*
+                The empty Home's call to act is this board, so it says so. The
+                yellow "+" is still the one filled start control.
+              */}
+              <SectionHead label={welcoming ? "START YOUR FIRST PRINT" : "START A PRINT"} />
               <HomeSearchEntry onPress={() => router.push("/request/category")} />
               {/*
                 One board, not a grid. Five families in two columns left the
@@ -336,6 +351,31 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
     </TabScreen>
+  );
+}
+
+/**
+ * The way from Home's snapshot to the full list on Orders.
+ *
+ * Always offered once there are jobs to show, not only when some are hidden:
+ * Orders is where search, filters and reorder live, and a client looking for
+ * those should not have to know the tab bar holds them. It is the one place
+ * the design system spends the brand token, and it is a small link, not a
+ * fill.
+ */
+function ViewAll({ total }: { total: number }) {
+  const router = useRouter();
+
+  return (
+    <Pressable
+      onPress={() => router.navigate("/(tabs)/orders")}
+      accessibilityRole="button"
+      accessibilityLabel={`View all ${total} jobs`}
+      className="gg-touch justify-center"
+      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+    >
+      <Text className="text-button text-brand">View all</Text>
+    </Pressable>
   );
 }
 
