@@ -145,6 +145,25 @@ beforeEach(() => {
 });
 
 describe("MatchScreen", () => {
+  it("distinguishes three hours on the press from the queued ready date", async () => {
+    api.matchShop.mockResolvedValue(
+      match("user_lovis", "Lovis Printshop", {
+        listings: [{ ...flyers("user_lovis"), turnaroundHours: 3 }],
+        queue: { jobsAhead: 2, estimatedHours: 48 },
+        promiseBy: "2026-09-26T06:00:00.000Z",
+      }),
+    );
+    await renderInSafeArea(<MatchScreen />);
+    await screen.findByText("GRIDGO’s pick for flyers");
+
+    expect(screen.queryByText("Ready in 3 hours")).toBeNull();
+    expect(screen.getByText("Prints in about 3 hours")).toBeTruthy();
+    expect(screen.getByText("READY BY")).toBeTruthy();
+    expect(screen.getByText("Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
+    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.queryByText(/once your artwork is approved/)).toBeNull();
+  });
+
   it("shows GRIDGO's pick and the reason it was made", async () => {
     api.matchShop.mockResolvedValue(
       match("user_rapid", "Rapid Print", {
@@ -157,7 +176,7 @@ describe("MatchScreen", () => {
     expect(await screen.findByText("GRIDGO’s pick for flyers")).toBeTruthy();
     expect(screen.getByText("FASTEST")).toBeTruthy();
     expect(
-      screen.getByText("Fastest on flyers — about 1 day including what is in front of you."),
+      screen.getByText("Fastest on flyers."),
     ).toBeTruthy();
   });
 
@@ -213,6 +232,9 @@ describe("MatchScreen", () => {
     expect(screen.getByText("3rd in line")).toBeTruthy();
     expect(screen.getByText("2 jobs ahead of yours")).toBeTruthy();
     expect(screen.getByText("6 days")).toBeTruthy();
+    expect(screen.getByText("READY IN")).toBeTruthy();
+    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.queryByText("READY BY")).toBeNull();
   });
 
   it("says nothing about the API's own working notes", async () => {

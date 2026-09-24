@@ -126,17 +126,38 @@ describe("HomeActionRow tap", () => {
 });
 
 describe("HomeJobRow's next step", () => {
-  it("says what happens next and the promised date, never an estimate", async () => {
+  it("uses the client promise even when the supplier date differs", async () => {
     await render(
       <HomeJobRow
-        order={order({ state: "production", promisedDate: "2026-09-28T17:00:00+08:00" })}
+        order={order({
+          state: "production",
+          promisedDate: "2026-09-28T17:00:00+08:00",
+          promiseBy: "2026-09-29T06:30:00.000Z",
+        })}
         onPress={() => undefined}
       />,
     );
 
     expect(screen.getByText("Your job is on the press.")).toBeTruthy();
-    expect(screen.getByText(/^Promised by 28 Sep$|^Promised by Sep 28$/)).toBeTruthy();
+    expect(screen.getByText("Ready by Tue, Sep 29, 2026 · 2:30 PM")).toBeTruthy();
+    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.queryByText(/Promised by/)).toBeNull();
     expect(screen.queryByText(/ETA|min away/)).toBeNull();
+  });
+});
+
+describe("HomeJobRow without a client promise", () => {
+  it.each([null, "not-a-date"])("never substitutes a supplier date for %s", async (promiseBy) => {
+    await render(
+      <HomeJobRow
+        order={order({ state: "production", promiseBy, promisedDate: "2026-09-28T17:00:00+08:00" })}
+        onPress={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Your job is on the press.")).toBeTruthy();
+    expect(screen.queryByText(/Ready by|Promised by/)).toBeNull();
+    expect(screen.queryByText("Includes jobs ahead and shop opening hours.")).toBeNull();
   });
 });
 

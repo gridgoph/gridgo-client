@@ -2,7 +2,7 @@
  * A shop's listing, as the client fills it in.
  *
  * The supplier app has a read-only preview of this exact sheet — sample, price,
- * ready-in, before-you-order, the numbered steps, then the add-ons (see
+ * press time, before-you-order, the numbered steps, then the add-ons (see
  * `app/shop/[id]/preview.tsx` in gridgo-supplier). This module is the same
  * reading with the boxes tickable: the shop wrote the sheet, the client answers
  * it, and the price moves as they do.
@@ -227,10 +227,10 @@ export function quantityLine(item: CatalogItem, quantity: number): string {
 // Time
 // ---------------------------------------------------------------------------
 
-/** "Ready in 2 days" / "Ready in 6 hours". Null hours has no honest line. */
-export function readyInLine(hours: number | null | undefined): string | null {
-  const label = readyInShort(hours);
-  return label ? `Ready in ${label}` : null;
+/** Press time only: working hours do not include the queue or closed hours. */
+export function printTimeLine(hours: number | null | undefined): string | null {
+  if (typeof hours !== "number" || !Number.isFinite(hours) || hours <= 0) return null;
+  return `Prints in about ${hours} ${hours === 1 ? "hour" : "hours"}`;
 }
 
 /** Just the duration — "2 days", "6 hours" — for a card's readout cell. */

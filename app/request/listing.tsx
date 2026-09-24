@@ -41,7 +41,7 @@ import {
   isSelectionComplete,
   linkFormats,
   quantityLine,
-  readyInLine,
+  printTimeLine,
   samplePhotoUri,
   selectedOptionIds,
   specGroups,
@@ -256,7 +256,7 @@ export default function ListingScreen() {
   const runMinimum = belowMinimumOrder(item, quantity);
   const uploads = fileFormats(item);
   const links = linkFormats(item);
-  const ready = readyInLine(item.turnaroundHours);
+  const pressTime = printTimeLine(item.turnaroundHours);
   const capLine = printerCapLine(item);
   const sizeValue = boundValue(item, selection, "size");
   // Said before the tap, because GRIDGO refuses the line otherwise
@@ -395,10 +395,10 @@ export default function ListingScreen() {
             />
             <Text className="text-body text-text-secondary">{unitLine(item)}</Text>
           </View>
-          {ready ? (
-            <Text className="mt-1 text-body text-text-secondary">{ready}</Text>
+          {pressTime ? (
+            <Text className="mt-1 text-body text-text-secondary">{pressTime}</Text>
           ) : null}
-          {/* The widest this press goes. A peer of the ready-in line: both are
+          {/* The widest this press goes. A peer of the press-time line: both are
               facts about the press a client plans the job around. */}
           {capLine ? (
             <Text className="mt-1 text-body text-text-secondary">{capLine}</Text>

@@ -163,20 +163,27 @@ function tarp(id: string, name: string, printerMaxWidthFeet: number | null) {
 }
 
 describe("a tarpaulin match", () => {
-  it("shows each listing's cap and the widest on the card", async () => {
+  it("shows width limits alongside press time and the projected ready date", async () => {
     api.matchShop.mockResolvedValue(
       match("user_lovis", "Lovis Printshop", {
         listings: [
-          tarp("sci_narrow", "Standard tarpaulin", 7),
+          { ...tarp("sci_narrow", "Standard tarpaulin", 7), turnaroundHours: 3 },
           tarp("sci_wide", "Wide tarpaulin", 10),
           tarp("sci_open", "Mesh banner", null),
         ],
+        queue: { jobsAhead: 2, estimatedHours: 48 },
+        promiseBy: "2026-09-26T06:00:00.000Z",
       }),
     );
     await renderInSafeArea(<MatchScreen />);
 
     expect(await screen.findByText("PRINT WIDTH")).toBeTruthy();
     expect(screen.getByText("Up to 10 ft wide")).toBeTruthy();
+    expect(screen.getByText("Prints in about 3 hours")).toBeTruthy();
+    expect(screen.getByText("READY BY")).toBeTruthy();
+    expect(screen.getByText("Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
+    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.queryByText("Ready in 3 hours")).toBeNull();
     expect(screen.getByText("Prints up to 7 ft wide")).toBeTruthy();
     expect(screen.getByText("Prints up to 10 ft wide")).toBeTruthy();
     // A listing with no published cap says nothing rather than a guess.

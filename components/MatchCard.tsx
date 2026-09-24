@@ -4,6 +4,7 @@ import { SamplePhoto } from "@/components/SamplePhoto";
 import { readyInShort, samplePhotoUri } from "@/lib/listing";
 import type { MatchResult } from "@/lib/api";
 import { primaryReason, queueLine, reasonLine, reasonTag } from "@/lib/match";
+import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 import { widestPrinterCapFeet } from "@/lib/printerWidth";
 
 type Props = {
@@ -42,6 +43,7 @@ export function MatchCard({ match, subcategoryName, distanceMeters }: Props) {
   const reason = primaryReason(match.reasons);
   const queue = queueLine(match.queue);
   const wait = readyInShort(match.queue.estimatedHours);
+  const readyBy = readyByDate(match.promiseBy);
   const sample = samplePhotoUri(match.listings[0]?.photos[0]);
   const thing = subcategoryName.toLowerCase();
   const widest = widestPrinterCapFeet(match.listings);
@@ -82,7 +84,6 @@ export function MatchCard({ match, subcategoryName, distanceMeters }: Props) {
           <Text className="text-body-lg text-text-primary">
             {reasonLine({
               reason,
-              queue: match.queue,
               distanceMeters,
               alternativesCount: match.alternativesCount,
               subcategoryName,
@@ -109,9 +110,9 @@ export function MatchCard({ match, subcategoryName, distanceMeters }: Props) {
             />
             <View className="w-px bg-outline" />
             <Readout
-              label="READY IN"
-              value={wait ?? "GRIDGO confirms"}
-              hint={wait ? "queue included" : undefined}
+              label={readyBy ? "READY BY" : "READY IN"}
+              value={readyBy ?? wait ?? "GRIDGO confirms"}
+              hint={readyBy || wait ? READY_TIME_EXPLANATION : undefined}
             />
           </View>
           {widest != null ? (

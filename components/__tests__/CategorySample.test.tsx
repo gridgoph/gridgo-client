@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react-native";
 import { Dimensions } from "react-native";
 
-import { CategorySampleCard, sampleCardSlots } from "@/components/CategorySample";
+import { CategorySampleCard, CategorySampleRow, sampleCardSlots } from "@/components/CategorySample";
 import { spacing, typography } from "@/constants/theme";
 import type { CatalogItem } from "@/lib/api";
 import type { ProductSubcategory } from "@/lib/productCategories";
@@ -12,6 +12,18 @@ const RATE_SETTINGS = {
   serviceFeeRateBps: 1000,
   deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
 };
+
+it("labels the category row's turnaround as press time", async () => {
+  await render(
+    <CategorySampleRow
+      subcategory={subcategory("Flyers")}
+      listing={{ ...listing(), turnaroundHours: 3 }}
+      onPress={() => undefined}
+    />,
+  );
+  expect(screen.getByText("Prints in about 3 hours")).toBeTruthy();
+  expect(screen.queryByText(/Ready in/)).toBeNull();
+});
 
 beforeEach(() => {
   usePlatformSettings.getState().reset();

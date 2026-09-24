@@ -21,6 +21,7 @@ import { PaymentProofRow } from "@/components/PaymentProofRow";
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ReadyTime } from "@/components/ReadyTime";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
 import { StepTrail } from "@/components/StepTrail";
@@ -67,6 +68,7 @@ import {
   gridgoOfficeMapUrl,
 } from "@/lib/gridgoOffice";
 import { samplePhotoUri } from "@/lib/listing";
+import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { checkPaymentReference, DIGITAL_ONLY_NOTICE } from "@/lib/payment";
@@ -948,6 +950,7 @@ function LineRow({
 }) {
   const options = lineOptionLabels(line).join(" · ");
   const name = lineName(line);
+  const readyBy = readyByDate(line.promiseBy);
   const clientAmount = clientAmountMinor(line.lineSubtotalMinor, serviceFeeRateBps);
 
   return (
@@ -956,7 +959,7 @@ function LineRow({
         <Pressable
           onPress={onEdit}
           accessibilityRole="button"
-          accessibilityLabel={`${name}. Change what you picked.`}
+          accessibilityLabel={`${name}. Change what you picked.${readyBy ? ` Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
           className="gg-touch"
           style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
         >
@@ -971,6 +974,7 @@ function LineRow({
             </View>
             <View className="min-w-0 flex-1 gap-1">
               <Text className="text-body-lg font-medium text-text-primary">{name}</Text>
+              <ReadyTime promiseBy={line.promiseBy} />
               {options ? (
                 <Text className="text-caption text-text-muted" numberOfLines={2}>
                   {options}

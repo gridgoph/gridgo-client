@@ -18,7 +18,6 @@
  */
 
 import type { MatchQueue, MatchReason, MatchResult } from "@/lib/api";
-import { readyInShort } from "@/lib/listing";
 import { formatDistance, haversineMetres, type GeoPoint } from "@/lib/tracking";
 
 /** The reason the card leads with — the bundle, else the top-ranked factor. */
@@ -46,42 +45,37 @@ export function reasonTag(factor: MatchReason["factor"]): string {
 /**
  * One line of why, in the client's own terms.
  *
- * Concrete wherever GRIDGO has a real figure — a ready-in, a distance — and
+ * Concrete wherever GRIDGO has a real distance, and
  * plain when it does not. It never claims to have beaten shops that were not
  * there: with no alternatives the line says this is the shop printing it,
  * which is true, rather than "fastest" with nothing to be faster than.
+ * Timing belongs to the card's readout, so a relative estimate cannot compete
+ * here with the API's absolute promise.
  */
 export function reasonLine({
   reason,
-  queue,
   distanceMeters,
   alternativesCount,
   subcategoryName,
 }: {
   reason: MatchReason | null;
-  queue: MatchQueue;
   distanceMeters: number | null;
   alternativesCount: number;
   subcategoryName: string;
 }): string {
   const thing = subcategoryName.toLowerCase();
-  const ready = readyInShort(queue.estimatedHours);
 
   if (reason?.factor === "bundle") {
     return `Already printing something else in this order, so it travels as one job.`;
   }
 
   if (alternativesCount === 0) {
-    return ready
-      ? `The only printer GRIDGO can put ${thing} on today — about ${ready} once your artwork is approved.`
-      : `The only printer GRIDGO can put ${thing} on today.`;
+    return `The only printer GRIDGO can put ${thing} on today.`;
   }
 
   switch (reason?.factor) {
     case "speed":
-      return ready
-        ? `Fastest on ${thing} — about ${ready} including what is in front of you.`
-        : `Fastest on ${thing}.`;
+      return `Fastest on ${thing}.`;
     case "distance":
       return distanceMeters == null
         ? `Closest to your drop-off.`
@@ -142,5 +136,3 @@ export function ordinal(position: number): string {
       return `${rounded}th`;
   }
 }
-
-

@@ -50,12 +50,10 @@ describe("reasonTag", () => {
 });
 
 describe("reasonLine", () => {
-  const queue = { jobsAhead: 0, estimatedHours: 48 };
 
   it("never repeats the API's working notes", () => {
     const line = reasonLine({
       reason: RANKED[0],
-      queue,
       distanceMeters: 1240,
       alternativesCount: 2,
       subcategoryName: "Flyers",
@@ -65,23 +63,21 @@ describe("reasonLine", () => {
     expect(line).not.toContain("metres from the delivery pin");
   });
 
-  it("says how long the wait really is when speed decided it", () => {
+  it("leaves the ready promise to the card readout when speed decided it", () => {
     expect(
       reasonLine({
         reason: RANKED[0],
-        queue: { jobsAhead: 2, estimatedHours: 96 },
         distanceMeters: null,
         alternativesCount: 1,
         subcategoryName: "Flyers",
       }),
-    ).toBe("Fastest on flyers — about 4 days including what is in front of you.");
+    ).toBe("Fastest on flyers.");
   });
 
   it("gives the distance when that is what decided it", () => {
     expect(
       reasonLine({
         reason: reason({ factor: "distance" }),
-        queue,
         distanceMeters: 1400,
         alternativesCount: 3,
         subcategoryName: "Flyers",
@@ -93,7 +89,6 @@ describe("reasonLine", () => {
     // "Fastest" against no alternatives is not true, however flattering.
     const line = reasonLine({
       reason: RANKED[0],
-      queue,
       distanceMeters: null,
       alternativesCount: 0,
       subcategoryName: "Flyers",
@@ -104,11 +99,11 @@ describe("reasonLine", () => {
 
   it("never names or counts shops — GRIDGO is who the client is buying from", () => {
     const lines = [
-      reasonLine({ reason: RANKED[0], queue, distanceMeters: null, alternativesCount: 0, subcategoryName: "Flyers" }),
-      reasonLine({ reason: RANKED[0], queue, distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
-      reasonLine({ reason: reason({ factor: "quality", rank: 1 }), queue, distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
-      reasonLine({ reason: reason({ factor: "distance", rank: 1 }), queue, distanceMeters: 1400, alternativesCount: 4, subcategoryName: "Flyers" }),
-      reasonLine({ reason: null, queue, distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
+      reasonLine({ reason: RANKED[0], distanceMeters: null, alternativesCount: 0, subcategoryName: "Flyers" }),
+      reasonLine({ reason: RANKED[0], distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
+      reasonLine({ reason: reason({ factor: "quality", rank: 1 }), distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
+      reasonLine({ reason: reason({ factor: "distance", rank: 1 }), distanceMeters: 1400, alternativesCount: 4, subcategoryName: "Flyers" }),
+      reasonLine({ reason: null, distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
     ];
     for (const line of lines) expect(line.toLowerCase()).not.toMatch(/\bshops?\b/);
   });
@@ -117,7 +112,6 @@ describe("reasonLine", () => {
     expect(
       reasonLine({
         reason: reason({ factor: "bundle", rank: 0 }),
-        queue,
         distanceMeters: null,
         alternativesCount: 4,
         subcategoryName: "Flyers",
@@ -176,7 +170,6 @@ describe("reasonLine and other shops", () => {
   it("does not send the client looking for another shop", () => {
     const line = reasonLine({
       reason: RANKED[0],
-      queue: { jobsAhead: 0, estimatedHours: 24 },
       distanceMeters: null,
       alternativesCount: 4,
       subcategoryName: "Flyers",

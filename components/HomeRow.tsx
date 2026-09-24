@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { OrderStageRail } from "@/components/OrderStageRail";
+import { ReadyTime } from "@/components/ReadyTime";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import {
@@ -26,6 +27,7 @@ import {
 } from "@/lib/orderState";
 import { fulfilmentRailKind, orderStageIndex } from "@/lib/orderStages";
 import { formatRelativeTime } from "@/lib/relativeTime";
+import { readyByDate } from "@/lib/readyTime";
 
 /**
  * The icons a docket row draws an action with, keyed by their name.
@@ -181,7 +183,7 @@ export function HomeActionRow({ order, onPress }: { order: Order; onPress: () =>
  *
  * Under that, the four coarse stages on the compact rail, then what happens
  * next in a sentence — who has the job and what they are doing with it — and
- * the supplier's promised date when there is one. The rail is deliberately
+ * the client's ready-by promise when there is one. The rail is deliberately
  * coarse and the headline is the precise state; the difference between
  * "Printing" and "Checking your payment" is exactly what a client needs. An
  * unknown state draws no rail at all — an invented position is worse than
@@ -197,7 +199,7 @@ export function HomeJobRow({ order, onPress }: { order: Order; onPress: () => vo
   const stage = orderStageIndex(order.state, order.fulfillmentMode);
   const moved = order.updatedAt ? formatRelativeTime(order.updatedAt) : null;
   const next = orderWaitingOn(order);
-  const promised = shortDate(order.promisedDate);
+  const promised = readyByDate(order.promiseBy);
   const StateIcon = ICONS[meta.icon];
 
   return (
@@ -244,9 +246,9 @@ export function HomeJobRow({ order, onPress }: { order: Order; onPress: () => vo
                     </Text>
                   ) : null}
                   {promised ? (
-                    <Text className={next ? "mt-1 text-caption text-text-muted" : "text-caption text-text-muted"}>
-                      Promised by {promised}
-                    </Text>
+                    <View className={next ? "mt-1" : undefined}>
+                      <ReadyTime promiseBy={order.promiseBy} />
+                    </View>
                   ) : null}
                 </View>
                 <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
@@ -310,12 +312,4 @@ export function HomeFinishedRow({ order, onPress }: { order: Order; onPress: () 
 /** "Yesterday" → "yesterday", so it reads inside "Completed yesterday". A date keeps its month's capital. */
 function lowerFirst(value: string): string {
   return value === "Yesterday" || value === "Just now" ? value.toLowerCase() : value;
-}
-
-/** "28 Sep" — the day a promise falls on, without the year or a time. */
-function shortDate(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  return date.toLocaleDateString("en-PH", { day: "numeric", month: "short" });
 }

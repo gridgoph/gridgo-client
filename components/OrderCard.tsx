@@ -2,11 +2,13 @@ import { RotateCcw } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
 import { OrderReference } from "@/components/OrderReference";
+import { ReadyTime } from "@/components/ReadyTime";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp, type Order } from "@/lib/api";
 import { paymentStatusLabel } from "@/lib/copy";
 import { orderReferenceSpoken } from "@/lib/orderReference";
+import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 import {
   formatPriceRange,
   getOrderStateMeta,
@@ -35,6 +37,7 @@ type Props = {
 export function OrderCard({ order, onPress, onReorder }: Props) {
   const colors = useThemeColors();
   const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
+  const readyBy = readyByDate(order.promiseBy);
   // Before a supplier accepts there is no exact price, so the card carries the
   // platform's range and marks it as one. It must never round an estimate into
   // a figure the client could hold GRIDGO to.
@@ -60,7 +63,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${order.title}, ${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}`}
+        accessibilityLabel={`${order.title}, ${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
         accessibilityHint={orderWaitingOn(order) ?? undefined}
         className="p-4"
       >
@@ -79,6 +82,11 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
             <Text className="mt-1 text-caption text-text-muted" numberOfLines={1}>
               {spec}
             </Text>
+            {readyBy ? (
+              <View className="mt-3">
+                <ReadyTime promiseBy={order.promiseBy} />
+              </View>
+            ) : null}
             <View className="mt-3 flex-row items-baseline justify-between gap-3">
               <Text className="shrink text-body-lg font-medium text-text-primary">{money}</Text>
               <Text className="text-caption text-text-muted">{moneyNote}</Text>
