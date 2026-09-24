@@ -29,6 +29,7 @@ jest.mock("@/hooks/usePushNotifications", () => ({ usePushNotifications: jest.fn
 jest.mock("@/hooks/useLiveNotifications", () => ({ useLiveNotifications: jest.fn() }));
 jest.mock("@/hooks/useSupportChatUnread", () => ({ useSupportChatUnread: jest.fn() }));
 jest.mock("@/hooks/useGridgoCharges", () => ({ useGridgoCharges: jest.fn() }));
+jest.mock("@/hooks/useAppUpdateCheck", () => ({ useAppUpdateCheck: jest.fn() }));
 jest.mock("@/components/BrandIntro", () => ({ BrandIntro: () => null }));
 jest.mock("@/store/theme", () => ({ useThemeStore: jest.fn() }));
 jest.mock("expo-splash-screen", () => ({
