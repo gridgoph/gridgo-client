@@ -19,10 +19,12 @@ describe("ServiceFeeRow", () => {
     await render(<ServiceFeeRow explainOnly rateBps={1000} />);
 
     expect(screen.getByText("Service fee · 10%")).toBeTruthy();
+    expect(screen.getByText("View more")).toBeTruthy();
     expect(screen.queryByText("₱4.00")).toBeNull();
     expect(screen.queryByText("—")).toBeNull();
 
-    await fireEvent.press(screen.getByLabelText("Service fee · 10%"));
+    await fireEvent.press(screen.getByLabelText("Service fee · 10%. View more"));
     expect(screen.getByText(SERVICE_FEE_EXPLAINER)).toBeTruthy();
+    expect(screen.getByText("View less")).toBeTruthy();
   });
 });

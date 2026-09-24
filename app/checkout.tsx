@@ -41,6 +41,7 @@ import {
 } from "@/lib/basket";
 import { gridgoPriceOrNull, unpricedLineReason } from "@/lib/clientPrice";
 import { openReceiptAfterCheckout } from "@/lib/receipt";
+import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
 import { clearOrderFlow } from "@/lib/orderFlow";
 import {
   blockerLine,
@@ -861,12 +862,16 @@ export default function CheckoutScreen() {
             )}
 
             {/* The fee is on the printing figure, so it is unknown while
-                that is — never ₱0.00 for a basket with an unpriced line. */}
-            <ServiceFeeRow
-              explainOnly
-              rateBps={settings?.serviceFeeRateBps ?? null}
-              pendingLabel={settings ? "Not yet" : "GRIDGO could not read its current charges"}
-            />
+                that is — never ₱0.00 for a basket with an unpriced line.
+                Operations can hide the name of the fee without changing the
+                pesos. */}
+            {serviceFeeVisibleToClient(settings) ? (
+              <ServiceFeeRow
+                explainOnly
+                rateBps={settings?.serviceFeeRateBps ?? null}
+                pendingLabel={settings ? "Not yet" : "GRIDGO could not read its current charges"}
+              />
+            ) : null}
 
             <View className="gg-divider my-2" />
 

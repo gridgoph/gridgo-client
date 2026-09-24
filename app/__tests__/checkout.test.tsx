@@ -217,10 +217,23 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText("₱25.00")).toBeTruthy();
     expect(screen.getAllByText("₱69.00")).toHaveLength(2);
 
-    await fireEvent.press(await screen.findByLabelText("Service fee · 10%"));
+    expect(screen.getByText("View more")).toBeTruthy();
+    await fireEvent.press(await screen.findByLabelText("Service fee · 10%. View more"));
     expect(
       screen.getByText("The fee directly goes into improving app operations and customer care."),
     ).toBeTruthy();
+  });
+
+  it("hides the service fee row when Operations has turned it off", async () => {
+    api.getSettings.mockResolvedValue({ ...SETTINGS, serviceFeeVisibleToClient: false });
+    await renderInSafeArea(<CheckoutScreen />);
+    await screen.findByText("WHAT GRIDGO IS PRINTING");
+    expect((await screen.findAllByText("₱44.00")).length).toBeGreaterThan(0);
+
+    expect(screen.queryByText("Service fee · 10%")).toBeNull();
+    expect(screen.queryByText("View more")).toBeNull();
+    expect(screen.getAllByText("₱44.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("₱69.00")).toHaveLength(2);
   });
 
   it("shows GRIDGO amounts on each print run and a GRIDGO printing total", async () => {

@@ -40,6 +40,7 @@ export function ServiceFeeRow({
     : amountMinor == null
       ? pendingLabel
       : formatPhp(amountMinor);
+  const moreLabel = open ? "View less" : "View more";
 
   return (
     <View className="border-b border-outline-subtle">
@@ -47,13 +48,15 @@ export function ServiceFeeRow({
         onPress={() => setOpen((current) => !current)}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        accessibilityLabel={label}
+        accessibilityLabel={explainOnly ? `${label}. ${moreLabel}` : label}
         accessibilityHint="What the service fee is for"
         className="flex-row items-baseline justify-between gap-4 py-3"
       >
         <Text className="text-body text-text-secondary">{label}</Text>
         {value != null ? (
           <Text className="shrink text-body text-text-primary">{value}</Text>
+        ) : explainOnly ? (
+          <Text className="shrink text-button text-text-primary">{moreLabel}</Text>
         ) : null}
       </Pressable>
       {open ? (

@@ -2,6 +2,7 @@ import {
   SERVICE_FEE_EXPLAINER,
   formatServiceFeeRate,
   serviceFeeLabel,
+  serviceFeeVisibleToClient,
   showsServiceFee,
 } from "@/lib/serviceFee";
 
@@ -26,6 +27,15 @@ describe("showsServiceFee", () => {
     expect(showsServiceFee({ serviceFeeRateBps: 1000 })).toBe(true);
     expect(showsServiceFee({ serviceFeeMinor: 400 })).toBe(true);
     expect(showsServiceFee({})).toBe(false);
+  });
+});
+
+describe("serviceFeeVisibleToClient", () => {
+  it("hides only when Operations has turned the row off", () => {
+    expect(serviceFeeVisibleToClient({ serviceFeeVisibleToClient: false })).toBe(false);
+    expect(serviceFeeVisibleToClient({ serviceFeeVisibleToClient: true })).toBe(true);
+    expect(serviceFeeVisibleToClient({})).toBe(true);
+    expect(serviceFeeVisibleToClient(null)).toBe(true);
   });
 });
 
