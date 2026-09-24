@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react-native";
 import { Platform } from "react-native";
 
 import RootLayout from "@/app/_layout";
+import { useAppUpdate } from "@/store/appUpdate";
 
 jest.mock("@/global.css", () => ({}));
 jest.mock("@clerk/expo", () => ({
@@ -10,8 +11,9 @@ jest.mock("@clerk/expo", () => ({
 }));
 jest.mock("@clerk/expo/token-cache", () => ({ tokenCache: {} }));
 jest.mock("@/lib/clerkAuth", () => ({ resolveClerkPublishableKey: () => "test" }));
+let mockUser: { id: string } | null = null;
 jest.mock("@/store/session", () => ({
-  useSession: (select: (state: { user: null }) => unknown) => select({ user: null }),
+  useSession: (select: (state: { user: typeof mockUser }) => unknown) => select({ user: mockUser }),
 }));
 jest.mock("@/hooks/useAppFonts", () => ({ useAppFonts: jest.fn(() => true) }));
 jest.mock("@/hooks/useClerkApiSession", () => ({ useClerkApiSession: jest.fn() }));
@@ -79,6 +81,7 @@ jest.mock("expo-constants", () => ({
 }));
 
 beforeEach(() => {
+  useAppUpdate.getState().reset();
   jest.spyOn(console, "info").mockImplementation(() => undefined);
   process.env.EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE = "90";
   jest.replaceProperty(Platform, "OS", "android");
@@ -90,6 +93,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  mockUser = null;
   delete process.env.EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE;
   jest.restoreAllMocks();
 });
@@ -111,5 +115,19 @@ describe("root layout, forced update check in Expo Go", () => {
     );
     expect(console.info).toHaveBeenCalledWith("[update-check] latest release is 1.0.95");
     expect(console.info).toHaveBeenCalledWith("[update-check] offering 1.0.95 over 1.0.90");
+  });
+
+  // Clerk can restore a saved session after the intro, which re-keys the root
+  // stack. The sheet sits beside the stack, so that must neither close it nor
+  // count as "Later" (the supplier app's sheet did both).
+  it("keeps the offer open when a restored session rebuilds the stack", async () => {
+    await render(createElement(RootLayout));
+    await screen.findByText("A new version of GRIDGO is ready", {}, { timeout: 3000 });
+
+    mockUser = { id: "client" };
+    await screen.rerender(createElement(RootLayout));
+
+    expect(screen.getByText("A new version of GRIDGO is ready")).toBeTruthy();
+    expect(useAppUpdate.getState().dismissed).toBeNull();
   });
 });
