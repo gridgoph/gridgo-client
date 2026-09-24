@@ -31,7 +31,6 @@ import * as api from "@/lib/api";
 import { formatPhp, type CartLineRecord } from "@/lib/api";
 import {
   basketTotals,
-  clientLineAmountMinor,
   lineName,
   lineOptionLabels,
   linesMissingArtwork,
@@ -39,7 +38,8 @@ import {
   linesUnpriced,
   printRuns,
 } from "@/lib/basket";
-import { gridgoPriceOrNull, unpricedLineReason } from "@/lib/clientPrice";
+import { unpricedLineReason } from "@/lib/clientPrice";
+import { clientAmountMinor } from "@/lib/gridgoPrice";
 import { openReceiptAfterCheckout } from "@/lib/receipt";
 import { clearOrderFlow } from "@/lib/orderFlow";
 import {
@@ -565,7 +565,7 @@ export default function CheckoutScreen() {
                   {(() => {
                     // GRIDGO's price for the run. Null reads as "Not yet",
                     // never as ₱0.00: a run with an unpriced line has no figure.
-                    const priced = gridgoPriceOrNull(run.subtotalMinor, settings?.serviceFeeRateBps);
+                    const priced = clientAmountMinor(run.subtotalMinor, settings?.serviceFeeRateBps);
                     return priced == null ? "Not yet" : formatPhp(priced);
                   })()}
                 </Text>
@@ -948,9 +948,7 @@ function LineRow({
 }) {
   const options = lineOptionLabels(line).join(" · ");
   const name = lineName(line);
-  const priced = gridgoPriceOrNull(line.lineSubtotalMinor, serviceFeeRateBps);
-  const clientAmount =
-    priced ?? (serviceFeeRateBps == null ? null : clientLineAmountMinor(line, serviceFeeRateBps));
+  const clientAmount = clientAmountMinor(line.lineSubtotalMinor, serviceFeeRateBps);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>

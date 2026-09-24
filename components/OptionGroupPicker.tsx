@@ -4,11 +4,13 @@ import { Pressable, Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp, type CatalogOption, type CatalogOptionGroup } from "@/lib/api";
-import { gridgoPriceMinor } from "@/lib/clientPrice";
+import { clientAmountMinor } from "@/lib/gridgoPrice";
 import { useServiceFeeRateBps } from "@/store/platformSettings";
 
 type Props = {
   group: CatalogOptionGroup;
+  /** The modifier is per this unit, not the configured job total. */
+  priceUnit?: string;
   /** Step number for a required spec group; null for an add-on. */
   step: number | null;
   selectedId: string | undefined;
@@ -31,7 +33,7 @@ type Props = {
  * can be unticked by tapping it again, because "no lamination" is a real answer
  * and there is nowhere else to give it.
  */
-export function OptionGroupPicker({ group, step, selectedId, onSelect }: Props) {
+export function OptionGroupPicker({ group, priceUnit, step, selectedId, onSelect }: Props) {
   const unavailable = Boolean(selectedId) && !group.options.some((option) => option.id === selectedId);
   const heading =
     step != null ? `STEP ${step} · ${group.name.toUpperCase()}` : group.name.toUpperCase();
@@ -67,6 +69,7 @@ export function OptionGroupPicker({ group, step, selectedId, onSelect }: Props) 
             option={option}
             required={group.required}
             groupName={group.name}
+            priceUnit={priceUnit}
             selected={option.id === selectedId}
             first={index === 0}
             onPress={() =>
@@ -83,6 +86,7 @@ function OptionRow({
   option,
   required,
   groupName,
+  priceUnit,
   selected,
   first,
   onPress,
@@ -90,6 +94,7 @@ function OptionRow({
   option: CatalogOption;
   required: boolean;
   groupName: string;
+  priceUnit?: string;
   selected: boolean;
   first: boolean;
   onPress: () => void;
@@ -105,7 +110,7 @@ function OptionRow({
       accessibilityRole={required ? "radio" : "checkbox"}
       accessibilityState={{ checked: selected }}
       accessibilityLabel={`${option.label}, ${groupName}`}
-      accessibilityHint={delta == null ? undefined : modifierSpoken(delta)}
+      accessibilityHint={delta == null ? undefined : modifierSpoken(delta, priceUnit)}
       className={
         first
           ? "gg-touch flex-row items-center gap-3 px-4 py-3"
@@ -122,7 +127,7 @@ function OptionRow({
                 delta > 0 ? "text-body text-text-primary" : "text-caption text-text-muted"
               }
             >
-              {modifierLine(delta)}
+              {modifierLine(delta, priceUnit)}
             </Text>
           )}
           {pressed ? (
@@ -170,20 +175,19 @@ function Marker({ required, selected }: { required: boolean; selected: boolean }
  * shop gives is a discount at GRIDGO's rate too.
  */
 export function clientModifierMinor(priceModifierMinor: number, serviceFeeRateBps: number): number {
-  const magnitude = gridgoPriceMinor(Math.abs(priceModifierMinor), serviceFeeRateBps);
+  const magnitude = clientAmountMinor(Math.abs(priceModifierMinor), serviceFeeRateBps);
   return priceModifierMinor < 0 ? -magnitude : magnitude;
 }
 
 /** "+₱12.00" or "Included". Never "+₱0.00". */
-export function modifierLine(priceModifierMinor: number): string {
+export function modifierLine(priceModifierMinor: number, priceUnit?: string): string {
   if (priceModifierMinor === 0) return "Included";
   const sign = priceModifierMinor > 0 ? "+" : "−";
-  return `${sign}${formatPhp(Math.abs(priceModifierMinor))}`;
+  return `${sign}${formatPhp(Math.abs(priceModifierMinor))}${priceUnit ? ` ${priceUnit}` : ""}`;
 }
 
-function modifierSpoken(priceModifierMinor: number): string {
+function modifierSpoken(priceModifierMinor: number, priceUnit?: string): string {
   if (priceModifierMinor === 0) return "No extra charge";
-  return priceModifierMinor > 0
-    ? `Adds ${formatPhp(priceModifierMinor)}`
-    : `Takes off ${formatPhp(Math.abs(priceModifierMinor))}`;
+  const amount = `${formatPhp(Math.abs(priceModifierMinor))}${priceUnit ? ` ${priceUnit}` : ""}`;
+  return priceModifierMinor > 0 ? `Adds ${amount}` : `Takes off ${amount}`;
 }
