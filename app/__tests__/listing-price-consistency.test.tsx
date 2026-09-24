@@ -1,16 +1,21 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react-native";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import CheckoutScreen from "@/app/checkout";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
 import ListingScreen from "@/app/request/listing";
+import MatchScreen from "@/app/request/match";
 import type { Cart, CartLineRecord, CatalogItem, CatalogOptionGroup } from "@/lib/api";
 import { clearListingCache, rememberListing } from "@/lib/listingCache";
-import { basketTotals } from "@/lib/basket";
+import { basketTotals, printRuns } from "@/lib/basket";
 import { CategorySampleCard } from "@/components/CategorySample";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCart } from "@/store/cart";
+import { clearMatchPrefetch } from "@/lib/matchPrefetch";
+
+const mockPush = jest.fn();
+let mockParams: Record<string, string>;
 
 jest.mock("expo-router", () => ({
   useFocusEffect: (effect: () => void) => {
@@ -18,8 +23,8 @@ jest.mock("expo-router", () => ({
     const { useEffect } = require("react");
     useEffect(effect, [effect]);
   },
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
-  useLocalSearchParams: () => ({ itemId: "sci_flyers", lineId: "line_price" }),
+  useRouter: () => ({ push: mockPush, replace: jest.fn(), back: jest.fn() }),
+  useLocalSearchParams: () => mockParams,
 }));
 
 jest.mock("@/lib/api", () => {
@@ -31,6 +36,7 @@ jest.mock("@/lib/api", () => {
     getCart: jest.fn(),
     getCatalogShop: jest.fn(),
     listAddresses: jest.fn(),
+    matchShop: jest.fn(),
   };
 });
 
@@ -106,6 +112,9 @@ function renderInSafeArea(ui: ReactElement) {
 }
 
 beforeEach(() => {
+  mockParams = { itemId: "sci_flyers", lineId: "line_price" };
+  mockPush.mockReset();
+  clearMatchPrefetch();
   useCheckoutPayment.getState().reset();
   api.getCatalogShop.mockResolvedValue(null);
   api.listAddresses.mockResolvedValue([]);
@@ -119,6 +128,78 @@ beforeEach(() => {
     issueWindowHours: 24,
     deliveryFeeBands: [],
   });
+});
+
+it.each(["match cache", "catalog read"])("keeps the unconfigured Flyers pack at ₱440 through %s and checkout", async (source) => {
+  // Exact price shape reported on-device: no selection, no tiers and no
+  // effective price. The client field must never become a shop input.
+  const item: CatalogItem = {
+    ...ITEM,
+    id: "sci_lovis_flyers",
+    basePriceMinor: 40000,
+    fromPriceMinor: 40000,
+    effectivePriceMinor: null,
+    clientFromPriceMinor: 44000,
+    clientEffectivePriceMinor: null,
+    priceTiers: [],
+    optionGroups: ITEM.optionGroups.map((group) => ({
+      ...group,
+      options: [1500, 800, 1200, 2000].map((priceModifierMinor, index) => ({
+        ...group.options[0], id: `opt_${index}`, label: `Paper ${index + 1}`, priceModifierMinor,
+      })),
+    })),
+  };
+  const settings = { serviceFeeRateBps: 1000, issueWindowHours: 24, deliveryFeeBands: [] };
+  usePlatformSettings.getState().adopt(settings);
+  api.getSettings.mockResolvedValue(settings);
+  const cart = configuredCart(item, null, 1, 40000);
+  cart.lines[0].optionIds = [];
+  useCart.setState({ cartId: cart.id, cart: { ...cart, lines: [] } });
+
+  mockParams = { subcategory: "flyers", category: "marketing_collateral" };
+  api.matchShop.mockResolvedValue({
+    shop: { supplierId: item.supplierId, shopName: "", shop: null, media: [], categories: [], services: [] },
+    queue: { jobsAhead: 0, estimatedHours: 12 }, reasons: [], listings: [item], alternativesCount: 0,
+    score: { total: 0, weights: {}, factors: {} },
+  });
+  await renderInSafeArea(<MatchScreen />);
+  await screen.findByText("₱440.00 per pack of 100");
+  await fireEvent.press(screen.getByLabelText("Flyers, ₱440.00 per pack of 100"));
+  expect(mockPush).toHaveBeenCalledWith({ pathname: "/request/listing", params: { itemId: item.id } });
+  await cleanup();
+
+  if (source === "catalog read") clearListingCache();
+  api.getCatalogItem.mockResolvedValue(item);
+  mockParams = { itemId: item.id };
+  await renderInSafeArea(<ListingScreen />);
+  await screen.findAllByText("1 pack · 100 pieces");
+  await act(async () => {});
+  expect(screen.getAllByRole("radio").every((radio) => !radio.props.accessibilityState.checked)).toBe(true);
+  expect(screen.getAllByText("₱440.00")).toHaveLength(2);
+  expect(screen.getByText("per pack of 100")).toBeTruthy();
+  for (const delta of ["16.50", "8.80", "13.20", "22.00"]) {
+    expect(screen.getByText(`+₱${delta} per pack of 100`)).toBeTruthy();
+  }
+  expect(screen.queryByText("₱484.00")).toBeNull();
+  expect(screen.queryByText("₱400.00")).toBeNull();
+  expect(api.getCatalogItem).toHaveBeenCalledTimes(source === "catalog read" ? 1 : 0);
+  await cleanup();
+
+  const totals = basketTotals({ cart, settings, shopPoints: {} });
+  expect(printRuns(cart.lines, settings.serviceFeeRateBps)[0].clientSubtotalMinor).toBe(44000);
+  expect(totals.clientItemSubtotalMinor).toBe(44000);
+  expect(totals.totalMinor).toBe(44000);
+  useCart.setState({ cartId: cart.id, cart });
+  api.getCart.mockResolvedValue(cart);
+  await renderInSafeArea(<CheckoutScreen />);
+  await screen.findByText("Service fee · 10%");
+  expect(within(screen.getByLabelText("Flyers. Change what you picked.")).getByText("₱440.00")).toBeTruthy();
+  expect(within(screen.getByText("Printing").parent!).getByText("₱440.00")).toBeTruthy();
+  for (const label of screen.getAllByText("Total")) {
+    expect(within(label.parent!).getByText("₱440.00")).toBeTruthy();
+  }
+  expect(screen.queryByText("₱484.00")).toBeNull();
+  expect(screen.queryByText("₱400.00")).toBeNull();
 });
 
 
