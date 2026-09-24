@@ -214,7 +214,7 @@ describe("Home with nothing on press", () => {
     expect(await screen.findByText("Hello, Rina")).toBeTruthy();
     await waitFor(() => expect(api.listCatalogShops).toHaveBeenCalled());
     expect(screen.queryByText("ON PRESS TODAY")).toBeNull();
-    expect(await screen.findByText("START A PRINT")).toBeTruthy();
+    expect(await screen.findByText("START YOUR FIRST PRINT")).toBeTruthy();
   });
 
   it("says none of it once the client has a job, and reads no boards at all", async () => {

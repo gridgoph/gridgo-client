@@ -11,6 +11,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import NotificationsScreen from "@/app/(tabs)/notifications";
 import type { Notification, Order } from "@/lib/api";
+import { formatRelativeTime } from "@/lib/relativeTime";
 import { useNotifications } from "@/store/notifications";
 
 const mockPush = jest.fn();
@@ -131,18 +132,18 @@ describe("NotificationsScreen", () => {
     await renderInSafeArea(<NotificationsScreen />);
 
     expect(await screen.findByText(assignment.title)).toBeTruthy();
-    // The legacy rail, against this app's own stages.
-    expect(screen.getByText("Order")).toBeTruthy();
-    expect(screen.getByText("Printing")).toBeTruthy();
-    expect(screen.getByText("Dispatch")).toBeTruthy();
-    expect(screen.getByText("Delivered")).toBeTruthy();
+    // The legacy rail as a meter at the top of the card, with the stage named.
     expect(screen.getByLabelText("Stage 2 of 4: Printing")).toBeTruthy();
+    expect(screen.getByText("PRINTING")).toBeTruthy();
+    // The job is on the press, so the old "pay" ask is not called out.
+    expect(screen.queryByTestId("notification-callout")).toBeNull();
   });
 
-  it("stamps the update with the date and the time", async () => {
+  it("says how long ago it moved, and keeps the exact stamp for a screen reader", async () => {
     await renderInSafeArea(<NotificationsScreen />);
 
-    expect(await screen.findByText(/Aug 9, .*(AM|PM)/)).toBeTruthy();
+    expect(await screen.findByText(formatRelativeTime(assignment.at))).toBeTruthy();
+    expect(screen.getByLabelText(/Aug 9, .*(AM|PM)$/)).toBeTruthy();
   });
 
   it("marks an update read without a swipe, for anyone who cannot make one", async () => {
@@ -252,11 +253,9 @@ describe("NotificationsScreen", () => {
     expect(screen.getByText("Waiting at the counter")).toBeTruthy();
     expect(screen.getByText("Seminar handouts")).toBeTruthy();
     expect(screen.getByText("NEEDS YOU")).toBeTruthy();
-    expect(screen.getByText("Counter")).toBeTruthy();
-    expect(screen.getByText("To office")).toBeTruthy();
-    expect(screen.queryByText("Dispatch")).toBeNull();
-    expect(screen.queryByText("Delivered")).toBeNull();
     expect(screen.getByLabelText("Stage 4 of 4: Counter")).toBeTruthy();
+    expect(screen.getByText("Collect at GRIDGO Office")).toBeTruthy();
+    expect(screen.getByText("Give the name you ordered under.")).toBeTruthy();
   });
 
   it("does not call a pickup on the way to the office a door delivery", async () => {

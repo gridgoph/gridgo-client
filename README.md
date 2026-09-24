@@ -91,6 +91,18 @@ For delivery without an address, checkout can fill a saved address. Check it and
 
 Open screens refresh when GRIDGO reports relevant changes and reconcile after reconnecting or returning to the foreground. Order cards and details include the order ID. Push taps wait for sign-in and navigation readiness, then open an accessible order or the Notifications inbox. Foreground updates work independently of push permission; see [Live resource updates](docs/REALTIME_UPDATES.md) for implementation guidance.
 
+## App updates
+
+A release APK looks for a newer GitHub Release on launch and on return to the foreground (at most every four hours) and offers the landing site's APK. **Later** quiets that version until the next day. The first launch of a newer build confirms the update. Expo Go and development builds skip the check; to see the prompt there, pretend to be an older build:
+
+```bash
+EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE=1 npm start -- --clear
+```
+
+Restart with a later number (for example the current release's) to see "Update completed". `--clear` matters: the value is inlined at bundle time, and Metro's cache would keep the old one.
+
+Every decision the check makes is logged to Metro in a development build, one `[update-check]` line each: which build it compared (or `off: … EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE is not set` when the override never reached the bundle), what GitHub answered, and whether the release was offered. If the prompt does not appear, those lines say why. A **Later** from an earlier run is remembered on the phone for the rest of that day; clear Expo Go's storage for the project to see the prompt again.
+
 ## Android emulator API URL
 
 From the **Android emulator**, `127.0.0.1` is the emulator itself. Use:

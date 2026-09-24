@@ -22,9 +22,11 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 
+import { AppUpdateSheet } from "@/components/AppUpdateSheet";
 import { BrandIntro } from "@/components/BrandIntro";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
+import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
 import { useClientPreferences } from "@/hooks/useClientPreferences";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
@@ -105,6 +107,10 @@ function AppNavigation() {
   // GRIDGO's charges, read as soon as a session exists: every price the app
   // draws is the shop's figure plus GRIDGO's charge, from the first match row.
   useGridgoCharges();
+
+  // A newer sideloaded release, looked for on launch and on return to the
+  // foreground. Not tied to a session: an old build is old signed out too.
+  useAppUpdateCheck();
 
   // Keeps the window behind the navigator on canvas, so theme changes and
   // screen transitions never flash the wrong background.
@@ -391,6 +397,8 @@ function AppNavigation() {
               </Stack.Protected>
             </Stack>
             <ReceiptOcrHost />
+            {/* Held back until the intro has finished, so it never lands under it. */}
+            <AppUpdateSheet ready={!introPlaying && fontsReady} />
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />
             {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}
         </ThemeProvider>

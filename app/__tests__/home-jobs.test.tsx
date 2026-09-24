@@ -99,7 +99,7 @@ beforeEach(() => {
 });
 
 describe("Home's jobs slot", () => {
-  it("leads with the next verb for a job waiting on the client", async () => {
+  it("leads with the next verb, then the jobs merely in progress", async () => {
     api.listOrders.mockResolvedValue([
       order({ id: "ord_proof", state: "proof_approval", title: "Business cards" }),
       order({ id: "ord_print", state: "production", title: "Event flyers" }),
@@ -110,8 +110,13 @@ describe("Home's jobs slot", () => {
     expect(await screen.findByText("NEEDS YOU")).toBeTruthy();
     expect(screen.getByText("Approve your artwork proof")).toBeTruthy();
     expect(screen.getByText("Business cards")).toBeTruthy();
-    expect(screen.queryByText("YOUR JOBS")).toBeNull();
-    expect(screen.queryByText("Event flyers")).toBeNull();
+    // The job that needs nothing is still on Home, but under the docket.
+    expect(screen.getByText("IN PROGRESS")).toBeTruthy();
+    expect(screen.getByText("Event flyers")).toBeTruthy();
+    const labels = screen.getAllByRole("button").map((b) => b.props.accessibilityLabel);
+    expect(labels.indexOf("Approve your artwork proof, Business cards")).toBeLessThan(
+      labels.indexOf("In production, Event flyers"),
+    );
     expect(screen.queryByText("Order this again")).toBeNull();
     expect(screen.queryByText(/₱/)).toBeNull();
     expect(screen.queryByText("proof_approval")).toBeNull();

@@ -247,15 +247,16 @@ describe("OrderDetailScreen", () => {
     expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
   });
 
-  it("uses the client promise rather than the supplier date", async () => {
+  it.each(["production", "out_for_delivery"])("uses only the client promise in %s", async (state) => {
     setOrder({
+      state,
       promiseBy: "2026-09-26T06:00:00.000Z",
       promisedDate: "2026-09-25T06:00:00.000Z",
     });
     await renderInSafeArea(<OrderDetailScreen />);
     expect(await screen.findByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
     expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
-    expect(screen.queryByText("Supplier promised")).toBeNull();
+    expect(screen.queryByText(/Supplier promised|Promised by/)).toBeNull();
   });
 
   it("updates an already open order from a silent event without push or navigation", async () => {

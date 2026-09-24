@@ -98,24 +98,47 @@ beforeEach(() => {
   } as never);
 });
 
-describe("Home's in-progress snapshot", () => {
-  it("leads a live job with its state in words and what happens next", async () => {
-    api.listOrders.mockResolvedValue([order()]);
+/**
+ * The captain's report: three finished jobs stacked as full cards pushed
+ * "Start a print" down the screen, and a live job looked exactly like one
+ * that was over. Live work leads; finished work is one quiet line each.
+ */
+describe("Home's jobs, live before finished", () => {
+  it("puts the live job first as a card and folds finished jobs into compact rows", async () => {
+    api.listOrders.mockResolvedValue([
+      order({ id: "ord_a", state: "completed", title: "Menu boards" }),
+      order({ id: "ord_b", state: "delivered", title: "Shop signage" }),
+      order({ id: "ord_c", state: "out_for_delivery", title: "Event flyers" }),
+      order({ id: "ord_d", state: "payout_released", title: "Staff shirts" }),
+    ]);
 
     await renderInSafeArea(<HomeScreen />);
 
     expect(await screen.findByText("IN PROGRESS")).toBeTruthy();
-    expect(screen.getByText("Grand opening tarpaulin")).toBeTruthy();
-    expect(screen.getByText("In production")).toBeTruthy();
-    expect(screen.getByText("Your job is on the press.")).toBeTruthy();
-    expect(screen.getByLabelText("Stage 2 of 4: Printing")).toBeTruthy();
-    expect(screen.getByText("View all")).toBeTruthy();
-    expect(screen.queryByText("RECENTLY FINISHED")).toBeNull();
-    expect(screen.queryByText("production")).toBeNull();
-    expect(screen.queryByText("NEEDS YOU")).toBeNull();
-    expect(screen.queryByText("Order this again")).toBeNull();
-    expect(screen.queryByText(/Qty/)).toBeNull();
-    expect(screen.queryByText(/₱/)).toBeNull();
+    expect(screen.getByText("RECENTLY FINISHED")).toBeTruthy();
+
+    const labels: string[] = screen
+      .getAllByRole("button")
+      .map((button) => button.props.accessibilityLabel as string);
+    const live = labels.indexOf("Out for delivery, Event flyers");
+    const finished = labels.findIndex((label) => label?.startsWith("Menu boards, Completed"));
+    expect(live).toBeGreaterThanOrEqual(0);
+    expect(finished).toBeGreaterThan(live);
+
+    // Only the live job draws a stage rail; finished rows carry no rail.
+    expect(screen.getAllByLabelText(/^Stage \d of 4/)).toHaveLength(1);
+    expect(screen.getByLabelText("Stage 3 of 4: Dispatch")).toBeTruthy();
+    expect(screen.getByText("Your order is out for delivery.")).toBeTruthy();
+
+    // Finished rows: name plus the word and when, nothing else.
+    expect(screen.getByText("Menu boards")).toBeTruthy();
+    expect(screen.getByText("Shop signage")).toBeTruthy();
+    expect(screen.getByText("Staff shirts")).toBeTruthy();
+    expect(screen.getByText(/^Delivered /)).toBeTruthy();
+
+    // One way to the full list, on the first of the two sections.
+    expect(screen.getAllByText("View all")).toHaveLength(1);
     expect(screen.getByText("START A PRINT")).toBeTruthy();
+    expect(screen.queryByText(/₱/)).toBeNull();
   });
 });
