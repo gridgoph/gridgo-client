@@ -112,4 +112,25 @@ describe("order receipt", () => {
     await fireEvent.press(screen.getByLabelText("Service fee · 10%"));
     expect(screen.getByText(SERVICE_FEE_EXPLAINER)).toBeTruthy();
   });
+
+  it("keeps the Flyers pack at ₱440 on the acknowledgement receipt", async () => {
+    api.getInvoice.mockResolvedValue({
+      invoiceNumber: "GG-FLYERS", orderId: "ord_3ff0128e105a",
+      issuedAt: "2026-09-24T01:00:00.000Z", currency: "PHP",
+      lines: [{
+        id: "line_price", jobId: "job_price", itemName: "Flyers", quantity: 1,
+        unitPriceMinor: 40000, amountMinor: 40000,
+        artworkFileId: null, mockupFileId: null, dropoff: null,
+      }],
+      itemSubtotalMinor: 40000, serviceFeeRateBps: 1000, serviceFeeMinor: 4000,
+      deliveryLines: [], deliveryFeeMinor: 0, totalMinor: 44000,
+      paymentPlan: { method: "qr_manual", downpaymentMinor: 33000, balanceMinor: 11000 },
+    });
+    await render(wrap(<OrderReceiptScreen />));
+    await screen.findByText("Order receipt");
+    // Receipt line, Printing and Total each carry the fee exactly once.
+    expect(screen.getAllByText("₱440.00")).toHaveLength(3);
+    expect(screen.queryByText("₱484.00")).toBeNull();
+    expect(screen.queryByText("₱400.00")).toBeNull();
+  });
 });

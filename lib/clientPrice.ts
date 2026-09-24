@@ -25,24 +25,11 @@
  */
 
 import type { CartLineRecord } from "@/lib/api";
-import { roundBps } from "@/lib/basket";
-
-/** The shop's figure plus GRIDGO's charge at the platform rate. */
-export function gridgoPriceMinor(supplierMinor: number, serviceFeeRateBps: number): number {
-  return supplierMinor + roundBps(supplierMinor, serviceFeeRateBps);
-}
-
-/**
- * Same, for a figure that may not exist yet. A missing price stays missing;
- * a missing rate means no price can honestly be said either.
- */
-export function gridgoPriceOrNull(
-  supplierMinor: number | null | undefined,
-  serviceFeeRateBps: number | null | undefined,
-): number | null {
-  if (supplierMinor == null || serviceFeeRateBps == null) return null;
-  return gridgoPriceMinor(supplierMinor, serviceFeeRateBps);
-}
+// Compatibility exports for existing consumers; all markup lives in one helper.
+export {
+  clientAmountMinor as gridgoPriceMinor,
+  clientAmountMinor as gridgoPriceOrNull,
+} from "@/lib/gridgoPrice";
 
 /**
  * Why a basket line has no price, in the client's words.

@@ -19,20 +19,10 @@
  */
 
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
-import { gridgoAmountMinor } from "@/lib/gridgoPrice";
+import { clientAmountMinor, roundBps } from "@/lib/gridgoPrice";
 import { haversineMetres, type GeoPoint } from "@/lib/tracking";
 
-/**
- * The platform's rounding, copied exactly.
- *
- * `floor((value * bps + 5000) / 10000)` — half up on the centavo. PostgreSQL
- * recomputes it with exact numeric on the way in, so a different rounding here
- * would show a total the server then disagrees with by a centavo, which is the
- * kind of difference nobody can explain at a counter.
- */
-export function roundBps(amountMinor: number, bps: number): number {
-  return Math.floor((amountMinor * bps + 5000) / 10000);
-}
+export { roundBps } from "@/lib/gridgoPrice";
 
 /** The band a distance falls in. Bands are ordered, and the last has no max. */
 export function deliveryFeeForDistance(
@@ -76,7 +66,7 @@ function sumMinor(amounts: (number | null)[]): number | null {
  * What a client-facing surface shows for one basket line.
  *
  * Prefer the API's `clientLineSubtotalMinor` when it is a safe integer.
- * Otherwise apply `gridgoAmountMinor` — the same half-up markup listing
+ * Otherwise apply `clientAmountMinor` — the same half-up markup listing
  * already uses. A null shop line is not yet priced.
  */
 export function clientLineAmountMinor(
@@ -86,7 +76,7 @@ export function clientLineAmountMinor(
   if (Number.isSafeInteger(line.clientLineSubtotalMinor)) {
     return line.clientLineSubtotalMinor as number;
   }
-  return gridgoAmountMinor(line.lineSubtotalMinor, serviceFeeRateBps);
+  return clientAmountMinor(line.lineSubtotalMinor, serviceFeeRateBps);
 }
 
 /**
@@ -174,7 +164,7 @@ export function basketTotals({ cart, settings, shopPoints }: TotalsInput): Baske
   const serviceFeeMinor =
     settings && itemSubtotalMinor != null ? roundBps(itemSubtotalMinor, serviceFeeRateBps) : 0;
   const gridgoItemsMinor =
-    settings && itemSubtotalMinor != null ? itemSubtotalMinor + serviceFeeMinor : null;
+    clientAmountMinor(itemSubtotalMinor, settings?.serviceFeeRateBps);
   const clientItemSubtotalMinor = gridgoItemsMinor;
 
   const collecting = cart?.fulfillmentMode === "pickup";

@@ -21,8 +21,7 @@ import {
   type CatalogPhoto,
   type LineMeasurement,
 } from "@/lib/api";
-import { gridgoPriceMinor } from "@/lib/clientPrice";
-import { clientFromPriceMinorOf, gridgoAmountMinor } from "@/lib/gridgoPrice";
+import { clientFromPriceMinorOf, clientAmountMinor } from "@/lib/gridgoPrice";
 import { lineTotalMinor, squareUnitWord, unitWord } from "@/lib/measurement";
 
 /** Chosen option id per group id. One per group — every group is single-select. */
@@ -127,14 +126,14 @@ export function unitPriceMinor(item: CatalogItem, selection: ListingSelection): 
  *
  * Shop arithmetic stays in `unitPriceMinor` so the sheet and the server's
  * `effectivePriceMinor` still agree. This wrapper is the only place the
- * listing sheet marks that figure up.
+ * a non-UI consumer marks that figure up. GridgoPrice takes the shop amount.
  */
 export function clientUnitPriceMinor(
   item: CatalogItem,
   selection: ListingSelection,
   serviceFeeRateBps: number,
 ): number {
-  return gridgoAmountMinor(unitPriceMinor(item, selection), serviceFeeRateBps) ?? 0;
+  return clientAmountMinor(unitPriceMinor(item, selection), serviceFeeRateBps);
 }
 
 /**
@@ -152,7 +151,7 @@ export function clientLineTotalMinor(
 ): number | null {
   const shopTotal = lineTotalMinor(item, quantity, measurement, shopUnitPriceMinor);
   if (shopTotal == null) return null;
-  return gridgoAmountMinor(shopTotal, serviceFeeRateBps);
+  return clientAmountMinor(shopTotal, serviceFeeRateBps);
 }
 
 /**
@@ -186,12 +185,12 @@ export function startingPriceLine(
   item: Pick<CatalogItem, "fromPriceMinor" | "pricingUnit" | "packageQty" | "measureUnit">,
   serviceFeeRateBps: number,
 ): string {
-  return `From ${formatPhp(gridgoPriceMinor(item.fromPriceMinor, serviceFeeRateBps))} ${unitLine(item)}`;
+  return `From ${formatPhp(clientAmountMinor(item.fromPriceMinor, serviceFeeRateBps))} ${unitLine(item)}`;
 }
 
 /**
  * The starting price the client is shown. Reads the API's GRIDGO field when
- * present, otherwise applies the same markup as `gridgoAmountMinor`.
+ * present, otherwise applies the same markup as `clientAmountMinor`.
  */
 export function clientStartingPriceLine(
   item: Pick<
@@ -200,7 +199,8 @@ export function clientStartingPriceLine(
   >,
   serviceFeeRateBps?: number | null,
 ): string {
-  return `From ${formatPhp(clientFromPriceMinorOf(item, serviceFeeRateBps))} ${unitLine(item)}`;
+  const price = clientFromPriceMinorOf(item, serviceFeeRateBps);
+  return price == null ? "Price loading" : `From ${formatPhp(price)} ${unitLine(item)}`;
 }
 
 /**
