@@ -19,6 +19,7 @@ import { formatDeadline } from "@/lib/deadline";
 import { userFacingError } from "@/lib/copy";
 import { readyInLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import { matchDistanceMeters } from "@/lib/match";
+import { printerCapLine } from "@/lib/printerWidth";
 import { clearMatchPrefetch, takeMatch } from "@/lib/matchPrefetch";
 import { prefetchListing, rememberListing } from "@/lib/listingCache";
 import { rememberOrderFlow } from "@/lib/orderFlow";
@@ -355,13 +356,14 @@ function ListingRow({ item, onPress }: { item: CatalogItem; onPress: () => void 
   const colors = useThemeColors();
   const rate = useServiceFeeRateBps();
   const ready = readyInLine(item.turnaroundHours);
+  const cap = printerCapLine(item);
   const from = item.fromPriceMinor !== item.basePriceMinor ? "From " : "";
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${item.name}, ${from.toLowerCase()}${gridgoPriceLabel(item.fromPriceMinor, rate)} ${unitLine(item)}`}
+      accessibilityLabel={`${item.name}, ${from.toLowerCase()}${gridgoPriceLabel(item.fromPriceMinor, rate)} ${unitLine(item)}${cap ? `, ${cap.toLowerCase()}` : ""}`}
       className="gg-card-flush flex-row items-center gap-3 p-3"
     >
       {({ pressed }) => (
@@ -383,6 +385,7 @@ function ListingRow({ item, onPress }: { item: CatalogItem; onPress: () => void 
               className="text-body text-text-secondary"
             />
             {ready ? <Text className="text-caption text-text-muted">{ready}</Text> : null}
+            {cap ? <Text className="text-caption text-text-muted">{cap}</Text> : null}
           </View>
           <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
           {pressed ? (

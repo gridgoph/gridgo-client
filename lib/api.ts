@@ -1115,6 +1115,13 @@ export type CatalogItem = {
   minimumLengthMilli: number | null;
   /** The least the shop will run at all. */
   minimumOrderQuantity: number | null;
+  /**
+   * The widest job this press prints, in whole feet (1–20). Tarpaulin &
+   * Outdoor Banners only; null elsewhere and on a listing that has not set it.
+   * GRIDGO refuses a wider line with `printer_cap_exceeded` — see
+   * `lib/printerWidth.ts`.
+   */
+  printerMaxWidthFeet?: number | null;
   priceTiers: CatalogPriceTier[];
   speedTiers: CatalogSpeedTier[];
   pricingBasis: string;
