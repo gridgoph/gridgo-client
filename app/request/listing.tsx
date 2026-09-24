@@ -42,7 +42,7 @@ import {
   isSelectionComplete,
   linkFormats,
   quantityLine,
-  readyInLine,
+  printTimeLine,
   samplePhotoUri,
   selectedOptionIds,
   specGroups,
@@ -272,7 +272,7 @@ export default function ListingScreen() {
   const runMinimum = belowMinimumOrder(item, quantity);
   const uploads = fileFormats(item);
   const links = linkFormats(item);
-  const ready = readyInLine(item.turnaroundHours);
+  const pressTime = printTimeLine(item.turnaroundHours);
 
   const add = async () => {
     if (busy) return;
@@ -392,8 +392,8 @@ export default function ListingScreen() {
             />
             <Text className="text-body text-text-secondary">{unitLine(item)}</Text>
           </View>
-          {ready ? (
-            <Text className="mt-1 text-body text-text-secondary">{ready}</Text>
+          {pressTime ? (
+            <Text className="mt-1 text-body text-text-secondary">{pressTime}</Text>
           ) : null}
 
           {item.description ? (

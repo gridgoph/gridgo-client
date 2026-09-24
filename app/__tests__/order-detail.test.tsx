@@ -10,6 +10,7 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OrderDetailScreen from "@/app/order/[id]";
+import { OrderCard } from "@/components/OrderCard";
 import type { Order } from "@/lib/api";
 import { useOrderPayment } from "@/store/checkoutPayment";
 
@@ -233,6 +234,28 @@ describe("OrderDetailScreen", () => {
       ],
       statusLabel: null,
     });
+  });
+
+  it("shows the same client promise in the order summary", async () => {
+    await render(
+      <OrderCard
+        order={{ ...baseOrder, promiseBy: "2026-09-26T06:00:00.000Z" }}
+        onPress={() => undefined}
+      />,
+    );
+    expect(screen.getByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
+    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+  });
+
+  it("uses the client promise rather than the supplier date", async () => {
+    setOrder({
+      promiseBy: "2026-09-26T06:00:00.000Z",
+      promisedDate: "2026-09-25T06:00:00.000Z",
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+    expect(await screen.findByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
+    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.queryByText("Supplier promised")).toBeNull();
   });
 
   it("updates an already open order from a silent event without push or navigation", async () => {

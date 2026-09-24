@@ -185,6 +185,8 @@ export type Order = {
   issueWindowOpenedAt?: string | null;
   issueWindowExpiresAt?: string | null;
   promisedDate: string | null;
+  /** Client promise, projected by GRIDGO with the queue and working calendar. */
+  promiseBy?: string | null;
   /** Display string only — never file identity. See docs/STORAGE_API.md. */
   artworkName: string | null;
   /** Stored artwork ids, newest last. Empty is valid. */
@@ -1435,7 +1437,7 @@ export type ClientAddress = {
 /** How busy the matched shop is, counted from the jobs actually in front. */
 export type MatchQueue = {
   jobsAhead: number;
-  /** The shop's own turnaround plus everything queued before this job. */
+  /** Elapsed wait including the queue, working calendar and platform allowance. */
   estimatedHours: number;
 };
 
@@ -1452,6 +1454,8 @@ export type MatchReason = {
 export type MatchResult = {
   shop: ShopBoard;
   queue: MatchQueue;
+  /** Absolute client promise; older deployments may only send queue.estimatedHours. */
+  promiseBy?: string | null;
   reasons: MatchReason[];
   listings: CatalogItem[];
   /** How many other shops could have printed it. */
@@ -1468,6 +1472,8 @@ export type ServiceLevel = "standard" | "scheduled";
 
 export type CartLineRecord = {
   id: string;
+  /** Queue-and-calendar projection for this configured line; absent on older APIs. */
+  promiseBy?: string | null;
   supplierId: string;
   catalogItemId: string;
   quantity: number;

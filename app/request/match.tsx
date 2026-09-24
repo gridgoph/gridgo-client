@@ -17,7 +17,7 @@ import * as api from "@/lib/api";
 import { type CatalogItem, type MatchResult } from "@/lib/api";
 import { formatDeadline } from "@/lib/deadline";
 import { userFacingError } from "@/lib/copy";
-import { readyInLine, samplePhotoUri, unitLine } from "@/lib/listing";
+import { printTimeLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import { matchDistanceMeters } from "@/lib/match";
 import { clearMatchPrefetch, takeMatch } from "@/lib/matchPrefetch";
 import { prefetchListing, rememberListing } from "@/lib/listingCache";
@@ -354,7 +354,7 @@ export default function MatchScreen() {
 function ListingRow({ item, onPress }: { item: CatalogItem; onPress: () => void }) {
   const colors = useThemeColors();
   const rate = useServiceFeeRateBps();
-  const ready = readyInLine(item.turnaroundHours);
+  const pressTime = printTimeLine(item.turnaroundHours);
   const from = item.fromPriceMinor !== item.basePriceMinor ? "From " : "";
 
   return (
@@ -382,7 +382,7 @@ function ListingRow({ item, onPress }: { item: CatalogItem; onPress: () => void 
               suffix={` ${unitLine(item)}`}
               className="text-body text-text-secondary"
             />
-            {ready ? <Text className="text-caption text-text-muted">{ready}</Text> : null}
+            {pressTime ? <Text className="text-caption text-text-muted">{pressTime}</Text> : null}
           </View>
           <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
           {pressed ? (
