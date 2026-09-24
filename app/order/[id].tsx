@@ -51,7 +51,8 @@ import {
 import { isJobComplete } from "@/lib/jobComplete";
 import { installmentUnderReview, payableInstallment, paymentInstallment } from "@/lib/payment";
 import { canRate } from "@/lib/rating";
-import { printingMinor, showsServiceFee } from "@/lib/serviceFee";
+import { printingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
+import { usePlatformSettings } from "@/store/platformSettings";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
@@ -423,7 +424,8 @@ function MoneyCard({
 
   const downpayment = paymentInstallment(order, "downpayment");
   const balance = paymentInstallment(order, "balance");
-  const showFee = showsServiceFee(order);
+  const settings = usePlatformSettings((state) => state.settings);
+  const showFee = showsServiceFee(order) && serviceFeeVisibleToClient(settings);
 
   return (
     <View className="gap-3">

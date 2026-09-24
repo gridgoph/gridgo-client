@@ -24,6 +24,7 @@ export type PhysicalInvoiceField = keyof PhysicalInvoiceDraft;
 export type PhysicalInvoiceRequest = PhysicalInvoiceDraft & {
   orderId: string;
   requestedAt: string;
+  promisedDeliveryAt?: string | null;
 };
 
 export const EMPTY_PHYSICAL_INVOICE: PhysicalInvoiceDraft = {

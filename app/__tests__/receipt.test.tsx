@@ -109,7 +109,8 @@ describe("order receipt", () => {
     expect(screen.getByText("1234567890123")).toBeTruthy();
     expect(screen.getByText("Request a physical invoice")).toBeTruthy();
 
-    await fireEvent.press(screen.getByLabelText("Service fee · 10%"));
+    expect(screen.getByText("View more")).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText("Service fee · 10%. View more"));
     expect(screen.getByText(SERVICE_FEE_EXPLAINER)).toBeTruthy();
   });
 
