@@ -97,6 +97,18 @@ describe("userFacingError", () => {
     );
   });
 
+  it("names the printer's widest print when GRIDGO refuses a wider line", () => {
+    expect(
+      userFacingError(
+        new ApiError(409, { error: "printer_cap_exceeded", printerMaxWidthFeet: 7 }),
+        "fallback",
+      ),
+    ).toBe("This printer prints up to 7 ft wide. Make it 7 ft wide or less and try again.");
+    expect(userFacingError(new ApiError(409, { error: "printer_cap_exceeded" }), "fallback")).toBe(
+      "This is wider than this printer prints. Make it narrower and try again.",
+    );
+  });
+
   it("tells a client refused cash on delivery what GRIDGO does take", () => {
     const message = userFacingError(
       new ApiError(400, { error: "payment_method_not_allowed" }),

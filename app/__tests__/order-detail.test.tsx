@@ -448,6 +448,22 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText(/commission/i)).toBeNull();
   });
 
+  it("keeps the Flyers pack at the same ₱440 printing amount after checkout", async () => {
+    setOrder({
+      title: "Flyers", quantity: 1, subtotalMinor: 40000,
+      serviceFeeMinor: 4000, serviceFeeRateBps: 1000,
+      deliveryFeeMinor: 0, totalMinor: 44000,
+      downpaymentMinor: 33000, balanceMinor: 11000, payments: {},
+      fulfillmentMode: "pickup",
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+    await screen.findByText("Flyers");
+    expect(screen.getAllByText("₱440.00")).toHaveLength(2);
+    expect(screen.getByText("Service fee · 10%")).toBeTruthy();
+    expect(screen.queryByText("₱484.00")).toBeNull();
+    expect(screen.queryByText("₱400.00")).toBeNull();
+  });
+
   it("still folds the fee into printing when the order carries no rate", async () => {
     // A matched order as gridgo-api writes it: `subtotalMinor` is the shops'
     // own figure and `serviceFeeMinor` GRIDGO's charge. An older order has no

@@ -27,14 +27,25 @@ export function roundBps(valueMinor: number, rateBps: number): number {
   return Number(divideRounded(BigInt(valueMinor) * BigInt(rateBps), BPS));
 }
 
-/** Shop amount plus the live service fee. ₱12.00 at 4_500 bps is 1_740. */
-export function gridgoAmountMinor(
-  supplierMinor: number | null | undefined,
-  serviceFeeRateBps: number,
+/**
+ * The single client markup: price the shop amount first, then add the fee once.
+ * Missing amounts or settings stay unknown; never fall back to a shop price.
+ */
+export function clientAmountMinor(shopMinor: number, rateBps: number): number;
+export function clientAmountMinor(
+  shopMinor: number | null | undefined,
+  rateBps: number | null | undefined,
+): number | null;
+export function clientAmountMinor(
+  shopMinor: number | null | undefined,
+  rateBps: number | null | undefined,
 ): number | null {
-  if (supplierMinor == null) return null;
-  return supplierMinor + roundBps(supplierMinor, serviceFeeRateBps);
+  if (shopMinor == null || rateBps == null) return null;
+  return shopMinor + roundBps(shopMinor, rateBps);
 }
+
+// Compatibility name for receipt and older consumers; no second formula.
+export { clientAmountMinor as gridgoAmountMinor };
 
 /**
  * The figure a client-facing surface should show for a "From" price.
@@ -46,10 +57,7 @@ export function gridgoAmountMinor(
 export function clientFromPriceMinorOf(
   item: { fromPriceMinor: number; clientFromPriceMinor?: number | null },
   serviceFeeRateBps?: number | null,
-): number {
+): number | null {
   if (Number.isSafeInteger(item.clientFromPriceMinor)) return item.clientFromPriceMinor as number;
-  if (Number.isInteger(serviceFeeRateBps)) {
-    return gridgoAmountMinor(item.fromPriceMinor, serviceFeeRateBps as number) ?? item.fromPriceMinor;
-  }
-  return item.fromPriceMinor;
+  return clientAmountMinor(item.fromPriceMinor, serviceFeeRateBps);
 }

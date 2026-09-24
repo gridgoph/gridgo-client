@@ -3,6 +3,7 @@ import { create } from "zustand";
 
 import type { Notification } from "@/lib/api";
 import * as api from "@/lib/api";
+import { groupInbox, isGroupUnread } from "@/lib/notificationPresentation";
 
 let generation = 0;
 let readSequence = 0;
@@ -34,6 +35,12 @@ type NotificationsState = {
   error: string | null;
   refresh: () => Promise<void>;
   markRead: (id: string) => Promise<void>;
+  /**
+   * Mark every row of one job's card read. Each row is its own
+   * `PATCH /notifications/:id`, so read state stays per row on the server;
+   * a row whose patch fails comes back unread on its own.
+   */
+  markManyRead: (ids: readonly string[]) => Promise<void>;
   markAllRead: () => Promise<void>;
 };
 
@@ -45,11 +52,14 @@ export function isNotificationRead(
   return notification.read || readIds.includes(notification.id);
 }
 
-function countUnread(
+/** Unread cards, not rows: one job moving five times is one thing to read. */
+export function countUnreadGroups(
   items: Notification[],
   readIds: readonly string[],
 ): number {
-  return items.filter((item) => !isNotificationRead(item, readIds)).length;
+  return groupInbox(items).filter((group) =>
+    isGroupUnread(group, (item) => isNotificationRead(item, readIds)),
+  ).length;
 }
 
 /** Drop overlay ids the server now agrees are read, or that left the window. */
@@ -144,6 +154,28 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
       set({ readIds: get().readIds.filter((existing) => existing !== id) });
     }
   },
+  markManyRead: async (ids) => {
+    const currentGeneration = generation;
+    const { items, readIds } = get();
+    const unread = ids.filter((id) => {
+      if (readIds.includes(id)) return false;
+      const item = items.find((notification) => notification.id === id);
+      return !item || !isNotificationRead(item, readIds);
+    });
+    if (!unread.length) return;
+    set({ readIds: [...readIds, ...unread] });
+    const results = await Promise.allSettled(
+      unread.map((id) => api.markNotificationRead(id, true)),
+    );
+    if (generation !== currentGeneration) return;
+    const failed = new Set(
+      unread.filter((_id, index) => results[index].status === "rejected"),
+    );
+    if (failed.size) {
+      set({ readIds: get().readIds.filter((id) => !failed.has(id)) });
+    }
+    saveCache(get());
+  },
   markAllRead: async () => {
     const currentGeneration = generation;
     const { items, readIds, snapshot } = get();
@@ -163,9 +195,9 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
 }));
 
 /**
- * The tab badge. A selector rather than stored state, so the count cannot
+ * The tab badge, counted in cards so it matches the screen. A selector rather than stored state, so the count cannot
  * drift from the list and the dismissals it is derived from.
  */
 export function useUnreadCount(): number {
-  return useNotifications((state) => countUnread(state.items, state.readIds));
+  return useNotifications((state) => countUnreadGroups(state.items, state.readIds));
 }

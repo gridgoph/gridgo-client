@@ -5,6 +5,7 @@ import { readyInShort, samplePhotoUri } from "@/lib/listing";
 import type { MatchResult } from "@/lib/api";
 import { primaryReason, queueLine, reasonLine, reasonTag } from "@/lib/match";
 import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
+import { widestPrinterCapFeet } from "@/lib/printerWidth";
 
 type Props = {
   match: MatchResult;
@@ -45,6 +46,7 @@ export function MatchCard({ match, subcategoryName, distanceMeters }: Props) {
   const readyBy = readyByDate(match.promiseBy);
   const sample = samplePhotoUri(match.listings[0]?.photos[0]);
   const thing = subcategoryName.toLowerCase();
+  const widest = widestPrinterCapFeet(match.listings);
 
   return (
     <View className="gg-card-flush">
@@ -89,23 +91,38 @@ export function MatchCard({ match, subcategoryName, distanceMeters }: Props) {
           </Text>
         </View>
 
-        {/* The two things a client plans around. Ruled cells, one per fact. */}
-        <View className="flex-row rounded-field border border-outline">
-          <Readout
-            label="YOUR PLACE"
-            value={queue ?? "Not published"}
-            hint={
-              match.queue.jobsAhead > 0
-                ? `${match.queue.jobsAhead} ${match.queue.jobsAhead === 1 ? "job" : "jobs"} ahead of yours`
-                : "nothing ahead of yours"
-            }
-          />
-          <View className="w-px bg-outline" />
-          <Readout
-            label={readyBy ? "READY BY" : "READY IN"}
-            value={readyBy ?? wait ?? "GRIDGO confirms"}
-            hint={readyBy || wait ? READY_TIME_EXPLANATION : undefined}
-          />
+        {/*
+          The two things a client plans around. Ruled cells, one per fact. A
+          tarpaulin press adds a third on its own row: how wide it prints,
+          which decides whether the banner fits before anything else does.
+          Drawn only when the listings publish it.
+        */}
+        <View className="rounded-field border border-outline">
+          <View className="flex-row">
+            <Readout
+              label="YOUR PLACE"
+              value={queue ?? "Not published"}
+              hint={
+                match.queue.jobsAhead > 0
+                  ? `${match.queue.jobsAhead} ${match.queue.jobsAhead === 1 ? "job" : "jobs"} ahead of yours`
+                  : "nothing ahead of yours"
+              }
+            />
+            <View className="w-px bg-outline" />
+            <Readout
+              label={readyBy ? "READY BY" : "READY IN"}
+              value={readyBy ?? wait ?? "GRIDGO confirms"}
+              hint={readyBy || wait ? READY_TIME_EXPLANATION : undefined}
+            />
+          </View>
+          {widest != null ? (
+            <>
+              <View className="h-px bg-outline" />
+              <View className="flex-row">
+                <Readout label="PRINT WIDTH" value={`Up to ${widest} ft wide`} />
+              </View>
+            </>
+          ) : null}
         </View>
       </View>
     </View>

@@ -1117,6 +1117,13 @@ export type CatalogItem = {
   minimumLengthMilli: number | null;
   /** The least the shop will run at all. */
   minimumOrderQuantity: number | null;
+  /**
+   * The widest job this press prints, in whole feet (1–20). Tarpaulin &
+   * Outdoor Banners only; null elsewhere and on a listing that has not set it.
+   * GRIDGO refuses a wider line with `printer_cap_exceeded` — see
+   * `lib/printerWidth.ts`.
+   */
+  printerMaxWidthFeet?: number | null;
   priceTiers: CatalogPriceTier[];
   speedTiers: CatalogSpeedTier[];
   pricingBasis: string;
@@ -2212,16 +2219,24 @@ export async function openSupportChatThread(): Promise<{ thread: SupportChatThre
   });
 }
 
+/**
+ * `newThread` starts a fresh conversation with this message rather than
+ * adding to the latest one — ignored when `threadId` names a thread.
+ */
 export async function sendSupportChatMessage(
   body: string,
   threadId?: string,
+  options?: { newThread?: boolean },
 ): Promise<{
   thread: SupportChatThread;
   message: SupportChatMessage;
 }> {
   return request("/support-chat/me/messages", {
     method: "POST",
-    body: JSON.stringify({ body, ...(threadId ? { threadId } : {}) }),
+    body: JSON.stringify({
+      body,
+      ...(threadId ? { threadId } : options?.newThread ? { newThread: true } : {}),
+    }),
   });
 }
 
