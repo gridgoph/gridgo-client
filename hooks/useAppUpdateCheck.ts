@@ -2,9 +2,14 @@ import Constants from "expo-constants";
 import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
 
-import { installedBuild, parseForcedVersionCode, type AppBuild } from "@/lib/appUpdate";
+import {
+  describeInstalledBuild,
+  installedBuild,
+  parseForcedVersionCode,
+  type AppBuild,
+} from "@/lib/appUpdate";
 import { isExpoGoRuntime } from "@/lib/push";
-import { useAppUpdate } from "@/store/appUpdate";
+import { logUpdateCheck, useAppUpdate } from "@/store/appUpdate";
 
 /**
  * This launch's build, as far as the update check is concerned.
@@ -13,7 +18,7 @@ import { useAppUpdate } from "@/store/appUpdate";
  * inlines it; a member access on `env` would never be replaced.
  */
 export function readInstalledBuild(): AppBuild | null {
-  return installedBuild({
+  const input = {
     platform: Platform.OS,
     expoGo: isExpoGoRuntime({
       appOwnership: Constants.appOwnership,
@@ -25,7 +30,10 @@ export function readInstalledBuild(): AppBuild | null {
     forcedVersionCode: parseForcedVersionCode(
       process.env.EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE,
     ),
-  });
+  };
+  const build = installedBuild(input);
+  logUpdateCheck(describeInstalledBuild(input, build));
+  return build;
 }
 
 /**

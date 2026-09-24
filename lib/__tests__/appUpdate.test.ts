@@ -1,6 +1,8 @@
 import {
   APP_UPDATE_CHECK_INTERVAL_MS,
   APP_UPDATE_SOURCE,
+  describeInstalledBuild,
+  describeOffer,
   fetchLatestRelease,
   installedBuild,
   justUpdated,
@@ -92,34 +94,58 @@ describe("the build on this phone", () => {
 });
 
 describe("reading the latest release", () => {
-  it("asks GitHub for this app's latest release", async () => {
+  it("asks GitHub for this app's latest release, naming itself", async () => {
     const fetchImpl = jest.fn(async () => response(200, { tag_name: "v1.0.96" }));
     await expect(fetchLatestRelease(fetchImpl as unknown as typeof fetch)).resolves.toEqual({
-      versionCode: 96,
-      versionName: "1.0.96",
+      latest: { versionCode: 96, versionName: "1.0.96" },
+      answered: true,
+      detail: "latest release is 1.0.96",
     });
+    // GitHub answers a request with no User-Agent with 403, the same status as
+    // its rate limit, so the read cannot leave it to the HTTP stack.
     expect(fetchImpl).toHaveBeenCalledWith(
       APP_UPDATE_SOURCE.latestReleaseUrl,
-      expect.objectContaining({ headers: { Accept: "application/vnd.github+json" } }),
+      expect.objectContaining({
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": APP_UPDATE_SOURCE.userAgent,
+        },
+      }),
     );
   });
 
-  it("answers nothing offline, rate-limited, or for a release it cannot read", async () => {
-    const answers: (() => Promise<Response>)[] = [
-      async () => {
-        throw new TypeError("Network request failed");
-      },
-      async () => response(403, { message: "API rate limit exceeded" }),
-      async () => response(429, {}),
-      async () => response(404, { message: "Not Found" }),
-      async () => response(200, null),
-      async () => response(200, { tag_name: "nightly" }),
-      async () => response(200, { tag_name: "v1.0.96", prerelease: true }),
-      async () => ({ ok: true, status: 200, json: async () => JSON.parse("<html>") }) as Response,
+  it("answers nothing rate-limited, or for a release it cannot read, and says why", async () => {
+    const answers: [() => Promise<Response>, string][] = [
+      [async () => response(403, { message: "API rate limit exceeded" }), "GitHub answered HTTP 403"],
+      [async () => response(429, {}), "GitHub answered HTTP 429"],
+      [async () => response(404, { message: "Not Found" }), "GitHub answered HTTP 404"],
+      [async () => response(200, null), "GitHub answered an empty body"],
+      [async () => response(200, { tag_name: "nightly" }), 'tag "nightly" is not a CI release'],
+      [
+        async () => response(200, { tag_name: "v1.0.96", prerelease: true }),
+        "release v1.0.96 is not final",
+      ],
+      [
+        async () => ({ ok: true, status: 200, json: async () => JSON.parse("<html>") }) as Response,
+        "unreadable release body",
+      ],
     ];
-    for (const answer of answers) {
-      await expect(fetchLatestRelease(answer as unknown as typeof fetch)).resolves.toBeNull();
+    for (const [answer, detail] of answers) {
+      const read = await fetchLatestRelease(answer as unknown as typeof fetch);
+      expect(read).toMatchObject({ latest: null, answered: true });
+      expect(read.detail).toContain(detail);
     }
+  });
+
+  it("tells an unanswered read from an answered one", async () => {
+    const offline = async () => {
+      throw new TypeError("Network request failed");
+    };
+    await expect(fetchLatestRelease(offline as unknown as typeof fetch)).resolves.toEqual({
+      latest: null,
+      answered: false,
+      detail: "no answer (Network request failed)",
+    });
   });
 
   it("gives up on a read that never answers", async () => {
@@ -131,7 +157,38 @@ describe("reading the latest release", () => {
     );
     await expect(
       fetchLatestRelease(hung as unknown as typeof fetch, { timeoutMs: 5 }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ latest: null, answered: false });
+  });
+});
+
+describe("the development log", () => {
+  const expoGo = { ...release, expoGo: true, dev: true, versionName: "1.0.0", versionCode: 1 };
+
+  it("says the override reached the app, or that it did not", () => {
+    const forced = { ...expoGo, forcedVersionCode: 90 };
+    expect(describeInstalledBuild(forced, installedBuild(forced))).toBe(
+      "installed 1.0.90 (versionCode 90, forced by override)",
+    );
+    expect(describeInstalledBuild(expoGo, installedBuild(expoGo))).toBe(
+      "off: Expo Go and EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE is not set",
+    );
+    const ios = { ...expoGo, platform: "ios", forcedVersionCode: 90 };
+    expect(describeInstalledBuild(ios, installedBuild(ios))).toBe("off: ios cannot install an APK");
+  });
+
+  it("says why a release was or was not offered", () => {
+    const installed = { versionCode: 90, versionName: "1.0.90" };
+    const latest = { versionCode: 95, versionName: "1.0.95" };
+    const today = "2026-09-24";
+    expect(describeOffer({ installed, latest, dismissed: null, today }, true)).toBe(
+      "offering 1.0.95 over 1.0.90",
+    );
+    expect(
+      describeOffer({ installed: latest, latest, dismissed: null, today }, false),
+    ).toBe("not offering: 1.0.95 is already the latest");
+    expect(
+      describeOffer({ installed, latest, dismissed: { versionCode: 95, day: today }, today }, false),
+    ).toBe('not offering 1.0.95: "Later" was tapped for 95 on 2026-09-24');
   });
 });
 

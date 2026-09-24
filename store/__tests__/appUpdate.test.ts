@@ -14,6 +14,11 @@ function releases(...tags: string[]) {
 
 beforeEach(() => {
   useAppUpdate.getState().reset();
+  jest.spyOn(console, "info").mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
 describe("on launch", () => {
@@ -66,6 +71,23 @@ describe("looking for a newer release", () => {
     const fetchImpl = jest.fn().mockRejectedValue(new TypeError("Network request failed"));
     await useAppUpdate.getState().check(now, fetchImpl as unknown as typeof fetch);
     expect(useAppUpdate.getState()).toMatchObject({ available: null, checking: false });
+  });
+
+  it("tries again at the next foreground after a read nobody answered", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Network request failed"))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ tag_name: "v1.0.96" }) });
+    await useAppUpdate.getState().check(now, fetchImpl as unknown as typeof fetch);
+    await useAppUpdate.getState().check(now + 60_000, fetchImpl as unknown as typeof fetch);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(useAppUpdate.getState().available?.versionCode).toBe(96);
+  });
+
+  it("logs each decision in a development build", async () => {
+    await useAppUpdate.getState().check(now, releases("v1.0.96"));
+    expect(console.info).toHaveBeenCalledWith("[update-check] latest release is 1.0.96");
+    expect(console.info).toHaveBeenCalledWith("[update-check] offering 1.0.96 over 1.0.95");
   });
 
   it("reads again on return to the foreground only after the interval", async () => {

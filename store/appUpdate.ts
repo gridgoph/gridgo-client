@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import {
+  describeOffer,
   fetchLatestRelease,
   justUpdated,
   localDay,
@@ -13,6 +14,15 @@ import {
 import { createPersistStorage } from "@/lib/persistStorage";
 
 const STORAGE_KEY = "gridgo.client.appUpdate.v1";
+
+/**
+ * Every decision the check makes, in a development build's Metro log, so a
+ * prompt that does not appear says why instead of failing silently. A release
+ * build logs nothing: an update prompt that finds nothing is not news.
+ */
+export function logUpdateCheck(line: string): void {
+  if (__DEV__) console.info(`[update-check] ${line}`);
+}
 
 type AppUpdateStore = {
   hydrated: boolean;
@@ -80,18 +90,29 @@ export const useAppUpdate = create<AppUpdateStore>()(
 
       check: async (now = Date.now(), fetchImpl = fetch) => {
         const { installed, checking, lastCheckedAt } = get();
-        if (!installed || checking || !shouldCheckForUpdate(lastCheckedAt, now)) return;
-        set({ checking: true, lastCheckedAt: now });
+        if (!installed || checking) return;
+        if (!shouldCheckForUpdate(lastCheckedAt, now)) {
+          logUpdateCheck("skipped: the latest release was read less than 4 hours ago");
+          return;
+        }
+        set({ checking: true });
         try {
-          const latest = await fetchLatestRelease(fetchImpl);
-          // Offline or rate-limited: say nothing, and keep whatever is on screen.
+          const read = await fetchLatestRelease(fetchImpl);
+          logUpdateCheck(read.detail);
+          // Only a read GitHub answered starts the interval. Offline or timed
+          // out, the next return to the foreground tries again.
+          if (read.answered) set({ lastCheckedAt: now });
+          // Nothing to read: say nothing, and keep whatever is on screen.
+          const { latest } = read;
           if (!latest) return;
-          const offer = shouldOfferUpdate({
+          const input = {
             installed,
             latest,
             dismissed: get().dismissed,
             today: localDay(new Date(now)),
-          });
+          };
+          const offer = shouldOfferUpdate(input);
+          logUpdateCheck(describeOffer(input, offer));
           set({ available: offer ? latest : null });
         } finally {
           set({ checking: false });
