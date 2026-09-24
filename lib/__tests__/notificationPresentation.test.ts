@@ -1,5 +1,7 @@
 import type { Notification } from "@/lib/api";
 import {
+  groupInbox,
+  isGroupUnread,
   partitionInbox,
   presentNotification,
 } from "@/lib/notificationPresentation";
@@ -201,6 +203,88 @@ describe("presentNotification receipt ready", () => {
   });
 });
 
+describe("groupInbox", () => {
+  const step = (id: string, at: string, extra: Partial<Notification> = {}) =>
+    note({
+      id,
+      at,
+      orderId: "ord_1F09",
+      orderTitle: "Booth backdrops",
+      orderState: "ready_for_dispatch",
+      title: `Update ${id}`,
+      body: "Something moved.",
+      paymentAction: { installment: "final_online", status: "pending_confirmation", amountMinor: 33625 },
+      ...extra,
+    });
+
+  it("folds one job's five updates into one group led by the newest", () => {
+    const rows = [
+      step("a", "2026-09-01T01:00:00.000Z"),
+      step("c", "2026-09-01T03:00:00.000Z"),
+      step("b", "2026-09-01T02:00:00.000Z"),
+      step("e", "2026-09-01T05:00:00.000Z"),
+      step("d", "2026-09-01T04:00:00.000Z"),
+    ];
+
+    const groups = groupInbox(rows);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].orderId).toBe("ord_1F09");
+    expect(groups[0].latest.id).toBe("e");
+    expect(groups[0].items.map((item) => item.id)).toEqual(["e", "d", "c", "b", "a"]);
+    // The payment line belongs to the job, so the card says it once.
+    expect(presentNotification(groups[0].latest).paymentLine).toMatch(/^Now: final payment/);
+  });
+
+  it("keeps a row with no job as its own card, and orders cards by their newest update", () => {
+    const broadcast = note({ id: "ann", title: "Holiday hours", body: "Closed Monday.", at: "2026-09-01T02:30:00.000Z" });
+    const other = step("x", "2026-09-01T02:00:00.000Z", { orderId: "ord_other" });
+    const groups = groupInbox([
+      step("a", "2026-09-01T01:00:00.000Z"),
+      other,
+      broadcast,
+      step("b", "2026-09-01T03:00:00.000Z"),
+    ]);
+
+    expect(groups.map((group) => group.key)).toEqual(["order:ord_1F09", "note:ann", "order:ord_other"]);
+    expect(groups[1].items).toEqual([broadcast]);
+    expect(groups[1].orderId).toBeNull();
+  });
+
+  it("never merges two unrelated rows that have no job", () => {
+    const groups = groupInbox([
+      note({ id: "n1", title: "One", body: "x" }),
+      note({ id: "n2", title: "Two", body: "y" }),
+    ]);
+    expect(groups).toHaveLength(2);
+  });
+
+  it("keeps the server's order when a stamp cannot be read", () => {
+    const groups = groupInbox([
+      step("first", "not a date"),
+      step("second", "also not a date"),
+    ]);
+    expect(groups[0].items.map((item) => item.id)).toEqual(["first", "second"]);
+  });
+});
+
+describe("isGroupUnread", () => {
+  const rows = [
+    note({ id: "new", title: "Out for delivery", body: "x", orderId: "o", at: "2026-09-01T03:00:00.000Z" }),
+    note({ id: "old", title: "Printing", body: "y", orderId: "o", at: "2026-09-01T01:00:00.000Z" }),
+  ];
+
+  it("is unread when the job's newest update is unread", () => {
+    const [group] = groupInbox(rows);
+    expect(isGroupUnread(group, (item) => item.id === "old")).toBe(true);
+  });
+
+  it("reads as read once the newest update is, even with an older one unread", () => {
+    const [group] = groupInbox(rows);
+    expect(isGroupUnread(group, (item) => item.id === "new")).toBe(false);
+  });
+});
+
 describe("partitionInbox", () => {
   it("lifts collect-ready and pay-first above ordinary updates", () => {
     const ready = note({
@@ -222,7 +306,34 @@ describe("partitionInbox", () => {
     });
 
     const { needYou, updates } = partitionInbox([printing, ready]);
-    expect(needYou.map((item) => item.id)).toEqual(["ntf_ready"]);
-    expect(updates.map((item) => item.id)).toEqual(["ntf_print"]);
+    expect(needYou.map((group) => group.latest.id)).toEqual(["ntf_ready"]);
+    expect(updates.map((group) => group.latest.id)).toEqual(["ntf_print"]);
+  });
+
+  it("files a job by its newest update, not by an older step that once needed the client", () => {
+    const proof = note({
+      id: "ntf_proof",
+      title: "Approve your proof",
+      body: "Operations sent a proof.",
+      type: "order_proof_approval",
+      orderId: "ord_1",
+      orderState: "production",
+      at: "2026-09-01T01:00:00.000Z",
+    });
+    const printing = note({
+      id: "ntf_print",
+      title: "Your job is in production",
+      body: "The shop has started.",
+      type: "order_in_production",
+      orderId: "ord_1",
+      orderState: "production",
+      at: "2026-09-01T02:00:00.000Z",
+    });
+
+    const { needYou, updates } = partitionInbox([proof, printing]);
+    expect(needYou).toHaveLength(0);
+    expect(updates.map((group) => group.items.map((item) => item.id))).toEqual([
+      ["ntf_print", "ntf_proof"],
+    ]);
   });
 });

@@ -31,11 +31,9 @@ import {
   unitWord,
   type MeasurementDraft,
 } from "@/lib/measurement";
-import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import {
   addOnGroups,
   boundValue,
-  clientUnitPriceMinor,
   firstMissingGroup,
   fileFormats,
   formatSentence,
@@ -108,7 +106,7 @@ export default function ListingScreen() {
   const [showMissing, setShowMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [feeRateBps, setFeeRateBps] = useState<number | null>(null);
+  const loadSettings = usePlatformSettings((state) => state.load);
 
   const loadSequence = useRef(0);
   const load = useCallback(() => {
@@ -131,14 +129,11 @@ export default function ListingScreen() {
         ),
       );
     });
-    const settings = api.getSettings().then((read) => {
-      if (sequence !== loadSequence.current) return;
-      if (Number.isInteger(read.serviceFeeRateBps)) setFeeRateBps(read.serviceFeeRateBps);
-    }).catch(() => {
-      // The sheet can still price from the listing's own GRIDGO fields.
+    const settings = loadSettings({ refresh: true }).catch(() => {
+      // Keep the shared cached rate, or wait on a skeleton if none is known.
     });
     return Promise.all([listing, settings]);
-  }, [itemId]);
+  }, [itemId, loadSettings]);
 
   useLiveRefresh(["catalog", "services", "settings"], load);
 
@@ -185,15 +180,6 @@ export default function ListingScreen() {
       setQuantity((current) => Math.max(current, orderFloor(item)));
     }
   }
-
-  // GRIDGO's rate, so the price on this sheet is what the client will pay.
-  // Normally already held from launch; a sheet opened cold reads it here.
-  const loadSettings = usePlatformSettings((state) => state.load);
-  useEffect(() => {
-    loadSettings().catch(() => {
-      /* The price waits on its skeleton rather than showing the shop's own. */
-    });
-  }, [loadSettings]);
 
   /**
    * Back to GRIDGO's pick for this job, or to the start of choosing what to
@@ -257,16 +243,6 @@ export default function ListingScreen() {
   // measured listing has no measurement yet. Drawn as "—" rather than as zero,
   // because a zero in the price line reads as free.
   const shopTotal = lineTotalMinor(item, quantity, measurement, shopUnit);
-  const unit =
-    feeRateBps == null
-      ? (item.clientEffectivePriceMinor ?? item.clientFromPriceMinor ?? shopUnit)
-      : clientUnitPriceMinor(item, selection, feeRateBps);
-  const total =
-    shopTotal == null
-      ? null
-      : feeRateBps == null
-        ? shopTotal
-        : gridgoAmountMinor(shopTotal, feeRateBps);
   const sized = isMeasurementComplete(item, measured);
   const atMinimum = minimumApplies(item, measurement);
   const runMinimum = belowMinimumOrder(item, quantity);
@@ -386,7 +362,7 @@ export default function ListingScreen() {
               plus GRIDGO's charge, never the shop's figure on its own. */}
           <View className="mt-3 flex-row items-baseline gap-2">
             <GridgoPrice
-              supplierMinor={unit}
+              supplierMinor={shopUnit}
               className="text-h1 text-text-primary"
               waitingWidth="w-28"
             />
@@ -427,6 +403,7 @@ export default function ListingScreen() {
             <View key={group.id} className="mt-8">
               <OptionGroupPicker
                 group={group}
+                priceUnit={unitLine(item)}
                 step={position + 1}
                 selectedId={selection[group.id]}
                 onSelect={(optionId) =>
@@ -448,6 +425,7 @@ export default function ListingScreen() {
                 <OptionGroupPicker
                   key={group.id}
                   group={group}
+                  priceUnit={unitLine(item)}
                   step={null}
                   selectedId={selection[group.id]}
                   onSelect={(optionId) =>
@@ -550,12 +528,16 @@ export default function ListingScreen() {
         track of what they picked.
       */}
       <View className="border-t border-outline bg-surface px-4 pb-2 pt-3">
-        <View className="flex-row items-baseline justify-between gap-3">
-          <Text className="text-body text-text-secondary">
-            {quantityLine(item, quantity)}
-          </Text>
+        <View testID="listing-printing" className="flex-row items-baseline justify-between gap-3">
+          <View className="min-w-0 flex-1 gap-1">
+            <Text className="text-body text-text-secondary">Printing</Text>
+            <Text className="text-caption text-text-muted">
+              {quantityLine(item, quantity)}
+              {measurement ? ` · ${measurementSummary(item, measurement)}` : ""}
+            </Text>
+          </View>
           <GridgoPrice
-            supplierMinor={total}
+            supplierMinor={shopTotal}
             className="text-h3 text-text-primary"
             waitingWidth="w-24"
           />
