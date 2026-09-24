@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { waitFor } from "@testing-library/react-native";
 
 import type { Notification } from "@/lib/api";
-import { useNotifications } from "@/store/notifications";
+import { countUnreadGroups, useNotifications } from "@/store/notifications";
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
@@ -124,6 +124,43 @@ describe("notifications store", () => {
 
     expect(api.markNotificationRead).toHaveBeenCalledWith("ntf_1", true);
     expect(useNotifications.getState().readIds).toContain("ntf_1");
+  });
+
+  it("marks every row of one job's card read, one PATCH per row", async () => {
+    const older = { ...assignment, id: "ntf_0", at: "2026-08-08T09:12:00+08:00" };
+    const alreadyRead = { ...assignment, id: "ntf_r", read: true, at: "2026-08-07T09:12:00+08:00" };
+    useNotifications.setState({ items: [assignment, older, alreadyRead], readIds: [] });
+
+    await useNotifications.getState().markManyRead(["ntf_1", "ntf_0", "ntf_r"]);
+
+    expect(api.markNotificationRead).toHaveBeenCalledTimes(2);
+    expect(api.markNotificationRead).toHaveBeenCalledWith("ntf_1", true);
+    expect(api.markNotificationRead).toHaveBeenCalledWith("ntf_0", true);
+    expect(useNotifications.getState().readIds).toEqual(["ntf_1", "ntf_0"]);
+  });
+
+  it("puts back only the rows whose PATCH failed", async () => {
+    const older = { ...assignment, id: "ntf_0", at: "2026-08-08T09:12:00+08:00" };
+    useNotifications.setState({ items: [assignment, older], readIds: [] });
+    api.markNotificationRead.mockImplementation((id: string) =>
+      id === "ntf_0" ? Promise.reject(new Error("offline")) : Promise.resolve({ ...assignment, read: true }),
+    );
+
+    await useNotifications.getState().markManyRead(["ntf_1", "ntf_0"]);
+
+    expect(useNotifications.getState().readIds).toEqual(["ntf_1"]);
+  });
+
+  it("counts unread cards, not rows, so the badge matches the screen", () => {
+    const rows: Notification[] = [
+      assignment,
+      { ...assignment, id: "ntf_0", at: "2026-08-08T09:12:00+08:00" },
+      { ...assignment, id: "ntf_x", at: "2026-08-07T09:12:00+08:00" },
+      { ...assignment, id: "ntf_other", orderId: "ord_2" },
+    ];
+    expect(countUnreadGroups(rows, [])).toBe(2);
+    // The job's newest row read: its card reads as read, whatever sits under it.
+    expect(countUnreadGroups(rows, ["ntf_1"])).toBe(1);
   });
 
   it("marks the list read through PATCH /notifications/read-all with the snapshot", async () => {
