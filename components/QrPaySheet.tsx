@@ -7,6 +7,7 @@ import { Sheet } from "@/components/Sheet";
 import { images } from "@/constants/images";
 import { formatPhp, notificationImageUrl } from "@/lib/api";
 import { PAYMENT_CHOICE_BLURB } from "@/lib/checkout";
+import { FULL_PAYMENT_PERCENT, LEGACY_DOWNPAYMENT_PERCENT } from "@/lib/payment";
 import {
   SAVE_QR_A11Y,
   SAVE_QR_LABEL,
@@ -17,8 +18,13 @@ import {
 type Props = {
   open: boolean;
   onClose: () => void;
-  /** The 75% this scan is for. Null while GRIDGO cannot yet total the basket. */
+  /**
+   * The up-front amount this scan is for — the whole total when paid in full.
+   * Null while GRIDGO cannot yet total the basket.
+   */
   downpaymentMinor: number | null;
+  /** The share that amount is of the total. Defaults to the old 75. */
+  downpaymentPercent?: number;
   /** Defaults to checkout wording; final payments reuse the same receiving QR. */
   paymentKind?: "checkout" | "initial" | "final";
   /**
@@ -131,7 +137,37 @@ export function paymentQrImageSource(imageUrl?: string | null) {
  * screenshot and the reference number are — those stay on the sheet behind
  * this one on purpose, because they are the part Operations matches by hand.
  */
-export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl, paymentKind = "checkout" }: Props) {
+/** The sheet's words for what this scan pays. */
+export function qrPayCopy(
+  paymentKind: NonNullable<Props["paymentKind"]>,
+  percent: number,
+): { title: string; due: string; pending: string } {
+  const inFull = percent >= FULL_PAYMENT_PERCENT;
+  const pending = `GRIDGO works the ${inFull ? "total" : `${percent}%`} out once every item has an address to be delivered to.`;
+  if (paymentKind === "final") {
+    return { title: "Scan to pay the final balance", due: "Final payment due", pending };
+  }
+  if (inFull) {
+    return {
+      title: "Scan to pay in full",
+      due: paymentKind === "initial" ? "Payment due" : "Pay in full now",
+      pending,
+    };
+  }
+  return paymentKind === "initial"
+    ? { title: "Scan to pay the initial amount", due: "Initial payment due", pending }
+    : { title: `Scan to send ${percent}%`, due: `Send now (${percent}%)`, pending };
+}
+
+export function QrPaySheet({
+  open,
+  onClose,
+  downpaymentMinor,
+  downpaymentPercent = LEGACY_DOWNPAYMENT_PERCENT,
+  imageUrl,
+  paymentKind = "checkout",
+}: Props) {
+  const copy = qrPayCopy(paymentKind, downpaymentPercent);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [saving, setSaving] = useState(false);
@@ -167,20 +203,18 @@ export function QrPaySheet({ open, onClose, downpaymentMinor, imageUrl, paymentK
     <Sheet
       open={open}
       onClose={onClose}
-      title={paymentKind === "final" ? "Scan to pay the final balance" : paymentKind === "initial" ? "Scan to pay the initial amount" : "Scan to send 75%"}
+      title={copy.title}
       subtitle="GRIDGO takes QR Ph only."
       maxHeightRatio={QR_PAY_SHEET_MAX_HEIGHT_RATIO}
     >
       <View className="gap-5 px-4 pt-4">
         <View className="gg-panel-high gap-1">
-          <Text className="text-caption text-text-muted">{paymentKind === "final" ? "Final payment due" : paymentKind === "initial" ? "Initial payment due" : "Send now (75%)"}</Text>
+          <Text className="text-caption text-text-muted">{copy.due}</Text>
           <Text className="text-display text-text-primary">
             {downpaymentMinor == null ? "Not yet" : formatPhp(downpaymentMinor)}
           </Text>
           {downpaymentMinor == null ? (
-            <Text className="text-caption text-text-muted">
-              GRIDGO works the 75% out once every item has an address to be delivered to.
-            </Text>
+            <Text className="text-caption text-text-muted">{copy.pending}</Text>
           ) : null}
         </View>
 

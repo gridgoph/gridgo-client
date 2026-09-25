@@ -18,7 +18,7 @@ import { ReadyTime } from "@/components/ReadyTime";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
 import {
-  getOrderStateMeta,
+  orderStateMeta,
   orderNextAction,
   orderWaitingOn,
   type OrderActionIcon,
@@ -155,7 +155,7 @@ function HomeRow({ headline, onPress, accessibilityLabel, leading, children }: R
  */
 export function HomeActionRow({ order, onPress }: { order: Order; onPress: () => void }) {
   const action = orderNextAction(order);
-  const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
+  const meta = orderStateMeta(order);
   const headline = action?.title ?? meta.label;
 
   return (
@@ -194,7 +194,7 @@ export function HomeActionRow({ order, onPress }: { order: Order; onPress: () =>
  */
 export function HomeJobRow({ order, onPress }: { order: Order; onPress: () => void }) {
   const colors = useThemeColors();
-  const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
+  const meta = orderStateMeta(order);
   const kind = fulfilmentRailKind(order.fulfillmentMode);
   const stage = orderStageIndex(order.state, order.fulfillmentMode);
   const moved = order.updatedAt ? formatRelativeTime(order.updatedAt) : null;
@@ -277,7 +277,7 @@ export function HomeJobRow({ order, onPress }: { order: Order; onPress: () => vo
  */
 export function HomeFinishedRow({ order, onPress }: { order: Order; onPress: () => void }) {
   const colors = useThemeColors();
-  const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
+  const meta = orderStateMeta(order);
   const when = order.updatedAt ? formatRelativeTime(order.updatedAt) : null;
   const status = when && when !== "—" ? `${meta.label} ${lowerFirst(when)}` : meta.label;
 

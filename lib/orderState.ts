@@ -13,7 +13,14 @@
 
 import type { Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
-import { balanceDue, downpaymentDue, installmentUnderReview, paymentInstallment } from "@/lib/payment";
+import {
+  balanceDue,
+  downpaymentDue,
+  installmentUnderReview,
+  payActionTitle,
+  paymentInstallment,
+  paysInFull,
+} from "@/lib/payment";
 
 export type OrderStatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type OrderStatusIcon =
@@ -78,16 +85,39 @@ export function collectsAtOffice(order: Pick<Order, "fulfillmentMode">): boolean
   return order.fulfillmentMode === "pickup";
 }
 
+/**
+ * The payment states, for an order paid in full up front. There is one
+ * payment and no balance behind it, so none of them may say "downpayment".
+ */
+const PAID_IN_FULL_META: Record<string, OrderStateMeta> = {
+  awaiting_initial_payment: { label: "Payment due", tone: "warning", icon: "triangle-alert" },
+  awaiting_downpayment: { label: "Payment due", tone: "warning", icon: "triangle-alert" },
+  payment_authorized: { label: "Payment confirmed", tone: "success", icon: "circle-check" },
+};
+
 const FALLBACK: OrderStateMeta = {
   label: "In progress",
   tone: "neutral",
   icon: "clock",
 };
 
-export function getOrderStateMeta(state: string, fulfillmentMode?: string | null): OrderStateMeta {
+export function getOrderStateMeta(
+  state: string,
+  fulfillmentMode?: string | null,
+  paidInFull = false,
+): OrderStateMeta {
   // Never surface snake_case API states. Unknown → neutral "In progress".
   if (fulfillmentMode === "pickup" && COLLECT_META[state]) return COLLECT_META[state];
+  if (paidInFull && PAID_IN_FULL_META[state]) return PAID_IN_FULL_META[state];
   return STATE_META[state] ?? FALLBACK;
+}
+
+/** An order's own chip: its state, its route, and its payment plan. */
+export function orderStateMeta(
+  order: Pick<Order, "state" | "fulfillmentMode" | "payments"> &
+    Partial<Pick<Order, "balanceMinor" | "downpaymentPercent">>,
+): OrderStateMeta {
+  return getOrderStateMeta(order.state, order.fulfillmentMode, paysInFull(order));
 }
 
 /** States where the client watches delivery (never controls it). */
@@ -164,7 +194,7 @@ export type OrderNextAction = {
    *
    * Keyed to the *action*, never to the state it was asked from: the balance
    * is asked for from `ready_for_dispatch` onward, and that state's own chip
-   * is an info-blue clock. A blue clock over "Pay the remaining 25%" tells a
+   * is an info-blue clock. A blue clock over "Pay the remaining balance" tells a
    * client to wait for the one thing that is waiting on them.
    *
    * Money and corrections are amber attention, a decision is informational,
@@ -216,11 +246,16 @@ const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
 export function orderNextAction(order: Order): OrderNextAction | null {
   if (downpaymentDue(order)) {
     const amount = paymentInstallment(order, "downpayment")?.amountMinor;
+    const inFull = paysInFull(order);
     return {
-      title: order.payments?.initial ? "Pay the initial payment" : "Pay the 75% downpayment",
+      title: payActionTitle("downpayment", order),
       body: amount
-        ? `Your supplier accepted at ${formatPhp(order.totalMinor ?? 0)} in total. Pay ${formatPhp(amount)} now by QR; production starts once Operations confirms it.`
-        : "Your supplier has accepted and priced the job. Pay the downpayment by QR to start production.",
+        ? inFull
+          ? `Your supplier accepted at ${formatPhp(order.totalMinor ?? 0)}. Pay it in full by QR; production starts once Operations confirms it.`
+          : `Your supplier accepted at ${formatPhp(order.totalMinor ?? 0)} in total. Pay ${formatPhp(amount)} now by QR; production starts once Operations confirms it.`
+        : inFull
+          ? "Your supplier has accepted and priced the job. Pay it in full by QR to start production."
+          : "Your supplier has accepted and priced the job. Pay the downpayment by QR to start production.",
       tone: "warning",
       icon: "wallet",
     };
@@ -229,7 +264,7 @@ export function orderNextAction(order: Order): OrderNextAction | null {
     const amount = paymentInstallment(order, "balance")?.amountMinor;
     if (collectsAtOffice(order)) {
       return {
-        title: order.payments?.final_online ? "Pay the final balance" : "Pay the remaining 25%",
+        title: payActionTitle("balance", order),
         body: amount
           ? `Settle the last ${formatPhp(amount)} before you come for this. The GRIDGO Office counter releases it once Operations confirms your payment.`
           : "Settle the remaining balance before you come for this. The GRIDGO Office counter releases it once Operations confirms your payment.",
@@ -238,7 +273,7 @@ export function orderNextAction(order: Order): OrderNextAction | null {
       };
     }
     return {
-      title: order.payments?.final_online ? "Pay the final balance" : "Pay the remaining 25%",
+      title: payActionTitle("balance", order),
       body: amount
         ? `Pay the remaining ${formatPhp(amount)} by QR. The rider can hand over your order once Operations confirms it.`
         : "Pay the remaining balance by QR. The rider can hand over your order once Operations confirms it.",
@@ -296,8 +331,19 @@ const COLLECT_WAITING_ON: Record<string, string> = {
   payout_released: "Job complete. Collected, closed, and nothing more is needed from you.",
 };
 
+/** The payment waits, for an order paid in full: one payment, no balance. */
+const PAID_IN_FULL_WAITING_ON: Record<string, string> = {
+  awaiting_initial_payment: "Your supplier has accepted. Paying in full is next.",
+  awaiting_downpayment: "Your supplier has accepted. Paying in full is next.",
+  payment_authorized: "Your payment is confirmed. Your supplier starts production next.",
+};
+
 export function orderWaitingOn(order: Order): string | null {
   const underReview = installmentUnderReview(order);
+  const inFull = paysInFull(order);
+  if (underReview === "downpayment" && inFull) {
+    return "We are checking your payment. Operations matches the reference you sent against the GRIDGO wallet by hand, so this is not instant.";
+  }
   if (underReview === "downpayment") {
     return "We are checking your downpayment. Operations matches the reference you sent against the GRIDGO wallet by hand, so this is not instant.";
   }
@@ -305,6 +351,7 @@ export function orderWaitingOn(order: Order): string | null {
     return "We are checking your balance payment. Final handover is allowed once Operations confirms it; do not pay again.";
   }
   if (collectsAtOffice(order) && COLLECT_WAITING_ON[order.state]) return COLLECT_WAITING_ON[order.state];
+  if (inFull && PAID_IN_FULL_WAITING_ON[order.state]) return PAID_IN_FULL_WAITING_ON[order.state];
   return WAITING_ON[order.state] ?? null;
 }
 

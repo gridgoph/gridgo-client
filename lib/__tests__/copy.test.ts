@@ -25,9 +25,18 @@ describe("payment copy", () => {
       "pending_confirmation",
       "confirmed",
       "legacy_confirmed",
+      "not_required",
+      "some_future_status",
     ]) {
       expect(installmentStatusLabel(status)).not.toMatch(/_/);
     }
+  });
+
+  it("never calls a paid-in-full order's one payment a downpayment", () => {
+    expect(paymentStatusLabel("downpayment_pending", true)).toBe("Payment being checked");
+    expect(paymentStatusLabel("downpayment_confirmed", true)).toBe("Paid in full");
+    expect(paymentStatusLabel("downpayment_confirmed")).toBe("Downpayment confirmed");
+    expect(installmentStatusLabel("not_required")).toBe("Not needed");
   });
 
   it("says a submitted payment is being checked, never that it is paid", () => {
@@ -66,7 +75,8 @@ describe("userFacingError", () => {
     ["issue_window_closed", /signed off/i],
     ["reason_required", /what needs to change/i],
     ["proof_decision_not_allowed", /no proof waiting/i],
-    ["payment_route_retired", /downpayment and balance/i],
+    ["payment_route_retired", /payment by QR now/i],
+    ["balance_not_required", /paid in full up front/i],
     ["payment_method_not_allowed", /QR only/i],
     ["assignment_notification_required", /no final price yet/i],
     ["payment_already_submitted", /already with Operations/i],

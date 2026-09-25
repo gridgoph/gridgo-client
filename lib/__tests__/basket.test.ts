@@ -3,7 +3,6 @@ import {
   basketTotals,
   clientLineAmountMinor,
   deliveryFeeForDistance,
-  DOWNPAYMENT_RATE_BPS,
   printRuns,
   linesMissingArtwork,
   linesMissingDropoff,
@@ -182,17 +181,40 @@ describe("basketTotals", () => {
     expect(totals.deliveryFeeMinor).toBe(2500);
   });
 
-  it("splits the total 75/25 the way checkout does", () => {
+  it("splits the total 75/25 the way checkout does on an API with no plan setting", () => {
     const totals = basketTotals({
       cart: cart(),
       settings: SETTINGS,
       shopPoints: POINTS,
     });
 
-    expect(DOWNPAYMENT_RATE_BPS).toBe(7500);
+    expect(totals.downpaymentPercent).toBe(75);
     expect(totals.downpaymentMinor).toBe(roundBps(112500, 7500));
     expect(totals.balanceMinor).toBe(112500 - roundBps(112500, 7500));
     expect(totals.downpaymentMinor! + totals.balanceMinor!).toBe(totals.totalMinor);
+  });
+
+  it("takes the whole total up front when GRIDGO asks for 100%", () => {
+    const totals = basketTotals({
+      cart: cart(),
+      settings: { ...SETTINGS, downpaymentPercent: 100 },
+      shopPoints: POINTS,
+    });
+
+    expect(totals.downpaymentPercent).toBe(100);
+    expect(totals.downpaymentMinor).toBe(112500);
+    expect(totals.balanceMinor).toBe(0);
+  });
+
+  it("follows the setting back to 75/25 without a release", () => {
+    const totals = basketTotals({
+      cart: cart(),
+      settings: { ...SETTINGS, downpaymentPercent: 75 },
+      shopPoints: POINTS,
+    });
+
+    expect(totals.downpaymentMinor).toBe(roundBps(112500, 7500));
+    expect(totals.downpaymentMinor! + totals.balanceMinor!).toBe(112500);
   });
 
   it("never lets delivery into the fee base", () => {

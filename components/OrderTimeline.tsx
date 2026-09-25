@@ -21,6 +21,11 @@ type Props = {
    * them when a rider is only moving it to GRIDGO's own counter.
    */
   fulfillmentMode?: string | null;
+  /**
+   * `paysInFull(order)`: the payment steps of an order paid in full up front
+   * never call its one payment a downpayment.
+   */
+  paidInFull?: boolean;
 };
 
 /**
@@ -30,7 +35,7 @@ type Props = {
  * real meaning — and the accountability this product exists to provide is the
  * actor and the clock time on every entry, not just a status word.
  */
-export function OrderTimeline({ timeline, currentState, fulfillmentMode }: Props) {
+export function OrderTimeline({ timeline, currentState, fulfillmentMode, paidInFull = false }: Props) {
   const entriesIn = Array.isArray(timeline) ? timeline : [];
   if (!entriesIn.length) {
     return (
@@ -46,7 +51,7 @@ export function OrderTimeline({ timeline, currentState, fulfillmentMode }: Props
   return (
     <View className="gap-0">
       {entries.map((entry, index) => {
-        const meta = getOrderStateMeta(entry.state, fulfillmentMode);
+        const meta = getOrderStateMeta(entry.state, fulfillmentMode, paidInFull);
         const isCurrent = index === 0 && entry.state === currentState;
         const isLast = index === entries.length - 1;
 

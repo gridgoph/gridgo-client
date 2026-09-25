@@ -15,7 +15,7 @@ import { usePaymentProof } from "@/hooks/usePaymentProof";
 import * as api from "@/lib/api";
 import { formatPhp, type InstallmentCode, type Order } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
-import { afterPayCopy, checkPaymentReference, installmentLabel, MANUAL_CONFIRMATION_NOTICE, paymentInstallment, payInstruction } from "@/lib/payment";
+import { afterPayCopy, checkPaymentReference, downpaymentPercentOf, installmentLabel, MANUAL_CONFIRMATION_NOTICE, paymentInstallment, paysInFull, payInstruction } from "@/lib/payment";
 import { liveGeneration } from "@/lib/live";
 import { OCR_READING, OCR_UNREADABLE } from "@/lib/receiptOcr";
 import { useOrderPayment } from "@/store/checkoutPayment";
@@ -51,6 +51,7 @@ function PaymentForm({ order, installment, onSubmitted }: Props) {
 
   const record = paymentInstallment(order, installment);
   const dueMinor = record?.amountMinor ?? null;
+  const inFull = paysInFull(order);
   const check = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
   const ready = proof.state.phase === "stored" && Boolean(proof.state.fileId) && check.ok && !ocrReading && dueMinor !== null && dueMinor > 0;
@@ -81,7 +82,7 @@ function PaymentForm({ order, installment, onSubmitted }: Props) {
   return (
     <View className="gg-card gap-5">
       <View className="gap-2">
-        <Text className="text-h2 text-text-primary">{installment === "balance" ? "Final payment due" : "Initial payment due"}</Text>
+        <Text className="text-h2 text-text-primary">{installment === "balance" ? "Final payment due" : inFull ? "Pay in full" : "Initial payment due"}</Text>
         <Text className="text-body text-text-secondary">{payInstruction(installment)}</Text>
         <Text className="text-display text-text-primary">{dueMinor !== null ? formatPhp(dueMinor) : "Amount unavailable"}</Text>
         <Text className="text-body text-text-secondary">{afterPayCopy(installment)}</Text>
@@ -90,7 +91,7 @@ function PaymentForm({ order, installment, onSubmitted }: Props) {
       {record?.rejectionReason ? <ErrorState label="Payment needs correction" body={`${record.rejectionReason} Check the existing transfer before paying again.`} /> : null}
       {settingsError ? <ErrorState label="QR unavailable" body={settingsError} onRetry={() => void loadSettings()} /> : null}
       <SecondaryButton label={!settings && !settingsError ? "Loading payment QR…" : "Show payment QR"} disabled={!settings || frozen} onPress={() => setShowQr(true)} />
-      <QrPaySheet open={showQr} onClose={() => setShowQr(false)} downpaymentMinor={dueMinor} paymentKind={installment === "balance" ? "final" : "initial"} imageUrl={paymentQrFromSettings(settings)?.imageUrl} />
+      <QrPaySheet open={showQr} onClose={() => setShowQr(false)} downpaymentMinor={dueMinor} downpaymentPercent={downpaymentPercentOf(order)} paymentKind={installment === "balance" ? "final" : "initial"} imageUrl={paymentQrFromSettings(settings)?.imageUrl} />
 
       <PaymentProofRow state={proof.state} reading={ocrReading} disabled={frozen}
         error={touched && !proof.state.fileId ? "Add the receipt screenshot from your wallet to continue." : null}
@@ -141,13 +142,13 @@ export function PaymentUnderReviewCard({
           once, and a screen that says it twice reads as a draft. */}
       <View className="gap-2">
         <Text className="text-h3 text-text-primary">
-          We are checking your {installment === "downpayment" ? "downpayment" : "balance payment"}.
+          We are checking your {installment === "balance" ? "balance payment" : paysInFull(order) ? "payment" : "downpayment"}.
         </Text>
         <Text className="text-body text-text-secondary">{MANUAL_CONFIRMATION_NOTICE}</Text>
       </View>
 
       <View className="gg-panel">
-        <SpecRow label={installmentLabel(installment)} value={
+        <SpecRow label={installmentLabel(installment, order)} value={
           record?.amountMinor != null ? formatPhp(record.amountMinor) : "—"
         } />
         <SpecRow label="Reference you sent" value={record?.reference || "—"} />

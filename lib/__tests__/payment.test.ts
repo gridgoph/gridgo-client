@@ -1,15 +1,22 @@
 import type { Order, PaymentInstallment } from "@/lib/api";
 import {
   BALANCE_DUE_STATES,
-  BALANCE_PERCENT,
   balanceDue,
   checkPaymentReference,
-  DOWNPAYMENT_PERCENT,
   downpaymentDue,
+  downpaymentPercentOf,
+  installmentLabel,
+  installmentSharePercent,
   installmentUnderReview,
   isInstallmentConfirmed,
+  LEGACY_DOWNPAYMENT_PERCENT,
   payableInstallment,
+  payActionTitle,
+  paymentPlanNote,
+  paymentPlanPreview,
+  paysInFull,
   payInstruction,
+  settingsDownpaymentPercent,
 } from "@/lib/payment";
 
 function installment(status: string, amountMinor: number | null = 84375): PaymentInstallment {
@@ -61,11 +68,100 @@ function order(
   };
 }
 
-describe("the split", () => {
+/** A new order: the whole total up front, the balance marked not required. */
+function paidInFullOrder(state: string, downpayment = "not_submitted", balance = "not_required"): Order {
+  return {
+    ...order(state),
+    downpaymentPercent: 100,
+    downpaymentMinor: 112500,
+    balanceMinor: 0,
+    payments: {
+      initial: installment(downpayment, 112500),
+      final_online: installment(balance, 0),
+    },
+  };
+}
+
+describe("the legacy split", () => {
   it("is 75 then 25, and they make a whole", () => {
-    expect(DOWNPAYMENT_PERCENT).toBe(75);
-    expect(BALANCE_PERCENT).toBe(25);
-    expect(DOWNPAYMENT_PERCENT + BALANCE_PERCENT).toBe(100);
+    const legacy = order("awaiting_downpayment");
+    expect(LEGACY_DOWNPAYMENT_PERCENT).toBe(75);
+    expect(downpaymentPercentOf(legacy)).toBe(75);
+    expect(installmentSharePercent("downpayment", legacy)).toBe(75);
+    expect(installmentSharePercent("balance", legacy)).toBe(25);
+    expect(paysInFull(legacy)).toBe(false);
+  });
+
+  it("keeps its downpayment and balance words", () => {
+    const legacy = order("production", "confirmed");
+    expect(installmentLabel("downpayment", legacy)).toBe("Downpayment");
+    expect(installmentLabel("balance", legacy)).toBe("Remaining balance");
+    expect(payActionTitle("downpayment", legacy)).toBe("Pay the 75% downpayment");
+    expect(payActionTitle("balance", legacy)).toBe("Pay the remaining 25%");
+  });
+});
+
+describe("paid in full", () => {
+  it("is read from the percentage, a zero balance, or a not_required balance", () => {
+    expect(paysInFull(paidInFullOrder("awaiting_initial_payment"))).toBe(true);
+    expect(paysInFull({ ...order("production"), balanceMinor: 0 })).toBe(true);
+    expect(
+      paysInFull({
+        ...order("production"),
+        payments: { downpayment: installment("confirmed"), balance: installment("not_required", null) },
+      }),
+    ).toBe(true);
+    expect(paysInFull({ ...order("production"), downpaymentPercent: 100, balanceMinor: null })).toBe(true);
+    expect(downpaymentPercentOf({ ...order("production"), balanceMinor: 0 })).toBe(100);
+  });
+
+  it("never asks for a balance, in any state", () => {
+    for (const state of BALANCE_DUE_STATES) {
+      const full = paidInFullOrder(state, "confirmed");
+      expect(balanceDue(full)).toBe(false);
+      expect(payableInstallment(full)).toBeNull();
+      expect(installmentUnderReview(full)).toBeNull();
+    }
+  });
+
+  it("still asks for the one payment", () => {
+    expect(downpaymentDue(paidInFullOrder("awaiting_initial_payment"))).toBe(true);
+    expect(payableInstallment(paidInFullOrder("awaiting_initial_payment"))).toBe("downpayment");
+  });
+
+  it("names it a payment in full, never a downpayment", () => {
+    expect(installmentLabel("downpayment", paidInFullOrder("awaiting_initial_payment"))).toBe("Pay in full");
+    expect(installmentLabel("downpayment", paidInFullOrder("production", "confirmed"))).toBe("Paid in full");
+    expect(payActionTitle("downpayment", paidInFullOrder("awaiting_initial_payment"))).toBe("Pay in full");
+    expect(installmentSharePercent("balance", paidInFullOrder("production"))).toBe(0);
+  });
+
+  it("does not crash on a status added after this build", () => {
+    const odd = paidInFullOrder("production", "some_future_status", "another_future_status");
+    expect(() => payableInstallment(odd)).not.toThrow();
+    expect(balanceDue(odd)).toBe(false);
+    expect(installmentUnderReview(odd)).toBeNull();
+    const legacyOdd = order("production", "confirmed", "some_future_status");
+    expect(balanceDue(legacyOdd)).toBe(false);
+    expect(paysInFull(legacyOdd)).toBe(false);
+  });
+});
+
+describe("the plan a basket is written under", () => {
+  it("reads the setting, and falls back to 75 on an API without one", () => {
+    expect(settingsDownpaymentPercent({ downpaymentPercent: 100 })).toBe(100);
+    expect(settingsDownpaymentPercent({ downpaymentPercent: 75 })).toBe(75);
+    expect(settingsDownpaymentPercent({})).toBe(75);
+    expect(settingsDownpaymentPercent(null)).toBe(75);
+    expect(settingsDownpaymentPercent({ downpaymentPercent: 0 })).toBe(75);
+  });
+
+  it("says pay in full, or names both halves", () => {
+    expect(paymentPlanNote(100)).toMatch(/whole total now/);
+    expect(paymentPlanNote(100)).not.toMatch(/%|the rest/);
+    expect(paymentPlanNote(75)).toMatch(/75% now and the rest before delivery/);
+    expect(paymentPlanPreview(100)).not.toMatch(/%/);
+    expect(paymentPlanPreview(75)).toBe("pay 75% by QR then the last 25% before delivery");
   });
 });
 
