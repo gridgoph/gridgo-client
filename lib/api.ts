@@ -222,6 +222,11 @@ export type PlatformSettings = {
    * copy here would disagree with what the client is billed.
    */
   serviceFeeRateBps: number;
+  /**
+   * Whether checkout names the fee. The pesos stay inside Printing either
+   * way. Absent on an older payload; treat as shown.
+   */
+  serviceFeeVisibleToClient?: boolean;
 };
 
 /** Platform-defined categories, materials and finishes. */

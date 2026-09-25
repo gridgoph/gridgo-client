@@ -119,6 +119,14 @@ export default function PhysicalInvoiceScreen() {
             <SpecRow label="Office address" value={existing.officeAddress} />
             <SpecRow label="Operating hours" value={existing.operatingHours} />
             <SpecRow label="Requested" value={formatTimelineStamp(existing.requestedAt)} />
+            <SpecRow
+              label="Promised delivery"
+              value={
+                existing.promisedDeliveryAt
+                  ? formatTimelineStamp(existing.promisedDeliveryAt)
+                  : "GRIDGO has not set a delivery time yet."
+              }
+            />
           </View>
           <PrimaryButton label="Back to the order" onPress={() => router.back()} />
         </View>

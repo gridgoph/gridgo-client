@@ -27,6 +27,8 @@ import {
   type ReceiptView,
 } from "@/lib/receipt";
 import { formatTimelineStamp } from "@/lib/relativeTime";
+import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
+import { usePlatformSettings } from "@/store/platformSettings";
 
 /**
  * The acknowledgement that this order was placed.
@@ -40,6 +42,7 @@ export default function OrderReceiptScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const fromCheckout = isCheckoutReceipt(from);
+  const settings = usePlatformSettings((state) => state.settings);
 
   const [view, setView] = useState<ReceiptView | null>(null);
   const [order, setOrder] = useState<api.Order | null>(null);
@@ -197,7 +200,9 @@ export default function OrderReceiptScreen() {
                   : formatPhp(view.money.deliveryFeeMinor)
               }
             />
-            <ServiceFeeRow explainOnly rateBps={view.money.serviceFeeRateBps} />
+            {serviceFeeVisibleToClient(settings) ? (
+              <ServiceFeeRow explainOnly rateBps={view.money.serviceFeeRateBps} />
+            ) : null}
             <View className="flex-row items-baseline justify-between gap-4 pt-3">
               <Text className="text-body-lg text-text-secondary">Total</Text>
               <Text className="text-h3 text-text-primary">{formatPhp(view.money.totalMinor)}</Text>

@@ -46,6 +46,18 @@ export function showsServiceFee(input: {
 }
 
 /**
+ * Whether Operations wants the client to see the `Service fee · N%` row.
+ *
+ * Live `GET /settings` is the authority. An older payload without the flag
+ * keeps the row — hiding is an explicit off.
+ */
+export function serviceFeeVisibleToClient(
+  settings: { serviceFeeVisibleToClient?: boolean | null } | null | undefined,
+): boolean {
+  return settings?.serviceFeeVisibleToClient !== false;
+}
+
+/**
  * What the client is charged for printing: the shop's items with GRIDGO's
  * charge already inside them.
  *

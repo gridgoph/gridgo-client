@@ -74,4 +74,20 @@ describe("physical invoice request", () => {
     );
     expect(await screen.findByText("Physical invoice requested")).toBeTruthy();
   });
+
+  it("shows the promised delivery when GRIDGO has set one", async () => {
+    api.getPhysicalInvoice.mockResolvedValue({
+      orderId: "ord_1",
+      contactPerson: "Ana Reyes",
+      officeAddress: "12 Laurel",
+      operatingHours: "Mon–Fri 9am–5pm",
+      requestedAt: "2026-09-21T06:00:00.000Z",
+      promisedDeliveryAt: "2026-09-21T02:00:00.000Z",
+    });
+
+    await render(wrap(<PhysicalInvoiceScreen />));
+
+    expect(await screen.findByText("Promised delivery")).toBeTruthy();
+    expect(screen.getByText("Physical invoice requested")).toBeTruthy();
+  });
 });
