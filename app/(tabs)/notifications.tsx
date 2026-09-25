@@ -4,6 +4,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppUpdateNotices } from "@/components/AppUpdateNotices";
 import { TabScreen } from "@/components/TabScreen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -88,6 +89,11 @@ export default function NotificationsScreen() {
       <ScrollView className="gg-screen">
         <View className="gg-page gap-4 pt-4" style={{ paddingBottom: tabPad }}>
           <ScreenHeader title="Notifications" />
+          {/*
+            App updates, pinned above the jobs. Local to this phone: they are not
+            in the unread line or the list below, which both belong to jobs.
+          */}
+          <AppUpdateNotices />
           {/*
             How many cards are new, and the way to clear them, on one line. It
             was a blue clock pill up here and a full-width button at the foot

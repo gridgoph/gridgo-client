@@ -36,22 +36,27 @@ describe("AppUpdateSheet", () => {
   });
 
   it("waits for the launch intro before offering", async () => {
-    useAppUpdate.setState({ installed, available: latest });
+    useAppUpdate.setState({ installed, latest, promptOpen: true });
     await renderSheet(false);
     expect(screen.queryByText("A new version of GRIDGO is ready")).toBeNull();
   });
 
   it("confirms an update before offering the next one", async () => {
-    useAppUpdate.setState({ installed: latest, completed: latest, available: latest });
+    useAppUpdate.setState({
+      installed,
+      completed: installed,
+      latest,
+      promptOpen: true,
+    });
     await renderSheet();
     expect(screen.getByText("Update completed")).toBeTruthy();
-    expect(screen.getByText("You're on 1.0.96.")).toBeTruthy();
+    expect(screen.getByText("You're on 1.0.95.")).toBeTruthy();
     expect(screen.queryByText("A new version of GRIDGO is ready")).toBeNull();
   });
 
   it("names both versions and hands the download to the phone", async () => {
     const openURL = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
-    useAppUpdate.setState({ installed, available: latest });
+    useAppUpdate.setState({ installed, latest, promptOpen: true });
     await renderSheet();
 
     expect(screen.getByText("A new version of GRIDGO is ready")).toBeTruthy();
@@ -61,8 +66,9 @@ describe("AppUpdateSheet", () => {
 
     fireEvent.press(screen.getByText("Update now"));
     await waitFor(() => expect(openURL).toHaveBeenCalledWith(APP_UPDATE_SOURCE.downloadUrl));
-    await waitFor(() => expect(useAppUpdate.getState().available).toBeNull());
-    // Updating is not putting it off.
-    expect(useAppUpdate.getState().dismissed).toBeNull();
+    await waitFor(() => expect(useAppUpdate.getState().promptOpen).toBe(false));
+    // The release stays known, so the Notifications card keeps offering it
+    // if Android's installer is cancelled.
+    expect(useAppUpdate.getState().latest).toEqual(latest);
   });
 });

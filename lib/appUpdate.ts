@@ -13,6 +13,10 @@
  * launch of the new build, by comparing the installed `versionCode` with the
  * last one this phone saw.
  *
+ * While the phone is behind, the prompt comes back on every launch
+ * (`shouldShowUpdatePrompt`) and the Notifications tab keeps a card for it;
+ * both live on the phone alone, and nothing is sent to a server.
+ *
  * Nothing here imports React Native, Expo or a store, so gridgo-rider and
  * gridgo-supplier can take this file as it is. **Only `APP_UPDATE_SOURCE`
  * names this app.** `store/appUpdate.ts`, `hooks/useAppUpdateCheck.ts` and
@@ -222,52 +226,58 @@ export function shouldCheckForUpdate(lastCheckedAt: number | null, now: number):
   return now - lastCheckedAt >= APP_UPDATE_CHECK_INTERVAL_MS;
 }
 
-/** The phone's calendar day, local time, e.g. "2026-09-24". */
-export function localDay(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
+/** The newer release to tell this phone about, or `null` when it is current. */
+export function newerRelease(
+  installed: AppBuild | null,
+  latest: AppBuild | null,
+): AppBuild | null {
+  if (!installed || !latest) return null;
+  return latest.versionCode > installed.versionCode ? latest : null;
 }
-
-/** "Later", as remembered: which release, and on which day. */
-export type UpdateDismissal = { versionCode: number; day: string };
 
 /**
- * Whether to offer `latest` to a phone running `installed`.
- *
- * "Later" quiets that one release for the rest of the day it was tapped. A
- * newer release than the one put off is offered straight away, and the next
- * day the one put off is offered again.
+ * "Later" (or "Update now"), as remembered: which release, and when. Kept in
+ * memory only, so a cold launch forgets it and asks again.
  */
-export function shouldOfferUpdate(input: {
-  installed: AppBuild;
-  latest: AppBuild;
+export type UpdateDismissal = { versionCode: number; at: number };
+
+/** What `shouldShowUpdatePrompt` needs. */
+export type UpdatePromptInput = {
+  installed: AppBuild | null;
+  latest: AppBuild | null;
   dismissed: UpdateDismissal | null;
-  today: string;
-}): boolean {
-  if (input.latest.versionCode <= input.installed.versionCode) return false;
-  const { dismissed } = input;
-  if (
-    dismissed &&
-    dismissed.day === input.today &&
-    dismissed.versionCode >= input.latest.versionCode
-  ) {
-    return false;
-  }
-  return true;
+  now: number;
+};
+
+/**
+ * Whether the update sheet should be up.
+ *
+ * While the phone is behind the latest release, the prompt keeps coming back:
+ * on every cold launch (the dismissal is not persisted), and on a return to
+ * the foreground once `APP_UPDATE_CHECK_INTERVAL_MS` has passed since it was
+ * put away. A release newer than the one put away is offered straight away.
+ * Nothing is ever blocked — the prompt is a sheet, and "Later" always works.
+ */
+export function shouldShowUpdatePrompt(input: UpdatePromptInput): boolean {
+  const latest = newerRelease(input.installed, input.latest);
+  if (!latest) return false;
+  const { dismissed, now } = input;
+  if (!dismissed) return true;
+  if (latest.versionCode > dismissed.versionCode) return true;
+  // A clock set backwards must not silence the prompt until it catches up.
+  if (now < dismissed.at) return true;
+  return now - dismissed.at >= APP_UPDATE_CHECK_INTERVAL_MS;
 }
 
-/** One line for the development log: what `shouldOfferUpdate` decided, and why. */
-export function describeOffer(
-  input: Parameters<typeof shouldOfferUpdate>[0],
-  offered: boolean,
-): string {
+/** One line for the development log: what `shouldShowUpdatePrompt` decided, and why. */
+export function describePrompt(input: UpdatePromptInput, shown: boolean): string {
   const { installed, latest, dismissed } = input;
-  if (offered) return `offering ${latest.versionName} over ${installed.versionName}`;
+  if (!installed || !latest) return "not offering: no release to compare";
+  if (shown) return `offering ${latest.versionName} over ${installed.versionName}`;
   if (latest.versionCode <= installed.versionCode) {
     return `not offering: ${installed.versionName} is already the latest`;
   }
-  return `not offering ${latest.versionName}: "Later" was tapped for ${dismissed?.versionCode ?? "it"} on ${dismissed?.day ?? "today"}`;
+  return `not offering ${latest.versionName} yet: "Later" was tapped for ${dismissed?.versionCode ?? "it"} less than 4 hours ago`;
 }
 
 /**
@@ -295,4 +305,12 @@ export const APP_UPDATE_COPY = {
   completedTitle: "Update completed",
   completedBody: (versionName: string) => `You're on ${versionName}.`,
   done: "Done",
+  /** The card pinned at the top of the Notifications tab while one is waiting. */
+  noticeTitle: (versionName: string) => `App update available: version ${versionName}`,
+  noticeBody: (installedName: string) =>
+    `This phone has ${installedName}. Android will ask you to install the new one over it; your orders, basket and sign-in stay as they are.`,
+  /** The one local item on the first launch of a new build. */
+  updatedTitle: (versionName: string) => `Updated to version ${versionName}`,
+  updatedBody: "GRIDGO finished updating on this phone.",
+  dismissUpdated: "Dismiss",
 } as const;
