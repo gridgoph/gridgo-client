@@ -50,7 +50,6 @@ import {
   INVOICE_NOTE,
   PAYMENT_CHOICE_BLURB,
   PAYMENT_CHOICE_LABEL,
-  PAYMENT_SPLIT_NOTE,
   placeOrderBlockers,
   SWIPE_TO_DELETE_HINT,
   travelBlurb,
@@ -72,7 +71,7 @@ import { samplePhotoUri } from "@/lib/listing";
 import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
-import { checkPaymentReference, DIGITAL_ONLY_NOTICE } from "@/lib/payment";
+import { checkPaymentReference, DIGITAL_ONLY_NOTICE, FULL_PAYMENT_PERCENT, paymentPlanNote } from "@/lib/payment";
 import {
   OCR_READING,
   OCR_UNREADABLE,
@@ -97,7 +96,8 @@ import { useCheckoutPayment } from "@/store/checkoutPayment";
  * cannot yet know a figure — no drop-off, so no distance band — the sheet says
  * so rather than showing a number that will move.
  *
- * Placing the order sends the 75% QR reference and its receipt. That is
+ * Placing the order sends the QR reference and its receipt for the up-front
+ * share — the whole total on a paid-in-full plan, 75% on the old one. That is
  * submitted, never taken: no money moves through GRIDGO, Operations matches the
  * reference by hand, and nothing on this sheet may read as paid.
  */
@@ -496,6 +496,7 @@ export default function CheckoutScreen() {
             open={showQr}
             onClose={() => setShowQr(false)}
             downpaymentMinor={totals.downpaymentMinor}
+            downpaymentPercent={totals.downpaymentPercent}
             imageUrl={paymentQrFromSettings(settings)?.imageUrl ?? null}
           />
 
@@ -746,19 +747,27 @@ export default function CheckoutScreen() {
             </View>
           </Pressable>
           <Text className="text-caption text-text-muted">{DIGITAL_ONLY_NOTICE}</Text>
-          <Text className="text-caption text-text-muted">{PAYMENT_SPLIT_NOTE}</Text>
+          <Text className="text-caption text-text-muted">
+            {paymentPlanNote(totals.downpaymentPercent)}
+          </Text>
 
           {totals.downpaymentMinor != null ? (
-            <View className="gg-card gap-1">
-              <SpecRow
-                label="Send now (75%)"
-                value={formatPhp(totals.downpaymentMinor)}
-              />
-              <SpecRow
-                label="Before delivery (25%)"
-                value={totals.balanceMinor == null ? "—" : formatPhp(totals.balanceMinor)}
-              />
-            </View>
+            totals.downpaymentPercent >= FULL_PAYMENT_PERCENT ? (
+              <View className="gg-card gap-1">
+                <SpecRow label="Pay in full now" value={formatPhp(totals.downpaymentMinor)} />
+              </View>
+            ) : (
+              <View className="gg-card gap-1">
+                <SpecRow
+                  label={`Send now (${totals.downpaymentPercent}%)`}
+                  value={formatPhp(totals.downpaymentMinor)}
+                />
+                <SpecRow
+                  label={`Before delivery (${FULL_PAYMENT_PERCENT - totals.downpaymentPercent}%)`}
+                  value={totals.balanceMinor == null ? "—" : formatPhp(totals.balanceMinor)}
+                />
+              </View>
+            )
           ) : null}
 
           <View collapsable={false} ref={(node) => { fields.current.proof = node; }}>

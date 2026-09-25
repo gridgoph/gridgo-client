@@ -4,7 +4,11 @@
  * Used when the rider will not find anyone at the drop-off to take a
  * physical copy. The request is the contact, the office, and when someone
  * is there — nothing else.
+ *
+ * Switched off for the pilot by `PHYSICAL_INVOICE_REQUESTS_ENABLED`.
  */
+
+import { PHYSICAL_INVOICE_REQUESTS_ENABLED } from "@/constants/features";
 
 export const PHYSICAL_INVOICE_CONTACT_MAX = 80;
 export const PHYSICAL_INVOICE_ADDRESS_MAX = 240;
@@ -81,4 +85,24 @@ export function firstPhysicalInvoiceError(
 
 export function physicalInvoiceReady(draft: PhysicalInvoiceDraft): boolean {
   return firstPhysicalInvoiceError(draft) == null;
+}
+
+/**
+ * What an order screen offers for a printed invoice, if anything.
+ *
+ * A request already on file is always viewable — hiding it would leave a
+ * client wondering whether GRIDGO still has it. Only filing a new one waits on
+ * the switch.
+ */
+export type PhysicalInvoiceEntry = { kind: "request" | "view"; label: string } | null;
+
+export function physicalInvoiceEntry(
+  order: { physicalInvoiceRequest?: PhysicalInvoiceRequest | null } | null | undefined,
+  enabled: boolean = PHYSICAL_INVOICE_REQUESTS_ENABLED,
+): PhysicalInvoiceEntry {
+  if (!order) return null;
+  if (order.physicalInvoiceRequest) {
+    return { kind: "view", label: "View physical invoice request" };
+  }
+  return enabled ? { kind: "request", label: "Request a physical invoice" } : null;
 }

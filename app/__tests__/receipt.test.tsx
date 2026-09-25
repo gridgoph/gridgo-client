@@ -107,7 +107,8 @@ describe("order receipt", () => {
     expect(screen.queryByText("₱4.00")).toBeNull();
     expect(screen.getByText("₱69.00")).toBeTruthy();
     expect(screen.getByText("1234567890123")).toBeTruthy();
-    expect(screen.getByText("Request a physical invoice")).toBeTruthy();
+    // Paused for the pilot (gridgoph/gridgo-web#61).
+    expect(screen.queryByText("Request a physical invoice")).toBeNull();
 
     expect(screen.getByText("View more")).toBeTruthy();
     await fireEvent.press(screen.getByLabelText("Service fee · 10%. View more"));
@@ -133,5 +134,22 @@ describe("order receipt", () => {
     expect(screen.getAllByText("₱440.00")).toHaveLength(3);
     expect(screen.queryByText("₱484.00")).toBeNull();
     expect(screen.queryByText("₱400.00")).toBeNull();
+  });
+
+  it("links to a printed-invoice request filed before the pilot pause", async () => {
+    const order = await api.getOrder("ord_3ff0128e105a");
+    api.getOrder.mockResolvedValue({
+      ...order,
+      physicalInvoiceRequest: {
+        orderId: "ord_3ff0128e105a",
+        contactPerson: "Ana Reyes",
+        officeAddress: "12 J.P. Laurel Ave",
+        operatingHours: "Mon–Fri 9am–5pm",
+        requestedAt: "2026-09-20T02:00:00.000Z",
+      },
+    });
+    await render(wrap(<OrderReceiptScreen />));
+    expect(await screen.findByText("View physical invoice request")).toBeTruthy();
+    expect(screen.queryByText("Request a physical invoice")).toBeNull();
   });
 });

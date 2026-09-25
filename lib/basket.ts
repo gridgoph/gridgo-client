@@ -20,6 +20,7 @@
 
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
 import { clientAmountMinor, roundBps } from "@/lib/gridgoPrice";
+import { settingsDownpaymentPercent } from "@/lib/payment";
 import { haversineMetres, type GeoPoint } from "@/lib/tracking";
 
 export { roundBps } from "@/lib/gridgoPrice";
@@ -134,13 +135,15 @@ export type BasketTotals = {
   /** Null when any leg is still unpriced — a partial delivery total is a lie. */
   deliveryFeeMinor: number | null;
   totalMinor: number | null;
-  /** 75% now, the rest before delivery. Null while the total is. */
+  /**
+   * The share taken up front — all of it on a paid-in-full plan — and what is
+   * left for before delivery (zero when paid in full). Null while the total is.
+   */
   downpaymentMinor: number | null;
   balanceMinor: number | null;
+  /** The share GRIDGO takes up front, from `GET /settings`. */
+  downpaymentPercent: number;
 };
-
-/** The share of the total GRIDGO collects up front, per the money model. */
-export const DOWNPAYMENT_RATE_BPS = 7500;
 
 export type TotalsInput = {
   cart: Cart | null;
@@ -201,7 +204,8 @@ export function basketTotals({ cart, settings, shopPoints }: TotalsInput): Baske
     gridgoItemsMinor != null && deliveryFeeMinor != null
       ? gridgoItemsMinor + deliveryFeeMinor
       : null;
-  const downpaymentMinor = totalMinor == null ? null : roundBps(totalMinor, DOWNPAYMENT_RATE_BPS);
+  const downpaymentPercent = settingsDownpaymentPercent(settings);
+  const downpaymentMinor = totalMinor == null ? null : roundBps(totalMinor, downpaymentPercent * 100);
 
   return {
     itemSubtotalMinor,
@@ -215,6 +219,7 @@ export function basketTotals({ cart, settings, shopPoints }: TotalsInput): Baske
     downpaymentMinor,
     balanceMinor:
       totalMinor == null || downpaymentMinor == null ? null : totalMinor - downpaymentMinor,
+    downpaymentPercent,
   };
 }
 

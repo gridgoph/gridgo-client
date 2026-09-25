@@ -74,7 +74,11 @@ export type PaymentInstallment = {
   /** Null until a supplier accepts and the exact money exists. */
   amountMinor: number | null;
   method: string;
-  /** `not_submitted | pending_confirmation | confirmed | legacy_confirmed`. */
+  /**
+   * `not_submitted | pending_confirmation | confirmed | legacy_confirmed |
+   * rejected | not_required`. `not_required` is the balance on an order paid
+   * in full. Kept a string: a status added after this build must not crash it.
+   */
   status: string;
   reference: string | null;
   submittedAt: string | null;
@@ -171,8 +175,16 @@ export type Order = {
   totalMinor: number | null;
   /** The invoice number GRIDGO issued with this order, when one exists. */
   invoiceNumber?: string | null;
+  /** A printed-invoice request this client filed, when there is one. */
+  physicalInvoiceRequest?: PhysicalInvoiceRequest | null;
   downpaymentMinor: number | null;
   balanceMinor: number | null;
+  /**
+   * The share of the total this order takes up front, snapshotted when it was
+   * written: 100 for paid in full, 75 on the old two-half plan. Absent on an
+   * older payload — read it through `downpaymentPercentOf` in `lib/payment.ts`.
+   */
+  downpaymentPercent?: number | null;
   /** Supplier shop → delivery address, once both are known. */
   deliveryDistanceMeters?: number | null;
   priceRange?: PriceRange | null;
@@ -227,6 +239,12 @@ export type PlatformSettings = {
    * way. Absent on an older payload; treat as shown.
    */
   serviceFeeVisibleToClient?: boolean;
+  /**
+   * The share of the total a new order takes up front: 100 (paid in full) or
+   * 75. Absent on an API that predates the setting, which still writes 75/25
+   * orders — read it through `settingsDownpaymentPercent`.
+   */
+  downpaymentPercent?: number;
 };
 
 /** Platform-defined categories, materials and finishes. */
@@ -1549,6 +1567,7 @@ export type MatchedOrder = {
     downpaymentMinor: number;
     balanceMinor: number;
     downpaymentStatus: string;
+    downpaymentPercent?: number;
   };
   jobs: MatchedJob[];
   invoiceNumber: string;

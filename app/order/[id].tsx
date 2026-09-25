@@ -37,7 +37,7 @@ import { formatDeadline } from "@/lib/deadline";
 import {
   collectsAtOffice,
   formatPriceRange,
-  getOrderStateMeta,
+  orderStateMeta,
   isAwaitingCollectionState,
   isClientCorrectionState,
   isIssueWindowState,
@@ -49,7 +49,14 @@ import {
   showsFulfilmentProgress,
 } from "@/lib/orderState";
 import { isJobComplete } from "@/lib/jobComplete";
-import { installmentUnderReview, payableInstallment, paymentInstallment } from "@/lib/payment";
+import {
+  installmentLabel,
+  installmentUnderReview,
+  payableInstallment,
+  paymentInstallment,
+  paysInFull,
+} from "@/lib/payment";
+import { physicalInvoiceEntry } from "@/lib/physicalInvoice";
 import { canRate } from "@/lib/rating";
 import { printingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
@@ -185,7 +192,7 @@ export default function OrderDetailScreen() {
     );
   }
 
-  const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
+  const meta = orderStateMeta(order);
   const nextAction = orderNextAction(order);
   const waitingOn = orderWaitingOn(order);
   const unit = order.unit || product?.unit || "";
@@ -355,7 +362,7 @@ export default function OrderDetailScreen() {
 
           <MoneyCard order={order} onOpenReceipt={() =>
             router.push({ pathname: "/order/receipt", params: { orderId: order.id } })
-          } onRequestInvoice={() =>
+          } onOpenPhysicalInvoice={() =>
             router.push({ pathname: "/order/physical-invoice", params: { orderId: order.id } })
           } />
         </View>
@@ -374,6 +381,7 @@ export default function OrderDetailScreen() {
               timeline={order.timeline}
               currentState={order.state}
               fulfillmentMode={order.fulfillmentMode}
+              paidInFull={paysInFull(order)}
             />
           </View>
         </View>
@@ -395,11 +403,11 @@ export default function OrderDetailScreen() {
 function MoneyCard({
   order,
   onOpenReceipt,
-  onRequestInvoice,
+  onOpenPhysicalInvoice,
 }: {
   order: api.Order;
   onOpenReceipt: () => void;
-  onRequestInvoice: () => void;
+  onOpenPhysicalInvoice: () => void;
 }) {
   const total = orderTotalMinor(order);
   const range = order.priceRange;
@@ -426,8 +434,11 @@ function MoneyCard({
   }
 
   const downpayment = paymentInstallment(order, "downpayment");
-  const balance = paymentInstallment(order, "balance");
+  // A paid-in-full order has no balance step: its `not_required` row is not
+  // something the client owes, so it is not drawn at all.
+  const balance = paysInFull(order) ? undefined : paymentInstallment(order, "balance");
   const showFee = showsServiceFee(order) && serviceFeeVisibleToClient(settings);
+  const physicalInvoice = physicalInvoiceEntry(order);
 
   return (
     <View className="gap-3">
@@ -455,7 +466,7 @@ function MoneyCard({
         ) : null}
         {downpayment ? (
           <SpecRow
-            label={`Downpayment · ${installmentStatusLabel(downpayment.status)}`}
+            label={`${installmentLabel("downpayment", order)} · ${installmentStatusLabel(downpayment.status)}`}
             value={downpayment.amountMinor != null ? formatPhp(downpayment.amountMinor) : "—"}
           />
         ) : null}
@@ -471,7 +482,9 @@ function MoneyCard({
         </View>
       </View>
       <SecondaryButton label="View receipt" onPress={onOpenReceipt} />
-      <SecondaryButton label="Request a physical invoice" onPress={onRequestInvoice} />
+      {physicalInvoice ? (
+        <SecondaryButton label={physicalInvoice.label} onPress={onOpenPhysicalInvoice} />
+      ) : null}
     </View>
   );
 }

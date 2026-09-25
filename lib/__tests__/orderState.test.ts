@@ -10,6 +10,7 @@ import {
   latestNoteForState,
   orderNeedsClient,
   orderNextAction,
+  orderStateMeta,
   orderTotalMinor,
   orderWaitingOn,
   showsFulfilmentProgress,
@@ -416,5 +417,88 @@ describe("a collected order speaks its own language", () => {
 
   it("still shows the job as being fulfilled while it waits on the shelf", () => {
     expect(showsFulfilmentProgress("awaiting_collection")).toBe(true);
+  });
+});
+
+describe("an order paid in full up front", () => {
+  /** New orders: 100% up front, the balance `not_required`. */
+  function fullOrder(state: string, initial: string, patch: Partial<Order> = {}): Order {
+    return pricedOrder({
+      state,
+      downpaymentPercent: 100,
+      downpaymentMinor: 112500,
+      balanceMinor: 0,
+      payments: {
+        initial: {
+          amountMinor: 112500,
+          method: "qr_manual",
+          status: initial,
+          reference: initial === "not_submitted" ? null : "GCASH-FULL1",
+          submittedAt: null,
+          confirmedAt: null,
+        },
+        final_online: {
+          amountMinor: 0,
+          method: "qr_manual",
+          status: "not_required",
+          reference: null,
+          submittedAt: null,
+          confirmedAt: null,
+        },
+      },
+      ...patch,
+    });
+  }
+
+  it("asks for one payment, in full", () => {
+    const action = orderNextAction(fullOrder("awaiting_initial_payment", "not_submitted"));
+    expect(action?.title).toBe("Pay in full");
+    expect(action?.body).toMatch(/in full by QR/);
+    expect(action?.body).not.toMatch(/downpayment|balance|%/i);
+  });
+
+  it("never puts a balance on Home's docket, in any state", () => {
+    for (const state of [
+      "production",
+      "supplier_self_qc",
+      "ready_for_dispatch",
+      "out_for_delivery",
+      "awaiting_collection",
+    ]) {
+      const full = fullOrder(state, "confirmed");
+      expect(orderNextAction(full)?.title ?? "").not.toMatch(/pay|balance|remaining/i);
+      expect(orderNextAction({ ...full, fulfillmentMode: "pickup" })?.title ?? "").not.toMatch(
+        /pay|balance|remaining/i,
+      );
+    }
+  });
+
+  it("names its payment states without a downpayment", () => {
+    expect(orderStateMeta(fullOrder("awaiting_initial_payment", "not_submitted")).label).toBe(
+      "Payment due",
+    );
+    expect(orderStateMeta(fullOrder("awaiting_downpayment", "not_submitted")).label).toBe("Payment due");
+    expect(orderStateMeta(fullOrder("payment_authorized", "confirmed")).label).toBe("Payment confirmed");
+    expect(getOrderStateMeta("payment_authorized", null, true).label).toBe("Payment confirmed");
+    // Everything that is not about money reads the same on both plans.
+    expect(orderStateMeta(fullOrder("production", "confirmed")).label).toBe("In production");
+  });
+
+  it("waits on its one payment in words that promise no balance", () => {
+    expect(orderWaitingOn(fullOrder("initial_payment_review", "pending_confirmation"))).toMatch(
+      /^We are checking your payment\./,
+    );
+    expect(orderWaitingOn(fullOrder("payment_authorized", "confirmed"))).toBe(
+      "Your payment is confirmed. Your supplier starts production next.",
+    );
+  });
+
+  it("leaves a legacy order's words alone", () => {
+    expect(orderStateMeta(pricedOrder({ state: "payment_authorized" })).label).toBe(
+      "Downpayment confirmed",
+    );
+    expect(orderNextAction(pricedOrder({ state: "awaiting_downpayment" }))?.title).toBe(
+      "Pay the 75% downpayment",
+    );
   });
 });

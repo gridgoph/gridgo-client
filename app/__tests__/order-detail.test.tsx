@@ -445,8 +445,33 @@ describe("OrderDetailScreen", () => {
     expect(screen.getByText("₱25.00")).toBeTruthy();
     expect(screen.getByText("₱1,125.00")).toBeTruthy();
     expect(screen.getByText("View receipt")).toBeTruthy();
-    expect(screen.getByText("Request a physical invoice")).toBeTruthy();
+    // Paused for the pilot (gridgoph/gridgo-web#61).
+    expect(screen.queryByText("Request a physical invoice")).toBeNull();
+    expect(screen.queryByText("View physical invoice request")).toBeNull();
     expect(screen.queryByText(/commission/i)).toBeNull();
+  });
+
+  it("still shows a printed-invoice request filed before the pilot pause", async () => {
+    setOrder({
+      subtotalMinor: 100000,
+      serviceFeeMinor: 10000,
+      serviceFeeRateBps: 1000,
+      deliveryFeeMinor: 2500,
+      totalMinor: 112500,
+      physicalInvoiceRequest: {
+        orderId: "ord_demo_1",
+        contactPerson: "Ana Reyes",
+        officeAddress: "12 J.P. Laurel Ave",
+        operatingHours: "Mon–Fri 9am–5pm",
+        requestedAt: "2026-09-20T02:00:00.000Z",
+        promisedDeliveryAt: null,
+      },
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    await screen.findByText("Grand opening tarpaulin");
+    expect(screen.getByText("View physical invoice request")).toBeTruthy();
+    expect(screen.queryByText("Request a physical invoice")).toBeNull();
   });
 
   it("keeps the Flyers pack at the same ₱440 printing amount after checkout", async () => {

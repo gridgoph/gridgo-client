@@ -7,11 +7,12 @@ import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp, type Order } from "@/lib/api";
 import { paymentStatusLabel } from "@/lib/copy";
+import { paysInFull } from "@/lib/payment";
 import { orderReferenceSpoken } from "@/lib/orderReference";
 import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 import {
   formatPriceRange,
-  getOrderStateMeta,
+  orderStateMeta,
   orderTotalMinor,
   orderWaitingOn,
 } from "@/lib/orderState";
@@ -36,7 +37,7 @@ type Props = {
  */
 export function OrderCard({ order, onPress, onReorder }: Props) {
   const colors = useThemeColors();
-  const meta = getOrderStateMeta(order.state, order.fulfillmentMode);
+  const meta = orderStateMeta(order);
   const readyBy = readyByDate(order.promiseBy);
   // Before a supplier accepts there is no exact price, so the card carries the
   // platform's range and marks it as one. It must never round an estimate into
@@ -49,7 +50,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       : range
         ? formatPriceRange(range.subtotalMinMinor, range.subtotalMaxMinor)
         : "Not priced yet";
-  const moneyNote = exactTotal != null ? paymentStatusLabel(order.paymentStatus) : "Estimate";
+  const moneyNote = exactTotal != null ? paymentStatusLabel(order.paymentStatus, paysInFull(order)) : "Estimate";
   const spec = [
     `Qty ${order.quantity}`,
     order.size || null,
