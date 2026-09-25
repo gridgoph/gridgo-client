@@ -128,6 +128,6 @@ describe("root layout, forced update check in Expo Go", () => {
     await screen.rerender(createElement(RootLayout));
 
     expect(screen.getByText("A new version of GRIDGO is ready")).toBeTruthy();
-    expect(useAppUpdate.getState().dismissed).toBeNull();
+    expect(useAppUpdate.getState()).toMatchObject({ promptOpen: true, dismissed: null });
   });
 });

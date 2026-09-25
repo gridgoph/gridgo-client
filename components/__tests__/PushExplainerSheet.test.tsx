@@ -54,7 +54,7 @@ it("waits for the stored stamp, so a relaunch cannot ask twice in a week", async
 });
 
 it("gives way to the update prompt", async () => {
-  useAppUpdate.setState({ available: { versionCode: 120, versionName: "1.0.120" } });
+  useAppUpdate.setState({ promptOpen: true });
   await renderExplainer();
   expect(screen.queryByText(TITLE)).toBeNull();
 });

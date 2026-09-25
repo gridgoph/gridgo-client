@@ -1,13 +1,14 @@
 import { ArrowRight, CircleAlert, CircleCheck } from "lucide-react-native";
 import { useState } from "react";
-import { Linking, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { Sheet } from "@/components/Sheet";
 import { useThemeColors } from "@/hooks/useTheme";
-import { APP_UPDATE_COPY, APP_UPDATE_SOURCE, type AppBuild } from "@/lib/appUpdate";
-import { useAppUpdate } from "@/store/appUpdate";
+import { useUpdateDownload } from "@/hooks/useUpdateDownload";
+import { APP_UPDATE_COPY, type AppBuild } from "@/lib/appUpdate";
+import { selectAvailableUpdate, useAppUpdate } from "@/store/appUpdate";
 
 type Props = {
   /** False while something owns the whole screen (the launch intro). */
@@ -19,7 +20,10 @@ type Props = {
  *
  * A bottom sheet, not a dialog: nothing is blocked, and every way of putting
  * it away — the close control, the scrim, a drag, Android back — means
- * "Later". The confirmation comes first when both are due: a phone that has
+ * "Later", and "Later" lasts until the next launch: while the phone is behind,
+ * the sheet comes back on every cold launch (`shouldShowUpdatePrompt`). The
+ * Notifications tab keeps a card for the same release in between. The
+ * confirmation comes first when both are due: a phone that has
  * just updated to a build that is already behind hears that the update worked
  * before it hears about the next one.
  *
@@ -28,14 +32,15 @@ type Props = {
  */
 export function AppUpdateSheet({ ready }: Props) {
   const completed = useAppUpdate((s) => s.completed);
-  const available = useAppUpdate((s) => s.available);
+  const promptOpen = useAppUpdate((s) => s.promptOpen);
+  const available = useAppUpdate(selectAvailableUpdate);
   const installed = useAppUpdate((s) => s.installed);
 
   return (
     <>
       <UpdateCompletedSheet open={ready && completed !== null} build={completed} />
       <UpdateAvailableSheet
-        open={ready && completed === null && available !== null}
+        open={ready && completed === null && promptOpen && available !== null}
         installed={installed}
         latest={available}
       />
@@ -64,32 +69,22 @@ function UpdateAvailableSheet({
 }) {
   const colors = useThemeColors();
   const later = useAppUpdate((s) => s.later);
-  const startDownload = useAppUpdate((s) => s.startDownload);
   const shown = useLastBuild(latest);
-  const [openFailed, setOpenFailed] = useState(false);
+  const { update, openFailed, clearFailure } = useUpdateDownload();
   const [prevLatest, setPrevLatest] = useState(latest);
   if (prevLatest !== latest) {
     setPrevLatest(latest);
-    setOpenFailed(false);
+    clearFailure();
   }
-
-  const update = async () => {
-    try {
-      await Linking.openURL(APP_UPDATE_SOURCE.downloadUrl);
-      startDownload();
-    } catch {
-      setOpenFailed(true);
-    }
-  };
 
   return (
     <Sheet
       open={open}
       title={APP_UPDATE_COPY.availableTitle}
       // Every dismissal is "Later". After "Update now" or "Later" the store has
-      // already let go of the release, so this is a no-op for those.
+      // already closed the prompt, so this is a no-op for those.
       onClose={() => {
-        if (useAppUpdate.getState().available) later();
+        if (useAppUpdate.getState().promptOpen) later();
       }}
     >
       <View className="gap-4 px-4 pt-4">

@@ -38,7 +38,9 @@ export function readInstalledBuild(): AppBuild | null {
 
 /**
  * Looks for a newer GRIDGO release on launch and whenever the app comes back
- * to the foreground, at most once per `APP_UPDATE_CHECK_INTERVAL_MS`. Mounted
+ * to the foreground, at most once per `APP_UPDATE_CHECK_INTERVAL_MS`. A cold
+ * launch always asks again; a return to the foreground brings a put-off
+ * prompt back once that interval has passed. Mounted
  * once in the root layout. It draws nothing: `AppUpdateSheet` reads the store.
  */
 export function useAppUpdateCheck(): void {
@@ -51,7 +53,7 @@ export function useAppUpdateCheck(): void {
     void check();
 
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void useAppUpdate.getState().check();
+      if (state === "active") void useAppUpdate.getState().resume();
     });
     return () => subscription.remove();
   }, [hydrated]);
