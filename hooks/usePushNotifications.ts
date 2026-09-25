@@ -6,6 +6,7 @@ import {
   type Href,
 } from "expo-router";
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { AppState } from "react-native";
 
 import {
   parsePushData,
@@ -90,6 +91,17 @@ export function usePushNotifications(): void {
     // re-runs this with a bearer and claims the same token — see `store/push.ts`.
     void usePush.getState().registerIfGranted();
   }, [signedIn, user?.id]);
+
+  useEffect(() => {
+    // Back in the foreground: the permission may have changed behind the app's
+    // back — most often because a blocked card sent the person to the phone's
+    // settings — and a granted phone registers again, which also catches a
+    // token Firebase reissued while the app sat in the background.
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void usePush.getState().resume();
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     // Web has no FCM surface in this MVP; Expo Go throws on the import. A

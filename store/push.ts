@@ -122,6 +122,12 @@ type PushState = {
   enable: () => Promise<boolean>;
   /** Launch, sign-in and token rotation all land here. No dialog is raised. */
   registerIfGranted: () => Promise<void>;
+  /**
+   * The app came back to the foreground: re-read the OS's answer and register
+   * if it is now a yes. This is how a person who went to the phone's settings
+   * from a blocked card comes back registered without tapping anything else.
+   */
+  resume: () => Promise<void>;
   /** Firebase reissued the token while the app was running. */
   adoptToken: (token: string) => Promise<void>;
   /**
@@ -280,6 +286,14 @@ export const usePush = create<PushState>((set, get) => ({
       // interrupt the sign-in or the screen that triggered it.
       set({ busy: false, error: errorText(e) });
     }
+  },
+
+  resume: async () => {
+    // An `enable()` in flight owns this: the OS dialog backgrounds the app, and
+    // its return is answered by the dialog's own result, not by this.
+    if (!get().supported || get().busy) return;
+    const permission = await get().syncPermission();
+    if (permission === "granted") await get().registerIfGranted();
   },
 
   adoptToken: async (token) => {

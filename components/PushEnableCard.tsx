@@ -11,15 +11,19 @@ import { useSession } from "@/store/session";
 /**
  * The invitation to turn on phone notifications.
  *
- * This card is the *only* thing in the app that can raise the system
- * permission dialog. Android 13+ shows that dialog once and treats a refusal as
- * effectively permanent, so firing it cold on first launch — before anyone
- * knows what GRIDGO is — spends the one ask on a stranger. Instead the card is
- * drawn where the value is already obvious and states in one line what will
- * arrive; the dialog follows a deliberate tap and nothing else.
+ * This card and `PushExplainerSheet` are the only things in the app that can
+ * raise the system permission dialog, and both only from a tap. Android 13+
+ * shows that dialog once or twice and then treats a refusal as permanent, so
+ * firing it cold on first launch — before anyone knows what GRIDGO is — spends
+ * the ask on a stranger. The explainer makes the ask once a client has landed;
+ * this card is the way back for anyone who said "Not now", drawn where the
+ * value is already obvious and saying in one line what will arrive.
  *
- * Where it is drawn is this app's decision, and it is two signed-in places:
+ * Where it is drawn is this app's decision, and it is three signed-in places:
  *
+ * - **Home**, the screen every client lands on, so turning notifications on
+ *   never depends on finding a secondary screen. Without it almost nobody on
+ *   Android 13+ registered at all.
  * - **The Notifications tab**, where a customer is already reading the things
  *   push would deliver.
  * - **An order waiting on somebody else**, where "we will tell you" is worth
@@ -44,10 +48,17 @@ type Props = {
    * The card owns its own margin rather than sitting in a wrapper, because it
    * draws nothing most of the time — a wrapper would leave 24px of empty page
    * on every phone that has already granted permission, which is all of them
-   * after the first tap. Neither screen it appears on is a gap container.
+   * after the first tap. None of the screens it appears on is a gap container.
+   * `section` is Home's rhythm, where every block opens 32px below the last.
    */
-  spacing?: "above" | "below";
+  spacing?: "above" | "below" | "section";
 };
+
+const SPACING = {
+  above: "gg-panel mt-6 gap-3",
+  below: "gg-panel mb-6 gap-3",
+  section: "gg-panel mt-8 gap-3",
+} as const satisfies Record<NonNullable<Props["spacing"]>, string>;
 
 export function PushEnableCard({ spacing }: Props) {
   const colors = useThemeColors();
@@ -66,13 +77,7 @@ export function PushEnableCard({ spacing }: Props) {
 
   return (
     <View
-      className={
-        spacing === "above"
-          ? "gg-panel mt-6 gap-3"
-          : spacing === "below"
-            ? "gg-panel mb-6 gap-3"
-            : "gg-panel gap-3"
-      }
+      className={spacing ? SPACING[spacing] : "gg-panel gap-3"}
     >
       <View className="flex-row items-center gap-2">
         <Bell size={18} color={colors.textSecondary} />

@@ -403,6 +403,9 @@ function MoneyCard({
 }) {
   const total = orderTotalMinor(order);
   const range = order.priceRange;
+  // Above the early return: a hook after it is skipped while the total is
+  // unknown and then called once it lands, which React refuses.
+  const settings = usePlatformSettings((state) => state.settings);
 
   if (total == null) {
     return (
@@ -424,7 +427,6 @@ function MoneyCard({
 
   const downpayment = paymentInstallment(order, "downpayment");
   const balance = paymentInstallment(order, "balance");
-  const settings = usePlatformSettings((state) => state.settings);
   const showFee = showsServiceFee(order) && serviceFeeVisibleToClient(settings);
 
   return (
