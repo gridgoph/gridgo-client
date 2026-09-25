@@ -31,7 +31,13 @@ describe("release APK verification", () => {
   echo "Signer #1 certificate SHA-256 digest: aa"
 fi`,
     );
-    executable(join(bin, "keytool"), `echo "SHA256: AA"`);
+    // The verifier pipes the store password into keytool under `set -o pipefail`,
+    // and the real keytool reads it. A fake that exits without reading lets a
+    // slow `printf` hit a closed pipe: it dies of SIGPIPE, pipefail reports that
+    // as a keytool failure, and on a loaded runner the test fails with "keytool
+    // could not read alias" before the check it is about. Drain stdin like the
+    // real tool does.
+    executable(join(bin, "keytool"), `cat >/dev/null\necho "SHA256: AA"`);
     executable(join(bin, "unzip"), `printf '%s' "\${FAKE_BUNDLE_CONTENT:-}"`);
     writeFileSync(join(fixtureRoot, "fake.apk"), "fixture");
     writeFileSync(join(fixtureRoot, "release.jks"), "fixture");
