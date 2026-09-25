@@ -68,7 +68,7 @@ jest.mock("expo-router", () => {
   }) {
     return guard ? children : null;
   };
-  return { Stack };
+  return { Stack, useSegments: () => [] };
 });
 // Expo Go: no real versionCode, so only the dev override can make a build.
 jest.mock("expo-constants", () => ({

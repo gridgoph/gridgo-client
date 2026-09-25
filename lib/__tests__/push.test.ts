@@ -3,7 +3,10 @@ import {
   isExpoGoRuntime,
   parsePushData,
   PUSH_CHANNEL_ID,
+  PUSH_EXPLAINER_COPY,
+  PUSH_EXPLAINER_INTERVAL_MS,
   PUSH_FOREGROUND_BEHAVIOR,
+  pushExplainerDue,
   pushOffer,
   pushOfferCopy,
   pushTargetRoute,
@@ -236,5 +239,55 @@ describe("the foreground behaviour", () => {
       shouldPlaySound: false,
       shouldSetBadge: false,
     });
+  });
+});
+
+describe("pushExplainerDue", () => {
+  const now = Date.parse("2026-09-25T09:00:00+08:00");
+  const day = 24 * 60 * 60 * 1000;
+  const base = {
+    supported: true,
+    signedIn: true,
+    permission: "undetermined" as const,
+    lastOfferedAt: null,
+    now,
+  };
+
+  it("is due once a signed-in client has never been asked on this phone", () => {
+    // The first landing after sign-in, and an existing client's first launch
+    // of this build: neither has a stamp yet.
+    expect(pushExplainerDue(base)).toBe("ask");
+  });
+
+  it("holds for seven days after it was last offered", () => {
+    expect(pushExplainerDue({ ...base, lastOfferedAt: now - 1 * day })).toBeNull();
+    expect(pushExplainerDue({ ...base, lastOfferedAt: now - 7 * day + 1 })).toBeNull();
+  });
+
+  it("comes back once seven days have passed", () => {
+    expect(PUSH_EXPLAINER_INTERVAL_MS).toBe(7 * day);
+    expect(pushExplainerDue({ ...base, lastOfferedAt: now - 7 * day })).toBe("ask");
+    expect(pushExplainerDue({ ...base, lastOfferedAt: now - 30 * day })).toBe("ask");
+  });
+
+  it("does not let a clock wound back silence it until that date comes round", () => {
+    expect(pushExplainerDue({ ...base, lastOfferedAt: now + 2 * day })).toBeNull();
+    expect(pushExplainerDue({ ...base, lastOfferedAt: now + 60 * day })).toBe("ask");
+  });
+
+  it("offers the phone's settings when Android will no longer ask", () => {
+    expect(pushExplainerDue({ ...base, permission: "blocked" })).toBe("settings");
+    expect(PUSH_EXPLAINER_COPY.settings.action).toBe("Open phone settings");
+    expect(PUSH_EXPLAINER_COPY.settings.body).toMatch(/cannot ask again/);
+  });
+
+  it("asks nothing of a phone that already said yes, or has not answered yet", () => {
+    expect(pushExplainerDue({ ...base, permission: "granted" })).toBeNull();
+    expect(pushExplainerDue({ ...base, permission: "unknown" })).toBeNull();
+  });
+
+  it("is never drawn signed out, or where push does not exist", () => {
+    expect(pushExplainerDue({ ...base, signedIn: false })).toBeNull();
+    expect(pushExplainerDue({ ...base, supported: false })).toBeNull();
   });
 });

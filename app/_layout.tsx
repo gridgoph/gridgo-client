@@ -24,6 +24,7 @@ import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-c
 
 import { AppUpdateSheet } from "@/components/AppUpdateSheet";
 import { BrandIntro } from "@/components/BrandIntro";
+import { PushExplainerSheet } from "@/components/PushExplainerSheet";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
@@ -99,7 +100,7 @@ function AppNavigation() {
   // Registration, token rotation, and opening the right screen from a tapped
   // notification. Mounted once, above every route, so a tap that launched the
   // app is picked up before any screen has decided anything. It never asks for
-  // permission — only `PushEnableCard` does that, and only from a tap.
+  // permission — only a tap on `PushExplainerSheet` or `PushEnableCard` does.
   usePushNotifications();
   useLiveNotifications();
   useSupportChatUnread();
@@ -399,6 +400,8 @@ function AppNavigation() {
             <ReceiptOcrHost />
             {/* Held back until the intro has finished, so it never lands under it. */}
             <AppUpdateSheet ready={!introPlaying && fontsReady} />
+            {/* Waits behind the update prompt too; it checks that itself. */}
+            <PushExplainerSheet ready={!introPlaying && fontsReady} />
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />
             {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}
         </ThemeProvider>
