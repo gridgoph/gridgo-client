@@ -12,15 +12,18 @@ import { ApiError } from "@/lib/api";
  *
  * There is no companion "payment method" label any more: the platform takes
  * one method, so naming it on every order said nothing the client could act on.
+ *
+ * `paidInFull` is `paysInFull(order)` from `lib/payment.ts`: on that plan the
+ * one up-front payment is the whole total, so it is never called a downpayment.
  */
-export function paymentStatusLabel(status: string | null | undefined): string {
+export function paymentStatusLabel(status: string | null | undefined, paidInFull = false): string {
   switch (status) {
     case "unpaid":
       return "Nothing paid yet";
     case "downpayment_pending":
-      return "Downpayment being checked";
+      return paidInFull ? "Payment being checked" : "Downpayment being checked";
     case "downpayment_confirmed":
-      return "Downpayment confirmed";
+      return paidInFull ? "Paid in full" : "Downpayment confirmed";
     case "paid":
       return "Paid in full";
     // Migrated orders that cleared under the single-authorization model.
@@ -40,6 +43,9 @@ export function installmentStatusLabel(status: string | null | undefined): strin
       return "Confirmed";
     case "legacy_confirmed":
       return "Confirmed";
+    // The balance on an order paid in full up front.
+    case "not_required":
+      return "Not needed";
     default:
       return "Not paid yet";
   }
@@ -111,9 +117,11 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "transition_not_allowed":
       case "invalid_state":
         return "This order is not ready for that action yet. Pull to refresh, or check the timeline.";
-      // ---- payment: 75% downpayment, then 25% balance, both by QR ----
+      // ---- payment: by QR, in full or (older orders) in two halves ----
       case "payment_route_retired":
-        return "This order takes the QR downpayment and balance now. Pull it down to refresh, then pay the amount it asks for.";
+        return "This order takes payment by QR now. Pull it down to refresh, then pay the amount it asks for.";
+      case "balance_not_required":
+        return "This order was paid in full up front, so there is no balance to pay. Pull it down to refresh.";
       case "payment_method_not_allowed":
         return "GRIDGO takes payment by QR only — GCash, Maya or a bank e-wallet. There is no cash on delivery.";
       // ---- basket: the shop's minimum run ----
@@ -147,7 +155,7 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "downpayment_not_confirmed":
         return "The balance opens once Operations confirms your downpayment. You get a notification when that happens.";
       case "downpayment_not_available":
-        return "The downpayment is not open on this job yet. Pull it down to see what it is waiting on.";
+        return "Payment is not open on this job yet. Pull it down to see what it is waiting on.";
       case "issue_already_open":
         return "You already have a report open on this job. Operations is reviewing it — add anything else to that one rather than opening a second.";
       case "issue_window_not_open":

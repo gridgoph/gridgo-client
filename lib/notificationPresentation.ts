@@ -228,7 +228,7 @@ const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCal
       tone: "warning",
       icon: "wallet",
       title: "Review the price and pay",
-      detail: "Production starts once Operations confirms your downpayment.",
+      detail: "Production starts once Operations confirms your payment.",
     },
   },
   order_rate_reminder: {

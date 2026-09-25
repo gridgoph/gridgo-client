@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 
 import type { Order } from "@/lib/api";
 import { orderReference } from "@/lib/orderReference";
-import { getOrderStateMeta } from "@/lib/orderState";
+import { orderStateMeta } from "@/lib/orderState";
 
 /**
  * "Report a problem" — a bug report that travels as an ordinary support-chat
@@ -43,7 +43,8 @@ export type BugReportDevice = {
   system: string;
 };
 
-export type BugReportOrder = Pick<Order, "id" | "title" | "state" | "fulfillmentMode">;
+export type BugReportOrder = Pick<Order, "id" | "title" | "state" | "fulfillmentMode" | "payments"> &
+  Partial<Pick<Order, "balanceMinor" | "downpaymentPercent">>;
 
 /** Why the report cannot go yet, or null when it can. */
 export function bugReportProblem(draft: BugReportDraft): string | null {
@@ -58,7 +59,7 @@ export function bugReportProblem(draft: BugReportDraft): string | null {
 /** The one-line order fact: reference first, because that is what the desk searches by. */
 export function bugReportOrderLine(order: BugReportOrder): string {
   const reference = orderReference(order.id) ?? order.id;
-  const state = getOrderStateMeta(order.state, order.fulfillmentMode).label;
+  const state = orderStateMeta(order).label;
   const title = order.title?.trim();
   return title ? `${reference}, ${title} (${state})` : `${reference} (${state})`;
 }

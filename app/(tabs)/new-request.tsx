@@ -26,6 +26,7 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { paymentPlanPreview, settingsDownpaymentPercent } from "@/lib/payment";
 import { composeAddress, DELIVERY_CITY } from "@/lib/address";
 import { isArtworkBusy } from "@/lib/artworkUpload";
 import { formatUnitPrice } from "@/lib/catalog";
@@ -60,6 +61,7 @@ import {
   useRequestDraft,
   type RequestDraftState,
 } from "@/store/requestDraft";
+import { usePlatformSettings } from "@/store/platformSettings";
 
 /**
  * Four-step print request: Details → Artwork → Review → Send.
@@ -734,6 +736,10 @@ function SendStep({
   quantity: number;
   deadline: string;
 }) {
+  // The plan a new order would be written under; the order itself snapshots it.
+  const downpaymentPercent = usePlatformSettings((state) =>
+    settingsDownpaymentPercent(state.settings),
+  );
   return (
     <View className="gap-6">
       <View className="gap-1">
@@ -770,8 +776,8 @@ function SendStep({
           this same job. Once it passes, GRIDGO matches it to a supplier.
         </Text>
         <Text className="text-caption text-text-muted">
-          You are told the final price the moment a supplier accepts, and pay 75% by QR then
-          the last 25% before delivery. The deadline you set — {formatDeadline(deadline)} — is
+          You are told the final price the moment a supplier accepts, and{" "}
+          {paymentPlanPreview(downpaymentPercent)}. The deadline you set — {formatDeadline(deadline)} — is
           what they commit to.
         </Text>
       </View>

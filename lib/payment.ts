@@ -1,19 +1,63 @@
 /**
  * The digital payment split, as the client meets it.
  *
- * One order is paid in two halves: 75% before production, 25% before delivery.
- * Both are QR transfers the client makes themselves — GCash, Maya or a bank
- * e-wallet — and both are confirmed by hand by Operations. No money moves
- * through this app, so nothing here may ever read as "paid" on submission.
+ * New orders are paid in full up front: one QR transfer covers the whole
+ * total, and the balance installment comes back `not_required`. Orders placed
+ * under the old plan are paid in two halves — 75% before production, the rest
+ * before delivery — and keep that flow to the end. Which plan an order is on
+ * is snapshotted per order (`downpaymentPercent`), so every percentage and
+ * every "downpayment"/"balance" word a client reads comes from the helpers
+ * below, never from a constant in a screen.
+ *
+ * Every payment is a QR transfer the client makes themselves — GCash, Maya or
+ * a bank e-wallet — confirmed by hand by Operations. No money moves through
+ * this app, so nothing here may ever read as "paid" on submission.
  *
  * Cash on delivery and Pilot Credits are not payment methods. Both routes are
  * retired server-side; offering either would walk a client into an error.
  */
 
-import type { InstallmentCode, Order, PaymentInstallment } from "@/lib/api";
+import type { InstallmentCode, Order, PaymentInstallment, PlatformSettings } from "@/lib/api";
 
-export const DOWNPAYMENT_PERCENT = 75;
-export const BALANCE_PERCENT = 25;
+/**
+ * The share the old two-half plan took up front. Only a fallback: an order
+ * or a settings payload that names its own percentage wins, and an API that
+ * predates the setting still writes 75/25 orders.
+ */
+export const LEGACY_DOWNPAYMENT_PERCENT = 75;
+export const FULL_PAYMENT_PERCENT = 100;
+
+/** A usable up-front share, or null for anything a server should not send. */
+function validPercent(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= FULL_PAYMENT_PERCENT
+    ? value
+    : null;
+}
+
+/** What GRIDGO takes up front on a basket that is not an order yet. */
+export function settingsDownpaymentPercent(settings: Pick<PlatformSettings, "downpaymentPercent"> | null | undefined): number {
+  return validPercent(settings?.downpaymentPercent) ?? LEGACY_DOWNPAYMENT_PERCENT;
+}
+
+type PlanFields = Pick<Order, "payments"> & Partial<Pick<Order, "downpaymentPercent" | "balanceMinor">>;
+
+/**
+ * True when this order is paid in one transfer, with no balance step.
+ *
+ * Any one signal is enough: the snapshotted percentage, a zero balance, or a
+ * balance installment the platform marked `not_required`.
+ */
+export function paysInFull(order: PlanFields): boolean {
+  if (validPercent(order.downpaymentPercent) === FULL_PAYMENT_PERCENT) return true;
+  if (order.balanceMinor === 0) return true;
+  return paymentInstallment(order, "balance")?.status === "not_required";
+}
+
+/** The share of the total this order takes up front. */
+export function downpaymentPercentOf(order: PlanFields): number {
+  if (paysInFull(order)) return FULL_PAYMENT_PERCENT;
+  return validPercent(order.downpaymentPercent) ?? LEGACY_DOWNPAYMENT_PERCENT;
+}
 
 /** The only method the platform accepts. */
 export const PAYMENT_METHOD = "qr_manual";
@@ -25,13 +69,51 @@ export const PAYMENT_METHOD = "qr_manual";
 export const MIN_REFERENCE_LENGTH = 4;
 export const MAX_REFERENCE_LENGTH = 64;
 
-export function installmentLabel(code: InstallmentCode): string {
+/**
+ * The name of one payment on this order. A paid-in-full order has one
+ * payment, and calling it a downpayment would promise a balance that is never
+ * coming.
+ */
+export function installmentLabel(code: InstallmentCode, order?: PlanFields): string {
+  if (order && paysInFull(order) && code === "downpayment") {
+    return isInstallmentConfirmed(paymentInstallment(order, "downpayment")) ? "Paid in full" : "Pay in full";
+  }
   return code === "downpayment" ? "Downpayment" : "Remaining balance";
 }
 
 /** The share of the total each half carries, for guidance copy. */
-export function installmentSharePercent(code: InstallmentCode): number {
-  return code === "downpayment" ? DOWNPAYMENT_PERCENT : BALANCE_PERCENT;
+export function installmentSharePercent(code: InstallmentCode, order?: PlanFields): number {
+  const upfront = order ? downpaymentPercentOf(order) : LEGACY_DOWNPAYMENT_PERCENT;
+  return code === "downpayment" ? upfront : FULL_PAYMENT_PERCENT - upfront;
+}
+
+/** The headline on the client's one payment action for this order. */
+export function payActionTitle(code: InstallmentCode, order: PlanFields): string {
+  if (code === "downpayment") {
+    if (paysInFull(order)) return "Pay in full";
+    return order.payments?.initial ? "Pay the initial payment" : `Pay the ${downpaymentPercentOf(order)}% downpayment`;
+  }
+  return order.payments?.final_online
+    ? "Pay the final balance"
+    : `Pay the remaining ${installmentSharePercent("balance", order)}%`;
+}
+
+/**
+ * The checkout note on what placing the order does with the money, for a
+ * basket GRIDGO will take `percent` of up front.
+ */
+export function paymentPlanNote(percent: number): string {
+  const when = percent >= FULL_PAYMENT_PERCENT
+    ? "You pay the whole total now, in one transfer. There is nothing more to pay before delivery."
+    : `You send ${percent}% now and the rest before delivery.`;
+  return `${when} GRIDGO checks your reference against its wallet by hand, so it is confirmed in working hours rather than instantly.`;
+}
+
+/** What the request form says the client will pay, before any price exists. */
+export function paymentPlanPreview(percent: number): string {
+  return percent >= FULL_PAYMENT_PERCENT
+    ? "pay the whole total by QR in one transfer"
+    : `pay ${percent}% by QR then the last ${FULL_PAYMENT_PERCENT - percent}% before delivery`;
 }
 
 export function isInstallmentConfirmed(installment: PaymentInstallment | undefined): boolean {
@@ -70,6 +152,7 @@ export function downpaymentDue(order: Order): boolean {
 }
 
 export function balanceDue(order: Order): boolean {
+  if (paysInFull(order)) return false;
   if (!(BALANCE_DUE_STATES as readonly string[]).includes(order.state)) return false;
   if (order.payments?.initial
     ? order.payments.initial.status !== "confirmed"

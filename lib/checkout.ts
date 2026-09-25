@@ -139,15 +139,11 @@ export const PAYMENT_CHOICE_LABEL = "QR Ph";
 export const PAYMENT_CHOICE_BLURB =
   "Scan with GCash, Maya or your bank app, then send GRIDGO the receipt and its reference number.";
 
-/**
- * What placing the order actually does with the money.
- *
- * The 75% is submitted, never taken: no money moves through GRIDGO, and
- * Operations matches the reference against the GRIDGO wallet by hand. Nothing
- * on this sheet may read as paid.
+/*
+ * What placing the order does with the money is `paymentPlanNote` in
+ * `lib/payment.ts`: the up-front share comes from `GET /settings`, so the
+ * note cannot be a constant here.
  */
-export const PAYMENT_SPLIT_NOTE =
-  "You send 75% now and the rest before delivery. GRIDGO checks your reference against its wallet by hand, so it is confirmed in working hours rather than instantly.";
 
 export const INVOICE_NOTE =
   "GRIDGO issues a receipt with this order. You can open it the moment it is placed — printing, delivery, the service fee and your payment reference.";

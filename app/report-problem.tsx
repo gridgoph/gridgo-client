@@ -24,7 +24,7 @@ import {
 import { chatThreadRoute } from "@/lib/chatThreads";
 import { userFacingError } from "@/lib/copy";
 import { orderReference } from "@/lib/orderReference";
-import { getOrderStateMeta } from "@/lib/orderState";
+import { orderStateMeta } from "@/lib/orderState";
 
 const NO_ORDER = "";
 
@@ -87,7 +87,7 @@ export default function ReportProblemScreen() {
     ...choices.map((row) => ({
       value: row.id,
       label: row.title || (orderReference(row.id) ?? row.id),
-      hint: `${orderReference(row.id) ?? row.id}, ${getOrderStateMeta(row.state, row.fulfillmentMode).label}`,
+      hint: `${orderReference(row.id) ?? row.id}, ${orderStateMeta(row).label}`,
     })),
   ];
 
@@ -168,7 +168,7 @@ export default function ReportProblemScreen() {
           <TextField
             value={happened}
             onChangeText={setHappened}
-            placeholder="I tapped Pay the remaining 25% and the screen went blank."
+            placeholder="I tapped Show payment QR and the screen went blank."
             multiline
             multilineMinHeight={112}
             maxLength={HAPPENED_MAX}

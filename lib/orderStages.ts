@@ -43,7 +43,7 @@ export const COLLECT_STAGES: OrderStage[] = [
 ];
 
 /**
- * Everything from the request being drafted to the downpayment clearing is
+ * Everything from the request being drafted to the up-front payment clearing is
  * still "Order": nothing has been made yet, whoever the job is sitting with.
  */
 const STAGE_BY_STATE: Record<string, OrderStageKey> = {

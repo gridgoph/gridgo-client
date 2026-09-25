@@ -17,6 +17,7 @@
 import type { Issue, Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import { paymentStatusLabel } from "@/lib/copy";
+import { isInstallmentConfirmed, paymentInstallment, paysInFull } from "@/lib/payment";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 import { collectsAtOffice, orderTotalMinor } from "@/lib/orderState";
 import { formatTimelineStamp } from "@/lib/relativeTime";
@@ -77,7 +78,10 @@ export function closedAt(order: Pick<Order, "timeline">): string | null {
 export function summarizeJobComplete(order: Order, issues: Issue[] | null | undefined): JobCompleteSummary {
   const collect = collectsAtOffice(order);
   const outcome = issueOutcome(issues);
-  const paid = order.paymentStatus === "paid";
+  // A paid-in-full order is settled the moment its one payment is confirmed.
+  const paid =
+    order.paymentStatus === "paid" ||
+    (paysInFull(order) && isInstallmentConfirmed(paymentInstallment(order, "downpayment")));
   const total = orderTotalMinor(order);
 
   const handover = collect ? `collected at ${GRIDGO_OFFICE_LABEL}` : "delivered";
@@ -117,7 +121,7 @@ export function summarizeJobComplete(order: Order, issues: Issue[] | null | unde
 
   facts.push({
     label: "Payment",
-    value: paid && total != null ? `Paid in full, ${formatPhp(total)}` : paymentStatusLabel(order.paymentStatus),
+    value: paid && total != null ? `Paid in full, ${formatPhp(total)}` : paymentStatusLabel(order.paymentStatus, paysInFull(order)),
   });
 
   if (order.rated) {
