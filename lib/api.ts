@@ -175,6 +175,8 @@ export type Order = {
   totalMinor: number | null;
   /** The invoice number GRIDGO issued with this order, when one exists. */
   invoiceNumber?: string | null;
+  /** A printed-invoice request this client filed, when there is one. */
+  physicalInvoiceRequest?: PhysicalInvoiceRequest | null;
   downpaymentMinor: number | null;
   balanceMinor: number | null;
   /**

@@ -56,6 +56,7 @@ import {
   paymentInstallment,
   paysInFull,
 } from "@/lib/payment";
+import { physicalInvoiceEntry } from "@/lib/physicalInvoice";
 import { canRate } from "@/lib/rating";
 import { printingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
@@ -361,7 +362,7 @@ export default function OrderDetailScreen() {
 
           <MoneyCard order={order} onOpenReceipt={() =>
             router.push({ pathname: "/order/receipt", params: { orderId: order.id } })
-          } onRequestInvoice={() =>
+          } onOpenPhysicalInvoice={() =>
             router.push({ pathname: "/order/physical-invoice", params: { orderId: order.id } })
           } />
         </View>
@@ -402,11 +403,11 @@ export default function OrderDetailScreen() {
 function MoneyCard({
   order,
   onOpenReceipt,
-  onRequestInvoice,
+  onOpenPhysicalInvoice,
 }: {
   order: api.Order;
   onOpenReceipt: () => void;
-  onRequestInvoice: () => void;
+  onOpenPhysicalInvoice: () => void;
 }) {
   const total = orderTotalMinor(order);
   const range = order.priceRange;
@@ -437,6 +438,7 @@ function MoneyCard({
   // something the client owes, so it is not drawn at all.
   const balance = paysInFull(order) ? undefined : paymentInstallment(order, "balance");
   const showFee = showsServiceFee(order) && serviceFeeVisibleToClient(settings);
+  const physicalInvoice = physicalInvoiceEntry(order);
 
   return (
     <View className="gap-3">
@@ -480,7 +482,9 @@ function MoneyCard({
         </View>
       </View>
       <SecondaryButton label="View receipt" onPress={onOpenReceipt} />
-      <SecondaryButton label="Request a physical invoice" onPress={onRequestInvoice} />
+      {physicalInvoice ? (
+        <SecondaryButton label={physicalInvoice.label} onPress={onOpenPhysicalInvoice} />
+      ) : null}
     </View>
   );
 }

@@ -16,6 +16,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
+import { physicalInvoiceEntry } from "@/lib/physicalInvoice";
 import { canRate } from "@/lib/rating";
 import {
   isCheckoutReceipt,
@@ -99,6 +100,8 @@ export default function OrderReceiptScreen() {
       };
     }, [load]),
   );
+
+  const physicalInvoice = physicalInvoiceEntry(order);
 
   const openOrder = () => {
     if (!orderId) return;
@@ -208,9 +211,9 @@ export default function OrderReceiptScreen() {
               <Text className="text-h3 text-text-primary">{formatPhp(view.money.totalMinor)}</Text>
             </View>
           </View>
-          {orderId ? (
+          {orderId && physicalInvoice ? (
             <SecondaryButton
-              label="Request a physical invoice"
+              label={physicalInvoice.label}
               onPress={() =>
                 router.push({
                   pathname: "/order/physical-invoice",
