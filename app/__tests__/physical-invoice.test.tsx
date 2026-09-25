@@ -14,6 +14,10 @@ jest.mock("expo-router", () => ({
   },
 }));
 
+// The form is paused for the pilot; these tests cover it as it comes back.
+// The paused screen is `physical-invoice-hidden.test.tsx`.
+jest.mock("@/constants/features", () => ({ PHYSICAL_INVOICE_REQUESTS_ENABLED: true }));
+
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
   return {

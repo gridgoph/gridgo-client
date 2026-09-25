@@ -7,6 +7,7 @@ import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SpecRow } from "@/components/SpecRow";
+import { PHYSICAL_INVOICE_REQUESTS_ENABLED } from "@/constants/features";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
@@ -31,6 +32,11 @@ import { formatTimelineStamp } from "@/lib/relativeTime";
  * For when the rider is not there to hand one over at the door. The request
  * is the contact, the office address, and when someone is in — GRIDGO uses
  * those to send the copy later.
+ *
+ * While `PHYSICAL_INVOICE_REQUESTS_ENABLED` is off, nothing links here to file
+ * one. A request already on file still shows; anything else that lands here (a
+ * deep link, old history) is told the feature is paused rather than handed a
+ * form GRIDGO is not taking.
  */
 export default function PhysicalInvoiceScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
@@ -41,11 +47,15 @@ export default function PhysicalInvoiceScreen() {
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
-    if (!orderId) return;
+    if (!orderId) {
+      setLoaded(true);
+      return;
+    }
     try {
       const request = await api.getPhysicalInvoice(orderId);
       if (sequence !== loadSequence.current) return;
@@ -57,6 +67,7 @@ export default function PhysicalInvoiceScreen() {
         userFacingError(caught, "GRIDGO could not load this request. Try again in a moment."),
       );
     }
+    setLoaded(true);
   }, [orderId]);
 
   useFocusEffect(
@@ -77,8 +88,16 @@ export default function PhysicalInvoiceScreen() {
     return physicalInvoiceFieldError(field, draft[field]);
   };
 
+  const backToOrder = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    if (orderId) router.replace({ pathname: "/order/[id]", params: { id: orderId } });
+  };
+
   const send = async () => {
-    if (!orderId || busy) return;
+    if (!PHYSICAL_INVOICE_REQUESTS_ENABLED || !orderId || busy) return;
     setAttempted(true);
     if (!physicalInvoiceReady(draft)) return;
     setBusy(true);
@@ -128,7 +147,28 @@ export default function PhysicalInvoiceScreen() {
               }
             />
           </View>
-          <PrimaryButton label="Back to the order" onPress={() => router.back()} />
+          <PrimaryButton label="Back to the order" onPress={backToOrder} />
+        </View>
+      </FormScreen>
+    );
+  }
+
+  if (!PHYSICAL_INVOICE_REQUESTS_ENABLED) {
+    // Wait for the read: an order that already has a request should open on
+    // it, not flash "not available" first.
+    if (!loaded) return <FormScreen>{null}</FormScreen>;
+    return (
+      <FormScreen>
+        <View className="gg-page gap-6 pb-16 pt-4">
+          <View className="gap-2">
+            <Text className="text-h1 text-text-primary">Printed invoices are not available yet</Text>
+            <Text className="text-body text-text-secondary">
+              GRIDGO is not taking printed-invoice requests during the pilot. The receipt in
+              the app is your record of this order for now.
+            </Text>
+          </View>
+          {error ? <Text className="text-body text-error">{error}</Text> : null}
+          <PrimaryButton label="Back to the order" onPress={backToOrder} />
         </View>
       </FormScreen>
     );
