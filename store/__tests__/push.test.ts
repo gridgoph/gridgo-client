@@ -246,6 +246,49 @@ describe("enable", () => {
   });
 });
 
+describe("resume", () => {
+  it("registers a phone that came back from settings with notifications on", async () => {
+    // The blocked card sent the person to the phone's settings. Nothing in the
+    // app is tapped on the way back: returning to the foreground is the cue.
+    usePush.setState({ permission: "blocked" });
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    const register = jest.spyOn(api, "registerDevice").mockResolvedValue(undefined as never);
+
+    await usePush.getState().resume();
+
+    expect(usePush.getState().permission).toBe("granted");
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.anything());
+    expect(mocked.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it("registers again on every foreground once granted", async () => {
+    usePush.setState({ permission: "granted", token: "fcm-token-a7c8d3f1", claimed: true });
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    const register = jest.spyOn(api, "registerDevice").mockResolvedValue(undefined as never);
+
+    await usePush.getState().resume();
+
+    expect(register).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads a refusal without registering or raising anything", async () => {
+    mocked.getPermissionsAsync.mockResolvedValue(blocked as never);
+    const register = jest.spyOn(api, "registerDevice");
+
+    await usePush.getState().resume();
+
+    expect(usePush.getState().permission).toBe("blocked");
+    expect(register).not.toHaveBeenCalled();
+    expect(mocked.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it("leaves the return from the OS dialog to the ask that raised it", async () => {
+    usePush.setState({ busy: true });
+    await usePush.getState().resume();
+    expect(mocked.getPermissionsAsync).not.toHaveBeenCalled();
+  });
+});
+
 describe("adoptToken", () => {
   it("re-registers when Firebase reissues the token", async () => {
     // The silent failure: a rotated token stops delivering and nothing looks

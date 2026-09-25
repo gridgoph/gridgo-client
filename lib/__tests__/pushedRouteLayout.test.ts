@@ -59,7 +59,7 @@ jest.mock("expo-router", () => {
   Stack.Protected = function StackProtected({ guard, children }: { guard: boolean; children: ReactNode }) {
     return guard ? children : null;
   };
-  return { Stack };
+  return { Stack, useSegments: () => [] };
 });
 
 describe("pushed route layout contract", () => {

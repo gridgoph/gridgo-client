@@ -257,3 +257,85 @@ export const PUSH_FOREGROUND_BEHAVIOR = {
   shouldPlaySound: false,
   shouldSetBadge: false,
 } as const;
+
+/**
+ * How long "Not now" on the explainer holds before it may be offered again.
+ *
+ * Seven days: long enough that a person who said no is not asked on every
+ * launch, short enough that someone who meant "not this minute" hears about it
+ * again while they still have a job on press. The card on Home stays in the
+ * meantime, so the way back never depends on this.
+ */
+export const PUSH_EXPLAINER_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Which explainer to draw, when one is due. */
+export type PushExplainerMode = "ask" | "settings";
+
+/**
+ * Whether the notification explainer is due, and in which form.
+ *
+ * The explainer is the proactive half of the ask: a sheet drawn once a
+ * signed-in client has landed, saying what will arrive before the OS dialog
+ * can be raised. It is never the dialog itself — the dialog only follows a tap
+ * on "Turn on notifications" inside it.
+ *
+ * - Signed in only. What it promises is updates about *your* jobs, which a
+ *   phone nobody has signed in on cannot be told.
+ * - `unknown` is not an answer yet, and `granted` needs nothing.
+ * - `blocked` still gets the sheet, on the same clock, but it says the phone
+ *   is blocking notifications and its button opens the phone's settings —
+ *   the app cannot raise a dialog Android has stopped showing.
+ * - At most once per `PUSH_EXPLAINER_INTERVAL_MS`. A stamp far in the future
+ *   (the phone's clock was wound back) is treated as stale rather than
+ *   silencing the offer until that date comes round again.
+ */
+export function pushExplainerDue(input: {
+  supported: boolean;
+  signedIn: boolean;
+  permission: PushPermission;
+  lastOfferedAt: number | null;
+  now: number;
+}): PushExplainerMode | null {
+  if (!input.supported || !input.signedIn) return null;
+  if (input.permission !== "undetermined" && input.permission !== "blocked") return null;
+  const last = input.lastOfferedAt;
+  if (last != null) {
+    const elapsed = input.now - last;
+    const clockWoundBack = elapsed < -PUSH_EXPLAINER_INTERVAL_MS;
+    if (elapsed < PUSH_EXPLAINER_INTERVAL_MS && !clockWoundBack) return null;
+  }
+  return input.permission === "blocked" ? "settings" : "ask";
+}
+
+/**
+ * The explainer's words.
+ *
+ * `points` is what arrives, in the order a job meets them. The privacy line is
+ * there because it is true and a person deciding once deserves it: the server
+ * sends every order push as "GRIDGO update / Open GRIDGO for the latest
+ * update", so no price, name or address ever reaches the lock screen.
+ */
+export const PUSH_EXPLAINER_COPY = {
+  ask: {
+    title: "Know when your job moves",
+    body: "GRIDGO can tell this phone when something happens on your order, even while the app is closed.",
+    action: "Turn on notifications",
+  },
+  settings: {
+    title: "Notifications are off for GRIDGO",
+    body: "Your phone is blocking them, so order updates only appear while the app is open. GRIDGO cannot ask again, so turn them on in your phone's settings.",
+    action: "Open phone settings",
+  },
+  points: [
+    { icon: "artwork", text: "Your artwork is checked, or needs a change" },
+    { icon: "payment", text: "Your payment is confirmed" },
+    { icon: "delivery", text: "Your order is out for delivery or ready to collect" },
+    { icon: "reminder", text: "A reminder when a job is waiting on you" },
+  ],
+  privacy:
+    "The notification itself only says there is an update. Prices, names and addresses stay in the app.",
+  later: "Not now",
+  footnote: "You can change this at any time in your phone's settings.",
+} as const;
+
+export type PushExplainerIcon = (typeof PUSH_EXPLAINER_COPY.points)[number]["icon"];

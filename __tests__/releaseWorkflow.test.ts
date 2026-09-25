@@ -170,14 +170,28 @@ describe("the APK reaches the captain's server only from the default branch", ()
     expect(published).toBeGreaterThan(verify);
   });
 
-  it("publishes the on-disk APK before the GitHub Actions artifact upload", () => {
+  it("publishes the GitHub Release only after the landing site has the APK", () => {
+    // The update prompt reads GitHub and downloads from the landing site. A
+    // release published first offered build N while the site served N-1.
     const githubRelease = apkSteps.findIndex((step) => step.includes("gh release create"));
     const published = apkSteps.findIndex((step) => step.includes("upload-apk client"));
     const upload = apkSteps.findIndex((step) => step.includes("upload-artifact"));
 
-    expect(githubRelease).toBeGreaterThanOrEqual(0);
-    expect(published).toBeGreaterThan(githubRelease);
-    expect(upload).toBeGreaterThan(published);
+    expect(published).toBeGreaterThanOrEqual(0);
+    expect(githubRelease).toBeGreaterThan(published);
+    expect(upload).toBeGreaterThan(githubRelease);
+  });
+
+  it("marks a release latest only from the run that replaced the landing file", () => {
+    const release = apkSteps.find((step) => step.includes("gh release create"));
+    // The step waits on the upload through the implicit success() of a bare
+    // `if:`; a status function here would let it run after a failed upload.
+    expect(release).not.toMatch(/always\(\)|failure\(\)|!cancelled\(\)/);
+    expect(release).toMatch(
+      /LATEST:\s*\$\{\{\s*github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'\s*\}\}/,
+    );
+    expect(release).toContain('latest="--latest=false"');
+    expect(release).toContain('"$latest"');
   });
 
   it("does not fail the job when Actions artifact storage is full", () => {

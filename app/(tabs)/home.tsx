@@ -12,6 +12,7 @@ import { HomeCategoryRow } from "@/components/HomeCategoryRow";
 import { HomeSampleStrip } from "@/components/HomeSampleStrip";
 import { HomeSearchEntry } from "@/components/HomeSearchEntry";
 import { HomeActionRow, HomeFinishedRow, HomeJobRow } from "@/components/HomeRow";
+import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SkeletonHomeDocket } from "@/components/Skeleton";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
@@ -300,6 +301,16 @@ export default function HomeScreen() {
               </View>
             </View>
           ) : null}
+
+          {/*
+            Phone notifications, while this phone has not said yes. Home is
+            where every client lands, so the way to turn them on — after "Not
+            now" on the explainer, or after Android blocked them — never
+            depends on finding a secondary screen. After the jobs, because a
+            job waiting on the client outranks a setting; before the menu,
+            because below it nobody scrolls. Draws nothing once granted.
+          */}
+          <PushEnableCard spacing="section" />
 
           {/*
             Real work, before the menu that describes it. A first screen that
