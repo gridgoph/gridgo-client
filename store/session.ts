@@ -163,6 +163,10 @@ export const useSession = create<SessionState>((set) => ({
     } catch (error) {
       if (sequence !== accountReadSequence) return;
       if (error instanceof api.ApiError && error.status === 403 && useSession.getState().user?.id === ownerId) {
+        const code = typeof error.body === "object" && error.body && "error" in error.body
+          ? (error.body as { error?: string }).error
+          : undefined;
+        if (code === "account_suspended" || code === "account_removed") return;
         useSession.getState().clearSession();
       }
       // A 401 already clears the session through the unauthorized handler, and

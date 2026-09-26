@@ -1,3 +1,4 @@
+import { accountHold } from "@/lib/accountHold";
 import { clearProductCategoryCache } from "@/lib/api";
 import { clearBoardCache } from "@/lib/shopBoards";
 import { clearListingCache } from "@/lib/listingCache";
@@ -11,8 +12,9 @@ import { useSession } from "@/store/session";
 /** One stream for the authenticated app, independently of push permission. */
 export function useLiveNotifications(): void {
   const owner = useSession((s) => s.user?.id ?? null);
+  const held = useSession((s) => accountHold(s.user) != null);
   useEffect(() => {
-    if (!owner) return;
+    if (!owner || held) return;
     let active = true;
     let stream: AlertStreamHandle | null = null;
     let cursor: string | null = null;
@@ -93,5 +95,5 @@ export function useLiveNotifications(): void {
       clearInterval(fallback);
       if (inboxTimer) clearTimeout(inboxTimer);
     };
-  }, [owner]);
+  }, [owner, held]);
 }

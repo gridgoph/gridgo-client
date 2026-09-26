@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { accountHold } from "@/lib/accountHold";
 import { clearBoardCache } from "@/lib/shopBoards";
 import { useCart } from "@/store/cart";
 import { usePriorities } from "@/store/priorities";
@@ -20,6 +21,7 @@ import { useSession } from "@/store/session";
  */
 export function useClientPreferences(): void {
   const userId = useSession((state) => state.user?.id ?? null);
+  const held = useSession((state) => accountHold(state.user) != null);
 
   useEffect(() => {
     if (!userId) {
@@ -28,6 +30,7 @@ export function useClientPreferences(): void {
       clearBoardCache();
       return;
     }
+    if (held) return;
     void usePriorities.getState().load();
-  }, [userId]);
+  }, [userId, held]);
 }

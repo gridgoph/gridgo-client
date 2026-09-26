@@ -1,3 +1,4 @@
+import { accountHold } from "@/lib/accountHold";
 import { getOrder } from "@/lib/api";
 import {
   useRouter,
@@ -48,6 +49,7 @@ export function usePushNotifications(): void {
   }, [protectedReady]);
   const user = useSession((s) => s.user);
   const signedIn = hasActiveSession(user);
+  const held = accountHold(user) != null;
 
   /**
    * A tap that arrived before there was anywhere to send it.
@@ -89,8 +91,9 @@ export function usePushNotifications(): void {
     // signed in registers unclaimed, which is what lets GRIDGO tell a customer
     // that installed the app and stopped there to update it. Signing in
     // re-runs this with a bearer and claims the same token — see `store/push.ts`.
+    if (held) return;
     void usePush.getState().registerIfGranted();
-  }, [signedIn, user?.id]);
+  }, [signedIn, user?.id, held]);
 
   useEffect(() => {
     // Back in the foreground: the permission may have changed behind the app's
