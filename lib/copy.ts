@@ -124,6 +124,16 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "This order was paid in full up front, so there is no balance to pay. Pull it down to refresh.";
       case "payment_method_not_allowed":
         return "GRIDGO takes payment by QR only — GCash, Maya or a bank e-wallet. There is no cash on delivery.";
+      // ---- artwork: design links ----
+      case "artwork_link_rate_limited":
+        return "That is a lot of link checks in one minute. Wait a moment, then check again.";
+      case "invalid_artwork_link":
+      case "invalid_artwork_links":
+        return "That link is not one GRIDGO can keep. Copy the https:// link again from the Share menu.";
+      case "unsafe_artwork_url":
+        return "That link points somewhere private. Use the public sharing link instead.";
+      case "artwork_link_format_not_accepted":
+        return "This shop does not take that kind of link. Paste a different one, or upload the file.";
       // ---- basket: the shop's minimum run ----
       case "below_minimum_quantity": {
         const minimum =

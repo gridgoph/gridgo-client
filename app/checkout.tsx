@@ -41,6 +41,7 @@ import {
   printRuns,
 } from "@/lib/basket";
 import { unpricedLineReason } from "@/lib/clientPrice";
+import { lineArtworkSummary, lineHasArtwork } from "@/lib/designLink";
 import { clientAmountMinor } from "@/lib/gridgoPrice";
 import { openReceiptAfterCheckout } from "@/lib/receipt";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
@@ -1021,10 +1022,10 @@ function LineRow({
               )}
               <Text
                 className={
-                  line.artworkFileId ? "text-caption text-text-muted" : "text-caption text-warning"
+                  lineHasArtwork(line) ? "text-caption text-text-muted" : "text-caption text-warning"
                 }
               >
-                {line.artworkFileId ? "Artwork attached" : "No artwork yet"}
+                {lineArtworkSummary(line)}
               </Text>
             </View>
           </View>
@@ -1053,7 +1054,7 @@ function LineRow({
           <RowAction label="Edit" onPress={onEdit} />
           <View className="w-px self-stretch bg-outline-subtle" />
           <RowAction
-            label={line.artworkFileId ? "Artwork" : "Add artwork"}
+            label={lineHasArtwork(line) ? "Artwork" : "Add artwork"}
             onPress={onArtwork}
           />
         </View>
