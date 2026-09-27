@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync, copyFileSync } from "fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -22,11 +22,14 @@ function note(name: string, body: string) {
   writeFileSync(join(root, "whats-new", name), body);
 }
 
+// A fixture of its own, never a copy of the repository's files: CI files every
+// real release into WHATS_NEW.md, so a copy would carry that history into the
+// assertions below.
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "whats-new-"));
   mkdirSync(join(root, "whats-new"));
-  copyFileSync(join(repo, "WHATS_NEW.md"), join(root, "WHATS_NEW.md"));
-  copyFileSync(join(repo, "whats-new", "README.md"), join(root, "whats-new", "README.md"));
+  writeFileSync(join(root, "WHATS_NEW.md"), `# What's new\n\n${whatsNew.HISTORY_MARKER}\n`);
+  writeFileSync(join(root, "whats-new", "README.md"), "# Pending notes\n");
 });
 
 afterEach(() => {
