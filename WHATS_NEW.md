@@ -12,3 +12,9 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 - It moves them below, under that version's heading.
 
 <!-- CI adds each release below this line. -->
+
+## 1.0.128
+
+- The update prompt now comes back each time you open the app, until you install the new version.
+- App updates now show at the top of Notifications, with an Update now button.
+- The update prompt now lists what's new in each version.

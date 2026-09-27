@@ -1,1 +1,0 @@
-- App updates now show at the top of Notifications, with an Update now button.

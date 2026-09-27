@@ -1,1 +1,0 @@
-- The update prompt now lists what's new in each version.
