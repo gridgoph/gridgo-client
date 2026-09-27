@@ -13,6 +13,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.138
+
+- Sample photos no longer go blank after the app sits in the background; they reload by themselves.
+
 ## 1.0.134
 
 - If your account is suspended or removed, the app now tells you why and lets you sign out.
