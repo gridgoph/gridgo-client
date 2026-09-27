@@ -13,6 +13,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.134
+
+- If your account is suspended or removed, the app now tells you why and lets you sign out.
+
 ## 1.0.128
 
 - The update prompt now comes back each time you open the app, until you install the new version.

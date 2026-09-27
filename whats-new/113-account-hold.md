@@ -1,1 +1,0 @@
-- If your account is suspended or removed, the app now tells you why and lets you sign out.
