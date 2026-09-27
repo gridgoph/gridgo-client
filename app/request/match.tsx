@@ -336,23 +336,14 @@ export default function MatchScreen() {
               ? `1 ${subcategoryName.toUpperCase()} LISTING`
               : `${match.listings.length} ${subcategoryName.toUpperCase()} LISTINGS`}
           </Text>
-          {match.listings.map((item, index) => {
-            const row = (
-              <ListingRow
-                key={item.id}
-                item={item}
-                onPress={() => openListing(item)}
-                onStalePhoto={onStalePhoto}
-              />
-            );
-            return index === 0 ? (
-              <TourTarget key={item.id} step="match">
-                {row}
-              </TourTarget>
-            ) : (
-              row
-            );
-          })}
+          {match.listings.map((item) => (
+            <ListingRow
+              key={item.id}
+              item={item}
+              onPress={() => openListing(item)}
+              onStalePhoto={onStalePhoto}
+            />
+          ))}
         </View>
 
         {!dropoff ? (
@@ -362,7 +353,9 @@ export default function MatchScreen() {
         ) : null}
       </ScrollView>
 
-      <View className="gg-page gap-3 pb-2 pt-2">
+      {/* The tour lights Continue: the match card fills the first screen and
+          the listings sit below it, so this is the one control always in view. */}
+      <TourTarget step="match" className="gg-page gap-3 pb-2 pt-2">
         <PrimaryButton
           label="Continue"
           onPress={() => {
@@ -371,7 +364,7 @@ export default function MatchScreen() {
           }}
           disabled={match.listings.length === 0}
         />
-      </View>
+      </TourTarget>
     </Screen>
   );
 }

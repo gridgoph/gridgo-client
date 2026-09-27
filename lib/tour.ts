@@ -64,7 +64,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     id: "match",
     screen: "match",
     title: "GRIDGO found your printer",
-    body: "GRIDGO matched this job to one printer. Tap a listing to set it up.",
+    body: "GRIDGO matched this job to one printer. Tap Continue to set up its listing, or pick another below.",
   },
   {
     id: "listing",
@@ -216,4 +216,17 @@ export function placeCard({
   if (above >= insetTop + gap) return { top: above, side: "above" };
 
   return pinned;
+}
+
+/**
+ * A control taller than the room left beside the card — the deadline calendar
+ * — gets a card pinned over its lower edge. The light then stops above the
+ * card rather than running on underneath it, so the cut-out never looks
+ * sliced. Too little left above the card to be worth lighting: unchanged.
+ */
+export function fitHoleAbove(hole: TourRect, cardTop: number, gap = 12, minimum = 48): TourRect {
+  const bottom = cardTop - gap;
+  if (hole.y + hole.height <= bottom) return hole;
+  const height = bottom - hole.y;
+  return height >= minimum ? { ...hole, height } : hole;
 }

@@ -23,6 +23,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import {
   canGoBack,
   nextLabel,
+  fitHoleAbove,
   placeCard,
   stepPosition,
   type TourRect,
@@ -58,10 +59,16 @@ const MOVE = { duration: 220, easing: Easing.out(Easing.cubic) };
  */
 export function TourOverlay({ ready }: { ready: boolean }) {
   const { accountId, progress, step } = useVisibleTourStep();
-  const rect = useTour((s) => (step ? s.rects[step.id] : undefined));
+  const measured = useTour((s) => (step ? s.rects[step.id] : undefined));
+  const { width, height } = useWindowDimensions();
+  // A control scrolled out of view has nothing to light; the card still
+  // explains it, pinned to the bottom.
+  const rect = measured && onScreen(measured, width, height) ? measured : undefined;
   const otherPrompt = usePushPrompt((s) => s.open);
   const updatePrompt = useAppUpdate((s) => s.promptOpen || s.completed !== null);
   const settled = useTour((s) => s.settled);
+  const insets = useSafeAreaInsets();
+  const [cardHeight, setCardHeight] = useState(0);
 
   const stepId = step?.id ?? null;
   useEffect(() => {
@@ -86,12 +93,25 @@ export function TourOverlay({ ready }: { ready: boolean }) {
 
   if (!showing || !step || !accountId || progress?.status !== "active") return null;
 
+  const padded = rect ? holeFor(rect, width, height) : null;
+  const place = placeCard({
+    target: padded,
+    cardHeight,
+    windowHeight: height,
+    insetTop: insets.top,
+    insetBottom: insets.bottom,
+  });
+  const hole = padded && place.side === "pinned" ? fitHoleAbove(padded, place.top) : padded;
+
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      <Spotlight rect={rect ?? null} />
+      <Spotlight hole={hole} />
       <TourCard
         key={step.id}
-        rect={rect ?? null}
+        hole={hole}
+        place={place}
+        measured={cardHeight > 0}
+        onMeasure={setCardHeight}
         title={step.title}
         body={step.body}
         position={stepPosition(progress)}
@@ -103,6 +123,10 @@ export function TourOverlay({ ready }: { ready: boolean }) {
       />
     </View>
   );
+}
+
+function onScreen(rect: TourRect, width: number, height: number): boolean {
+  return rect.y < height && rect.y + rect.height > 0 && rect.x < width && rect.x + rect.width > 0;
 }
 
 function holeFor(rect: TourRect, width: number, height: number): TourRect {
@@ -125,13 +149,12 @@ function holeFor(rect: TourRect, width: number, height: number): TourRect {
  * same on Android, iOS and web without a mask. A thin light ring and a fainter
  * halo outside it are what make the edge read as lit rather than punched.
  */
-function Spotlight({ rect }: { rect: TourRect | null }) {
+function Spotlight({ hole }: { hole: TourRect | null }) {
   const colors = useThemeColors();
   const reduceMotion = useReducedMotion();
   const { width, height } = useWindowDimensions();
   const border = Math.max(width, height) * 2;
 
-  const hole = rect ? holeFor(rect, width, height) : null;
   const x = useSharedValue(hole?.x ?? 0);
   const y = useSharedValue(hole?.y ?? 0);
   const w = useSharedValue(hole?.width ?? 0);
@@ -239,7 +262,10 @@ function Absorb(frame: { left: number; top: number; width: number; height: numbe
  * thing on the screen.
  */
 function TourCard({
-  rect,
+  hole,
+  place,
+  measured,
+  onMeasure,
   title,
   body,
   position,
@@ -249,7 +275,10 @@ function TourCard({
   onBack,
   onSkip,
 }: {
-  rect: TourRect | null;
+  hole: TourRect | null;
+  place: { top: number; side: "below" | "above" | "pinned" };
+  measured: boolean;
+  onMeasure: (height: number) => void;
   title: string;
   body: string;
   position: { index: number; count: number };
@@ -261,18 +290,7 @@ function TourCard({
 }) {
   const colors = useThemeColors();
   const reduceMotion = useReducedMotion();
-  const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const [cardHeight, setCardHeight] = useState(0);
-
-  const hole = rect ? holeFor(rect, width, height) : null;
-  const place = placeCard({
-    target: hole,
-    cardHeight,
-    windowHeight: height,
-    insetTop: insets.top,
-    insetBottom: insets.bottom,
-  });
+  const { width } = useWindowDimensions();
 
   // The notch points at the middle of the lit control, kept off the corners.
   const cardLeft = 16;
@@ -284,7 +302,7 @@ function TourCard({
   return (
     <Animated.View
       entering={reduceMotion ? undefined : FadeIn.duration(200)}
-      onLayout={(event) => setCardHeight(event.nativeEvent.layout.height)}
+      onLayout={(event) => onMeasure(event.nativeEvent.layout.height)}
       style={[
         styles.fixed,
         elevation.sheet,
@@ -292,7 +310,7 @@ function TourCard({
           left: cardLeft,
           width: cardWidth,
           top: place.top,
-          opacity: cardHeight ? 1 : 0,
+          opacity: measured ? 1 : 0,
         },
       ]}
     >

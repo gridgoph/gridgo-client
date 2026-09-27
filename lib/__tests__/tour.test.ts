@@ -3,6 +3,7 @@ import {
   backStep,
   canGoBack,
   currentStep,
+  fitHoleAbove,
   nextLabel,
   nextStep,
   placeCard,
@@ -160,5 +161,21 @@ describe("placing the card", () => {
     const pinned = { top: 564, side: "pinned" };
     expect(placeCard({ ...base, target: { x: 0, y: 100, width: 390, height: 600 } })).toEqual(pinned);
     expect(placeCard({ ...base, target: null })).toEqual(pinned);
+  });
+});
+
+describe("fitting the light above a pinned card", () => {
+  const hole = { x: 10, y: 150, width: 370, height: 560 };
+
+  it("stops the cut-out above the card", () => {
+    expect(fitHoleAbove(hole, 600)).toEqual({ ...hole, height: 438 });
+  });
+
+  it("leaves a hole that already clears the card", () => {
+    expect(fitHoleAbove({ ...hole, height: 100 }, 600)).toEqual({ ...hole, height: 100 });
+  });
+
+  it("leaves it alone when too little would be left to light", () => {
+    expect(fitHoleAbove(hole, 190)).toEqual(hole);
   });
 });
