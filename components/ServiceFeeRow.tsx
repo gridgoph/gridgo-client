@@ -17,6 +17,8 @@ type Props = {
    * must not show a peso amount that looks like a second charge.
    */
   explainOnly?: boolean;
+  /** Close the row with a hairline, as in a list of SpecRows. Off on the slip. */
+  divider?: boolean;
 };
 
 /**
@@ -32,6 +34,7 @@ export function ServiceFeeRow({
   rateBps,
   pendingLabel = "—",
   explainOnly = false,
+  divider = true,
 }: Props) {
   const [open, setOpen] = useState(false);
   const label = serviceFeeLabel(rateBps);
@@ -43,7 +46,7 @@ export function ServiceFeeRow({
   const moreLabel = open ? "View less" : "View more";
 
   return (
-    <View className="border-b border-outline-subtle">
+    <View className={divider ? "border-b border-outline-subtle" : undefined}>
       <Pressable
         onPress={() => setOpen((current) => !current)}
         accessibilityRole="button"
