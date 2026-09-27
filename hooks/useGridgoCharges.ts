@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { accountHold } from "@/lib/accountHold";
 import { subscribeLive } from "@/lib/live";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useSession } from "@/store/session";
@@ -17,9 +18,10 @@ import { useSession } from "@/store/session";
  */
 export function useGridgoCharges(): void {
   const owner = useSession((s) => s.user?.id ?? null);
+  const held = useSession((s) => accountHold(s.user) != null);
   const load = usePlatformSettings((s) => s.load);
   useEffect(() => {
-    if (!owner) return;
+    if (!owner || held) return;
     const read = () => {
       load({ refresh: true }).catch(() => {
         /* Last known rate stands; the screens draw nothing raw meanwhile. */
@@ -29,5 +31,5 @@ export function useGridgoCharges(): void {
     return subscribeLive((resource) => {
       if (resource === "settings" || resource === "*") read();
     });
-  }, [owner, load]);
+  }, [owner, held, load]);
 }

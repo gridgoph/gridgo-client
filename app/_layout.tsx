@@ -25,6 +25,7 @@ import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-c
 import { AppUpdateSheet } from "@/components/AppUpdateSheet";
 import { BrandIntro } from "@/components/BrandIntro";
 import { PushExplainerSheet } from "@/components/PushExplainerSheet";
+import { SessionShell } from "@/components/SessionShell";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
@@ -171,6 +172,7 @@ function AppNavigation() {
       */}
       <KeyboardProvider>
         <ThemeProvider value={navigationTheme(scheme)}>
+          <SessionShell>
             <Stack
               key={user?.id ?? "signed-out"}
               screenOptions={{
@@ -402,6 +404,7 @@ function AppNavigation() {
             <AppUpdateSheet ready={!introPlaying && fontsReady} />
             {/* Waits behind the update prompt too; it checks that itself. */}
             <PushExplainerSheet ready={!introPlaying && fontsReady} />
+          </SessionShell>
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />
             {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}
         </ThemeProvider>

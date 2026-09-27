@@ -1,5 +1,6 @@
 import { serializeDeviceMutation } from "@/store/push";
 import * as api from "@/lib/api";
+import { accountHold } from "@/lib/accountHold";
 import { CLERK_SIGNOUT_TIMEOUT_MS } from "@/lib/clerkSignIn";
 import { LOGOUT_API_TIMEOUT_MS, useSession } from "@/store/session";
 
@@ -297,5 +298,31 @@ describe("account read ordering", () => {
     fail(new api.ApiError(403, {}));
     await stale;
     expect(useSession.getState().user).toEqual(corrected);
+  });
+});
+
+describe("account hold on refresh", () => {
+  const user: api.User = { id: "user_client", role: "client", name: "C", email: "c@gridgo.test", accountStatus: "active" };
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([
+    ["account_suspended", "suspended"],
+    ["account_removed", "removed"],
+  ] as const)("a mid-session %s shows the hold instead of keeping the client active", async (code, status) => {
+    useSession.setState({ user, signingOut: false });
+    jest.spyOn(api, "getAccount").mockRejectedValueOnce(
+      new api.ApiError(403, { error: code, message: "Held.", reason: "Missed a payment" }),
+    );
+    await useSession.getState().refresh();
+    const held = useSession.getState().user;
+    expect(held).toMatchObject({ id: "user_client", accountStatus: status, accountStatusReason: "Missed a payment" });
+    expect(accountHold(held)).toEqual({ title: expect.any(String), reason: "Missed a payment" });
+  });
+
+  it("still clears the session on any other forbidden refresh", async () => {
+    useSession.setState({ user, signingOut: false });
+    jest.spyOn(api, "getAccount").mockRejectedValueOnce(new api.ApiError(403, { error: "forbidden" }));
+    await useSession.getState().refresh();
+    expect(useSession.getState().user).toBeNull();
   });
 });
