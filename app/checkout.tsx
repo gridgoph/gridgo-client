@@ -27,7 +27,9 @@ import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
 import { StepTrail } from "@/components/StepTrail";
 import { SwipeToRemove } from "@/components/SwipeToRemove";
+import { TourTarget } from "@/components/TourTarget";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useTourScreen } from "@/hooks/useTourScreen";
 import { usePaymentProof } from "@/hooks/usePaymentProof";
 import * as api from "@/lib/api";
 import { formatPhp, type CartLineRecord } from "@/lib/api";
@@ -236,6 +238,7 @@ export default function CheckoutScreen() {
   );
 
   const lines = useMemo(() => cart?.lines ?? [], [cart]);
+  useTourScreen("checkout", hydrated && lines.length > 0);
   const feeRateBps = settings?.serviceFeeRateBps ?? 0;
   const runs = useMemo(() => printRuns(lines, feeRateBps), [lines, feeRateBps]);
   const totals = useMemo(
@@ -438,7 +441,11 @@ export default function CheckoutScreen() {
     <FormScreen
       scrollRef={scrollRef}
       footer={
-        <View testID="checkout-footer" className="gap-3 border-t border-outline bg-surface px-4 pb-2 pt-3">
+        <TourTarget
+          step="checkout"
+          testID="checkout-footer"
+          className="gap-3 border-t border-outline bg-surface px-4 pb-2 pt-3"
+        >
           <View className="flex-row items-baseline justify-between gap-3">
             <Text className="text-body text-text-secondary">Total</Text>
             <Text className="text-h3 text-text-primary">
@@ -501,7 +508,7 @@ export default function CheckoutScreen() {
                     )
                 : "Your order goes to Operations for artwork checking.")}
           </Text>
-        </View>
+        </TourTarget>
       }
       /* Beside the scroll, never inside it — see `FormScreen`'s `overlay`. */
       overlay={

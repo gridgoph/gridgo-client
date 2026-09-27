@@ -12,6 +12,8 @@ import { useDesignLink } from "@/store/designLink";
 const mockPick = jest.fn(async () => undefined);
 
 jest.mock("expo-router", () => ({
+  // The first-order tour registers its screen on focus (`useTourScreen`).
+  useFocusEffect: () => undefined,
   useRouter: () => ({
     push: jest.fn(),
     replace: jest.fn(),

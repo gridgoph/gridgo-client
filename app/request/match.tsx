@@ -12,8 +12,10 @@ import { MatchRankingRow } from "@/components/MatchRankingRow";
 import { MatchingWait } from "@/components/MatchingWait";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { TourTarget } from "@/components/TourTarget";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { type CatalogItem, type MatchResult } from "@/lib/api";
 import { formatDeadline } from "@/lib/deadline";
@@ -161,6 +163,8 @@ export default function MatchScreen() {
       /* The rows stay on their skeleton; the sheet retries. */
     });
   }, [loadSettings]);
+
+  useTourScreen("match", !loading && !error && match != null && match.listings.length > 0);
 
   const subcategoryName = useMemo(() => {
     const found = findCategory(api.productCategoriesNow(), category ?? "")?.subcategories.find(
@@ -349,7 +353,9 @@ export default function MatchScreen() {
         ) : null}
       </ScrollView>
 
-      <View className="gg-page gap-3 pb-2 pt-2">
+      {/* The tour lights Continue: the match card fills the first screen and
+          the listings sit below it, so this is the one control always in view. */}
+      <TourTarget step="match" className="gg-page gap-3 pb-2 pt-2">
         <PrimaryButton
           label="Continue"
           onPress={() => {
@@ -358,7 +364,7 @@ export default function MatchScreen() {
           }}
           disabled={match.listings.length === 0}
         />
-      </View>
+      </TourTarget>
     </Screen>
   );
 }

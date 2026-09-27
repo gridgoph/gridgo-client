@@ -23,6 +23,7 @@ import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
 import { accountTypeOption } from "@/lib/signup";
 import { usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
+import { useTour } from "@/store/tour";
 
 /**
  * The client's own account.
@@ -209,6 +210,21 @@ export default function AccountScreen() {
               up in Chat like any other — the line says so, because a report
               that vanishes into a form is one nobody sends twice.
             */}
+            {/*
+              The first-order tour, again. It starts on Home, so the row takes
+              the client there — the one navigation the tour ever does, and
+              only because they asked for it.
+            */}
+            {user ? (
+              <DestinationRow
+                title="Replay the tour"
+                detail="A short walk from Home to checkout, one tip per screen"
+                onPress={() => {
+                  useTour.getState().replay(user.id);
+                  router.navigate("/(tabs)/home");
+                }}
+              />
+            ) : null}
             <DestinationRow
               title="Report a problem"
               detail="Tell Operations what went wrong. They reply in Chat"

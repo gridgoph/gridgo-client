@@ -13,6 +13,8 @@ import {
 } from "../../test/artworkPagesFixtures";
 
 jest.mock("expo-router", () => ({
+  // The first-order tour registers its screen on focus (`useTourScreen`).
+  useFocusEffect: () => undefined,
   useRouter: () => ({
     push: jest.fn(),
     replace: jest.fn(),

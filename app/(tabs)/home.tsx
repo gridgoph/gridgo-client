@@ -1,8 +1,9 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronRight } from "lucide-react-native";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import { useReducedMotion } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TabScreen } from "@/components/TabScreen";
@@ -15,10 +16,13 @@ import { HomeActionRow, HomeFinishedRow, HomeJobRow } from "@/components/HomeRow
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SkeletonHomeDocket } from "@/components/Skeleton";
+import { TourTarget } from "@/components/TourTarget";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useTourAutoStart, useTourScreen } from "@/hooks/useTourScreen";
+import { useVisibleTourStep } from "@/hooks/useTourStep";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { pickHomeSamples } from "@/lib/homeSamples";
@@ -168,9 +172,28 @@ export default function HomeScreen() {
   );
   const showSamples = welcoming && (boardsLoading || samples.length > 0);
 
+  /*
+    The first-order tour starts here, once, for a client with nothing on
+    press (`lib/tour.ts`). Its two Home steps light the search bar and the
+    category board, which sit below the docket and the samples — so the
+    section is scrolled into view before the light lands on it.
+  */
+  useTourScreen("home");
+  useTourAutoStart(welcoming);
+  const tourStep = useVisibleTourStep().step?.id;
+  const reduceMotion = useReducedMotion();
+  const scrollRef = useRef<ScrollView>(null);
+  const startY = useRef(0);
+  const boardY = useRef(0);
+  useEffect(() => {
+    if (tourStep !== "home.search" && tourStep !== "home.categories") return;
+    const y = tourStep === "home.search" ? startY.current : startY.current + boardY.current;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 96), animated: !reduceMotion });
+  }, [tourStep, reduceMotion]);
+
   return (
     <TabScreen>
-      <ScrollView className="gg-screen">
+      <ScrollView ref={scrollRef} className="gg-screen">
         <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
           {/*
             One header: the mark, and cart and chat as the two ways back into
@@ -347,13 +370,18 @@ export default function HomeScreen() {
           ) : null}
 
           {categories.length ? (
-            <View className="mt-8 gap-3">
+            <View
+              className="mt-8 gap-3"
+              onLayout={(event) => { startY.current = event.nativeEvent.layout.y; }}
+            >
               {/*
                 The empty Home's call to act is this board, so it says so. The
                 yellow "+" is still the one filled start control.
               */}
               <SectionHead label={welcoming ? "START YOUR FIRST PRINT" : "START A PRINT"} />
-              <HomeSearchEntry onPress={() => router.push("/request/category")} />
+              <TourTarget step="home.search">
+                <HomeSearchEntry onPress={() => router.push("/request/category")} />
+              </TourTarget>
               {/*
                 One board, not a grid. Five families in two columns left the
                 fifth alone beside an empty half-row and cut the contents line
@@ -362,7 +390,11 @@ export default function HomeScreen() {
                 five read as one scan down the page. The crop-marked mark is
                 what keeps this board apart from the docket above it.
               */}
-              <View className="gg-card-flush">
+              <TourTarget
+                step="home.categories"
+                className="gg-card-flush"
+                onLayout={(y) => { boardY.current = y; }}
+              >
                 {categories.map((category, index) => (
                   <View key={category.code}>
                     {index > 0 ? <View className="gg-divider" /> : null}
@@ -372,7 +404,7 @@ export default function HomeScreen() {
                     />
                   </View>
                 ))}
-              </View>
+              </TourTarget>
             </View>
           ) : null}
 

@@ -1,0 +1,1 @@
+- New to GRIDGO? A short guided tour now walks your first order from Home to checkout. Replay it from Account.

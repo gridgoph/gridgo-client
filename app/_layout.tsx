@@ -26,6 +26,7 @@ import { AppUpdateSheet } from "@/components/AppUpdateSheet";
 import { BrandIntro } from "@/components/BrandIntro";
 import { PushExplainerSheet } from "@/components/PushExplainerSheet";
 import { SessionShell } from "@/components/SessionShell";
+import { TourOverlay } from "@/components/TourOverlay";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
@@ -404,6 +405,8 @@ function AppNavigation() {
             <AppUpdateSheet ready={!introPlaying && fontsReady} />
             {/* Waits behind the update prompt too; it checks that itself. */}
             <PushExplainerSheet ready={!introPlaying && fontsReady} />
+            {/* The first-order tour. Waits behind both prompts; it checks that itself. */}
+            <TourOverlay ready={!introPlaying && fontsReady} />
           </SessionShell>
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />
             {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}
