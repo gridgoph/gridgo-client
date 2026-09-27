@@ -100,13 +100,13 @@ export default function HomeScreen() {
 
   /**
    * The strip's photo links are signed for five minutes and Home can sit in the
-   * background for hours. Resuming onto an old read, or a tile failing on an
-   * expired link, re-reads the boards past the cache — the photos come back
-   * rather than turning into "This photo will not load".
+   * background for hours. Resuming onto an old read re-reads the boards, and a
+   * tile failing on an expired link re-reads them past the cache — the photos
+   * come back rather than turning into "This photo will not load".
    */
   const heldListings = useMemo(() => (boards?.length ? boardListings(boards) : null), [boards]);
-  const rereadSamples = useCallback(async () => {
-    const read = await loadCategoryBoards("", { maxBoards: HOME_BOARDS, force: true });
+  const rereadSamples = useCallback(async ({ force }: { force: boolean }) => {
+    const read = await loadCategoryBoards("", { maxBoards: HOME_BOARDS, force });
     setBoards(read.boards);
     return boardListings(read.boards);
   }, []);

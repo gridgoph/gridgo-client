@@ -10,9 +10,11 @@ type Listings = readonly (Pick<CatalogItem, "photos"> | null | undefined)[];
  * Keeps the signed photo links a screen holds from outliving their signature.
  *
  * `listings` is what the screen is drawing now (null while nothing is held).
- * `reread` is the screen's own forced re-read of the same thing; it puts the
- * answer in state as usual and also returns the listings it just read, so this
- * hook can see what the server minted without waiting for a render.
+ * `reread` is the screen's own re-read of the same thing; it puts the answer
+ * in state as usual and also returns the listings it just read, so this hook
+ * can see what the server minted without waiting for a render. `force` is true
+ * when a tile has already failed on an expired link and a cached answer will
+ * not do; on resume a board read may come from the one-minute board cache.
  *
  * Two things ask for a re-read:
  *
@@ -36,7 +38,7 @@ type Listings = readonly (Pick<CatalogItem, "photos"> | null | undefined)[];
  */
 export function usePhotoLinkRefresh(
   listings: Listings | null,
-  reread: () => Promise<Listings | null>,
+  reread: (options: { force: boolean }) => Promise<Listings | null>,
 ): () => Promise<void> {
   const latest = useRef({ listings, reread });
   useLayoutEffect(() => {
@@ -52,10 +54,10 @@ export function usePhotoLinkRefresh(
   const inflight = useRef<Promise<void> | null>(null);
   const clockSkewed = useRef(false);
 
-  const run = useCallback((): Promise<void> => {
+  const run = useCallback((force: boolean): Promise<void> => {
     if (inflight.current) return inflight.current;
     const next = Promise.resolve()
-      .then(() => latest.current.reread())
+      .then(() => latest.current.reread({ force }))
       .then(
         (fresh) => {
           if (fresh) clockSkewed.current = hasStalePhotoLink(fresh);
@@ -73,7 +75,7 @@ export function usePhotoLinkRefresh(
 
   const onStale = useCallback((): Promise<void> => {
     if (clockSkewed.current) return Promise.resolve();
-    return run();
+    return run(true);
   }, [run]);
 
   useEffect(() => {
@@ -85,7 +87,7 @@ export function usePhotoLinkRefresh(
         readAt: readAt.current,
         earliestExpiry: clockSkewed.current ? null : earliestPhotoExpiry(held),
       });
-      if (stale) void run();
+      if (stale) void run(false);
     });
     return () => subscription.remove();
   }, [run]);

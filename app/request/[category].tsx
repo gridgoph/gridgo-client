@@ -72,12 +72,13 @@ export default function CategoryScreen() {
   useLiveRefresh(["catalog", "services", "availability"], loadBoards, { refreshOnFocus: false });
 
   // The wall's photo links expire five minutes after the read. Coming back to
-  // the app on an old read, or a tile failing on an expired link, re-reads the
-  // boards past the cache instead of latching "This photo will not load".
+  // the app on an old read re-reads the boards, and a tile failing on an
+  // expired link re-reads them past the cache, instead of latching "This photo
+  // will not load".
   const heldListings = useMemo(() => (boards ? boardListings(boards) : null), [boards]);
-  const rereadBoards = useCallback(async () => {
+  const rereadBoards = useCallback(async ({ force }: { force: boolean }) => {
     if (!categoryCode) return null;
-    const read = await loadCategoryBoards(categoryCode, { force: true });
+    const read = await loadCategoryBoards(categoryCode, { force });
     setBoards(read.boards);
     return boardListings(read.boards);
   }, [categoryCode]);
