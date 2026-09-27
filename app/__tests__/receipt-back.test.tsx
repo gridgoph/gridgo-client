@@ -80,7 +80,7 @@ describe("receipt after checkout", () => {
 
   it("puts Orders on the header and leaves the request stack", async () => {
     await render(wrap(<OrderReceiptScreen />));
-    await screen.findByText("Order receipt");
+    await screen.findByText("Order summary");
 
     expect(mockStackOptions).toHaveBeenCalled();
     const options = mockStackOptions.mock.calls.at(-1)?.[0] as {

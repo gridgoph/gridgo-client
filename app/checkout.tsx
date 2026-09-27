@@ -43,7 +43,7 @@ import {
 import { unpricedLineReason } from "@/lib/clientPrice";
 import { lineArtworkSummary, lineHasArtwork } from "@/lib/designLink";
 import { clientAmountMinor } from "@/lib/gridgoPrice";
-import { openReceiptAfterCheckout } from "@/lib/receipt";
+import { holdPlacedReceipt, openReceiptAfterCheckout, receiptFromCheckout } from "@/lib/receipt";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
 import { clearOrderFlow } from "@/lib/orderFlow";
 import {
@@ -379,10 +379,11 @@ export default function CheckoutScreen() {
       if (!cart?.serviceLevel) {
         await api.setCartFulfilment(cartId, { serviceLevel: "standard" });
       }
-      const { order } = await api.checkoutCart(cartId, {
+      const { order, invoice } = await api.checkoutCart(cartId, {
         reference: reference.trim(),
         proofFileId: proof.state.fileId,
       });
+      holdPlacedReceipt(receiptFromCheckout(invoice, order, reference));
       resetPayment();
       clearCart();
       clearOrderFlow();
