@@ -7,6 +7,7 @@ import { create } from "zustand";
 
 import type { User } from "@/lib/api";
 import * as api from "@/lib/api";
+import { accountHoldFromForbidden } from "@/lib/accountHold";
 import { CLERK_SIGNOUT_TIMEOUT_MS, withTimeout } from "@/lib/clerkSignIn";
 import { clientEmailUnavailableMessage, userFacingError } from "@/lib/copy";
 import { sessionWaitHold } from "@/lib/sessionWait";
@@ -163,10 +164,15 @@ export const useSession = create<SessionState>((set) => ({
     } catch (error) {
       if (sequence !== accountReadSequence) return;
       if (error instanceof api.ApiError && error.status === 403 && useSession.getState().user?.id === ownerId) {
-        const code = typeof error.body === "object" && error.body && "error" in error.body
-          ? (error.body as { error?: string }).error
-          : undefined;
-        if (code === "account_suspended" || code === "account_removed") return;
+        // A held account keeps its session so SessionShell can say why and
+        // offer Sign out; any other 403 still clears it.
+        const hold = accountHoldFromForbidden(error.body);
+        if (hold) {
+          useSession.setState((state) =>
+            state.user?.id === ownerId ? { user: { ...state.user, ...hold } } : {},
+          );
+          return;
+        }
         useSession.getState().clearSession();
       }
       // A 401 already clears the session through the unauthorized handler, and
