@@ -2,15 +2,17 @@ import {
   APP_UPDATE_CHECK_INTERVAL_MS,
   APP_UPDATE_SOURCE,
   describeInstalledBuild,
-  describeOffer,
+  describePrompt,
   fetchLatestRelease,
   installedBuild,
   justUpdated,
-  localDay,
+  newerRelease,
   parseForcedVersionCode,
+  parseWhatsNew,
+  WHATS_NEW_LIMITS,
   releaseBuildFromTag,
   shouldCheckForUpdate,
-  shouldOfferUpdate,
+  shouldShowUpdatePrompt,
 } from "@/lib/appUpdate";
 
 const release = { platform: "android", expoGo: false, dev: false, forcedVersionCode: null };
@@ -97,9 +99,9 @@ describe("reading the latest release", () => {
   it("asks GitHub for this app's latest release, naming itself", async () => {
     const fetchImpl = jest.fn(async () => response(200, { tag_name: "v1.0.96" }));
     await expect(fetchLatestRelease(fetchImpl as unknown as typeof fetch)).resolves.toEqual({
-      latest: { versionCode: 96, versionName: "1.0.96" },
+      latest: { versionCode: 96, versionName: "1.0.96", whatsNew: [] },
       answered: true,
-      detail: "latest release is 1.0.96",
+      detail: "latest release is 1.0.96, no What's new",
     });
     // GitHub answers a request with no User-Agent with 403, the same status as
     // its rate limit, so the read cannot leave it to the HTTP stack.
@@ -112,6 +114,16 @@ describe("reading the latest release", () => {
         },
       }),
     );
+  });
+
+  it("reads the release's What's new section", async () => {
+    const body = "## What's new\n\n- Faster checkout\n\n## Build\n\nSigned release APK (123M).";
+    const fetchImpl = jest.fn(async () => response(200, { tag_name: "v1.0.96", body }));
+    await expect(fetchLatestRelease(fetchImpl as unknown as typeof fetch)).resolves.toEqual({
+      latest: { versionCode: 96, versionName: "1.0.96", whatsNew: ["Faster checkout"] },
+      answered: true,
+      detail: "latest release is 1.0.96, What's new: 1",
+    });
   });
 
   it("answers nothing rate-limited, or for a release it cannot read, and says why", async () => {
@@ -161,6 +173,67 @@ describe("reading the latest release", () => {
   });
 });
 
+describe("What's new in a release", () => {
+  const ciBoilerplate =
+    "Signed release APK for sideloading (123M). Install it on the phone directly.\n\nCommit `97433f8`, build 122.";
+
+  it("reads only the bullets under the What's new heading", () => {
+    const body = [
+      "## What's new",
+      "",
+      "- The update prompt keeps coming back until you update",
+      "* App updates appear in Notifications",
+      "",
+      "## Build",
+      "",
+      "- Commit `97433f8`, build 122.",
+      ciBoilerplate,
+    ].join("\n");
+    expect(parseWhatsNew(body)).toEqual([
+      "The update prompt keeps coming back until you update",
+      "App updates appear in Notifications",
+    ]);
+  });
+
+  it("is empty when the release has no What's new section", () => {
+    expect(parseWhatsNew(ciBoilerplate)).toEqual([]);
+    expect(parseWhatsNew("- A bullet outside any section")).toEqual([]);
+    expect(parseWhatsNew("")).toEqual([]);
+    expect(parseWhatsNew(null)).toEqual([]);
+    expect(parseWhatsNew(undefined)).toEqual([]);
+    expect(parseWhatsNew(42)).toEqual([]);
+  });
+
+  it("is empty when the section has no bullets", () => {
+    expect(parseWhatsNew("## What's new\n\n## Build\n\n- build 122")).toEqual([]);
+    expect(parseWhatsNew("## What's new\n\nSee the website.")).toEqual([]);
+    expect(parseWhatsNew("## What's new\n\n-   \n- **  **")).toEqual([]);
+  });
+
+  it("finds the heading however it is spelled", () => {
+    for (const heading of ["## What's new", "### What’s New", "# WHAT'S NEW", "## Whats new in 1.0.96"]) {
+      expect(parseWhatsNew(`${heading}\r\n- Faster checkout`)).toEqual(["Faster checkout"]);
+    }
+  });
+
+  it("shows plain words: no links, emphasis, code or HTML", () => {
+    const body =
+      "## What's new\n- **Faster** [checkout](https://example.com/x) with `QR Ph` <b>now</b>\n-   Spaces   collapse  ";
+    expect(parseWhatsNew(body)).toEqual(["Faster checkout with QR Ph now", "Spaces collapse"]);
+  });
+
+  it("caps a very long list and a very long line", () => {
+    const many = Array.from({ length: 40 }, (_, i) => `- Change ${i + 1}`).join("\n");
+    const items = parseWhatsNew(`## What's new\n${many}`);
+    expect(items).toHaveLength(WHATS_NEW_LIMITS.maxItems);
+    expect(items[0]).toBe("Change 1");
+
+    const [long] = parseWhatsNew(`## What's new\n- ${"word ".repeat(200)}`);
+    expect(long.length).toBeLessThanOrEqual(WHATS_NEW_LIMITS.maxChars);
+    expect(long.endsWith("\u2026")).toBe(true);
+  });
+});
+
 describe("the development log", () => {
   const expoGo = { ...release, expoGo: true, dev: true, versionName: "1.0.0", versionCode: 1 };
 
@@ -176,19 +249,19 @@ describe("the development log", () => {
     expect(describeInstalledBuild(ios, installedBuild(ios))).toBe("off: ios cannot install an APK");
   });
 
-  it("says why a release was or was not offered", () => {
+  it("says why the prompt is or is not up", () => {
     const installed = { versionCode: 90, versionName: "1.0.90" };
     const latest = { versionCode: 95, versionName: "1.0.95" };
-    const today = "2026-09-24";
-    expect(describeOffer({ installed, latest, dismissed: null, today }, true)).toBe(
+    const now = Date.UTC(2026, 8, 24, 3);
+    expect(describePrompt({ installed, latest, dismissed: null, now }, true)).toBe(
       "offering 1.0.95 over 1.0.90",
     );
+    expect(describePrompt({ installed: latest, latest, dismissed: null, now }, false)).toBe(
+      "not offering: 1.0.95 is already the latest",
+    );
     expect(
-      describeOffer({ installed: latest, latest, dismissed: null, today }, false),
-    ).toBe("not offering: 1.0.95 is already the latest");
-    expect(
-      describeOffer({ installed, latest, dismissed: { versionCode: 95, day: today }, today }, false),
-    ).toBe('not offering 1.0.95: "Later" was tapped for 95 on 2026-09-24');
+      describePrompt({ installed, latest, dismissed: { versionCode: 95, at: now }, now }, false),
+    ).toBe('not offering 1.0.95 yet: "Later" was tapped for 95 less than 4 hours ago');
   });
 });
 
@@ -209,49 +282,83 @@ describe("how often to look", () => {
   });
 });
 
-describe("offering an update", () => {
+describe("the update prompt", () => {
   const installed = { versionCode: 95, versionName: "1.0.95" };
   const latest = { versionCode: 96, versionName: "1.0.96" };
-  const today = "2026-09-24";
+  const now = Date.UTC(2026, 8, 24, 3);
+  const later = { versionCode: 96, at: now };
 
-  it("offers only a newer release", () => {
-    expect(shouldOfferUpdate({ installed, latest, dismissed: null, today })).toBe(true);
-    expect(shouldOfferUpdate({ installed, latest: installed, dismissed: null, today })).toBe(false);
+  it("shows only while a newer release exists", () => {
+    expect(shouldShowUpdatePrompt({ installed, latest, dismissed: null, now })).toBe(true);
+    expect(shouldShowUpdatePrompt({ installed, latest: installed, dismissed: null, now })).toBe(
+      false,
+    );
     expect(
-      shouldOfferUpdate({ installed: latest, latest: installed, dismissed: null, today }),
+      shouldShowUpdatePrompt({ installed: latest, latest: installed, dismissed: null, now }),
     ).toBe(false);
   });
 
-  it("keeps quiet about a release put off today", () => {
-    expect(
-      shouldOfferUpdate({ installed, latest, dismissed: { versionCode: 96, day: today }, today }),
-    ).toBe(false);
+  it("shows nothing without a build to compare or a release to offer", () => {
+    expect(shouldShowUpdatePrompt({ installed: null, latest, dismissed: null, now })).toBe(false);
+    expect(shouldShowUpdatePrompt({ installed, latest: null, dismissed: null, now })).toBe(false);
   });
 
-  it("offers the release again the next day", () => {
+  // "Later" is not remembered across launches, so a cold launch is always
+  // `dismissed: null` — the reported case, where the prompt never came back.
+  it("comes back on a cold launch after Later", () => {
+    expect(shouldShowUpdatePrompt({ installed, latest, dismissed: null, now: now + 60_000 })).toBe(
+      true,
+    );
+  });
+
+  it("stays away in the same session until the check interval has passed", () => {
+    expect(shouldShowUpdatePrompt({ installed, latest, dismissed: later, now: now + 60_000 })).toBe(
+      false,
+    );
     expect(
-      shouldOfferUpdate({
+      shouldShowUpdatePrompt({
         installed,
         latest,
-        dismissed: { versionCode: 96, day: "2026-09-23" },
-        today,
+        dismissed: later,
+        now: now + APP_UPDATE_CHECK_INTERVAL_MS,
       }),
     ).toBe(true);
   });
 
-  it("offers a release newer than the one put off straight away", () => {
+  it("offers a release newer than the one put away straight away", () => {
     expect(
-      shouldOfferUpdate({
+      shouldShowUpdatePrompt({
         installed,
         latest: { versionCode: 97, versionName: "1.0.97" },
-        dismissed: { versionCode: 96, day: today },
-        today,
+        dismissed: later,
+        now: now + 60_000,
       }),
     ).toBe(true);
   });
 
-  it("dates a dismissal by the phone's own calendar", () => {
-    expect(localDay(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
+  it("is not silenced by a clock set backwards", () => {
+    expect(shouldShowUpdatePrompt({ installed, latest, dismissed: later, now: now - 60_000 })).toBe(
+      true,
+    );
+  });
+
+  it("stops once the installed build is current", () => {
+    expect(
+      shouldShowUpdatePrompt({ installed: latest, latest, dismissed: null, now }),
+    ).toBe(false);
+  });
+});
+
+describe("the release waiting for this phone", () => {
+  const installed = { versionCode: 95, versionName: "1.0.95" };
+  const latest = { versionCode: 96, versionName: "1.0.96" };
+
+  it("is the latest release only when it is newer", () => {
+    expect(newerRelease(installed, latest)).toBe(latest);
+    expect(newerRelease(latest, installed)).toBeNull();
+    expect(newerRelease(latest, latest)).toBeNull();
+    expect(newerRelease(null, latest)).toBeNull();
+    expect(newerRelease(installed, null)).toBeNull();
   });
 });
 

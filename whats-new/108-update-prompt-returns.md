@@ -1,0 +1,1 @@
+- The update prompt now comes back each time you open the app, until you install the new version.

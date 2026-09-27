@@ -113,7 +113,7 @@ describe("root layout, forced update check in Expo Go", () => {
     expect(console.info).toHaveBeenCalledWith(
       "[update-check] installed 1.0.90 (versionCode 90, forced by override)",
     );
-    expect(console.info).toHaveBeenCalledWith("[update-check] latest release is 1.0.95");
+    expect(console.info).toHaveBeenCalledWith("[update-check] latest release is 1.0.95, no What's new");
     expect(console.info).toHaveBeenCalledWith("[update-check] offering 1.0.95 over 1.0.90");
   });
 
@@ -128,6 +128,6 @@ describe("root layout, forced update check in Expo Go", () => {
     await screen.rerender(createElement(RootLayout));
 
     expect(screen.getByText("A new version of GRIDGO is ready")).toBeTruthy();
-    expect(useAppUpdate.getState().dismissed).toBeNull();
+    expect(useAppUpdate.getState()).toMatchObject({ promptOpen: true, dismissed: null });
   });
 });

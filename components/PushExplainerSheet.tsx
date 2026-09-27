@@ -64,7 +64,7 @@ export function PushExplainerSheet({ ready }: Props) {
   const lastOfferedAt = usePushPrompt((s) => s.lastOfferedAt);
   const open = usePushPrompt((s) => s.open);
   const mode = usePushPrompt((s) => s.mode);
-  const updateShowing = useAppUpdate((s) => s.available !== null || s.completed !== null);
+  const updateShowing = useAppUpdate((s) => s.promptOpen || s.completed !== null);
 
   useEffect(() => {
     if (!ready || !hydrated || !onTabs || updateShowing) return;
