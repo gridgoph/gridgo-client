@@ -6,10 +6,12 @@ import { DeadlineCalendar, DeadlineCalendarSkeleton } from "@/components/Deadlin
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { TourTarget } from "@/components/TourTarget";
 import { findCategory } from "@/lib/productCategories";
 import * as api from "@/lib/api";
 import { prefetchMatch } from "@/lib/matchPrefetch";
 import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
+import { useTourScreen } from "@/hooks/useTourScreen";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
 import {
@@ -54,6 +56,7 @@ export default function WhenScreen() {
   const dropoff = cart?.defaultDropoff ?? null;
 
   const [chosen, setChosen] = useState<string | null>(null);
+  useTourScreen("when");
   const [availability, setAvailability] = useState<api.DeadlineDay[] | null>(null);
   const [earliest, setEarliest] = useState<string | null>(null);
   const [availabilityFailed, setAvailabilityFailed] = useState(false);
@@ -182,7 +185,7 @@ export default function WhenScreen() {
           </Text>
         ) : null}
 
-        <View className="mt-4">
+        <TourTarget step="when" className="mt-4">
           {/*
             Held until GRIDGO answers. Painting an optimistic month and then
             repainting most of it unavailable a moment later is a flicker on
@@ -201,7 +204,7 @@ export default function WhenScreen() {
           ) : (
             <DeadlineCalendarSkeleton />
           )}
-        </View>
+        </TourTarget>
 
         {/*
           A month with nothing in it is honest but unhelpful on its own: it

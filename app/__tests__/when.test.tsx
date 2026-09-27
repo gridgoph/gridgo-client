@@ -30,6 +30,8 @@ function renderInSafeArea(ui: ReactElement) {
 
 const mockPush = jest.fn();
 jest.mock("expo-router", () => ({
+  // The first-order tour registers its screen on focus (`useTourScreen`).
+  useFocusEffect: () => undefined,
   useRouter: () => ({ push: mockPush }),
   useLocalSearchParams: () => ({ subcategory: "flyers", category: "marketing_collateral" }),
 }));

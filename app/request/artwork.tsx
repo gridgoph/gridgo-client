@@ -12,6 +12,7 @@ import { ErrorScreenState } from "@/components/ErrorState";
 import { ProductPreview } from "@/components/ProductPreview";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StepTrailBar } from "@/components/StepTrail";
+import { TourTarget } from "@/components/TourTarget";
 import { useArtworkUpload, type FormatGuard } from "@/hooks/useArtworkUpload";
 import {
   applyDetectedPages,
@@ -27,6 +28,7 @@ import {
   printResolution,
 } from "@/lib/printResolution";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
@@ -232,6 +234,7 @@ export default function ArtworkScreen() {
   }, [stored, measure, measured]);
 
   const pixels = !measured && stored && measuredPixels?.fileId === stored ? measuredPixels.size : null;
+  useTourScreen("artwork", line != null);
 
   /** Back to the shop board, or to the sheet this file belongs to. */
   const goStep = (step: OrderStepId) => {
@@ -353,7 +356,7 @@ export default function ArtworkScreen() {
         ) : null}
 
         {uploads.length || !links.length ? (
-          <View className="mt-6">
+          <TourTarget step="artwork" className="mt-6">
             {/*
               Until there is artwork this card is the one thing on the screen a
               client can act on, so it carries the screen's yellow and takes
@@ -368,7 +371,7 @@ export default function ArtworkScreen() {
               emphasis={hasArtwork ? "quiet" : "primary"}
               resolution={resolution}
             />
-          </View>
+          </TourTarget>
         ) : null}
 
         {saveError ? <Text className="mt-3 text-body text-error">{saveError}</Text> : null}

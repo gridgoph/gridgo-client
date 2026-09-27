@@ -5,8 +5,10 @@ import { Pressable, Text, TextInput, View, type TextStyle } from "react-native";
 import { useRouter } from "expo-router";
 
 import { FormScreen } from "@/components/FormScreen";
+import { TourTarget } from "@/components/TourTarget";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import {
   searchSubcategories,
@@ -39,6 +41,7 @@ export default function ChooseCategoryScreen() {
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
+  useTourScreen("pick");
 
   // Seed is already the tree. Refresh in the background; never blank the
   // picker on a taxonomy blip. Focus and live events read through the cache.
@@ -133,13 +136,22 @@ export default function ChooseCategoryScreen() {
           />
         ) : (
           <View className="mt-8 gap-3">
-            {categories.map((category) => (
-              <CategoryCard
-                key={category.code}
-                category={category}
-                onPress={() => router.push(`/request/${category.code}`)}
-              />
-            ))}
+            {categories.map((category, index) => {
+              const card = (
+                <CategoryCard
+                  key={category.code}
+                  category={category}
+                  onPress={() => router.push(`/request/${category.code}`)}
+                />
+              );
+              return index === 0 ? (
+                <TourTarget key={category.code} step="pick">
+                  {card}
+                </TourTarget>
+              ) : (
+                card
+              );
+            })}
           </View>
         )}
       </View>

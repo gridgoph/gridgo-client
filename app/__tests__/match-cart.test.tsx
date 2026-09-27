@@ -10,6 +10,8 @@ import { useCart } from "@/store/cart";
 import { usePriorities } from "@/store/priorities";
 
 jest.mock("expo-router", () => ({
+  // The first-order tour registers its screen on focus (`useTourScreen`).
+  useFocusEffect: () => undefined,
   useRouter: () => ({
     push: jest.fn(),
     back: jest.fn(),

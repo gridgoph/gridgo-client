@@ -15,6 +15,8 @@ const mockReplace = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
 
 jest.mock("expo-router", () => ({
+  // The first-order tour registers its screen on focus (`useTourScreen`).
+  useFocusEffect: () => undefined,
   useRouter: () => ({
     push: mockPush,
     back: mockBack,
