@@ -82,6 +82,14 @@ async function refresh(itemId: string): Promise<api.CatalogItem> {
   return next;
 }
 
+/**
+ * Read the listing again past the cache — its photo links have expired
+ * (`hooks/usePhotoLinkRefresh.ts`). Shares an in-flight read if one is running.
+ */
+export function rereadListing(itemId: string): Promise<api.CatalogItem> {
+  return refresh(itemId);
+}
+
 /** Start the network read while the sheet is still sliding in. */
 export function prefetchListing(itemId: string): void {
   if (listingIsFresh(itemId)) return;

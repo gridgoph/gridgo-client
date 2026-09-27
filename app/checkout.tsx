@@ -1,4 +1,5 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { ChevronRight, Home, MapPin, Minus, Plus, QrCode } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -175,6 +176,17 @@ export default function CheckoutScreen() {
       return () => { loadSequence.current++; };
     }, [load]),
   );
+
+  // Each line's sample is a signed link that expires five minutes after the
+  // basket was read. Coming back to the app on an old read, or a sample failing
+  // on an expired link, reads the basket again — `GET /me/carts/:id` signs the
+  // photos afresh — rather than latching "This photo will not load".
+  const heldListings = useMemo(() => (cart ? cart.lines.map((line) => line.listing) : null), [cart]);
+  const rereadPhotos = useCallback(async () => {
+    await loadCart();
+    return useCart.getState().cart?.lines.map((line) => line.listing) ?? null;
+  }, [loadCart]);
+  const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadPhotos);
 
   // Each run's own pin, so delivery can be measured. The board also carries the
   // shop's name; it is deliberately never read. GRIDGO is who the client is
@@ -581,6 +593,7 @@ export default function CheckoutScreen() {
                   line={line}
                   serviceFeeRateBps={settings?.serviceFeeRateBps ?? null}
                   busy={busy}
+                  onStalePhoto={onStalePhoto}
                   onEdit={() =>
                     router.push({
                       pathname: "/request/listing",
@@ -948,6 +961,7 @@ function LineRow({
   line,
   serviceFeeRateBps,
   busy,
+  onStalePhoto,
   onEdit,
   onArtwork,
   onQuantity,
@@ -957,6 +971,8 @@ function LineRow({
   /** GRIDGO's rate; null while the charges are unread, and then no figure. */
   serviceFeeRateBps: number | null;
   busy: boolean;
+  /** Re-reads the basket when this line's sample link has expired. */
+  onStalePhoto: () => Promise<void>;
   onEdit: () => void;
   onArtwork: () => void;
   onQuantity: (next: number) => void;
@@ -981,6 +997,8 @@ function LineRow({
             <View className="w-16">
               <SamplePhoto
                 url={samplePhotoUri(line.listing?.photos?.[0])}
+                expiresAt={line.listing?.photos?.[0]?.downloadUrlExpiresAt}
+                onStale={onStalePhoto}
                 altText={name}
                 gutter="tight"
                 emptyLabel="No sample"

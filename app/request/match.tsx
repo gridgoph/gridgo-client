@@ -12,6 +12,7 @@ import { MatchRankingRow } from "@/components/MatchRankingRow";
 import { MatchingWait } from "@/components/MatchingWait";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { type CatalogItem, type MatchResult } from "@/lib/api";
@@ -19,6 +20,7 @@ import { formatDeadline } from "@/lib/deadline";
 import { userFacingError } from "@/lib/copy";
 import { printTimeLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import { matchDistanceMeters } from "@/lib/match";
+import { boardListings, withFreshPhotos } from "@/lib/photoLinks";
 import { printerCapLine } from "@/lib/printerWidth";
 import { clearMatchPrefetch, takeMatch } from "@/lib/matchPrefetch";
 import { prefetchListing, rememberListing } from "@/lib/listingCache";
@@ -126,6 +128,22 @@ export default function MatchScreen() {
       await load();
     })();
   }, [load]);
+
+  /*
+    The listings' photo links expire five minutes after the match. Renewing
+    them re-reads the matched shop's board and swaps in its photos only — never
+    the match itself, which would quietly move the client to another shop.
+  */
+  const heldListings = match?.listings ?? null;
+  const rereadPhotos = useCallback(async () => {
+    const held = match;
+    if (!held) return null;
+    const fresh = boardListings([await api.getCatalogShop(held.shop.supplierId)]);
+    const listings = withFreshPhotos(held.listings, fresh);
+    setMatch((current) => (current === held ? { ...held, listings } : current));
+    return fresh;
+  }, [match]);
+  const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadPhotos);
 
   // The run the client is on, so the step trail on every screen after this one
   // has a real shop to go back to rather than a guess.
@@ -304,6 +322,7 @@ export default function MatchScreen() {
             match={match}
             subcategoryName={subcategoryName}
             distanceMeters={matchDistanceMeters(match, dropoff)}
+            onStalePhoto={onStalePhoto}
           />
         </View>
 
@@ -318,6 +337,7 @@ export default function MatchScreen() {
               key={item.id}
               item={item}
               onPress={() => openListing(item)}
+              onStalePhoto={onStalePhoto}
             />
           ))}
         </View>
@@ -352,7 +372,15 @@ export default function MatchScreen() {
  * figure is GRIDGO's price, never the shop's: what the shop typed is what the
  * shop is paid, and a client is buying from GRIDGO.
  */
-function ListingRow({ item, onPress }: { item: CatalogItem; onPress: () => void }) {
+function ListingRow({
+  item,
+  onPress,
+  onStalePhoto,
+}: {
+  item: CatalogItem;
+  onPress: () => void;
+  onStalePhoto: () => Promise<void>;
+}) {
   const colors = useThemeColors();
   const rate = useServiceFeeRateBps();
   const pressTime = printTimeLine(item.turnaroundHours);
@@ -371,6 +399,8 @@ function ListingRow({ item, onPress }: { item: CatalogItem; onPress: () => void 
           <View className="w-20">
             <SamplePhoto
               url={samplePhotoUri(item.photos[0])}
+              expiresAt={item.photos[0]?.downloadUrlExpiresAt}
+              onStale={onStalePhoto}
               altText={item.photos[0]?.altText ?? item.name}
               gutter="tight"
               emptyLabel="No sample"
