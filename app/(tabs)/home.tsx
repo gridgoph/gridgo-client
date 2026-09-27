@@ -16,12 +16,14 @@ import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SkeletonHomeDocket } from "@/components/Skeleton";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
+import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { pickHomeSamples } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
+import { boardListings } from "@/lib/photoLinks";
 import { type ProductCategory } from "@/lib/productCategories";
 import { HOME_BOARDS, loadCategoryBoards } from "@/lib/shopBoards";
 import { useCart } from "@/store/cart";
@@ -95,6 +97,20 @@ export default function HomeScreen() {
       if (sequence === loadSequence.current) setBoardsLoading(false);
     }
   }, []);
+
+  /**
+   * The strip's photo links are signed for five minutes and Home can sit in the
+   * background for hours. Resuming onto an old read re-reads the boards, and a
+   * tile failing on an expired link re-reads them past the cache — the photos
+   * come back rather than turning into "This photo will not load".
+   */
+  const heldListings = useMemo(() => (boards?.length ? boardListings(boards) : null), [boards]);
+  const rereadSamples = useCallback(async ({ force }: { force: boolean }) => {
+    const read = await loadCategoryBoards("", { maxBoards: HOME_BOARDS, force });
+    setBoards(read.boards);
+    return boardListings(read.boards);
+  }, []);
+  const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadSamples);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
@@ -325,6 +341,7 @@ export default function HomeScreen() {
                 samples={samples}
                 loading={boardsLoading && samples.length === 0}
                 onPick={(sample) => startJob(sample.category.code, sample.subcategory.code)}
+                onStalePhoto={onStalePhoto}
               />
             </View>
           ) : null}

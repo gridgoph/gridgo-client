@@ -12,6 +12,8 @@ type Props = {
   subcategory: ProductSubcategory;
   listing: CatalogItem | null;
   onPress: () => void;
+  /** The screen's re-read for an expired photo link (`SamplePhoto.onStale`). */
+  onStalePhoto?: () => Promise<unknown> | void;
 };
 
 type CardProps = Props & {
@@ -53,7 +55,7 @@ function sampleUrl(listing: CatalogItem | null): string | null {
  * sold on the right — the same strip a shop scans on its own board, minus the
  * press's name. A client picking flyers is choosing the work, not the shop.
  */
-export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
+export function CategorySampleRow({ subcategory, listing, onPress, onStalePhoto }: Props) {
   const rate = useServiceFeeRateBps();
   const money = moneyLine(listing, rate);
   const pressTime = listing ? printTimeLine(listing.turnaroundHours) : null;
@@ -63,6 +65,8 @@ export function CategorySampleRow({ subcategory, listing, onPress }: Props) {
       <View className="w-28 shrink-0">
         <SamplePhoto
           url={sampleUrl(listing)}
+          expiresAt={listing?.photos[0]?.downloadUrlExpiresAt}
+          onStale={onStalePhoto}
           altText={listing?.photos[0]?.altText ?? subcategory.name}
           emptyLabel="No sample"
           gutter="tight"
@@ -180,6 +184,7 @@ export function CategorySampleCard({
   subcategory,
   listing,
   onPress,
+  onStalePhoto,
   photoRatio = "square",
   showExamples = true,
 }: CardProps) {
@@ -192,6 +197,8 @@ export function CategorySampleCard({
     <View className="overflow-hidden rounded-card border border-outline bg-surface">
       <SamplePhoto
         url={sampleUrl(listing)}
+        expiresAt={listing?.photos[0]?.downloadUrlExpiresAt}
+        onStale={onStalePhoto}
         altText={listing?.photos[0]?.altText ?? subcategory.name}
         emptyLabel="No sample"
         ratio={photoRatio}

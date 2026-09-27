@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Minus, Plus, TriangleAlert } from "lucide-react-native";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -13,6 +13,7 @@ import { OptionGroupPicker } from "@/components/OptionGroupPicker";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { StepTrailBar } from "@/components/StepTrail";
+import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { type CatalogItem, type MeasureUnit, type MeasurementKind } from "@/lib/api";
@@ -50,7 +51,7 @@ import {
   type ListingSelection,
 } from "@/lib/listing";
 import { userFacingError } from "@/lib/copy";
-import { isFullListing, listingNow, takeListing } from "@/lib/listingCache";
+import { isFullListing, listingNow, rereadListing, takeListing } from "@/lib/listingCache";
 import { orderFlowNow } from "@/lib/orderFlow";
 import {
   printerCapFeet,
@@ -144,6 +145,18 @@ export default function ListingScreen() {
   }, [itemId, loadSettings]);
 
   useLiveRefresh(["catalog", "services", "settings"], load);
+
+  // The sheet's photo links expire five minutes after the read. Coming back to
+  // the app on an old read, or a photo failing on an expired link, reads the
+  // listing again rather than latching "This photo will not load".
+  const heldListings = useMemo(() => (item ? [item] : null), [item]);
+  const rereadPhotos = useCallback(async () => {
+    if (!itemId) return null;
+    const fresh = await rereadListing(itemId);
+    setItem(fresh);
+    return [fresh];
+  }, [itemId]);
+  const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadPhotos);
 
   useEffect(() => {
     void load();
@@ -358,6 +371,8 @@ export default function ListingScreen() {
         <View className="bg-surface-variant px-2 pt-2">
           <SamplePhoto
             url={samplePhotoUri(item.photos[0])}
+            expiresAt={item.photos[0]?.downloadUrlExpiresAt}
+            onStale={onStalePhoto}
             altText={item.photos[0]?.altText ?? item.name}
             ratio="wide"
             emptyLabel="No sample photo"
@@ -371,6 +386,8 @@ export default function ListingScreen() {
                 <View key={photo.fileId} className="w-20">
                   <SamplePhoto
                     url={samplePhotoUri(photo)}
+                    expiresAt={photo.downloadUrlExpiresAt}
+                    onStale={onStalePhoto}
                     altText={photo.altText ?? item.name}
                     gutter="tight"
                   />

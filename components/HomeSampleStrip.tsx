@@ -15,6 +15,8 @@ type Props = {
   /** True while the boards are still being read. Draws placeholder cards. */
   loading: boolean;
   onPick: (sample: HomeSample) => void;
+  /** Home's re-read for an expired photo link (`SamplePhoto.onStale`). */
+  onStalePhoto?: () => Promise<unknown> | void;
 };
 
 /**
@@ -49,7 +51,7 @@ type Props = {
  * next always hangs over the edge; that overhang is what says the shelf runs
  * on, without a control that has to be explained.
  */
-export function HomeSampleStrip({ samples, loading, onPick }: Props) {
+export function HomeSampleStrip({ samples, loading, onPick, onStalePhoto }: Props) {
   const { width, fontScale } = useWindowDimensions();
   const cardWidth = homeSampleCardWidth(width);
   // A placeholder shaped like the card it becomes. A wrong height here is the
@@ -91,6 +93,7 @@ export function HomeSampleStrip({ samples, loading, onPick }: Props) {
                 photoRatio="wide"
                 showExamples={false}
                 onPress={() => onPick(sample)}
+                onStalePhoto={onStalePhoto}
               />
             </View>
           ))}

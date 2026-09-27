@@ -13,6 +13,8 @@ type Props = {
   subcategoryName: string;
   /** Straight-line metres to the drop-off, or null when none was given. */
   distanceMeters: number | null;
+  /** The screen's re-read for an expired photo link (`SamplePhoto.onStale`). */
+  onStalePhoto?: () => Promise<unknown> | void;
 };
 
 /**
@@ -39,12 +41,13 @@ type Props = {
  * and the one primary control in this flow waits on the listing sheet where the
  * client actually commits to something.
  */
-export function MatchCard({ match, subcategoryName, distanceMeters }: Props) {
+export function MatchCard({ match, subcategoryName, distanceMeters, onStalePhoto }: Props) {
   const reason = primaryReason(match.reasons);
   const queue = queueLine(match.queue);
   const wait = readyInShort(match.queue.estimatedHours);
   const readyBy = readyByDate(match.promiseBy);
-  const sample = samplePhotoUri(match.listings[0]?.photos[0]);
+  const samplePhoto = match.listings[0]?.photos[0];
+  const sample = samplePhotoUri(samplePhoto);
   const thing = subcategoryName.toLowerCase();
   const widest = widestPrinterCapFeet(match.listings);
 
@@ -55,6 +58,8 @@ export function MatchCard({ match, subcategoryName, distanceMeters }: Props) {
       <View className="bg-surface-variant px-2 pt-2">
         <SamplePhoto
           url={sample}
+          expiresAt={samplePhoto?.downloadUrlExpiresAt}
+          onStale={onStalePhoto}
           altText={`Sample ${match.listings[0]?.name ?? thing} printed through GRIDGO`}
           ratio="wide"
           emptyLabel="No sample photo yet"
