@@ -13,6 +13,14 @@
  * launch of the new build, by comparing the installed `versionCode` with the
  * last one this phone saw.
  *
+ * While the phone is behind, the prompt comes back on every launch
+ * (`shouldShowUpdatePrompt`) and the Notifications tab keeps a card for it;
+ * both live on the phone alone, and nothing is sent to a server.
+ *
+ * The release body's `## What's new` section (written by CI from
+ * `whats-new/`, see `WHATS_NEW.md`) is read as a short list of plain bullets
+ * (`parseWhatsNew`) and shown in the sheet and on the Notifications card.
+ *
  * Nothing here imports React Native, Expo or a store, so gridgo-rider and
  * gridgo-supplier can take this file as it is. **Only `APP_UPDATE_SOURCE`
  * names this app.** `store/appUpdate.ts`, `hooks/useAppUpdateCheck.ts` and
@@ -50,6 +58,59 @@ export type AppBuild = {
   /** What a person reads, e.g. "1.0.96". */
   versionName: string;
 };
+
+/** A release as this phone knows it: the build, and what is new in it. */
+export type ReleaseBuild = AppBuild & {
+  /** Plain bullets from the release's `## What's new` section; empty when it has none. */
+  whatsNew: string[];
+};
+
+/**
+ * How much of a release's "What's new" a phone will show. The sheet is sized
+ * by its content, so an unbounded list would push "Update now" off the screen.
+ */
+export const WHATS_NEW_LIMITS = { maxItems: 5, maxChars: 120 } as const;
+
+const WHATS_NEW_HEADING = /^#{1,6}\s*what['’]?s\s+new\b/i;
+const ANY_HEADING = /^#{1,6}\s/;
+const BULLET = /^\s*[-*+]\s+(.*)$/;
+
+/** One bullet as plain words: no links, emphasis, code marks or HTML. */
+function plainBullet(raw: string): string {
+  const text = raw
+    .replace(/<[^>]*>/g, "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`~]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length <= WHATS_NEW_LIMITS.maxChars) return text;
+  return `${text.slice(0, WHATS_NEW_LIMITS.maxChars - 1).trimEnd()}…`;
+}
+
+/**
+ * The bullets under a release body's `## What's new` heading, as plain text.
+ *
+ * Only that section is read: the rest of the body is CI's build record, not
+ * something a client needs. A body with no such section, or one with no
+ * bullets in it, answers `[]`, and the sheet looks as it did before notes
+ * existed. Long lists and long lines are cut to `WHATS_NEW_LIMITS`.
+ */
+export function parseWhatsNew(body: unknown): string[] {
+  if (typeof body !== "string") return [];
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((line) => WHATS_NEW_HEADING.test(line.trim()));
+  if (start === -1) return [];
+  const items: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (ANY_HEADING.test(line.trim())) break;
+    const bullet = BULLET.exec(line);
+    if (!bullet) continue;
+    const text = plainBullet(bullet[1]);
+    if (text) items.push(text);
+    if (items.length === WHATS_NEW_LIMITS.maxItems) break;
+  }
+  return items;
+}
 
 const RELEASE_TAG = /^v?(\d+)\.(\d+)\.(\d+)$/;
 const RELEASE_LINE = /^(\d+)\.(\d+)(?:\.|$)/;
@@ -129,7 +190,7 @@ export function installedBuild(input: InstalledBuildInput): AppBuild | null {
 /** What one read of the latest release came back with. */
 export type ReleaseRead = {
   /** The newest CI release, or `null` when there is nothing to offer. */
-  latest: AppBuild | null;
+  latest: ReleaseBuild | null;
   /**
    * Whether GitHub answered at all. `false` offline or on a timeout, which is
    * worth trying again at the next foreground rather than hours later.
@@ -171,6 +232,7 @@ export async function fetchLatestRelease(
     }
     const body = (await response.json()) as {
       tag_name?: unknown;
+      body?: unknown;
       draft?: unknown;
       prerelease?: unknown;
     } | null;
@@ -178,9 +240,16 @@ export async function fetchLatestRelease(
     if (body.draft === true || body.prerelease === true) {
       return { latest: null, answered, detail: `release ${String(body.tag_name)} is not final` };
     }
-    const latest = releaseBuildFromTag(body.tag_name);
+    const build = releaseBuildFromTag(body.tag_name);
+    const latest = build ? { ...build, whatsNew: parseWhatsNew(body.body) } : null;
     return latest
-      ? { latest, answered, detail: `latest release is ${latest.versionName}` }
+      ? {
+          latest,
+          answered,
+          detail: `latest release is ${latest.versionName}, ${
+            latest.whatsNew.length ? `What's new: ${latest.whatsNew.length}` : "no What's new"
+          }`,
+        }
       : { latest: null, answered, detail: `tag ${JSON.stringify(body.tag_name)} is not a CI release` };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -222,52 +291,58 @@ export function shouldCheckForUpdate(lastCheckedAt: number | null, now: number):
   return now - lastCheckedAt >= APP_UPDATE_CHECK_INTERVAL_MS;
 }
 
-/** The phone's calendar day, local time, e.g. "2026-09-24". */
-export function localDay(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
+/** The newer release to tell this phone about, or `null` when it is current. */
+export function newerRelease<T extends AppBuild>(
+  installed: AppBuild | null,
+  latest: T | null,
+): T | null {
+  if (!installed || !latest) return null;
+  return latest.versionCode > installed.versionCode ? latest : null;
 }
-
-/** "Later", as remembered: which release, and on which day. */
-export type UpdateDismissal = { versionCode: number; day: string };
 
 /**
- * Whether to offer `latest` to a phone running `installed`.
- *
- * "Later" quiets that one release for the rest of the day it was tapped. A
- * newer release than the one put off is offered straight away, and the next
- * day the one put off is offered again.
+ * "Later" (or "Update now"), as remembered: which release, and when. Kept in
+ * memory only, so a cold launch forgets it and asks again.
  */
-export function shouldOfferUpdate(input: {
-  installed: AppBuild;
-  latest: AppBuild;
+export type UpdateDismissal = { versionCode: number; at: number };
+
+/** What `shouldShowUpdatePrompt` needs. */
+export type UpdatePromptInput = {
+  installed: AppBuild | null;
+  latest: AppBuild | null;
   dismissed: UpdateDismissal | null;
-  today: string;
-}): boolean {
-  if (input.latest.versionCode <= input.installed.versionCode) return false;
-  const { dismissed } = input;
-  if (
-    dismissed &&
-    dismissed.day === input.today &&
-    dismissed.versionCode >= input.latest.versionCode
-  ) {
-    return false;
-  }
-  return true;
+  now: number;
+};
+
+/**
+ * Whether the update sheet should be up.
+ *
+ * While the phone is behind the latest release, the prompt keeps coming back:
+ * on every cold launch (the dismissal is not persisted), and on a return to
+ * the foreground once `APP_UPDATE_CHECK_INTERVAL_MS` has passed since it was
+ * put away. A release newer than the one put away is offered straight away.
+ * Nothing is ever blocked — the prompt is a sheet, and "Later" always works.
+ */
+export function shouldShowUpdatePrompt(input: UpdatePromptInput): boolean {
+  const latest = newerRelease(input.installed, input.latest);
+  if (!latest) return false;
+  const { dismissed, now } = input;
+  if (!dismissed) return true;
+  if (latest.versionCode > dismissed.versionCode) return true;
+  // A clock set backwards must not silence the prompt until it catches up.
+  if (now < dismissed.at) return true;
+  return now - dismissed.at >= APP_UPDATE_CHECK_INTERVAL_MS;
 }
 
-/** One line for the development log: what `shouldOfferUpdate` decided, and why. */
-export function describeOffer(
-  input: Parameters<typeof shouldOfferUpdate>[0],
-  offered: boolean,
-): string {
+/** One line for the development log: what `shouldShowUpdatePrompt` decided, and why. */
+export function describePrompt(input: UpdatePromptInput, shown: boolean): string {
   const { installed, latest, dismissed } = input;
-  if (offered) return `offering ${latest.versionName} over ${installed.versionName}`;
+  if (!installed || !latest) return "not offering: no release to compare";
+  if (shown) return `offering ${latest.versionName} over ${installed.versionName}`;
   if (latest.versionCode <= installed.versionCode) {
     return `not offering: ${installed.versionName} is already the latest`;
   }
-  return `not offering ${latest.versionName}: "Later" was tapped for ${dismissed?.versionCode ?? "it"} on ${dismissed?.day ?? "today"}`;
+  return `not offering ${latest.versionName} yet: "Later" was tapped for ${dismissed?.versionCode ?? "it"} less than 4 hours ago`;
 }
 
 /**
@@ -294,5 +369,15 @@ export const APP_UPDATE_COPY = {
   openFailed: `This phone could not open the download. Get the new version at ${APP_UPDATE_SOURCE.downloadPage}.`,
   completedTitle: "Update completed",
   completedBody: (versionName: string) => `You're on ${versionName}.`,
+  /** Heads the release's own notes, where it has any. */
+  whatsNewTitle: (versionName: string) => `What's new in ${versionName}`,
   done: "Done",
+  /** The card pinned at the top of the Notifications tab while one is waiting. */
+  noticeTitle: (versionName: string) => `App update available: version ${versionName}`,
+  noticeBody: (installedName: string) =>
+    `This phone has ${installedName}. Android will ask you to install the new one over it; your orders, basket and sign-in stay as they are.`,
+  /** The one local item on the first launch of a new build. */
+  updatedTitle: (versionName: string) => `Updated to version ${versionName}`,
+  updatedBody: "GRIDGO finished updating on this phone.",
+  dismissUpdated: "Dismiss",
 } as const;

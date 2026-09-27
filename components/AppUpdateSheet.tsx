@@ -1,13 +1,15 @@
 import { ArrowRight, CircleAlert, CircleCheck } from "lucide-react-native";
 import { useState } from "react";
-import { Linking, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { Sheet } from "@/components/Sheet";
+import { WhatsNewList } from "@/components/WhatsNewList";
 import { useThemeColors } from "@/hooks/useTheme";
-import { APP_UPDATE_COPY, APP_UPDATE_SOURCE, type AppBuild } from "@/lib/appUpdate";
-import { useAppUpdate } from "@/store/appUpdate";
+import { useUpdateDownload } from "@/hooks/useUpdateDownload";
+import { APP_UPDATE_COPY, type AppBuild, type ReleaseBuild } from "@/lib/appUpdate";
+import { selectAvailableUpdate, useAppUpdate } from "@/store/appUpdate";
 
 type Props = {
   /** False while something owns the whole screen (the launch intro). */
@@ -19,7 +21,10 @@ type Props = {
  *
  * A bottom sheet, not a dialog: nothing is blocked, and every way of putting
  * it away — the close control, the scrim, a drag, Android back — means
- * "Later". The confirmation comes first when both are due: a phone that has
+ * "Later", and "Later" lasts until the next launch: while the phone is behind,
+ * the sheet comes back on every cold launch (`shouldShowUpdatePrompt`). The
+ * Notifications tab keeps a card for the same release in between. The
+ * confirmation comes first when both are due: a phone that has
  * just updated to a build that is already behind hears that the update worked
  * before it hears about the next one.
  *
@@ -28,14 +33,15 @@ type Props = {
  */
 export function AppUpdateSheet({ ready }: Props) {
   const completed = useAppUpdate((s) => s.completed);
-  const available = useAppUpdate((s) => s.available);
+  const promptOpen = useAppUpdate((s) => s.promptOpen);
+  const available = useAppUpdate(selectAvailableUpdate);
   const installed = useAppUpdate((s) => s.installed);
 
   return (
     <>
       <UpdateCompletedSheet open={ready && completed !== null} build={completed} />
       <UpdateAvailableSheet
-        open={ready && completed === null && available !== null}
+        open={ready && completed === null && promptOpen && available !== null}
         installed={installed}
         latest={available}
       />
@@ -47,7 +53,7 @@ export function AppUpdateSheet({ ready }: Props) {
  * Keeps the last build on screen while the sheet slides away, so the closing
  * frames still read as the sheet that was open rather than an empty panel.
  */
-function useLastBuild(build: AppBuild | null): AppBuild | null {
+function useLastBuild<T extends AppBuild>(build: T | null): T | null {
   const [shown, setShown] = useState(build);
   if (build && build !== shown) setShown(build);
   return build ?? shown;
@@ -60,39 +66,34 @@ function UpdateAvailableSheet({
 }: {
   open: boolean;
   installed: AppBuild | null;
-  latest: AppBuild | null;
+  latest: ReleaseBuild | null;
 }) {
   const colors = useThemeColors();
   const later = useAppUpdate((s) => s.later);
-  const startDownload = useAppUpdate((s) => s.startDownload);
   const shown = useLastBuild(latest);
-  const [openFailed, setOpenFailed] = useState(false);
+  const { update, openFailed, clearFailure } = useUpdateDownload();
   const [prevLatest, setPrevLatest] = useState(latest);
   if (prevLatest !== latest) {
     setPrevLatest(latest);
-    setOpenFailed(false);
+    clearFailure();
   }
-
-  const update = async () => {
-    try {
-      await Linking.openURL(APP_UPDATE_SOURCE.downloadUrl);
-      startDownload();
-    } catch {
-      setOpenFailed(true);
-    }
-  };
 
   return (
     <Sheet
       open={open}
       title={APP_UPDATE_COPY.availableTitle}
       // Every dismissal is "Later". After "Update now" or "Later" the store has
-      // already let go of the release, so this is a no-op for those.
+      // already closed the prompt, so this is a no-op for those.
       onClose={() => {
-        if (useAppUpdate.getState().available) later();
+        if (useAppUpdate.getState().promptOpen) later();
       }}
     >
-      <View className="gap-4 px-4 pt-4">
+      {/*
+        The sheet is capped at a share of the screen and does not scroll by
+        itself, so a long "What's new" scrolls here and the two buttons stay
+        on screen under it.
+      */}
+      <ScrollView className="shrink grow-0" contentContainerClassName="gap-4 px-4 pb-4 pt-4">
         {shown ? (
           <View
             accessible
@@ -121,6 +122,8 @@ function UpdateAvailableSheet({
           </View>
         ) : null}
 
+        {shown ? <WhatsNewList versionName={shown.versionName} items={shown.whatsNew} /> : null}
+
         <Text className="text-body text-text-secondary">{APP_UPDATE_COPY.availableBody}</Text>
 
         {openFailed ? (
@@ -129,11 +132,11 @@ function UpdateAvailableSheet({
             <Text className="flex-1 text-body text-error">{APP_UPDATE_COPY.openFailed}</Text>
           </View>
         ) : null}
+      </ScrollView>
 
-        <View className="gap-3 pb-2">
-          <PrimaryButton label={APP_UPDATE_COPY.update} onPress={() => void update()} />
-          <SecondaryButton label={APP_UPDATE_COPY.later} onPress={() => later()} />
-        </View>
+      <View className="gap-3 px-4 pb-2">
+        <PrimaryButton label={APP_UPDATE_COPY.update} onPress={() => void update()} />
+        <SecondaryButton label={APP_UPDATE_COPY.later} onPress={() => later()} />
       </View>
     </Sheet>
   );
