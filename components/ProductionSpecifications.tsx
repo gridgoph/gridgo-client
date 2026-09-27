@@ -1,5 +1,6 @@
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { Text, View } from "react-native";
+import { DesignLinkRow } from "@/components/DesignLinkRow";
 import { SpecRow } from "@/components/SpecRow";
 import type { Order } from "@/lib/api";
 import { orderProductionItems, productionSpecRows } from "@/lib/productionSpecs";
@@ -11,6 +12,7 @@ export function ProductionSpecifications({ order, taxonomy = EMPTY_TAXONOMY }: {
       <Text className="text-body font-medium text-text-primary">{item.itemName}</Text>
       <View className="gg-card-flush px-4">
         {productionSpecRows(item, (value) => taxonomyLabel(taxonomy, value)).map((row, index) => <SpecRow key={`${row.label}:${index}`} label={row.label} value={row.value} />)}
+        {(item.artworkLinks ?? []).map((link) => <DesignLinkRow key={`${link.formatCode}:${link.url}`} link={link} />)}
       </View>
     </View>
   ))}</View>;

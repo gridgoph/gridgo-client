@@ -357,7 +357,15 @@ export default function OrderDetailScreen() {
               <SpecRow label="Deliver to" value={order.address || "—"} />
             )}
             <SpecRow label="Area" value={zoneName(zones, order.zone)} />
-            <SpecRow label="Artwork" value={order.artworkName || "Not uploaded"} />
+            <SpecRow
+              label="Artwork"
+              value={
+                order.artworkName ||
+                (order.productionItems?.some((item) => item.artworkLinks?.length)
+                  ? "Design link, shown above"
+                  : "Not uploaded")
+              }
+            />
           </View>
 
           <MoneyCard order={order} onOpenReceipt={() =>

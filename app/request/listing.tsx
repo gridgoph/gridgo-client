@@ -61,6 +61,7 @@ import {
   type PrinterWidthProblem,
 } from "@/lib/printerWidth";
 import { type OrderStepId } from "@/lib/orderSteps";
+import { designLinkPhrase } from "@/lib/designLink";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 
@@ -571,9 +572,14 @@ export default function ListingScreen() {
                 Upload {formatSentence(uploads)}.
               </Text>
             ) : null}
-            {links.length ? (
+            {designLinkPhrase(links) ? (
               <Text className="text-body text-text-secondary">
-                Or paste a link from {formatSentence(links)}.
+                {uploads.length ? "Or paste" : "Paste"} {designLinkPhrase(links)} on the next step.
+                GRIDGO checks that anyone with the link can open it.
+              </Text>
+            ) : links.length ? (
+              <Text className="text-body text-text-secondary">
+                Or send {formatSentence(links)}. Operations will ask you for it.
               </Text>
             ) : null}
             {!uploads.length && !links.length ? (

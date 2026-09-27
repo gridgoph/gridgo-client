@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
+import { DesignLinkField } from "@/components/DesignLinkField";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { ProductPreview } from "@/components/ProductPreview";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -29,6 +30,13 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
+  designLinkFormats,
+  designLinkPhrase,
+  linkVerdict,
+  takesCanvaLinks,
+  parseDesignLink,
+} from "@/lib/designLink";
+import {
   artworkFitWarning,
   fileFormats,
   fileMatchesFormats,
@@ -40,6 +48,7 @@ import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { MOCKUP_LABEL } from "@/lib/productPreview";
 import { useCart } from "@/store/cart";
+import { checkKey, useDesignLink } from "@/store/designLink";
 
 /**
  * The artwork for one thing in the basket.
@@ -48,6 +57,13 @@ import { useCart } from "@/store/cart";
  * PDF has said so on its board, and the picker is narrowed to exactly that — a
  * client who chooses a Photoshop file finds out here, in the shop's own words,
  * rather than after sending 180 MB over mobile data.
+ *
+ * A listing that takes a design link (Canva, Drive) gets a field for it beside
+ * the upload, and either one is artwork. The link is checked as it is pasted —
+ * can anyone with it open the design — and a link that plainly cannot be
+ * opened is not kept. An inconclusive check is a warning the client may pass:
+ * a Canva page tells nobody outside a browser who may see it, and Operations
+ * opens every design before it prints.
  *
  * An image is shown on the product. A PDF or a link is not: nothing on this
  * phone can rasterise a PDF, and a drawn rectangle standing in for one would be
@@ -87,19 +103,35 @@ export default function ArtworkScreen() {
   const guard: FormatGuard | undefined = useMemo(() => {
     if (!item) return undefined;
     const uploads = fileFormats(item);
-    const links = linkFormats(item);
+    const links = designLinkFormats(item.acceptedFormats);
     if (!uploads.length) return undefined;
     return {
       accept: pickerMimeTypes(item),
       check: (fileName, mimeType) => fileMatchesFormats(item, fileName, mimeType),
       rejection: (fileName) =>
         `${item.name} takes ${formatSentence(uploads)}` +
-        `${links.length ? `, or a link from ${formatSentence(links)}` : ""}. ` +
+        `${links.length ? `, or ${designLinkPhrase(links)} in the Design link field` : ""}. ` +
         `${fileName} is none of those — export it and pick it again.`,
     };
   }, [item]);
 
   const upload = useArtworkUpload({ fileId: line?.artworkFileId }, guard);
+
+  // The design link: the field's text is local while typing, and everything
+  // that arrives after a round trip lives in the store.
+  const savedLinks = Array.isArray(line?.artworkLinks) ? line.artworkLinks : [];
+  const savedUrl = savedLinks[0]?.url ?? "";
+  const [linkDraft, setLinkDraft] = useState<string | null>(null);
+  const linkText = linkDraft ?? savedUrl;
+  const committedLink = useDesignLink((state) => (line ? state.committed[line.id] : undefined));
+  const linkChecks = useDesignLink((state) => state.checks);
+  const linkSaving = useDesignLink((state) => (line ? state.saving[line.id] === true : false));
+  const linkSaveError = useDesignLink((state) => (line ? state.saveError[line.id] ?? null : null));
+  const commitLink = useDesignLink((state) => state.commit);
+  const seedLink = useDesignLink((state) => state.seed);
+  useEffect(() => {
+    if (line && savedUrl) seedLink(line.id, savedUrl);
+  }, [line?.id, savedUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Put the file on the basket line as soon as GRIDGO holds it, so leaving this
   // screen after a successful upload never loses what was just sent. A per-page
@@ -278,11 +310,25 @@ export default function ArtworkScreen() {
     upload.state.contentType,
   );
   const onLine = Boolean(line.artworkFileId);
-  const canCheckout = onLine && !saving && !unreadPages;
+  const acceptedFormats = item?.acceptedFormats ?? [];
+  const parsedLink = committedLink ? parseDesignLink(committedLink, acceptedFormats) : null;
+  const linkState = parsedLink?.ok ? linkChecks[checkKey(parsedLink.link)] : undefined;
+  const linkChecking = linkState?.phase === "checking";
+  const verdict = linkVerdict(linkState);
+  const linkOnLine = savedLinks.length > 0;
+  const hasArtwork = onLine || linkOnLine;
+  const canCheckout = hasArtwork && !saving && !linkSaving && !linkChecking && !unreadPages;
   const asksPages = item?.pricingUnit === "per_page";
-  const links = item ? linkFormats(item) : [];
+  const links = item ? designLinkFormats(item.acceptedFormats) : [];
+  // Link formats the cart cannot keep yet (Drive, Dropbox, WeTransfer filed
+  // under their own codes): named, never offered as a field that cannot save.
+  const otherLinks = item ? linkFormats(item).filter((format) => !links.includes(format)) : [];
   const uploads = item ? fileFormats(item) : [];
   const name = item?.name ?? "this item";
+  /** Check the link and, unless it plainly cannot be opened, keep it on the line. */
+  const commitLinkText = (text: string, options?: { recheck?: boolean }) =>
+    void commitLink(text, line.id, options);
+  const takesCanva = takesCanvaLinks(links);
 
   return (
     <Screen edges={["bottom"]}>
@@ -300,24 +346,65 @@ export default function ArtworkScreen() {
           {size ? ` · ${size}` : ""}.
         </Text>
 
-        <View className="mt-6">
-          {/*
-            Until a file lands this card is the only thing on the screen a
-            client can act on, so it carries the screen's yellow and takes the
-            tap itself. Once the file is on the line it goes quiet and the
-            yellow moves to "Go to checkout" below.
-          */}
-          <ArtworkUploadCard
-            state={upload.state}
-            onPick={() => void upload.pick()}
-            onRetry={() => void upload.retry()}
-            onCancel={upload.cancel}
-            emphasis="primary"
-            resolution={resolution}
-          />
-        </View>
+        {uploads.length && links.length ? (
+          <Text className="mt-1 text-body text-text-secondary">
+            Upload the file, or paste {designLinkPhrase(links)}. Either one is enough.
+          </Text>
+        ) : null}
+
+        {uploads.length || !links.length ? (
+          <View className="mt-6">
+            {/*
+              Until there is artwork this card is the one thing on the screen a
+              client can act on, so it carries the screen's yellow and takes
+              the tap itself. Once a file or a link is on the line it goes
+              quiet and the yellow moves to "Go to checkout" below.
+            */}
+            <ArtworkUploadCard
+              state={upload.state}
+              onPick={() => void upload.pick()}
+              onRetry={() => void upload.retry()}
+              onCancel={upload.cancel}
+              emphasis={hasArtwork ? "quiet" : "primary"}
+              resolution={resolution}
+            />
+          </View>
+        ) : null}
 
         {saveError ? <Text className="mt-3 text-body text-error">{saveError}</Text> : null}
+
+        {links.length ? (
+          <>
+            {uploads.length ? (
+              <View className="mt-5 flex-row items-center gap-3" aria-hidden>
+                <View className="h-px flex-1 bg-outline" />
+                <Text className="text-body text-text-muted">or</Text>
+                <View className="h-px flex-1 bg-outline" />
+              </View>
+            ) : null}
+            <View className="mt-5">
+              <DesignLinkField
+                value={linkText}
+                onChangeText={setLinkDraft}
+                onCommit={(text) => commitLinkText(text)}
+                onClear={() => {
+                  setLinkDraft("");
+                  commitLinkText("");
+                }}
+                onRecheck={() => commitLinkText(linkText, { recheck: true })}
+                phrase={designLinkPhrase(links)}
+                takesCanva={takesCanva}
+                checking={linkChecking}
+                saving={linkSaving}
+                verdict={verdict}
+                inputError={parsedLink && !parsedLink.ok ? parsedLink.message : null}
+                saveError={linkSaveError}
+                savedUnchecked={linkOnLine && !linkState && committedLink === savedUrl}
+                keptAs={parsedLink?.ok && savedUrl && savedUrl !== parsedLink.link.url ? savedUrl : null}
+              />
+            </View>
+          </>
+        ) : null}
 
         {/*
           What the file itself says it is. This is a verification line, not a
@@ -402,13 +489,6 @@ export default function ArtworkScreen() {
           </View>
         ) : null}
 
-        {item && !uploads.length && links.length ? (
-          <Text className="mt-3 text-body text-text-secondary">
-            GRIDGO takes {formatSentence(links)} for this rather than an upload. Place the order and
-            Operations will ask you for the link.
-          </Text>
-        ) : null}
-
         {onLine ? (
           <View className="mt-8 gap-3">
             <Text className="text-overline text-text-muted">HOW IT WOULD LOOK</Text>
@@ -448,7 +528,14 @@ export default function ArtworkScreen() {
           problem: the screen's one loud control did nothing, and the control
           that would have done something did not exist.
         */}
-        {onLine ? (
+        {item && !uploads.length && !links.length && otherLinks.length ? (
+          <Text className="mt-3 text-body text-text-secondary">
+            GRIDGO takes {formatSentence(otherLinks)} for this rather than an upload. Place the
+            order and Operations will ask you for the link.
+          </Text>
+        ) : null}
+
+        {hasArtwork ? (
           <Pressable
             onPress={() => router.replace("/checkout")}
             disabled={!canCheckout}
@@ -476,9 +563,13 @@ export default function ArtworkScreen() {
           </Text>
         </Pressable>
 
-        {!onLine ? (
+        {!hasArtwork ? (
           <Text className="mt-4 text-center text-caption text-text-muted">
-            GRIDGO needs the file before it can print this.
+            {links.length
+              ? uploads.length
+                ? "GRIDGO needs the file or a design link before it can print this."
+                : "GRIDGO needs the design link before it can print this."
+              : "GRIDGO needs the file before it can print this."}
           </Text>
         ) : null}
       </KeyboardAwareScrollView>

@@ -19,6 +19,7 @@
  */
 
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
+import { lineHasArtwork } from "@/lib/designLink";
 import { clientAmountMinor, roundBps } from "@/lib/gridgoPrice";
 import { settingsDownpaymentPercent } from "@/lib/payment";
 import { haversineMetres, type GeoPoint } from "@/lib/tracking";
@@ -228,9 +229,9 @@ export function linesUnpriced(lines: CartLineRecord[]): CartLineRecord[] {
   return lines.filter((line) => line.lineSubtotalMinor == null);
 }
 
-/** Lines still waiting for a file, so the sheet can name them. */
+/** Lines with neither a file nor a design link, so the sheet can name them. */
 export function linesMissingArtwork(lines: CartLineRecord[]): CartLineRecord[] {
-  return lines.filter((line) => !line.artworkFileId);
+  return lines.filter((line) => !lineHasArtwork(line));
 }
 
 /** Lines with no drop-off, when the run is being delivered. */
