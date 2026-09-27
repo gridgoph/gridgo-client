@@ -13,8 +13,10 @@ import { OptionGroupPicker } from "@/components/OptionGroupPicker";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { StepTrailBar } from "@/components/StepTrail";
+import { TourTarget } from "@/components/TourTarget";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { type CatalogItem, type MeasureUnit, type MeasurementKind } from "@/lib/api";
 import {
@@ -117,6 +119,7 @@ export default function ListingScreen() {
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const loadSettings = usePlatformSettings((state) => state.load);
+  useTourScreen("listing", item != null && !error);
 
   const loadSequence = useRef(0);
   const load = useCallback(() => {
@@ -598,7 +601,7 @@ export default function ListingScreen() {
         tick — scrolling back to the top to see what it costs is how people lose
         track of what they picked.
       */}
-      <View className="border-t border-outline bg-surface px-4 pb-2 pt-3">
+      <TourTarget step="listing" className="border-t border-outline bg-surface px-4 pb-2 pt-3">
         <View testID="listing-printing" className="flex-row items-baseline justify-between gap-3">
           <View className="min-w-0 flex-1 gap-1">
             <Text className="text-body text-text-secondary">Printing</Text>
@@ -641,7 +644,7 @@ export default function ListingScreen() {
               ? `Pick a ${missing.name.toLowerCase()} first.`
               : "Delivery is added at checkout."}
         </Text>
-      </View>
+      </TourTarget>
     </Screen>
   );
 }

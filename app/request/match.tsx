@@ -12,8 +12,10 @@ import { MatchRankingRow } from "@/components/MatchRankingRow";
 import { MatchingWait } from "@/components/MatchingWait";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { TourTarget } from "@/components/TourTarget";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { type CatalogItem, type MatchResult } from "@/lib/api";
 import { formatDeadline } from "@/lib/deadline";
@@ -161,6 +163,8 @@ export default function MatchScreen() {
       /* The rows stay on their skeleton; the sheet retries. */
     });
   }, [loadSettings]);
+
+  useTourScreen("match", !loading && !error && match != null && match.listings.length > 0);
 
   const subcategoryName = useMemo(() => {
     const found = findCategory(api.productCategoriesNow(), category ?? "")?.subcategories.find(
@@ -332,14 +336,23 @@ export default function MatchScreen() {
               ? `1 ${subcategoryName.toUpperCase()} LISTING`
               : `${match.listings.length} ${subcategoryName.toUpperCase()} LISTINGS`}
           </Text>
-          {match.listings.map((item) => (
-            <ListingRow
-              key={item.id}
-              item={item}
-              onPress={() => openListing(item)}
-              onStalePhoto={onStalePhoto}
-            />
-          ))}
+          {match.listings.map((item, index) => {
+            const row = (
+              <ListingRow
+                key={item.id}
+                item={item}
+                onPress={() => openListing(item)}
+                onStalePhoto={onStalePhoto}
+              />
+            );
+            return index === 0 ? (
+              <TourTarget key={item.id} step="match">
+                {row}
+              </TourTarget>
+            ) : (
+              row
+            );
+          })}
         </View>
 
         {!dropoff ? (

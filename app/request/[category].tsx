@@ -10,9 +10,11 @@ import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock } from "@/components/Skeleton";
+import { TourTarget } from "@/components/TourTarget";
 import { useCategoryView } from "@/hooks/useCategoryView";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
+import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { isHunting, subcategoryMatchesHunt } from "@/lib/categoryBrowse";
 import { boardListings } from "@/lib/photoLinks";
@@ -42,6 +44,7 @@ export default function CategoryScreen() {
   const startJob = useStartPrintJob();
   const [view, setView] = useCategoryView();
   const [hunt, setHunt] = useState("");
+  useTourScreen("pick");
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   const [boards, setBoards] = useState<api.ShopBoard[] | null>(null);
@@ -190,28 +193,50 @@ export default function CategoryScreen() {
           <View className="mt-3">
             {view === "wall" ? (
               <View className="-mx-1.5 flex-row flex-wrap">
-                {huntedOnBoards.map((subcategory) => (
+                {huntedOnBoards.map((subcategory, index) => (
                   <View key={subcategory.code} className="w-1/2 px-1.5 pb-3">
-                    <CategorySampleCard
-                      subcategory={subcategory}
-                      listing={pickListingFor(boards, subcategory.code)}
-                      onPress={() => startJob(category.code, subcategory.code)}
-                      onStalePhoto={onStalePhoto}
-                    />
+                    {/* The tour lights the first sample: one tile says "tap a
+                        photo" without pointing at the whole wall. */}
+                    {index === 0 ? (
+                      <TourTarget step="pick">
+                        <CategorySampleCard
+                          subcategory={subcategory}
+                          listing={pickListingFor(boards, subcategory.code)}
+                          onPress={() => startJob(category.code, subcategory.code)}
+                          onStalePhoto={onStalePhoto}
+                        />
+                      </TourTarget>
+                    ) : (
+                      <CategorySampleCard
+                        subcategory={subcategory}
+                        listing={pickListingFor(boards, subcategory.code)}
+                        onPress={() => startJob(category.code, subcategory.code)}
+                        onStalePhoto={onStalePhoto}
+                      />
+                    )}
                   </View>
                 ))}
               </View>
             ) : (
               <View className="gap-3">
-                {huntedOnBoards.map((subcategory) => (
-                  <CategorySampleRow
-                    key={subcategory.code}
-                    subcategory={subcategory}
-                    listing={pickListingFor(boards, subcategory.code)}
-                    onPress={() => startJob(category.code, subcategory.code)}
-                    onStalePhoto={onStalePhoto}
-                  />
-                ))}
+                {huntedOnBoards.map((subcategory, index) => {
+                  const row = (
+                    <CategorySampleRow
+                      key={subcategory.code}
+                      subcategory={subcategory}
+                      listing={pickListingFor(boards, subcategory.code)}
+                      onPress={() => startJob(category.code, subcategory.code)}
+                      onStalePhoto={onStalePhoto}
+                    />
+                  );
+                  return index === 0 ? (
+                    <TourTarget key={subcategory.code} step="pick">
+                      {row}
+                    </TourTarget>
+                  ) : (
+                    row
+                  );
+                })}
               </View>
             )}
           </View>
