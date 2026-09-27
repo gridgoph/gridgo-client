@@ -33,6 +33,7 @@ import {
   designLinkFormats,
   designLinkPhrase,
   linkVerdict,
+  takesCanvaLinks,
   parseDesignLink,
 } from "@/lib/designLink";
 import {
@@ -327,7 +328,7 @@ export default function ArtworkScreen() {
   /** Check the link and, unless it plainly cannot be opened, keep it on the line. */
   const commitLinkText = (text: string, options?: { recheck?: boolean }) =>
     void commitLink(text, line.id, options);
-  const takesCanva = links.some((format) => format.code === "canva_link");
+  const takesCanva = takesCanvaLinks(links);
 
   return (
     <Screen edges={["bottom"]}>
@@ -399,6 +400,7 @@ export default function ArtworkScreen() {
                 inputError={parsedLink && !parsedLink.ok ? parsedLink.message : null}
                 saveError={linkSaveError}
                 savedUnchecked={linkOnLine && !linkState && committedLink === savedUrl}
+                keptAs={parsedLink?.ok && savedUrl && savedUrl !== parsedLink.link.url ? savedUrl : null}
               />
             </View>
           </>

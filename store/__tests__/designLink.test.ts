@@ -112,6 +112,20 @@ describe("design link store", () => {
     expect(useDesignLink.getState().checks[checkKey(LINK)]).toMatchObject({ phase: "checked" });
   });
 
+  it("keeps the full design address a Canva short link resolved to", async () => {
+    const full = "https://www.canva.com/design/DAF1/token/view";
+    checkArtworkLink.mockResolvedValue(
+      checked({ ok: true, access: "public_view", url: full, formatCode: "canva_link" }),
+    );
+
+    await useDesignLink.getState().commit("https://canva.link/abc123", "cline_1");
+
+    expect(checkArtworkLink).toHaveBeenCalledWith({ formatCode: "canva_link", url: "https://canva.link/abc123" });
+    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", {
+      artworkLinks: [{ formatCode: "canva_link", url: full }],
+    });
+  });
+
   it("saves without a check on an API that has none", async () => {
     checkArtworkLink.mockResolvedValue(null);
 

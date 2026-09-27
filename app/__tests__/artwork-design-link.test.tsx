@@ -275,7 +275,7 @@ describe("ArtworkScreen design link", () => {
     await renderInSafeArea(<ArtworkScreen />);
 
     expect(
-      screen.getByText("This shop takes Canva links only. Paste a canva.com link, or upload the file."),
+      screen.getByText("This shop takes a Canva link. Paste one of those, or upload the file."),
     ).toBeTruthy();
   });
 });

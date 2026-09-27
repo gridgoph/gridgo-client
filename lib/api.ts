@@ -1035,9 +1035,13 @@ export type ArtworkLinkCheck = {
   ok: boolean;
   reachable: boolean;
   httpStatus: number | null;
-  provider: "canva" | "google_drive" | "dropbox" | "figma" | "other";
+  provider: "canva" | "google_drive" | "dropbox" | "we_transfer" | "figma" | "other";
   access: "public_view" | "public_edit" | "sign_in_required" | "not_found" | "unknown";
   message: string;
+  /** The address checked: a `canva.link` short link comes back as the full design URL. */
+  url?: string;
+  /** The format that address is filed under. Absent from checkers before gridgo-api#104. */
+  formatCode?: string;
 };
 
 /**

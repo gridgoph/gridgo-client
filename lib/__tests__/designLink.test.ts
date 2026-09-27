@@ -5,6 +5,8 @@ import {
   type CartLineRecord,
 } from "@/lib/api";
 import {
+  checkedLink,
+  linkDisplay,
   designLinkFormats,
   designLinkPhrase,
   lineArtworkSummary,
@@ -24,6 +26,8 @@ const CANVA: AcceptedFormat = {
   active: true,
 };
 const OTHER: AcceptedFormat = { ...CANVA, code: "other_link", displayName: "Other link" };
+const DRIVE: AcceptedFormat = { ...CANVA, code: "google_drive", displayName: "Google Drive" };
+const WETRANSFER: AcceptedFormat = { ...CANVA, code: "we_transfer", displayName: "WeTransfer" };
 const PDF: AcceptedFormat = {
   code: "pdf",
   displayName: "PDF",
@@ -59,6 +63,15 @@ describe("design link parsing", () => {
     expect(parsed.ok && parsed.link.url).toBe("https://canva.com/design/DAF1/view");
   });
 
+  it("files a Drive link under google_drive where the shop takes that", () => {
+    const parsed = parseDesignLink("https://drive.google.com/file/d/abc/view", [DRIVE, OTHER]);
+    expect(parsed).toMatchObject({ ok: true, link: { formatCode: "google_drive" }, provider: "google_drive" });
+    expect(parseDesignLink("https://we.tl/t-abc", [WETRANSFER])).toMatchObject({
+      ok: true,
+      link: { formatCode: "we_transfer" },
+    });
+  });
+
   it("sends anything else as an other link", () => {
     const parsed = parseDesignLink("https://drive.google.com/file/d/abc/view", [CANVA, OTHER]);
     expect(parsed).toMatchObject({ ok: true, link: { formatCode: "other_link" }, provider: "google_drive" });
@@ -67,17 +80,36 @@ describe("design link parsing", () => {
   it("refuses a non-Canva link where the shop takes Canva only, before any round trip", () => {
     expect(parseDesignLink("https://drive.google.com/file/d/abc", [CANVA])).toEqual({
       ok: false,
-      message: "This shop takes Canva links only. Paste a canva.com link, or upload the file.",
+      message: "This shop takes a Canva link. Paste one of those, or upload the file.",
     });
   });
 
-  it("files Canva's short link as an other link, since GRIDGO keeps canva.com only as Canva", () => {
-    expect(parseDesignLink("https://canva.link/abc123", [CANVA, OTHER])).toMatchObject({
+  it("files Canva's short link as a Canva link, which GRIDGO resolves to the full address", () => {
+    expect(parseDesignLink("https://canva.link/abc123", [CANVA])).toMatchObject({
       ok: true,
-      link: { formatCode: "other_link" },
+      link: { formatCode: "canva_link", url: "https://canva.link/abc123" },
       provider: "canva",
     });
-    expect(parseDesignLink("https://canva.link/abc123", [CANVA])).toMatchObject({ ok: false });
+    // GRIDGO files a short link as canva_link whatever it is sent as.
+    expect(parseDesignLink("https://canva.link/abc123", [OTHER])).toMatchObject({ ok: false });
+  });
+
+  it("shows an address without its tracking tail", () => {
+    expect(linkDisplay("https://www.canva.com/design/DAF1/tok/view?utm_content=DAF1&utm_source=x")).toBe(
+      "canva.com/design/DAF1/tok/view",
+    );
+  });
+
+  it("keeps the address the checker resolved a short link to", () => {
+    const pasted = { formatCode: "canva_link", url: "https://canva.link/abc123" };
+    expect(
+      checkedLink(pasted, { url: "https://www.canva.com/design/DAF1/tok/view", formatCode: "canva_link" }, [CANVA]),
+    ).toEqual({ formatCode: "canva_link", url: "https://www.canva.com/design/DAF1/tok/view" });
+    // An older checker sends neither field.
+    expect(checkedLink(pasted, {}, [CANVA])).toBe(pasted);
+    // A format this listing does not take is not sent to be refused.
+    expect(checkedLink(pasted, { url: "https://www.canva.com/design/x", formatCode: "other_link" }, [CANVA]))
+      .toEqual({ formatCode: "canva_link", url: "https://www.canva.com/design/x" });
   });
 
   it("refuses plain http, which GRIDGO will not store", () => {
@@ -93,18 +125,24 @@ describe("design link parsing", () => {
     expect(providerOf("https://notcanva.com/x")).toBe("other");
     expect(providerOf("https://www.dropbox.com/s/x")).toBe("dropbox");
     expect(providerOf("https://www.figma.com/file/x")).toBe("figma");
+    expect(providerOf("https://wetransfer.com/downloads/x")).toBe("we_transfer");
+    expect(providerOf("https://canva.link/x")).toBe("canva");
   });
 
-  it("opens the field only for the link formats the cart can keep", () => {
-    const drive: AcceptedFormat = { ...OTHER, code: "google_drive", displayName: "Google Drive" };
-    expect(designLinkFormats([PDF, drive, CANVA]).map((format) => format.code)).toEqual(["canva_link"]);
-    expect(designLinkFormats([drive])).toEqual([]);
-    expect(designLinkPhrase([drive])).toBe("");
+  it("opens the field only for link formats GRIDGO can keep", () => {
+    const figma: AcceptedFormat = { ...OTHER, code: "figma_link", displayName: "Figma" };
+    expect(designLinkFormats([PDF, DRIVE, CANVA, figma]).map((format) => format.code)).toEqual([
+      "google_drive",
+      "canva_link",
+    ]);
+    expect(designLinkPhrase([figma])).toBe("");
   });
 
   it("says what the field takes in a client's words, not the registry's", () => {
     expect(designLinkPhrase([PDF, CANVA])).toBe("a Canva link");
-    expect(designLinkPhrase([CANVA, OTHER])).toBe("a Canva, Google Drive or Dropbox link");
+    expect(designLinkPhrase([CANVA, OTHER])).toBe("a Canva or other sharing link");
+    expect(designLinkPhrase([CANVA, DRIVE, WETRANSFER])).toBe("a Canva, Google Drive or WeTransfer link");
+    expect(designLinkPhrase([OTHER])).toBe("a sharing link");
     expect(designLinkPhrase([PDF])).toBe("");
   });
 });

@@ -8,6 +8,7 @@ import {
   LoaderCircle,
   Palette,
   PenTool,
+  Send,
   TriangleAlert,
   X,
   type LucideIcon,
@@ -18,6 +19,7 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { useThemeColors } from "@/hooks/useTheme";
 import {
   CANVA_SHARE_STEPS,
+  linkDisplay,
   OTHER_SHARE_STEPS,
   providerName,
   providerOf,
@@ -29,6 +31,7 @@ const PROVIDER_ICONS: Record<LinkProvider, LucideIcon> = {
   canva: Palette,
   google_drive: HardDrive,
   dropbox: Box,
+  we_transfer: Send,
   figma: PenTool,
   other: Link2,
 };
@@ -67,6 +70,8 @@ type Props = {
   saveError: string | null;
   /** On the line, with no check this session (a return visit, or an API with no check). */
   savedUnchecked: boolean;
+  /** The full address GRIDGO kept, when it is not what was pasted (a Canva short link). */
+  keptAs?: string | null;
 };
 
 /**
@@ -93,6 +98,7 @@ export function DesignLinkField({
   inputError,
   saveError,
   savedUnchecked,
+  keptAs = null,
 }: Props) {
   const colors = useThemeColors();
   // Null follows the answer (open on a sign-in or broken link); a tap decides for good.
@@ -105,7 +111,9 @@ export function DesignLinkField({
   useEffect(() => cancelPaste, []);
   const provider = value.trim() ? providerOf(/^https?:/i.test(value.trim()) ? value.trim() : `https://${value.trim()}`) : null;
   const ProviderIcon = PROVIDER_ICONS[provider ?? "other"];
-  const steps = takesCanva ? CANVA_SHARE_STEPS : OTHER_SHARE_STEPS;
+  // Canva's own steps unless the pasted link is plainly from somewhere else.
+  const canvaSteps = takesCanva && (!provider || provider === "canva");
+  const steps = canvaSteps ? CANVA_SHARE_STEPS : OTHER_SHARE_STEPS;
   const stepsOpen = showSteps ?? verdict?.tone === "error";
 
   return (
@@ -183,6 +191,7 @@ export function DesignLinkField({
         inputError={inputError}
         saveError={saveError}
         savedUnchecked={savedUnchecked}
+        keptAs={keptAs}
         onRecheck={onRecheck}
       />
 
@@ -191,12 +200,12 @@ export function DesignLinkField({
           onPress={() => setShowSteps(!stepsOpen)}
           accessibilityRole="button"
           accessibilityState={{ expanded: stepsOpen }}
-          accessibilityLabel={takesCanva ? "How to share from Canva" : "How to share a design link"}
+          accessibilityLabel={canvaSteps ? "How to share from Canva" : "How to share a design link"}
           className="gg-touch flex-row items-center justify-between"
           style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
         >
           <Text className="text-body font-medium text-text-primary">
-            {takesCanva ? "How to share from Canva" : "How to share a design link"}
+            {canvaSteps ? "How to share from Canva" : "How to share a design link"}
           </Text>
           <View style={stepsOpen ? { transform: [{ rotate: "180deg" }] } : undefined}>
             <ChevronDown size={18} color={colors.textSecondary} strokeWidth={2} />
@@ -234,10 +243,18 @@ function LinkAnswer({
   inputError,
   saveError,
   savedUnchecked,
+  keptAs,
   onRecheck,
 }: Pick<
   Props,
-  "checking" | "saving" | "verdict" | "inputError" | "saveError" | "savedUnchecked" | "onRecheck"
+  | "checking"
+  | "saving"
+  | "verdict"
+  | "inputError"
+  | "saveError"
+  | "savedUnchecked"
+  | "keptAs"
+  | "onRecheck"
 >) {
   const colors = useThemeColors();
 
@@ -261,7 +278,7 @@ function LinkAnswer({
         tone={verdict.tone}
         title={verdict.title}
         body={verdict.body}
-        caption={saving ? "Saving…" : null}
+        caption={saving ? "Saving…" : keptAs ? `Kept as ${linkDisplay(keptAs)}` : null}
         action={verdict.tone === "success" ? undefined : { label: "Check again", onPress: onRecheck }}
       />
     );

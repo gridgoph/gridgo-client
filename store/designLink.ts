@@ -4,6 +4,7 @@ import * as api from "@/lib/api";
 import type { CartLineRecord } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
+  checkedLink,
   lineArtworkLinks,
   linkVerdict,
   parseDesignLink,
@@ -140,7 +141,9 @@ export const useDesignLink = create<DesignLinkState>((set, get) => {
       if (generations.get(line.id) !== generation || !state || state.phase === "checking") return;
 
       const blocked = linkVerdict(state)?.blocks ?? false;
-      const next = blocked ? [] : [parsed.link];
+      // Keep what the checker resolved a short link to, not the short link.
+      const keep = checkedLink(parsed.link, state.phase === "checked" ? state.check : null, formats);
+      const next = blocked ? [] : [keep];
       if (!sameLinks(saved, next)) await save(line, next, generation);
     },
     seed: (lineId, url) => {

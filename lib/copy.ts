@@ -132,6 +132,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "That link is not one GRIDGO can keep. Copy the https:// link again from the Share menu.";
       case "unsafe_artwork_url":
         return "That link points somewhere private. Use the public sharing link instead.";
+      case "artwork_link_unresolved":
+        return "That short link did not lead to a design. Open the design and copy its full address.";
       case "artwork_link_format_not_accepted":
         return "This shop does not take that kind of link. Paste a different one, or upload the file.";
       // ---- basket: the shop's minimum run ----

@@ -1,18 +1,18 @@
 import type { AcceptedFormat, ArtworkLink, ArtworkLinkCheck, CartLineRecord } from "@/lib/api";
 
 /**
- * A design link: the artwork kept on Canva (or Drive, Dropbox, Figma) rather
- * than uploaded as a file.
+ * A design link: the artwork kept on Canva, Drive, Dropbox or WeTransfer
+ * rather than uploaded as a file.
  *
  * `docs/ORDER_MATCH_API.md#artwork-design-links` in gridgo-api is the
  * contract. Two rules shape everything here:
  *
- * - GRIDGO stores only an HTTPS link, and a `canva_link` only on canva.com, so
- *   the field refuses anything else before a round trip rather than after.
+ * - GRIDGO stores only an HTTPS link, filed under the provider's own format
+ *   code where the listing takes it (`canva_link` only for Canva, and so on),
+ *   so the field refuses anything else before a round trip rather than after.
  * - `POST /artwork/link-check` is advice, never a grant. It can prove a link is
- *   public (or plainly is not), and most of the time it honestly cannot tell —
- *   a Canva design is an HTML shell to anyone without a browser. That answer
- *   is a warning the client may continue past, never a tick.
+ *   public (or plainly is not), and sometimes it honestly cannot tell. That
+ *   answer is a warning the client may continue past, never a tick.
  */
 
 export type LinkProvider = ArtworkLinkCheck["provider"];
@@ -21,12 +21,13 @@ const PROVIDER_NAMES: Record<LinkProvider, string> = {
   canva: "Canva",
   google_drive: "Google Drive",
   dropbox: "Dropbox",
+  we_transfer: "WeTransfer",
   figma: "Figma",
   other: "Web link",
 };
 
 export function providerName(provider: LinkProvider): string {
-  return PROVIDER_NAMES[provider];
+  return PROVIDER_NAMES[provider] ?? PROVIDER_NAMES.other;
 }
 
 function onDomain(host: string, domain: string): boolean {
@@ -41,33 +42,34 @@ function hostOf(url: string): string {
   }
 }
 
-/**
- * Canva's own short links. "Copy link" in Canva's Share menu can hand out a
- * `canva.link` address, which gridgo-api does not file as a `canva_link` (it
- * takes canva.com only), so it can go only where the shop takes other links.
- */
-function isCanvaShortLink(url: string): boolean {
-  return onDomain(hostOf(url), "canva.link");
-}
-
-/** The same domain boundary gridgo-api uses, plus Canva's short links. */
+/** The same host boundaries gridgo-api files each format under. */
 export function providerOf(url: string): LinkProvider {
   const host = hostOf(url);
-  if (onDomain(host, "canva.com") || onDomain(host, "canva.link")) return "canva";
+  if (onDomain(host, "canva.com") || host === "canva.link") return "canva";
   if (host === "drive.google.com" || host === "docs.google.com") return "google_drive";
   if (onDomain(host, "dropbox.com") || onDomain(host, "dropboxusercontent.com")) return "dropbox";
+  if (onDomain(host, "wetransfer.com") || host === "we.tl") return "we_transfer";
   if (onDomain(host, "figma.com")) return "figma";
   return "other";
 }
 
-/**
- * The two link formats GRIDGO keeps on an order.
- *
- * The registry has more url-kind formats (`google_drive`, `dropbox`,
- * `we_transfer`), but the cart refuses any link not filed under one of these
- * two, so only these open the field. A Drive link goes as an `other_link`.
- */
-const STORABLE_LINK_CODES = ["canva_link", "other_link"];
+/** The format code GRIDGO files each provider's links under. */
+const PROVIDER_CODES: Partial<Record<LinkProvider, string>> = {
+  canva: "canva_link",
+  google_drive: "google_drive",
+  dropbox: "dropbox",
+  we_transfer: "we_transfer",
+};
+
+/** The link formats GRIDGO keeps on an order, in the order a client names them. */
+const STORABLE_LINK_CODES = ["canva_link", "google_drive", "dropbox", "we_transfer", "other_link"];
+
+const CODE_NAMES: Record<string, string> = {
+  canva_link: "Canva",
+  google_drive: "Google Drive",
+  dropbox: "Dropbox",
+  we_transfer: "WeTransfer",
+};
 
 /** The link formats this listing takes that GRIDGO can store, active only. */
 export function designLinkFormats(formats: AcceptedFormat[]): AcceptedFormat[] {
@@ -83,6 +85,11 @@ function linkCodes(formats: AcceptedFormat[]): Set<string> {
   return new Set(designLinkFormats(formats).map((format) => format.code));
 }
 
+function orList(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
+}
+
 /**
  * How a screen names what the field takes, in a client's words.
  *
@@ -91,12 +98,18 @@ function linkCodes(formats: AcceptedFormat[]): Set<string> {
  */
 export function designLinkPhrase(formats: AcceptedFormat[]): string {
   const codes = linkCodes(formats);
-  const canva = codes.has("canva_link");
-  const other = codes.has("other_link");
-  if (canva && other) return "a Canva, Google Drive or Dropbox link";
-  if (canva) return "a Canva link";
-  if (other) return "a Google Drive, Dropbox or other sharing link";
-  return "";
+  const named = STORABLE_LINK_CODES.filter((code) => codes.has(code) && CODE_NAMES[code]).map(
+    (code) => CODE_NAMES[code],
+  );
+  if (codes.has("other_link")) {
+    return named.length ? `a ${orList([...named, "other sharing"])} link` : "a sharing link";
+  }
+  return named.length ? `a ${orList(named)} link` : "";
+}
+
+/** Whether the listing takes Canva links, so the hint teaches Canva's own Share menu. */
+export function takesCanvaLinks(formats: AcceptedFormat[]): boolean {
+  return linkCodes(formats).has("canva_link");
 }
 
 export type ParsedDesignLink =
@@ -109,8 +122,11 @@ const MAX_URL = 2000;
  * Read what the client pasted into one link this listing takes.
  *
  * A bare `www.canva.com/...` is taken as HTTPS — people copy from the address
- * bar. The format is decided from the address: a canva.com link is a Canva
- * link where the shop takes one, and anything else goes as an other link.
+ * bar. The format is decided from the address: a Drive link is filed as
+ * `google_drive` where the shop takes that, and otherwise as an other link.
+ * A `canva.link` short link is a Canva link: gridgo-api resolves it to the
+ * full design address, and files it under `canva_link` whatever it was sent
+ * as, so it can only go where the shop takes Canva links.
  */
 export function parseDesignLink(text: string, formats: AcceptedFormat[]): ParsedDesignLink {
   const trimmed = text.trim();
@@ -134,29 +150,38 @@ export function parseDesignLink(text: string, formats: AcceptedFormat[]): Parsed
 
   const provider = providerOf(withScheme);
   const codes = linkCodes(formats);
-  const shortCanva = isCanvaShortLink(withScheme);
+  const own = PROVIDER_CODES[provider];
+  const shortCanva = hostOf(withScheme) === "canva.link";
   const formatCode =
-    provider === "canva" && !shortCanva && codes.has("canva_link")
-      ? "canva_link"
-      : codes.has("other_link")
-        ? "other_link"
-        : null;
-  if (!formatCode && shortCanva) {
-    return {
-      ok: false,
-      message:
-        "That is a Canva short link. Open your design in Canva and copy the canva.com address instead.",
-    };
-  }
+    own && codes.has(own) ? own : codes.has("other_link") && !shortCanva ? "other_link" : null;
   if (!formatCode) {
+    const takes = designLinkPhrase(formats);
     return {
       ok: false,
-      message: codes.has("canva_link")
-        ? "This shop takes Canva links only. Paste a canva.com link, or upload the file."
+      message: takes
+        ? `This shop takes ${takes}. Paste one of those, or upload the file.`
         : "This shop does not take design links. Upload the file instead.",
     };
   }
   return { ok: true, link: { formatCode, url: withScheme }, provider };
+}
+
+/**
+ * The link GRIDGO should keep once a check has answered.
+ *
+ * The checker resolves a `canva.link` short link to the full design address
+ * and says which format that is; an older checker sends neither, and a format
+ * this listing does not take is ignored rather than sent to be refused.
+ */
+export function checkedLink(
+  pasted: ArtworkLink,
+  check: Pick<ArtworkLinkCheck, "url" | "formatCode"> | null | undefined,
+  formats: AcceptedFormat[],
+): ArtworkLink {
+  if (!check?.url?.startsWith("https://")) return pasted;
+  const formatCode =
+    check.formatCode && linkCodes(formats).has(check.formatCode) ? check.formatCode : pasted.formatCode;
+  return { formatCode, url: check.url };
 }
 
 /** What GRIDGO holds for this line. An older API sends no field at all. */
@@ -264,9 +289,17 @@ export function linkLabel(link: ArtworkLink): string {
   return provider === "other" ? "Design link" : `${providerName(provider)} link`;
 }
 
-/** The address without its scheme or `www.`, for a line too narrow for all of it. */
+/**
+ * The address without its scheme, `www.`, query or fragment, for a line too
+ * narrow for all of it. Canva's share links carry a tail of tracking
+ * parameters that says nothing to a client about which design it is.
+ */
 export function linkDisplay(url: string): string {
-  return url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/$/, "");
+  return url
+    .replace(/[?#].*$/, "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/$/, "");
 }
 
 /** What a basket line carries, in the words of the checkout row. */
