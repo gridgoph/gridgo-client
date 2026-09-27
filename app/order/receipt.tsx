@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
-import { ChevronLeft } from "lucide-react-native";
+import { CircleCheck, ChevronLeft } from "lucide-react-native";
 
 import { ErrorState } from "@/components/ErrorState";
 import { OrderReference } from "@/components/OrderReference";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { PrintedReceipt } from "@/components/PrintedReceipt";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
@@ -19,8 +20,10 @@ import { userFacingError } from "@/lib/copy";
 import { physicalInvoiceEntry } from "@/lib/physicalInvoice";
 import { canRate } from "@/lib/rating";
 import {
+  HOME_TAB,
   isCheckoutReceipt,
   ORDERS_TAB,
+  placedReceiptFor,
   RECEIPT_BLURB,
   RECEIPT_HEADLINE,
   receiptFromInvoice,
@@ -45,14 +48,18 @@ export default function OrderReceiptScreen() {
   const fromCheckout = isCheckoutReceipt(from);
   const settings = usePlatformSettings((state) => state.settings);
 
-  const [view, setView] = useState<ReceiptView | null>(null);
+  // Checkout hands over the summary it was just given, so the slip can print
+  // at once; the reads below refresh it.
+  const [view, setView] = useState<ReceiptView | null>(() =>
+    fromCheckout ? placedReceiptFor(orderId) : null,
+  );
   const [order, setOrder] = useState<api.Order | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [leaving, setLeaving] = useState(false);
+  const [leaving, setLeaving] = useState<typeof ORDERS_TAB | typeof HOME_TAB | null>(null);
   const loadSequence = useRef(0);
 
   const exitToOrders = useCallback(() => {
-    setLeaving(true);
+    setLeaving(ORDERS_TAB);
   }, []);
 
   // After place, history can still be the request. Intercept every back path
@@ -62,7 +69,7 @@ export default function OrderReceiptScreen() {
 
   useEffect(() => {
     if (!leaving) return;
-    router.dismissTo(ORDERS_TAB);
+    router.dismissTo(leaving);
   }, [leaving, router]);
 
   const load = useCallback(async () => {
@@ -111,6 +118,7 @@ export default function OrderReceiptScreen() {
   const headerEscape = fromCheckout ? (
     <Stack.Screen
       options={{
+        title: "Order placed",
         headerLeft: () => (
           <Pressable
             onPress={exitToOrders}
@@ -135,6 +143,25 @@ export default function OrderReceiptScreen() {
           <ErrorState label="Could not load receipt" body={error} onRetry={() => void load()} />
           {orderId ? <SecondaryButton label="View this order" onPress={openOrder} /> : null}
         </View>
+      </Screen>
+    );
+  }
+
+  if (fromCheckout) {
+    return (
+      <Screen edges={["bottom"]}>
+        {headerEscape}
+        <PrintedReceipt
+          view={view}
+          showServiceFee={serviceFeeVisibleToClient(settings)}
+          thanks={<OrderPlacedThanks />}
+          actions={
+            <>
+              <PrimaryButton label="View order" onPress={openOrder} />
+              <SecondaryButton label="Back to Home" onPress={() => setLeaving(HOME_TAB)} />
+            </>
+          }
+        />
       </Screen>
     );
   }
@@ -242,5 +269,26 @@ export default function OrderReceiptScreen() {
         )}
       </ScrollView>
     </Screen>
+  );
+}
+
+/**
+ * The calm close to the print: the order is in, and what happens next.
+ * Placed, not paid — the slip says where the payment stands.
+ */
+function OrderPlacedThanks() {
+  const colors = useThemeColors();
+  return (
+    <View className="flex-row items-center gap-3">
+      <View className="h-11 w-11 items-center justify-center rounded-pill bg-surface-variant">
+        <CircleCheck size={24} color={colors.success} strokeWidth={2} aria-hidden />
+      </View>
+      <View className="min-w-0 flex-1 gap-0.5" accessible accessibilityRole="header">
+        <Text className="text-h3 text-text-primary">Thank you for ordering</Text>
+        <Text className="text-body text-text-secondary">
+          Your order is placed. GRIDGO checks your payment and artwork next.
+        </Text>
+      </View>
+    </View>
   );
 }
