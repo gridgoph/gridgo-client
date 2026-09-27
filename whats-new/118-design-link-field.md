@@ -1,1 +1,0 @@
-- Paste a Canva or other design link on the artwork step, and GRIDGO checks that anyone with it can open it.
