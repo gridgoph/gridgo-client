@@ -2,9 +2,10 @@ import { CircleAlert, CircleArrowDown, CircleCheck, X } from "lucide-react-nativ
 import { Pressable, Text, View } from "react-native";
 
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { WhatsNewList } from "@/components/WhatsNewList";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useUpdateDownload } from "@/hooks/useUpdateDownload";
-import { APP_UPDATE_COPY } from "@/lib/appUpdate";
+import { APP_UPDATE_COPY, type ReleaseBuild } from "@/lib/appUpdate";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import { selectAvailableUpdate, useAppUpdate } from "@/store/appUpdate";
 
@@ -38,7 +39,7 @@ export function AppUpdateNotices() {
   return (
     <View className="gap-3">
       {available && installed ? (
-        <UpdateAvailableCard latestName={available.versionName} installedName={installed.versionName} />
+        <UpdateAvailableCard latest={available} installedName={installed.versionName} />
       ) : null}
       {updated ? <UpdatedCard versionName={updated.build.versionName} at={updated.at} /> : null}
     </View>
@@ -46,10 +47,10 @@ export function AppUpdateNotices() {
 }
 
 function UpdateAvailableCard({
-  latestName,
+  latest,
   installedName,
 }: {
-  latestName: string;
+  latest: ReleaseBuild;
   installedName: string;
 }) {
   const colors = useThemeColors();
@@ -61,13 +62,14 @@ function UpdateAvailableCard({
         <CircleArrowDown size={20} color={colors.info} strokeWidth={2} />
         <View className="flex-1 gap-1">
           <Text className="text-body-lg font-medium text-text-primary">
-            {APP_UPDATE_COPY.noticeTitle(latestName)}
+            {APP_UPDATE_COPY.noticeTitle(latest.versionName)}
           </Text>
           <Text className="text-body text-text-secondary">
             {APP_UPDATE_COPY.noticeBody(installedName)}
           </Text>
         </View>
       </View>
+      <WhatsNewList versionName={latest.versionName} items={latest.whatsNew} />
       {openFailed ? (
         <View className="flex-row items-start gap-2" accessibilityLiveRegion="polite">
           <CircleAlert size={18} color={colors.error} strokeWidth={2} />

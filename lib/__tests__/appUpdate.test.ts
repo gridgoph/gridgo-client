@@ -8,6 +8,8 @@ import {
   justUpdated,
   newerRelease,
   parseForcedVersionCode,
+  parseWhatsNew,
+  WHATS_NEW_LIMITS,
   releaseBuildFromTag,
   shouldCheckForUpdate,
   shouldShowUpdatePrompt,
@@ -97,9 +99,9 @@ describe("reading the latest release", () => {
   it("asks GitHub for this app's latest release, naming itself", async () => {
     const fetchImpl = jest.fn(async () => response(200, { tag_name: "v1.0.96" }));
     await expect(fetchLatestRelease(fetchImpl as unknown as typeof fetch)).resolves.toEqual({
-      latest: { versionCode: 96, versionName: "1.0.96" },
+      latest: { versionCode: 96, versionName: "1.0.96", whatsNew: [] },
       answered: true,
-      detail: "latest release is 1.0.96",
+      detail: "latest release is 1.0.96, no What's new",
     });
     // GitHub answers a request with no User-Agent with 403, the same status as
     // its rate limit, so the read cannot leave it to the HTTP stack.
@@ -112,6 +114,16 @@ describe("reading the latest release", () => {
         },
       }),
     );
+  });
+
+  it("reads the release's What's new section", async () => {
+    const body = "## What's new\n\n- Faster checkout\n\n## Build\n\nSigned release APK (123M).";
+    const fetchImpl = jest.fn(async () => response(200, { tag_name: "v1.0.96", body }));
+    await expect(fetchLatestRelease(fetchImpl as unknown as typeof fetch)).resolves.toEqual({
+      latest: { versionCode: 96, versionName: "1.0.96", whatsNew: ["Faster checkout"] },
+      answered: true,
+      detail: "latest release is 1.0.96, What's new: 1",
+    });
   });
 
   it("answers nothing rate-limited, or for a release it cannot read, and says why", async () => {
@@ -158,6 +170,67 @@ describe("reading the latest release", () => {
     await expect(
       fetchLatestRelease(hung as unknown as typeof fetch, { timeoutMs: 5 }),
     ).resolves.toMatchObject({ latest: null, answered: false });
+  });
+});
+
+describe("What's new in a release", () => {
+  const ciBoilerplate =
+    "Signed release APK for sideloading (123M). Install it on the phone directly.\n\nCommit `97433f8`, build 122.";
+
+  it("reads only the bullets under the What's new heading", () => {
+    const body = [
+      "## What's new",
+      "",
+      "- The update prompt keeps coming back until you update",
+      "* App updates appear in Notifications",
+      "",
+      "## Build",
+      "",
+      "- Commit `97433f8`, build 122.",
+      ciBoilerplate,
+    ].join("\n");
+    expect(parseWhatsNew(body)).toEqual([
+      "The update prompt keeps coming back until you update",
+      "App updates appear in Notifications",
+    ]);
+  });
+
+  it("is empty when the release has no What's new section", () => {
+    expect(parseWhatsNew(ciBoilerplate)).toEqual([]);
+    expect(parseWhatsNew("- A bullet outside any section")).toEqual([]);
+    expect(parseWhatsNew("")).toEqual([]);
+    expect(parseWhatsNew(null)).toEqual([]);
+    expect(parseWhatsNew(undefined)).toEqual([]);
+    expect(parseWhatsNew(42)).toEqual([]);
+  });
+
+  it("is empty when the section has no bullets", () => {
+    expect(parseWhatsNew("## What's new\n\n## Build\n\n- build 122")).toEqual([]);
+    expect(parseWhatsNew("## What's new\n\nSee the website.")).toEqual([]);
+    expect(parseWhatsNew("## What's new\n\n-   \n- **  **")).toEqual([]);
+  });
+
+  it("finds the heading however it is spelled", () => {
+    for (const heading of ["## What's new", "### What’s New", "# WHAT'S NEW", "## Whats new in 1.0.96"]) {
+      expect(parseWhatsNew(`${heading}\r\n- Faster checkout`)).toEqual(["Faster checkout"]);
+    }
+  });
+
+  it("shows plain words: no links, emphasis, code or HTML", () => {
+    const body =
+      "## What's new\n- **Faster** [checkout](https://example.com/x) with `QR Ph` <b>now</b>\n-   Spaces   collapse  ";
+    expect(parseWhatsNew(body)).toEqual(["Faster checkout with QR Ph now", "Spaces collapse"]);
+  });
+
+  it("caps a very long list and a very long line", () => {
+    const many = Array.from({ length: 40 }, (_, i) => `- Change ${i + 1}`).join("\n");
+    const items = parseWhatsNew(`## What's new\n${many}`);
+    expect(items).toHaveLength(WHATS_NEW_LIMITS.maxItems);
+    expect(items[0]).toBe("Change 1");
+
+    const [long] = parseWhatsNew(`## What's new\n- ${"word ".repeat(200)}`);
+    expect(long.length).toBeLessThanOrEqual(WHATS_NEW_LIMITS.maxChars);
+    expect(long.endsWith("\u2026")).toBe(true);
   });
 });
 

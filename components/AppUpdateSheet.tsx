@@ -1,13 +1,14 @@
 import { ArrowRight, CircleAlert, CircleCheck } from "lucide-react-native";
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { Sheet } from "@/components/Sheet";
+import { WhatsNewList } from "@/components/WhatsNewList";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useUpdateDownload } from "@/hooks/useUpdateDownload";
-import { APP_UPDATE_COPY, type AppBuild } from "@/lib/appUpdate";
+import { APP_UPDATE_COPY, type AppBuild, type ReleaseBuild } from "@/lib/appUpdate";
 import { selectAvailableUpdate, useAppUpdate } from "@/store/appUpdate";
 
 type Props = {
@@ -52,7 +53,7 @@ export function AppUpdateSheet({ ready }: Props) {
  * Keeps the last build on screen while the sheet slides away, so the closing
  * frames still read as the sheet that was open rather than an empty panel.
  */
-function useLastBuild(build: AppBuild | null): AppBuild | null {
+function useLastBuild<T extends AppBuild>(build: T | null): T | null {
   const [shown, setShown] = useState(build);
   if (build && build !== shown) setShown(build);
   return build ?? shown;
@@ -65,7 +66,7 @@ function UpdateAvailableSheet({
 }: {
   open: boolean;
   installed: AppBuild | null;
-  latest: AppBuild | null;
+  latest: ReleaseBuild | null;
 }) {
   const colors = useThemeColors();
   const later = useAppUpdate((s) => s.later);
@@ -87,7 +88,12 @@ function UpdateAvailableSheet({
         if (useAppUpdate.getState().promptOpen) later();
       }}
     >
-      <View className="gap-4 px-4 pt-4">
+      {/*
+        The sheet is capped at a share of the screen and does not scroll by
+        itself, so a long "What's new" scrolls here and the two buttons stay
+        on screen under it.
+      */}
+      <ScrollView className="shrink grow-0" contentContainerClassName="gap-4 px-4 pb-4 pt-4">
         {shown ? (
           <View
             accessible
@@ -116,6 +122,8 @@ function UpdateAvailableSheet({
           </View>
         ) : null}
 
+        {shown ? <WhatsNewList versionName={shown.versionName} items={shown.whatsNew} /> : null}
+
         <Text className="text-body text-text-secondary">{APP_UPDATE_COPY.availableBody}</Text>
 
         {openFailed ? (
@@ -124,11 +132,11 @@ function UpdateAvailableSheet({
             <Text className="flex-1 text-body text-error">{APP_UPDATE_COPY.openFailed}</Text>
           </View>
         ) : null}
+      </ScrollView>
 
-        <View className="gap-3 pb-2">
-          <PrimaryButton label={APP_UPDATE_COPY.update} onPress={() => void update()} />
-          <SecondaryButton label={APP_UPDATE_COPY.later} onPress={() => later()} />
-        </View>
+      <View className="gap-3 px-4 pb-2">
+        <PrimaryButton label={APP_UPDATE_COPY.update} onPress={() => void update()} />
+        <SecondaryButton label={APP_UPDATE_COPY.later} onPress={() => later()} />
       </View>
     </Sheet>
   );

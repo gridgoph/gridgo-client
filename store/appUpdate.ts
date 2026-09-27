@@ -9,6 +9,7 @@ import {
   shouldCheckForUpdate,
   shouldShowUpdatePrompt,
   type AppBuild,
+  type ReleaseBuild,
   type UpdateDismissal,
 } from "@/lib/appUpdate";
 import { createPersistStorage } from "@/lib/persistStorage";
@@ -35,7 +36,7 @@ type AppUpdateStore = {
    * The newest release GitHub named, persisted so a launch with no network,
    * or inside GitHub's rate limit, still knows the phone is behind.
    */
-  latest: AppBuild | null;
+  latest: ReleaseBuild | null;
   /** Set once, on the first launch of a newer build. Persisted. */
   updatedNotice: UpdatedNotice | null;
 

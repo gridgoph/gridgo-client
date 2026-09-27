@@ -194,6 +194,23 @@ describe("the APK reaches the captain's server only from the default branch", ()
     expect(release).toContain('"$latest"');
   });
 
+  it("writes the pending What's new notes into the release the app reads", () => {
+    const release = apkSteps.find((step) => step.includes("gh release create"));
+    expect(release).toContain("node scripts/whats-new.js notes");
+    expect(release).toContain('--notes "$notes"');
+  });
+
+  it("files those notes under the version only after the latest release is out", () => {
+    const record = apkSteps.findIndex((step) => step.includes("scripts/whats-new.js record"));
+    const githubRelease = apkSteps.findIndex((step) => step.includes("gh release create"));
+    expect(record).toBeGreaterThan(githubRelease);
+    const step = apkSteps[record];
+    // A manual dispatch publishes a not-latest release; its notes stay pending.
+    expect(step).toMatch(/if:\s*github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/);
+    expect(step).not.toMatch(/always\(\)|failure\(\)|!cancelled\(\)/);
+    expect(step).toContain("git push origin HEAD:main");
+  });
+
   it("does not fail the job when Actions artifact storage is full", () => {
     const upload = apkSteps.find((step) => step.includes("upload-artifact"));
     expect(upload).toMatch(/continue-on-error:\s*true/);
@@ -275,6 +292,10 @@ describe("a pull request never produces a signed release build", () => {
   it("keeps every secret inside that job", () => {
     const check = jobBody("check");
     expect(check).not.toMatch(/secrets\./);
+  });
+
+  it("checks the What's new notes on every pull request", () => {
+    expect(jobBody("check")).toContain("node scripts/whats-new.js check");
   });
 
   it("force-exits Jest so an open handle cannot cancel the check job", () => {

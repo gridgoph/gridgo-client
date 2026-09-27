@@ -32,7 +32,7 @@ jest.mock("@/lib/api", () => {
 const api = require("@/lib/api");
 
 const installed = { versionCode: 95, versionName: "1.0.95" };
-const latest = { versionCode: 96, versionName: "1.0.96" };
+const latest = { versionCode: 96, versionName: "1.0.96", whatsNew: [] as string[] };
 
 const assignment: Notification = {
   id: "ntf_1",

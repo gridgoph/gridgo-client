@@ -6,7 +6,7 @@ import { APP_UPDATE_SOURCE } from "@/lib/appUpdate";
 import { useAppUpdate } from "@/store/appUpdate";
 
 const installed = { versionCode: 95, versionName: "1.0.95" };
-const latest = { versionCode: 96, versionName: "1.0.96" };
+const latest = { versionCode: 96, versionName: "1.0.96", whatsNew: [] as string[] };
 
 beforeEach(() => {
   useAppUpdate.getState().reset();
@@ -38,6 +38,18 @@ describe("AppUpdateNotices", () => {
     expect(screen.getByText("App update available: version 1.0.96")).toBeTruthy();
     expect(screen.getByText(/This phone has 1\.0\.95\./)).toBeTruthy();
     expect(screen.getByText("Update now")).toBeTruthy();
+    expect(screen.queryByText(/What's new/)).toBeNull();
+  });
+
+  it("carries the release's What's new list", async () => {
+    useAppUpdate.setState({
+      installed,
+      latest: { ...latest, whatsNew: ["The update prompt shows what changed", "Faster checkout"] },
+    });
+    await render(<AppUpdateNotices />);
+    expect(screen.getByText("What's new in 1.0.96")).toBeTruthy();
+    expect(screen.getByText("The update prompt shows what changed")).toBeTruthy();
+    expect(screen.getByText("Faster checkout")).toBeTruthy();
   });
 
   it("says once that the phone was updated", async () => {

@@ -17,6 +17,10 @@
  * (`shouldShowUpdatePrompt`) and the Notifications tab keeps a card for it;
  * both live on the phone alone, and nothing is sent to a server.
  *
+ * The release body's `## What's new` section (written by CI from
+ * `whats-new/`, see `WHATS_NEW.md`) is read as a short list of plain bullets
+ * (`parseWhatsNew`) and shown in the sheet and on the Notifications card.
+ *
  * Nothing here imports React Native, Expo or a store, so gridgo-rider and
  * gridgo-supplier can take this file as it is. **Only `APP_UPDATE_SOURCE`
  * names this app.** `store/appUpdate.ts`, `hooks/useAppUpdateCheck.ts` and
@@ -54,6 +58,59 @@ export type AppBuild = {
   /** What a person reads, e.g. "1.0.96". */
   versionName: string;
 };
+
+/** A release as this phone knows it: the build, and what is new in it. */
+export type ReleaseBuild = AppBuild & {
+  /** Plain bullets from the release's `## What's new` section; empty when it has none. */
+  whatsNew: string[];
+};
+
+/**
+ * How much of a release's "What's new" a phone will show. The sheet is sized
+ * by its content, so an unbounded list would push "Update now" off the screen.
+ */
+export const WHATS_NEW_LIMITS = { maxItems: 5, maxChars: 120 } as const;
+
+const WHATS_NEW_HEADING = /^#{1,6}\s*what['’]?s\s+new\b/i;
+const ANY_HEADING = /^#{1,6}\s/;
+const BULLET = /^\s*[-*+]\s+(.*)$/;
+
+/** One bullet as plain words: no links, emphasis, code marks or HTML. */
+function plainBullet(raw: string): string {
+  const text = raw
+    .replace(/<[^>]*>/g, "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`~]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length <= WHATS_NEW_LIMITS.maxChars) return text;
+  return `${text.slice(0, WHATS_NEW_LIMITS.maxChars - 1).trimEnd()}…`;
+}
+
+/**
+ * The bullets under a release body's `## What's new` heading, as plain text.
+ *
+ * Only that section is read: the rest of the body is CI's build record, not
+ * something a client needs. A body with no such section, or one with no
+ * bullets in it, answers `[]`, and the sheet looks as it did before notes
+ * existed. Long lists and long lines are cut to `WHATS_NEW_LIMITS`.
+ */
+export function parseWhatsNew(body: unknown): string[] {
+  if (typeof body !== "string") return [];
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((line) => WHATS_NEW_HEADING.test(line.trim()));
+  if (start === -1) return [];
+  const items: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (ANY_HEADING.test(line.trim())) break;
+    const bullet = BULLET.exec(line);
+    if (!bullet) continue;
+    const text = plainBullet(bullet[1]);
+    if (text) items.push(text);
+    if (items.length === WHATS_NEW_LIMITS.maxItems) break;
+  }
+  return items;
+}
 
 const RELEASE_TAG = /^v?(\d+)\.(\d+)\.(\d+)$/;
 const RELEASE_LINE = /^(\d+)\.(\d+)(?:\.|$)/;
@@ -133,7 +190,7 @@ export function installedBuild(input: InstalledBuildInput): AppBuild | null {
 /** What one read of the latest release came back with. */
 export type ReleaseRead = {
   /** The newest CI release, or `null` when there is nothing to offer. */
-  latest: AppBuild | null;
+  latest: ReleaseBuild | null;
   /**
    * Whether GitHub answered at all. `false` offline or on a timeout, which is
    * worth trying again at the next foreground rather than hours later.
@@ -175,6 +232,7 @@ export async function fetchLatestRelease(
     }
     const body = (await response.json()) as {
       tag_name?: unknown;
+      body?: unknown;
       draft?: unknown;
       prerelease?: unknown;
     } | null;
@@ -182,9 +240,16 @@ export async function fetchLatestRelease(
     if (body.draft === true || body.prerelease === true) {
       return { latest: null, answered, detail: `release ${String(body.tag_name)} is not final` };
     }
-    const latest = releaseBuildFromTag(body.tag_name);
+    const build = releaseBuildFromTag(body.tag_name);
+    const latest = build ? { ...build, whatsNew: parseWhatsNew(body.body) } : null;
     return latest
-      ? { latest, answered, detail: `latest release is ${latest.versionName}` }
+      ? {
+          latest,
+          answered,
+          detail: `latest release is ${latest.versionName}, ${
+            latest.whatsNew.length ? `What's new: ${latest.whatsNew.length}` : "no What's new"
+          }`,
+        }
       : { latest: null, answered, detail: `tag ${JSON.stringify(body.tag_name)} is not a CI release` };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -227,10 +292,10 @@ export function shouldCheckForUpdate(lastCheckedAt: number | null, now: number):
 }
 
 /** The newer release to tell this phone about, or `null` when it is current. */
-export function newerRelease(
+export function newerRelease<T extends AppBuild>(
   installed: AppBuild | null,
-  latest: AppBuild | null,
-): AppBuild | null {
+  latest: T | null,
+): T | null {
   if (!installed || !latest) return null;
   return latest.versionCode > installed.versionCode ? latest : null;
 }
@@ -304,6 +369,8 @@ export const APP_UPDATE_COPY = {
   openFailed: `This phone could not open the download. Get the new version at ${APP_UPDATE_SOURCE.downloadPage}.`,
   completedTitle: "Update completed",
   completedBody: (versionName: string) => `You're on ${versionName}.`,
+  /** Heads the release's own notes, where it has any. */
+  whatsNewTitle: (versionName: string) => `What's new in ${versionName}`,
   done: "Done",
   /** The card pinned at the top of the Notifications tab while one is waiting. */
   noticeTitle: (versionName: string) => `App update available: version ${versionName}`,

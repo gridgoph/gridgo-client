@@ -7,7 +7,7 @@ import { APP_UPDATE_SOURCE } from "@/lib/appUpdate";
 import { useAppUpdate } from "@/store/appUpdate";
 
 const installed = { versionCode: 95, versionName: "1.0.95" };
-const latest = { versionCode: 96, versionName: "1.0.96" };
+const latest = { versionCode: 96, versionName: "1.0.96", whatsNew: [] as string[] };
 
 function renderSheet(ready = true) {
   return render(
@@ -52,6 +52,24 @@ describe("AppUpdateSheet", () => {
     expect(screen.getByText("Update completed")).toBeTruthy();
     expect(screen.getByText("You're on 1.0.95.")).toBeTruthy();
     expect(screen.queryByText("A new version of GRIDGO is ready")).toBeNull();
+  });
+
+  it("lists what is new in the release", async () => {
+    useAppUpdate.setState({
+      installed,
+      latest: { ...latest, whatsNew: ["Updates now appear in Notifications"] },
+      promptOpen: true,
+    });
+    await renderSheet();
+    expect(screen.getByText("What's new in 1.0.96")).toBeTruthy();
+    expect(screen.getByText("Updates now appear in Notifications")).toBeTruthy();
+  });
+
+  it("looks as it did before notes when the release has none", async () => {
+    useAppUpdate.setState({ installed, latest, promptOpen: true });
+    await renderSheet();
+    expect(screen.getByText("A new version of GRIDGO is ready")).toBeTruthy();
+    expect(screen.queryByText(/What's new/)).toBeNull();
   });
 
   it("names both versions and hands the download to the phone", async () => {

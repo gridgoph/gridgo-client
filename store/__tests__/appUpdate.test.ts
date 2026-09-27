@@ -83,7 +83,20 @@ describe("looking for a newer release", () => {
 
   it("offers a newer release", async () => {
     await useAppUpdate.getState().check(now, releases("v1.0.96"));
-    expect(available()).toEqual({ versionCode: 96, versionName: "1.0.96" });
+    expect(available()).toEqual({ versionCode: 96, versionName: "1.0.96", whatsNew: [] });
+    expect(promptOpen()).toBe(true);
+  });
+
+  it("remembers the release's What's new across a force-stop", async () => {
+    const fetchImpl = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ tag_name: "v1.0.96", body: "## What's new\n- Faster checkout" }),
+    }) as unknown as typeof fetch;
+    await useAppUpdate.getState().check(now, fetchImpl);
+    coldLaunch();
+    useAppUpdate.getState().start(installed, now + 60_000);
+    expect(available()?.whatsNew).toEqual(["Faster checkout"]);
     expect(promptOpen()).toBe(true);
   });
 
@@ -112,7 +125,7 @@ describe("looking for a newer release", () => {
 
   it("logs each decision in a development build", async () => {
     await useAppUpdate.getState().check(now, releases("v1.0.96"));
-    expect(console.info).toHaveBeenCalledWith("[update-check] latest release is 1.0.96");
+    expect(console.info).toHaveBeenCalledWith("[update-check] latest release is 1.0.96, no What's new");
     expect(console.info).toHaveBeenCalledWith("[update-check] offering 1.0.96 over 1.0.95");
   });
 
