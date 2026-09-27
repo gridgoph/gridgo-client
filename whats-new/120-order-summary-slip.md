@@ -1,1 +1,0 @@
-- After you place an order, your order summary now prints out on screen, with a thank-you and a link to your order.

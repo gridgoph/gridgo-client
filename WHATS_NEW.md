@@ -13,6 +13,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.147
+
+- After you place an order, your order summary now prints out on screen, with a thank-you and a link to your order.
+
 ## 1.0.143
 
 - Paste a Canva or other design link on the artwork step, and GRIDGO checks that anyone with it can open it.
