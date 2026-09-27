@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -72,6 +72,17 @@ const wrap = (node: ReactElement) => (
     {node}
   </SafeAreaProvider>
 );
+
+/**
+ * Under Jest, Reanimated starts each `useAnimatedStyle` mapper on a
+ * `setTimeout(0)` (react-native-worklets' mocked requestAnimationFrame), so for
+ * one macrotask after mount a shared-value write never reaches the style.
+ * Whether `render` and `fireEvent` happen to outlast that timer depends on how
+ * loaded the runner is — CI on main failed on it — so wait for it outright.
+ */
+async function animatedStylesLive() {
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+}
 
 /** The screen's own reads never answer, so what shows is checkout's handoff. */
 beforeEach(() => {
@@ -149,6 +160,11 @@ describe("order placed receipt", () => {
   it("finishes the print on any touch", async () => {
     mockReducedMotion = false;
     await render(wrap(<OrderReceiptScreen />));
+    await animatedStylesLive();
+    // Still held in the slot, so it is the touch that lands it.
+    expect(screen.getByTestId("receipt-slip-feed")).toHaveAnimatedStyle({
+      transform: [{ translateY: -4000 }],
+    });
 
     await fireEvent(screen.getByTestId("receipt-print"), "touchStart");
 
