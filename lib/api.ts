@@ -130,6 +130,8 @@ export type ProductionItem = {
   options: { groupName: string; label: string }[];
   artworkFileId: string | null;
   mockupFileId: string | null;
+  /** Design links snapshotted at checkout; absent on an API from before them. */
+  artworkLinks?: ArtworkLink[];
 };
 
 /**
@@ -1015,11 +1017,50 @@ export async function activateClerkClient(input: ClerkActivateInput = {}): Promi
 export type AcceptedFormat = {
   code: string;
   displayName: string;
+  /** `url` is a design link: `canva_link` or `other_link`. See `lib/designLink.ts`. */
   inputKind: "file" | "url";
   extensions: string[];
   mimeTypes: string[];
   active: boolean;
 };
+
+/** A design kept on Canva, Drive or the like instead of an uploaded file. HTTPS only. */
+export type ArtworkLink = { formatCode: string; url: string };
+
+/**
+ * What `POST /artwork/link-check` found. Advisory: `ok` is true only with real
+ * evidence of public access, and `message` is display text never to branch on.
+ */
+export type ArtworkLinkCheck = {
+  ok: boolean;
+  reachable: boolean;
+  httpStatus: number | null;
+  provider: "canva" | "google_drive" | "dropbox" | "we_transfer" | "figma" | "other";
+  access: "public_view" | "public_edit" | "sign_in_required" | "not_found" | "unknown";
+  message: string;
+  /** The address checked: a `canva.link` short link comes back as the full design URL. */
+  url?: string;
+  /** The format that address is filed under. Absent from checkers before gridgo-api#104. */
+  formatCode?: string;
+};
+
+/**
+ * Check that a design link opens without signing in.
+ *
+ * Null when this API has no link check (an older deployment answers the route
+ * with 404/405/501): the field then simply goes unchecked rather than failing.
+ */
+export async function checkArtworkLink(link: ArtworkLink): Promise<ArtworkLinkCheck | null> {
+  try {
+    return await request<ArtworkLinkCheck>("/artwork/link-check", {
+      method: "POST",
+      body: JSON.stringify({ url: link.url, formatCode: link.formatCode }),
+    });
+  } catch (error) {
+    if (error instanceof ApiError && [404, 405, 501].includes(error.status)) return null;
+    throw error;
+  }
+}
 
 /**
  * A sample photo on a listing.
@@ -1516,6 +1557,8 @@ export type CartLineRecord = {
   structuredSpec: Record<string, unknown>;
   artworkFileId: string | null;
   mockupFileId: string | null;
+  /** Design links on this line. Absent on an API from before them — see `lineArtworkLinks`. */
+  artworkLinks?: ArtworkLink[];
   /** This line's own drop-off, for a run split across several addresses. */
   dropoff: OrderPoint | null;
   sortOrder: number;
@@ -1591,6 +1634,7 @@ export type Invoice = {
     amountMinor: number;
     artworkFileId: string | null;
     mockupFileId: string | null;
+    artworkLinks?: ArtworkLink[];
     dropoff: OrderPoint | null;
   }[];
   itemSubtotalMinor: number;
@@ -1840,6 +1884,8 @@ export async function addCartLine(
     measurement?: LineMeasurement | null;
     structuredSpec?: Record<string, unknown>;
     artworkFileId?: string | null;
+    /** Replaces the line's links; `[]` clears them. Omit to keep them. */
+    artworkLinks?: ArtworkLink[];
     dropoff?: OrderPoint | null;
   },
 ): Promise<Cart> {
@@ -1859,6 +1905,8 @@ export async function updateCartLine(
     measurement?: LineMeasurement | null;
     structuredSpec?: Record<string, unknown>;
     artworkFileId?: string | null;
+    /** Replaces the line's links; `[]` clears them. Omit to keep them. */
+    artworkLinks?: ArtworkLink[];
     dropoff?: OrderPoint | null;
   },
 ): Promise<Cart> {
