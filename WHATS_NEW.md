@@ -13,6 +13,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.154
+
+- New to GRIDGO? A short guided tour now walks your first order from Home to checkout. Replay it from Account.
+
 ## 1.0.147
 
 - After you place an order, your order summary now prints out on screen, with a thank-you and a link to your order.
