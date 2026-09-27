@@ -1,0 +1,1 @@
+- Sample photos no longer go blank after the app sits in the background; they reload by themselves.
