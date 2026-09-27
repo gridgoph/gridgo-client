@@ -30,6 +30,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
+  designLinkFormats,
   designLinkPhrase,
   linkVerdict,
   parseDesignLink,
@@ -101,7 +102,7 @@ export default function ArtworkScreen() {
   const guard: FormatGuard | undefined = useMemo(() => {
     if (!item) return undefined;
     const uploads = fileFormats(item);
-    const links = linkFormats(item);
+    const links = designLinkFormats(item.acceptedFormats);
     if (!uploads.length) return undefined;
     return {
       accept: pickerMimeTypes(item),
@@ -317,7 +318,10 @@ export default function ArtworkScreen() {
   const hasArtwork = onLine || linkOnLine;
   const canCheckout = hasArtwork && !saving && !linkSaving && !linkChecking && !unreadPages;
   const asksPages = item?.pricingUnit === "per_page";
-  const links = item ? linkFormats(item) : [];
+  const links = item ? designLinkFormats(item.acceptedFormats) : [];
+  // Link formats the cart cannot keep yet (Drive, Dropbox, WeTransfer filed
+  // under their own codes): named, never offered as a field that cannot save.
+  const otherLinks = item ? linkFormats(item).filter((format) => !links.includes(format)) : [];
   const uploads = item ? fileFormats(item) : [];
   const name = item?.name ?? "this item";
   /** Check the link and, unless it plainly cannot be opened, keep it on the line. */
@@ -522,6 +526,13 @@ export default function ArtworkScreen() {
           problem: the screen's one loud control did nothing, and the control
           that would have done something did not exist.
         */}
+        {item && !uploads.length && !links.length && otherLinks.length ? (
+          <Text className="mt-3 text-body text-text-secondary">
+            GRIDGO takes {formatSentence(otherLinks)} for this rather than an upload. Place the
+            order and Operations will ask you for the link.
+          </Text>
+        ) : null}
+
         {hasArtwork ? (
           <Pressable
             onPress={() => router.replace("/checkout")}

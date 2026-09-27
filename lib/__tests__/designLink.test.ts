@@ -1,5 +1,11 @@
-import { checkArtworkLink, type AcceptedFormat, type ArtworkLinkCheck } from "@/lib/api";
 import {
+  checkArtworkLink,
+  type AcceptedFormat,
+  type ArtworkLinkCheck,
+  type CartLineRecord,
+} from "@/lib/api";
+import {
+  designLinkFormats,
   designLinkPhrase,
   lineArtworkSummary,
   lineHasArtwork,
@@ -8,7 +14,6 @@ import {
   providerOf,
 } from "@/lib/designLink";
 import { linesMissingArtwork } from "@/lib/basket";
-import type { CartLineRecord } from "@/lib/api";
 
 const CANVA: AcceptedFormat = {
   code: "canva_link",
@@ -66,6 +71,15 @@ describe("design link parsing", () => {
     });
   });
 
+  it("files Canva's short link as an other link, since GRIDGO keeps canva.com only as Canva", () => {
+    expect(parseDesignLink("https://canva.link/abc123", [CANVA, OTHER])).toMatchObject({
+      ok: true,
+      link: { formatCode: "other_link" },
+      provider: "canva",
+    });
+    expect(parseDesignLink("https://canva.link/abc123", [CANVA])).toMatchObject({ ok: false });
+  });
+
   it("refuses plain http, which GRIDGO will not store", () => {
     expect(parseDesignLink("http://www.canva.com/design/x", [CANVA])).toMatchObject({ ok: false });
   });
@@ -79,6 +93,13 @@ describe("design link parsing", () => {
     expect(providerOf("https://notcanva.com/x")).toBe("other");
     expect(providerOf("https://www.dropbox.com/s/x")).toBe("dropbox");
     expect(providerOf("https://www.figma.com/file/x")).toBe("figma");
+  });
+
+  it("opens the field only for the link formats the cart can keep", () => {
+    const drive: AcceptedFormat = { ...OTHER, code: "google_drive", displayName: "Google Drive" };
+    expect(designLinkFormats([PDF, drive, CANVA]).map((format) => format.code)).toEqual(["canva_link"]);
+    expect(designLinkFormats([drive])).toEqual([]);
+    expect(designLinkPhrase([drive])).toBe("");
   });
 
   it("says what the field takes in a client's words, not the registry's", () => {

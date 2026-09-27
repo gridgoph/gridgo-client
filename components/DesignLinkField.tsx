@@ -12,7 +12,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
@@ -41,6 +41,12 @@ const TONE_ICONS: Record<LinkVerdict["tone"], LucideIcon> = {
 
 /** A paste lands as one change of many characters; typing never does. */
 const PASTE_JUMP = 8;
+/**
+ * How long a paste must sit still before it is checked. Some keyboards (and
+ * adb) deliver a pasted link in chunks, and checking each chunk spent the
+ * API's ten-a-minute budget on half-links.
+ */
+const PASTE_SETTLE_MS = 700;
 
 type Props = {
   value: string;
@@ -89,11 +95,18 @@ export function DesignLinkField({
   savedUnchecked,
 }: Props) {
   const colors = useThemeColors();
-  const [showSteps, setShowSteps] = useState(false);
+  // Null follows the answer (open on a sign-in or broken link); a tap decides for good.
+  const [showSteps, setShowSteps] = useState<boolean | null>(null);
+  const pasteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelPaste = () => {
+    if (pasteTimer.current) clearTimeout(pasteTimer.current);
+    pasteTimer.current = null;
+  };
+  useEffect(() => cancelPaste, []);
   const provider = value.trim() ? providerOf(/^https?:/i.test(value.trim()) ? value.trim() : `https://${value.trim()}`) : null;
   const ProviderIcon = PROVIDER_ICONS[provider ?? "other"];
   const steps = takesCanva ? CANVA_SHARE_STEPS : OTHER_SHARE_STEPS;
-  const stepsOpen = showSteps || verdict?.tone === "error";
+  const stepsOpen = showSteps ?? verdict?.tone === "error";
 
   return (
     <View className="gg-card gap-4">
@@ -119,10 +132,23 @@ export function DesignLinkField({
           value={value}
           onChangeText={(next) => {
             onChangeText(next);
-            if (next.trim() && next.length - value.length >= PASTE_JUMP) onCommit(next);
+            const pasted = next.trim() && next.length - value.length >= PASTE_JUMP;
+            if (pasted || pasteTimer.current) {
+              cancelPaste();
+              pasteTimer.current = setTimeout(() => {
+                pasteTimer.current = null;
+                onCommit(next);
+              }, PASTE_SETTLE_MS);
+            }
           }}
-          onEndEditing={(event) => onCommit(event.nativeEvent.text ?? value)}
-          onSubmitEditing={(event) => onCommit(event.nativeEvent.text ?? value)}
+          onEndEditing={(event) => {
+            cancelPaste();
+            onCommit(event.nativeEvent.text ?? value);
+          }}
+          onSubmitEditing={(event) => {
+            cancelPaste();
+            onCommit(event.nativeEvent.text ?? value);
+          }}
           placeholder={takesCanva ? "https://www.canva.com/design/…" : "https://…"}
           placeholderTextColor={colors.textMuted}
           accessibilityLabel="Design link"
@@ -136,7 +162,10 @@ export function DesignLinkField({
         />
         {value ? (
           <Pressable
-            onPress={onClear}
+            onPress={() => {
+              cancelPaste();
+              onClear();
+            }}
             accessibilityRole="button"
             accessibilityLabel="Remove the design link"
             className="gg-touch items-center justify-center"
@@ -159,7 +188,7 @@ export function DesignLinkField({
 
       <View className="border-t border-outline-subtle pt-1">
         <Pressable
-          onPress={() => setShowSteps((open) => !open)}
+          onPress={() => setShowSteps(!stepsOpen)}
           accessibilityRole="button"
           accessibilityState={{ expanded: stepsOpen }}
           accessibilityLabel={takesCanva ? "How to share from Canva" : "How to share a design link"}

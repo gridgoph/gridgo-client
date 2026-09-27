@@ -572,10 +572,14 @@ export default function ListingScreen() {
                 Upload {formatSentence(uploads)}.
               </Text>
             ) : null}
-            {links.length ? (
+            {designLinkPhrase(links) ? (
               <Text className="text-body text-text-secondary">
                 {uploads.length ? "Or paste" : "Paste"} {designLinkPhrase(links)} on the next step.
                 GRIDGO checks that anyone with the link can open it.
+              </Text>
+            ) : links.length ? (
+              <Text className="text-body text-text-secondary">
+                Or send {formatSentence(links)}. Operations will ask you for it.
               </Text>
             ) : null}
             {!uploads.length && !links.length ? (

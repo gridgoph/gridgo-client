@@ -33,28 +33,54 @@ function onDomain(host: string, domain: string): boolean {
   return host === domain || host.endsWith(`.${domain}`);
 }
 
-/** The same domain boundary gridgo-api uses, so the name here matches its answer. */
-export function providerOf(url: string): LinkProvider {
-  let host: string;
+function hostOf(url: string): string {
   try {
-    host = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+    return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
   } catch {
-    return "other";
+    return "";
   }
-  if (onDomain(host, "canva.com")) return "canva";
+}
+
+/**
+ * Canva's own short links. "Copy link" in Canva's Share menu can hand out a
+ * `canva.link` address, which gridgo-api does not file as a `canva_link` (it
+ * takes canva.com only), so it can go only where the shop takes other links.
+ */
+function isCanvaShortLink(url: string): boolean {
+  return onDomain(hostOf(url), "canva.link");
+}
+
+/** The same domain boundary gridgo-api uses, plus Canva's short links. */
+export function providerOf(url: string): LinkProvider {
+  const host = hostOf(url);
+  if (onDomain(host, "canva.com") || onDomain(host, "canva.link")) return "canva";
   if (host === "drive.google.com" || host === "docs.google.com") return "google_drive";
   if (onDomain(host, "dropbox.com") || onDomain(host, "dropboxusercontent.com")) return "dropbox";
   if (onDomain(host, "figma.com")) return "figma";
   return "other";
 }
 
-/** The link formats a listing takes (`canva_link`, `other_link`), active only. */
-function linkCodes(formats: AcceptedFormat[]): Set<string> {
-  return new Set(
-    formats
-      .filter((format) => format.active !== false && format.inputKind === "url")
-      .map((format) => format.code),
+/**
+ * The two link formats GRIDGO keeps on an order.
+ *
+ * The registry has more url-kind formats (`google_drive`, `dropbox`,
+ * `we_transfer`), but the cart refuses any link not filed under one of these
+ * two, so only these open the field. A Drive link goes as an `other_link`.
+ */
+const STORABLE_LINK_CODES = ["canva_link", "other_link"];
+
+/** The link formats this listing takes that GRIDGO can store, active only. */
+export function designLinkFormats(formats: AcceptedFormat[]): AcceptedFormat[] {
+  return formats.filter(
+    (format) =>
+      format.active !== false &&
+      format.inputKind === "url" &&
+      STORABLE_LINK_CODES.includes(format.code),
   );
+}
+
+function linkCodes(formats: AcceptedFormat[]): Set<string> {
+  return new Set(designLinkFormats(formats).map((format) => format.code));
 }
 
 /**
@@ -108,12 +134,20 @@ export function parseDesignLink(text: string, formats: AcceptedFormat[]): Parsed
 
   const provider = providerOf(withScheme);
   const codes = linkCodes(formats);
+  const shortCanva = isCanvaShortLink(withScheme);
   const formatCode =
-    provider === "canva" && codes.has("canva_link")
+    provider === "canva" && !shortCanva && codes.has("canva_link")
       ? "canva_link"
       : codes.has("other_link")
         ? "other_link"
         : null;
+  if (!formatCode && shortCanva) {
+    return {
+      ok: false,
+      message:
+        "That is a Canva short link. Open your design in Canva and copy the canva.com address instead.",
+    };
+  }
   if (!formatCode) {
     return {
       ok: false,
@@ -164,8 +198,8 @@ const CONTINUE_NOTE = "You can still continue. Operations opens every design bef
  * What a check result says to the client.
  *
  * Decided from `access` and `reachable`, never from `message` — the API says
- * its wording may change. Its message is shown only for an inconclusive check,
- * where it is the one thing that says why (a timeout, a page too large).
+ * its wording may change. Its message is shown only when the link could not be
+ * reached, where it is the one thing that says why (a timeout, a bad redirect).
  */
 export function linkVerdict(state: LinkCheckState | null | undefined): LinkVerdict | null {
   if (!state || state.phase === "checking" || state.phase === "unavailable") return null;
@@ -197,7 +231,9 @@ export function linkVerdict(state: LinkCheckState | null | undefined): LinkVerdi
         ? {
             tone: "warning",
             title: "We couldn't confirm who can open it",
-            body: `${check.message} ${CONTINUE_NOTE}`.trim(),
+            // The page answered, so there is no reason worth relaying — only
+            // the one setting that makes it work.
+            body: `Make sure sharing is set to Anyone with the link. ${CONTINUE_NOTE}`,
             blocks: false,
           }
         : {

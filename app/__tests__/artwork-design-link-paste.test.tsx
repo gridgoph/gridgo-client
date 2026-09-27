@@ -7,7 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import ArtworkScreen from "@/app/request/artwork";
 import type { ArtworkLinkCheck, Cart, CartLineRecord, CatalogItem } from "@/lib/api";
 import { useCart } from "@/store/cart";
-import { checkKey, useDesignLink } from "@/store/designLink";
+import { useDesignLink } from "@/store/designLink";
 
 const mockPick = jest.fn(async () => undefined);
 
@@ -178,15 +178,6 @@ function check(overrides: Partial<ArtworkLinkCheck>): ArtworkLinkCheck {
   };
 }
 
-/** A link already committed and checked: the screen is drawn from the stores alone. */
-function withCheck(result: ArtworkLinkCheck | null, onLine: boolean) {
-  useCart.setState({ cart: cart({ lines: [line({ artworkLinks: onLine ? [LINK] : [] })] }) });
-  useDesignLink.setState({
-    committed: { cline_1: URL },
-    checks: { [checkKey(LINK)]: result ? { phase: "checked", check: result } : { phase: "unavailable" } },
-  });
-}
-
 beforeEach(() => {
   jest.spyOn(Image, "getSize").mockImplementation(() => undefined);
   useDesignLink.getState().reset();
@@ -202,7 +193,11 @@ describe("ArtworkScreen design link paste", () => {
 
     fireEvent.changeText(screen.getByLabelText("Design link"), URL);
 
-    expect(await screen.findByText("Anyone with the link can view it")).toBeTruthy();
+    // A paste is checked once it has settled, not chunk by chunk.
+    expect(api.checkArtworkLink).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("Anyone with the link can view it", {}, { timeout: 3000 }),
+    ).toBeTruthy();
     expect(api.checkArtworkLink).toHaveBeenCalledWith(LINK);
     expect(api.updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [LINK] });
     expect(await screen.findByLabelText("Go to checkout")).toBeTruthy();
