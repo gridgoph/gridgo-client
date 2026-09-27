@@ -11,9 +11,11 @@ import { FormScreen } from "@/components/FormScreen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { useCategoryView } from "@/hooks/useCategoryView";
+import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import * as api from "@/lib/api";
 import { isHunting, subcategoryMatchesHunt } from "@/lib/categoryBrowse";
+import { boardListings } from "@/lib/photoLinks";
 import { userFacingError } from "@/lib/copy";
 import { findCategory, type ProductCategory, type ProductSubcategory } from "@/lib/productCategories";
 import {
@@ -68,6 +70,19 @@ export default function CategoryScreen() {
   }, [categoryCode]);
 
   useLiveRefresh(["catalog", "services", "availability"], loadBoards, { refreshOnFocus: false });
+
+  // The wall's photo links expire five minutes after the read. Coming back to
+  // the app on an old read re-reads the boards, and a tile failing on an
+  // expired link re-reads them past the cache, instead of latching "This photo
+  // will not load".
+  const heldListings = useMemo(() => (boards ? boardListings(boards) : null), [boards]);
+  const rereadBoards = useCallback(async ({ force }: { force: boolean }) => {
+    if (!categoryCode) return null;
+    const read = await loadCategoryBoards(categoryCode, { force });
+    setBoards(read.boards);
+    return boardListings(read.boards);
+  }, [categoryCode]);
+  const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadBoards);
 
   useFocusEffect(useCallback(() => {
     void loadBoards();
@@ -181,6 +196,7 @@ export default function CategoryScreen() {
                       subcategory={subcategory}
                       listing={pickListingFor(boards, subcategory.code)}
                       onPress={() => startJob(category.code, subcategory.code)}
+                      onStalePhoto={onStalePhoto}
                     />
                   </View>
                 ))}
@@ -193,6 +209,7 @@ export default function CategoryScreen() {
                     subcategory={subcategory}
                     listing={pickListingFor(boards, subcategory.code)}
                     onPress={() => startJob(category.code, subcategory.code)}
+                    onStalePhoto={onStalePhoto}
                   />
                 ))}
               </View>
