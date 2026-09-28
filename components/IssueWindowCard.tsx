@@ -239,7 +239,7 @@ export function IssueWindowCard({ order, onUpdated }: Props) {
       <ConfirmDialog
         visible={closingAsFine}
         question={`Close ${order.title} as fine?`}
-        body="This confirms the order arrived as agreed. The check window closes now, your supplier is paid for the job, and a problem can no longer be reported on it from the app."
+        body="This confirms the order arrived as agreed. The check window closes now, your supplier is paid for the job, and neither a problem nor a refund can be asked for on it from the app."
         confirmLabel="Yes, everything is fine"
         cancelLabel="Not yet"
         busy={busy}

@@ -316,6 +316,20 @@ function AppNavigation() {
                   options={pushedScreenOptions("Physical invoice")}
                 />
                 {/*
+                  Refunds are pushed screens, not sheets: the request carries
+                  uploads and a long explanation, and the status screen is a
+                  record the client comes back to.
+                */}
+                <Stack.Screen name="order/refund" options={pushedScreenOptions("Refund")} />
+                <Stack.Screen
+                  name="order/refund-request"
+                  options={pushedScreenOptions("Request a refund")}
+                />
+                <Stack.Screen
+                  name="order/refund-account"
+                  options={pushedScreenOptions("Receiving account")}
+                />
+                {/*
                   Asking for a change to a proof is a real destination with a
                   keyboard in it, so it gets the platform's own sheet: drag to
                   dismiss, back gesture, keyboard avoidance and focus containment

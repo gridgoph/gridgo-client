@@ -2,6 +2,7 @@ import { formatPhp, type Notification } from "@/lib/api";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
+import { refundNotificationCopy } from "@/lib/refunds";
 import { formatTimelineStamp } from "@/lib/relativeTime";
 import type { OrderStatusTone } from "@/lib/orderState";
 import {
@@ -294,8 +295,10 @@ export function presentNotification(notification: Notification): PresentedNotifi
   const paymentPending = payment != null && payment.amountMinor > 0;
   const collect = isCollect(notification);
   const hold = collectionHeld(notification);
-  const overlay =
-    notification.type === "order_rate_reminder"
+  const refund = refundNotificationCopy(notification.type);
+  const overlay = refund
+    ? { ...refund, hint: notification.orderId ? "Opens this job" : null }
+    : notification.type === "order_rate_reminder"
       ? rateReminderCopy()
       : notification.type === "order_receipt_ready"
         ? receiptReadyCopy()
