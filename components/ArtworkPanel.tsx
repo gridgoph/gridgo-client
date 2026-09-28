@@ -17,7 +17,7 @@ export function ArtworkPanel({ order }: { order: Order }) {
       ? `“${order.artworkName}” is recorded, but no stored file is available. Ask Operations for the production file.`
       : "No artwork or reference picture is attached yet. Ask Operations for the production file."}</Text>;
   }
-  return <View className="gap-3">{files.map((file) => (
+  return <View>{files.map((file) => (
     <ArtworkFile key={`${order.id}:${file.fileId}`} orderId={order.id} reference={file} />
   ))}</View>;
 }
@@ -83,46 +83,61 @@ function ArtworkFile({ orderId, reference }: { orderId: string; reference: Artwo
 
   const file = state.kind === "ready" ? state.file : null;
   const image = Boolean(file && isArtworkImage(file));
+  const kindLabel = kind === "mockup" ? "Reference mockup" : "Artwork";
+  const failed = state.kind === "error" || previewFailed;
+  const title = file?.originalFilename ?? (state.kind === "error" ? "File could not load" : "Loading attachment…");
+  const detail = file ? `${kindLabel} · ${describeArtwork(file)}` : kindLabel;
+
+  /*
+    One compact row per file: what it is, its type and size, and a tap that
+    opens the original. The preview is a thumbnail, not a poster — the order
+    screen folds this list away, and a 176pt plate per file was most of what
+    made it read as cluttered (gridgo-client#129).
+  */
   return (
-    <View className="overflow-hidden rounded-card border border-outline bg-surface">
-      <View className="h-44 items-center justify-center bg-surface-variant">
-        {state.kind === "loading" ? <SkeletonBlock /> : state.kind === "ready" && state.previewUrl && !previewFailed ? (
-          <Image
-            source={{ uri: state.previewUrl }}
-            // Third-party Image does not receive NativeWind's RN import transform.
-            style={{ width: "100%", height: "100%" }}
-            contentFit="contain"
-            cachePolicy="none"
-            transition={0}
-            accessibilityLabel={`${kind === "mockup" ? "Reference mockup" : "Artwork"}: ${state.file.originalFilename}`}
-            onError={() => setPreviewFailed(true)}
-          />
-        ) : (
-          <View className="items-center gap-2 px-4">
-            {image ? <FileImage size={32} color={colors.textMuted} /> : <FileText size={32} color={colors.textMuted} />}
-            <Text className="text-center text-body text-text-secondary">{state.kind === "error" ? "Attachment unavailable" : previewFailed ? "Preview unavailable" : "Open the original document to inspect it"}</Text>
-          </View>
-        )}
-      </View>
-      <View className="gap-2 p-3">
-        {reference.itemName ? <Text className="text-body font-medium text-text-primary">{reference.itemName}</Text> : null}
-        <Text className="text-overline text-text-muted">{kind === "mockup" ? "REFERENCE MOCKUP" : "ARTWORK"}</Text>
-        <Text className="text-body font-medium text-text-primary">{file?.originalFilename ?? (state.kind === "error" ? "File could not load" : "Loading attachment…")}</Text>
-        {file ? <Text className="text-caption text-text-muted">{describeArtwork(file)}</Text> : null}
-        {state.kind === "error" ? <Text accessibilityRole="alert" className="text-body text-error">{state.message}</Text> : null}
-        {openError ? <Text accessibilityRole="alert" className="text-body text-error">{openError}</Text> : null}
-        {state.kind === "error" || previewFailed ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Retry attachment" onPress={retry} className="gg-btn-secondary">
-            <Text className="text-button text-text-primary">Retry attachment</Text>
-          </Pressable>
-        ) : null}
-        {file ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`Open ${file.originalFilename}`} accessibilityState={{ disabled: opening, busy: opening }} onPress={() => void open()} disabled={opening} className="gg-btn-secondary flex-row gap-2">
-            <ExternalLink size={18} color={colors.textPrimary} />
-            <Text className="text-button text-text-primary">{opening ? "Opening…" : "Open file"}</Text>
-          </Pressable>
-        ) : null}
-      </View>
+    <View className="gap-2 border-b border-outline-subtle py-3">
+      {reference.itemName ? <Text className="text-caption text-text-muted">{reference.itemName}</Text> : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={file ? `Open ${file.originalFilename}, ${detail}` : title}
+        accessibilityState={{ disabled: !file || opening, busy: opening || state.kind === "loading" }}
+        onPress={() => void open()}
+        disabled={!file || opening}
+        className="gg-touch flex-row items-center gap-3"
+        style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+      >
+        <View className="h-14 w-14 items-center justify-center overflow-hidden rounded-field border border-outline bg-surface-variant">
+          {state.kind === "loading" ? <SkeletonBlock /> : state.kind === "ready" && state.previewUrl && !previewFailed ? (
+            <Image
+              source={{ uri: state.previewUrl }}
+              // Third-party Image does not receive NativeWind's RN import transform.
+              style={{ width: "100%", height: "100%" }}
+              contentFit="cover"
+              cachePolicy="none"
+              transition={0}
+              accessibilityLabel={`${kindLabel}: ${state.file.originalFilename}`}
+              onError={() => setPreviewFailed(true)}
+            />
+          ) : image ? (
+            <FileImage size={22} color={colors.textMuted} aria-hidden />
+          ) : (
+            <FileText size={22} color={colors.textMuted} aria-hidden />
+          )}
+        </View>
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text className="text-body font-medium text-text-primary" numberOfLines={1} ellipsizeMode="middle">{title}</Text>
+          <Text className="text-caption text-text-muted" numberOfLines={1}>{opening ? "Opening…" : detail}</Text>
+        </View>
+        {file ? <ExternalLink size={18} color={colors.textSecondary} aria-hidden /> : null}
+      </Pressable>
+      {state.kind === "error" ? <Text accessibilityRole="alert" className="text-body text-error">{state.message}</Text> : null}
+      {previewFailed && state.kind !== "error" ? <Text className="text-caption text-text-muted">Preview unavailable. Open the file to see it.</Text> : null}
+      {openError ? <Text accessibilityRole="alert" className="text-body text-error">{openError}</Text> : null}
+      {failed ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Retry attachment" onPress={retry} className="gg-btn-secondary">
+          <Text className="text-button text-text-primary">Retry attachment</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
