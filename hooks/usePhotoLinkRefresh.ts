@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { AppState } from "react-native";
 
-import type { CatalogItem } from "@/lib/api";
-import { earliestPhotoExpiry, hasStalePhotoLink, heldReadIsStale } from "@/lib/photoLinks";
+import {
+  earliestPhotoExpiry,
+  hasStalePhotoLink,
+  heldReadIsStale,
+  type PhotoHolder,
+} from "@/lib/photoLinks";
 
-type Listings = readonly (Pick<CatalogItem, "photos"> | null | undefined)[];
+type Listings = readonly (PhotoHolder | null | undefined)[];
 
 /**
  * Keeps the signed photo links a screen holds from outliving their signature.

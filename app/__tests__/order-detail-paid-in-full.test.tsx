@@ -113,32 +113,6 @@ const baseOrder: Order = {
       confirmedAt: null,
     },
   },
-  payoutMilestones: [
-    {
-      code: "printing",
-      sharePercent: 50,
-      status: "pof_attached",
-      pofFileIds: ["file_pof_1"],
-    },
-    {
-      code: "packaging_qc",
-      sharePercent: 15,
-      status: "pending_pof",
-      pofFileIds: [],
-    },
-    {
-      code: "delivered",
-      sharePercent: 25,
-      status: "pending_pof",
-      pofFileIds: [],
-    },
-    {
-      code: "retention",
-      sharePercent: 10,
-      status: "pending_pof",
-      pofFileIds: [],
-    },
-  ],
   paymentMethod: "qr_manual",
   paymentStatus: "downpayment_confirmed",
   promisedDate: null,

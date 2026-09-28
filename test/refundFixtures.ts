@@ -46,7 +46,6 @@ export function refundOrder(overrides: Partial<Order> = {}): Order {
         confirmedAt: null,
       },
     },
-    payoutMilestones: [],
     paymentMethod: "qr_manual",
     paymentStatus: "confirmed",
     promisedDate: null,

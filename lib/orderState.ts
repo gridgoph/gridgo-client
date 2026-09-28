@@ -152,26 +152,6 @@ export function isIssueWindowState(state: string): boolean {
   return state === "issue_window_open";
 }
 
-/** From here on the job is being made, so its milestones mean something. */
-const PRODUCTION_ONWARD = [
-  "payment_authorized",
-  "production",
-  "supplier_self_qc",
-  "ready_for_dispatch",
-  "rider_assigned",
-  "picked_up",
-  "out_for_delivery",
-  "awaiting_collection",
-  "delivered",
-  "issue_window_open",
-  "completed",
-  "payout_released",
-];
-
-export function showsFulfilmentProgress(state: string): boolean {
-  return PRODUCTION_ONWARD.includes(state);
-}
-
 /**
  * The one thing the client should do next, or null when the job is with
  * someone else. Drives the single yellow action on the order screen, so a
@@ -379,7 +359,7 @@ export function orderWaitingOn(order: Order): string | null {
  * the transition, so the correction screen can show why rather than just that.
  */
 export function latestNoteForState(
-  timeline: { at: string; state: string; note: string }[] | null | undefined,
+  timeline: { at: string; state: string; note?: string }[] | null | undefined,
   state: string,
 ): string | null {
   if (!Array.isArray(timeline) || timeline.length === 0) return null;
