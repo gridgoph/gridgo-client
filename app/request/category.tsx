@@ -2,7 +2,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Search, X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View, type TextStyle } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { FormScreen } from "@/components/FormScreen";
 import { TourTarget } from "@/components/TourTarget";
@@ -12,6 +12,7 @@ import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import {
   searchSubcategories,
+  SEARCH_MIN_CHARS,
   type ProductCategory,
   type ProductSubcategory,
 } from "@/lib/productCategories";
@@ -39,7 +40,9 @@ export default function ChooseCategoryScreen() {
   const startJob = useStartPrintJob();
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
-  const [query, setQuery] = useState("");
+  // Home's dropdown hands its query over through "See all".
+  const { q } = useLocalSearchParams<{ q?: string }>();
+  const [query, setQuery] = useState(() => (typeof q === "string" ? q : ""));
   const [focused, setFocused] = useState(false);
   useTourScreen("pick");
 
@@ -61,7 +64,7 @@ export default function ChooseCategoryScreen() {
   useLiveRefresh(["catalog"], load);
 
   const hits = useMemo(() => searchSubcategories(categories, query), [categories, query]);
-  const searching = query.trim().length >= 2;
+  const searching = query.trim().length >= SEARCH_MIN_CHARS;
 
   // A search hit goes straight to the shop that prints it. Whether anyone does
   // is a question only the boards can answer, and the match screen answers it

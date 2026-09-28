@@ -15,6 +15,8 @@ const mockPush = jest.fn();
 
 /** Which category `[category].tsx` is rendering. Reset in beforeEach. */
 let mockOpenCategory = "corporate_event_merch";
+/** A query handed over from Home's "See all". Reset in beforeEach. */
+let mockQuery: string | undefined;
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({
@@ -23,7 +25,7 @@ jest.mock("expo-router", () => ({
     back: jest.fn(),
     dismissTo: jest.fn(),
   }),
-  useLocalSearchParams: () => ({ category: mockOpenCategory }),
+  useLocalSearchParams: () => ({ category: mockOpenCategory, q: mockQuery }),
   useFocusEffect: (effect: () => void) => {
     // Required inside the factory: jest.mock is hoisted above imports.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -132,6 +134,7 @@ beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("@react-native-async-storage/async-storage").clear();
   mockOpenCategory = "corporate_event_merch";
+  mockQuery = undefined;
   api.getProductCategories.mockResolvedValue(PRODUCT_CATEGORY_SEED);
   api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
   clearProductCategoryCache();
@@ -160,6 +163,14 @@ describe("ChooseCategoryScreen", () => {
     expect(screen.getByText("Corporate & event merchandise")).toBeTruthy();
     expect(screen.getByText("Documents & publications")).toBeTruthy();
     expect(screen.queryByText("Loading what GRIDGO prints…")).toBeNull();
+  });
+
+  it("opens on the query Home's search handed over", async () => {
+    mockQuery = "marketing";
+    await renderInSafeArea(<ChooseCategoryScreen />);
+
+    expect(screen.getByDisplayValue("marketing")).toBeTruthy();
+    expect(await screen.findByText("6 MATCHES")).toBeTruthy();
   });
 
   it("leads with the audience line, because that is how a client recognises themselves", async () => {

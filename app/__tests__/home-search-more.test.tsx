@@ -62,36 +62,18 @@ beforeEach(() => {
   } as never);
 });
 
-describe("searching from Home", () => {
-  /**
-   * gridgo-client#137: the client types into Home's own search bar and the
-   * matching categories drop down under it, without leaving Home. The search
-   * is the picker's (`lib/homeSearch.ts`), so the same words find the same
-   * things in both places.
-   */
-  it("shows matching categories under the field as the client types", async () => {
+describe("more matches than the dropdown holds", () => {
+  it("hands the query to the full picker through “See all”", async () => {
     await renderInSafeArea(<HomeScreen />);
 
-    fireEvent.changeText(await screen.findByLabelText("Search what GRIDGO prints"), "flyer");
+    // The family's own name matches every one of its six subcategories.
+    fireEvent.changeText(await screen.findByLabelText("Search what GRIDGO prints"), "marketing");
 
     const results = await screen.findByTestId("home-search-results");
-    expect(within(results).getByLabelText("Flyers, in Marketing & promotional collateral")).toBeTruthy();
-    // Home did not navigate to a separate search screen.
-    expect(mockPush).not.toHaveBeenCalled();
-  });
-
-  // Presses last: a press spends this file's later renders (AGENTS.md).
-  it("continues to scheduling when a result is tapped, as the picker does", async () => {
-    await renderInSafeArea(<HomeScreen />);
-
-    fireEvent.changeText(await screen.findByLabelText("Search what GRIDGO prints"), "flyer");
-    fireEvent.press(
-      await screen.findByLabelText("Flyers, in Marketing & promotional collateral"),
-    );
-
+    fireEvent.press(within(results).getByRole("button", { name: "See all 6 matches" }));
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/request/when",
-      params: { subcategory: "flyers", category: "marketing_collateral" },
+      pathname: "/request/category",
+      params: { q: "marketing" },
     });
   });
 });
