@@ -212,6 +212,13 @@ export const REFUND_KINDS: { value: RefundKind; label: string; hint: string }[] 
   { value: "complaint", label: "Something is wrong with it", hint: "Late, damaged, wrong, or not what was agreed" },
 ];
 
+/** An example reason in the client's own voice, fitted to what they are asking. */
+export function refundReasonPlaceholder(kind: string | null): string {
+  return kind === "complaint"
+    ? "The flyers arrived with the brand red printed orange across all 200."
+    : "We moved the event to next month, so we no longer need these.";
+}
+
 export function refundKindLabel(kind: string): string {
   return REFUND_KINDS.find((option) => option.value === kind)?.label ?? "Refund request";
 }
@@ -351,7 +358,7 @@ export function refundBreakdown(
         : "Partial refund",
     kept: full
       ? null
-      : `The rest pays for ${keptParts.length ? keptParts.join(" and ") : "work already done"}. GRIDGO does not take back money already paid out for work.`,
+      : `The rest pays for ${keptParts.length ? keptParts.join(" and ") : "work already done"}.`,
   };
 }
 

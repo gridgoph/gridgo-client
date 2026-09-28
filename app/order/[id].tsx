@@ -270,7 +270,7 @@ export default function OrderDetailScreen() {
               owns its instruction and reason, and so does the card that
               explains a payment being checked — repeating either up here is
               filler. */}
-          {!nextAction && !underReview && !finished ? (
+          {!nextAction && !underReview && !finished && actionZone !== "refund" ? (
             <Text className="text-body-lg text-text-secondary">
               {waitingOn ?? "This job is in progress."}
             </Text>

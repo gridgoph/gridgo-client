@@ -1,5 +1,5 @@
 import { presentNotification } from "@/lib/notificationPresentation";
-import { orderNextAction, orderWaitingOn } from "@/lib/orderState";
+import { orderNextAction, orderStateMeta, orderWaitingOn } from "@/lib/orderState";
 import { balanceDue, collectionPaused, payableInstallment } from "@/lib/payment";
 import {
   canReplaceDestination,
@@ -308,4 +308,15 @@ it("keeps the active list in step with gridgo-api", () => {
     "payment_in_progress",
     "payment_unknown",
   ]);
+});
+
+describe("an order the refund cancelled", () => {
+  it("reads as cancelled, with the refund named, never as in progress", () => {
+    const cancelled = refundOrder({ state: "cancelled", refundHold: true, refundDisposition: "cancelled" });
+    expect(orderStateMeta(cancelled)).toEqual({ label: "Cancelled", tone: "neutral", icon: "circle-x" });
+    expect(orderWaitingOn(cancelled)).toMatch(/cancelled for your refund/);
+    expect(orderWaitingOn(refundOrder({ state: "completed", refundDisposition: "fulfilled_with_refund" }))).toMatch(
+      /partial refund/,
+    );
+  });
 });

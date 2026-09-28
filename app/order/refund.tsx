@@ -167,21 +167,7 @@ export default function RefundScreen() {
           </View>
         ) : null}
 
-        {refund.settlement ? (
-          <View className="gap-3">
-            <Text className="text-overline text-text-muted">WHAT COMES BACK</Text>
-            <RefundBreakdownCard settlement={refund.settlement} order={order} />
-            {refund.settlement.reason.trim() ? (
-              <View className="gg-panel gap-1">
-                <Text className="text-caption text-text-muted">
-                  Operations&apos; note · approved {formatTimelineStamp(refund.settlement.approvedAt)}
-                </Text>
-                <Text className="text-body text-text-primary">{refund.settlement.reason}</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-
+        {/* Once money has moved, the transfer is what the client came to see. */}
         {refund.payment ? (
           <View className="gap-3">
             <Text className="text-overline text-text-muted">THE TRANSFER</Text>
@@ -200,6 +186,23 @@ export default function RefundScreen() {
                 evidence that the money was sent — not an official receipt.
               </Text>
             </View>
+          </View>
+        ) : null}
+
+        {refund.settlement ? (
+          <View className="gap-3">
+            <Text className="text-overline text-text-muted">
+              {refund.status === "paid" ? "WHAT WAS REFUNDED" : "WHAT COMES BACK"}
+            </Text>
+            <RefundBreakdownCard settlement={refund.settlement} order={order} />
+            {refund.settlement.reason.trim() ? (
+              <View className="gg-panel gap-1">
+                <Text className="text-caption text-text-muted">
+                  Operations&apos; note · approved {formatTimelineStamp(refund.settlement.approvedAt)}
+                </Text>
+                <Text className="text-body text-text-primary">{refund.settlement.reason}</Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 

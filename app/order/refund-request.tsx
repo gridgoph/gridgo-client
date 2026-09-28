@@ -29,6 +29,7 @@ import {
   missingDestination,
   refundEntry,
   refundPolicyCopy,
+  refundReasonPlaceholder,
   type RefundEntry,
 } from "@/lib/refunds";
 import { useRefundDraft } from "@/store/refundDraft";
@@ -249,7 +250,7 @@ export default function RefundRequestScreen() {
             <TextField
               value={reason}
               onChangeText={setReason}
-              placeholder="The flyers arrived with the brand red printed orange across all 200."
+              placeholder={refundReasonPlaceholder(kind)}
               accessibilityLabel="Tell Operations what happened"
               multiline
               maxLength={MAX_REFUND_REASON}
