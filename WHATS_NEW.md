@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.188 (New feature)
+
+- Type in the Home search bar to see matching prints drop down under it, then tap one to start your order.
+
 ## 1.0.185 (New feature)
 
 - Settings now has a What's new page: every version's notes, newest first, marked New feature, Improvement or Fix.
