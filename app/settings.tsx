@@ -9,6 +9,7 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "@/hooks/useTheme";
+import { WHATS_NEW_HISTORY_COPY } from "@/lib/whatsNewHistory";
 import { useThemeStore } from "@/store/theme";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -21,7 +22,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
  * Settings — preferences and app help, not identity.
  *
  * Account keeps who is signed in, what GRIDGO matches on, and Sign out.
- * Theme and replaying onboarding live here — and only here. The match ranking
+ * Theme, the What's new history and replaying onboarding live here — and only here. The match ranking
  * used to sit on both screens; two homes for one setting is two places to look
  * and one of them always showing the older answer.
  *
@@ -78,6 +79,27 @@ export default function SettingsScreen() {
           </View>
 
           <View className="gg-card-flush">
+            <Pressable
+              onPress={() => router.push("/whats-new")}
+              accessibilityRole="button"
+              accessibilityLabel={WHATS_NEW_HISTORY_COPY.settingsRow}
+              accessibilityHint={WHATS_NEW_HISTORY_COPY.settingsHint}
+              className="gg-touch min-h-11 flex-row items-center justify-between px-4 py-3"
+              style={({ pressed }) =>
+                pressed ? { backgroundColor: colors.surfaceVariant } : undefined
+              }
+            >
+              <View className="mr-3 flex-1">
+                <Text className="text-body-lg font-medium text-text-primary">
+                  {WHATS_NEW_HISTORY_COPY.settingsRow}
+                </Text>
+                <Text className="text-caption text-text-muted">
+                  {WHATS_NEW_HISTORY_COPY.settingsCaption}
+                </Text>
+              </View>
+              <ChevronRight size={20} color={colors.textMuted} aria-hidden />
+            </Pressable>
+            <View className="gg-divider" />
             <Pressable
               onPress={() =>
                 router.push({
