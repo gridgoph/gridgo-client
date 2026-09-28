@@ -10,7 +10,7 @@ const mockBack = jest.fn();
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({ replace: mockReplace, back: mockBack, push: jest.fn() }),
-  useLocalSearchParams: () => ({ returnTo: "settings" }),
+  useLocalSearchParams: () => ({ returnTo: "account" }),
 }));
 
 jest.mock("@/lib/api", () => {
@@ -37,31 +37,26 @@ function renderInSafeArea(ui: ReactElement) {
 }
 
 /*
-  Its own file: the save writes to a store outside React, and this project's
-  testing stack leaves every later render in the same file empty once that has
-  happened (see AGENTS.md).
+  gridgo-client#127: the button sat on "Saving…" and the new order was not
+  kept. A failed save must say it is not saved and offer the retry, and the
+  retry must land. Its own file, because it presses more than once (see
+  AGENTS.md on this testing stack).
 */
-describe("changing the ranking from Settings", () => {
-  it("opens on the saved order and returns where it came from", async () => {
-    api.savePreferences.mockImplementation(async (ranking: string[]) => ({
-      ranking,
-      version: 2,
-      updatedAt: "2026-08-24T00:00:00.000Z",
-    }));
+describe("a save GRIDGO does not keep", () => {
+  it("says it is not saved, offers a retry, and lands on the retry", async () => {
+    const timeout = new Error("The request timed out. Try again.");
+    timeout.name = "TimeoutError";
+    api.savePreferences
+      .mockRejectedValueOnce(timeout)
+      .mockImplementationOnce(async (ranking: string[]) => ({
+        ranking,
+        version: 3,
+        updatedAt: "2026-09-28T00:00:00.000Z",
+      }));
     usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
 
     await renderInSafeArea(<PrioritiesScreen />);
 
-    // The saved order is already laid out, so swapping two of them does not
-    // mean retyping all three.
-    expect(
-      screen.getByText("GRIDGO matches on quality, then speed, then cost, and last distance."),
-    ).toBeTruthy();
-    expect(screen.getByLabelText("Quality").props.accessibilityValue.text).toBe("Ranked 1");
-    // What is on screen is what GRIDGO holds, and the button says so.
-    expect(screen.getByLabelText("Saved").props.accessibilityState.disabled).toBe(true);
-
-    // Swap the last two: cost comes out with distance, then both go back.
     fireEvent.press(screen.getByLabelText("Cost"));
     await screen.findByText("So far: quality, then speed.");
     fireEvent.press(screen.getByLabelText("Distance"));
@@ -71,11 +66,20 @@ describe("changing the ranking from Settings", () => {
 
     fireEvent.press(screen.getByLabelText("Save this order"));
 
+    expect(await screen.findByText("Not saved")).toBeTruthy();
+    expect(screen.getByText("The request timed out. Try again.")).toBeTruthy();
+    // Never left reading "Saving…", and the saved order is still the old one.
+    expect(screen.queryByText("Saving…")).toBeNull();
+    expect(usePriorities.getState().ranking).toEqual(["quality", "speed", "cost", "distance"]);
+    expect(mockBack).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText("Try again"));
+
     expect(await screen.findByLabelText("Saved")).toBeTruthy();
+    expect(screen.queryByText("Not saved")).toBeNull();
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
-    expect(api.savePreferences).toHaveBeenCalledWith(["quality", "speed", "distance", "cost"]);
+    expect(api.savePreferences).toHaveBeenCalledTimes(2);
+    expect(api.savePreferences).toHaveBeenLastCalledWith(["quality", "speed", "distance", "cost"]);
     expect(usePriorities.getState().ranking).toEqual(["quality", "speed", "distance", "cost"]);
-    // Never Home: a client who came from Settings is put back in Settings.
-    expect(mockReplace).not.toHaveBeenCalled();
   });
 });

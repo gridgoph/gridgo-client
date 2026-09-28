@@ -1,6 +1,8 @@
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { userFacingError } from "@/lib/copy";
+import { clearMatchPrefetch } from "@/lib/matchPrefetch";
 import { completeRanking, isCompleteRanking, type PriorityRanking } from "@/lib/priorities";
 
 /**
@@ -27,8 +29,18 @@ export type PrioritiesState = {
   loaded: boolean;
   loading: boolean;
   error: string | null;
+  /** A save is with GRIDGO. Lives here, not in the screen, so it outlives it. */
+  saving: boolean;
+  /** Why the last save did not land, in words. Null once one does. */
+  saveError: string | null;
   load: () => Promise<void>;
-  save: (ranking: PriorityRanking) => Promise<void>;
+  /**
+   * Resolves true once GRIDGO has kept the order, false when it has not — the
+   * reason is on `saveError`. Never throws, so a screen cannot leave its
+   * button reading "Saving…" because a rejection went unhandled.
+   */
+  save: (ranking: PriorityRanking) => Promise<boolean>;
+  clearSaveError: () => void;
   /** Sign-out: forget this account's answer without asking the next one. */
   reset: () => void;
 };
@@ -38,6 +50,8 @@ export const usePriorities = create<PrioritiesState>()((set, get) => ({
   loaded: false,
   loading: false,
   error: null,
+  saving: false,
+  saveError: null,
 
   load: async () => {
     if (get().loading) return;
@@ -73,15 +87,43 @@ export const usePriorities = create<PrioritiesState>()((set, get) => ({
   },
 
   save: async (ranking) => {
-    const saved = await api.savePreferences([...ranking]);
-    set({
-      ranking: completeRanking(saved.ranking) ?? ranking,
-      loaded: true,
-      error: null,
-    });
+    if (get().saving) return false;
+    set({ saving: true, saveError: null });
+    try {
+      const saved = await api.savePreferences([...ranking]);
+      // A match started under the old order would be served to the next
+      // screen that asks, and it would be the old order's shop.
+      clearMatchPrefetch();
+      set({
+        ranking: completeRanking(saved.ranking) ?? ranking,
+        loaded: true,
+        error: null,
+        saving: false,
+      });
+      return true;
+    } catch (error) {
+      set({
+        saving: false,
+        saveError: userFacingError(
+          error,
+          "GRIDGO could not save your order. Check your connection and try again.",
+        ),
+      });
+      return false;
+    }
   },
 
-  reset: () => set({ ranking: null, loaded: false, loading: false, error: null }),
+  clearSaveError: () => set({ saveError: null }),
+
+  reset: () =>
+    set({
+      ranking: null,
+      loaded: false,
+      loading: false,
+      error: null,
+      saving: false,
+      saveError: null,
+    }),
 }));
 
 /** True once the client has actually put every factor in order. */
