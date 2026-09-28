@@ -224,6 +224,12 @@ export type Order = {
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
   payoutHold?: boolean;
+  /** True while a refund request is open: work and new payments are paused. */
+  refundHold?: boolean;
+  /** `cancelled | fulfilled_with_refund` once a refund was settled. */
+  refundDisposition?: string | null;
+  /** A settled refund turned the unpaid installment into history, not a debt. */
+  unpaidBalanceCancelled?: boolean;
   createdAt: string;
   updatedAt: string;
   timeline: { at: string; state: string; by: string; note: string; fileId?: string }[];
@@ -2192,6 +2198,155 @@ export async function getFileDownloadUrl(
 export async function getFile(fileId: string): Promise<StoredFile> {
   const result = await request<{ file: StoredFile }>(`/files/${fileId}`);
   return result.file;
+}
+
+// ---------------------------------------------------------------------------
+// Refunds — see docs/REFUNDS_API.md in gridgo-api (policy `available_funds_v1`)
+// ---------------------------------------------------------------------------
+
+export type RefundKind = "cancellation" | "complaint";
+export type RefundProvider = "gcash" | "maya" | "bank" | "other";
+
+/** The client's own receiving account. `revision` rises with each replacement. */
+export type RefundDestination = {
+  provider: string;
+  accountName: string;
+  qrFileId: string;
+  ownershipConfirmed: boolean;
+  revision: number;
+};
+
+/**
+ * What Operations approved, as the client may read it. `principalMinor` is
+ * the shop's share and is never drawn on its own: the client reads it with
+ * `feeMinor` inside it (`refundBreakdown` in `lib/refunds.ts`).
+ */
+export type RefundSettlement = {
+  id: string;
+  principalMinor: number;
+  feeMinor: number;
+  deliveryMinor: number;
+  totalMinor: number;
+  /** `cancelled | fulfilled_with_refund`. */
+  disposition: string;
+  /** Operations' decision note. Written for the client to read. */
+  reason: string;
+  approvedAt: string;
+};
+
+/** The transfer Operations recorded. Its screenshot is evidence, not a receipt. */
+export type RefundPayment = {
+  id: string;
+  reference: string;
+  receiptFileId: string;
+  amountMinor: number;
+  paidAt: string;
+  evidenceLabel: string;
+};
+
+export type RefundHistoryEntry = { kind: string; reason: string; at: string };
+
+export type Refund = {
+  id: string;
+  orderId: string;
+  /** Open string: an unknown status must never crash the screen. */
+  status: string;
+  version: number;
+  policyVersion: string;
+  kind: string;
+  reason: string;
+  evidenceFileIds: string[];
+  destination: RefundDestination | null;
+  beforeProduction: boolean;
+  late: boolean;
+  filingDeadlineAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  history: RefundHistoryEntry[];
+  settlement: RefundSettlement | null;
+  payment: RefundPayment | null;
+};
+
+export type RefundDestinationInput = {
+  qrFileId: string;
+  provider: RefundProvider;
+  accountName: string;
+  ownershipConfirmed: true;
+};
+
+export type RefundRequestInput = {
+  kind: RefundKind;
+  reason: string;
+  evidenceFileIds: string[];
+  destination: RefundDestinationInput;
+};
+
+/** Every refund on one order, oldest first as the API keeps them. */
+export async function listOrderRefunds(orderId: string): Promise<Refund[]> {
+  const result = await request<{ refunds: Refund[] }>(
+    `/orders/${encodeURIComponent(orderId)}/refund-requests`,
+  );
+  return result.refunds;
+}
+
+export async function getRefund(refundId: string): Promise<Refund> {
+  const result = await request<{ refund: Refund }>(`/refund-requests/${encodeURIComponent(refundId)}`);
+  return result.refund;
+}
+
+/**
+ * File a refund request. The idempotency key belongs to this exact body: a
+ * retry after a lost answer sends the same key and gets the saved result
+ * rather than a second request.
+ */
+export async function requestRefund(
+  orderId: string,
+  input: RefundRequestInput,
+  idempotencyKey: string,
+): Promise<Refund> {
+  const result = await request<{ refund: Refund }>(
+    `/orders/${encodeURIComponent(orderId)}/refund-requests`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input),
+    },
+  );
+  return result.refund;
+}
+
+/** Replace the receiving QR. Operations checks the new one before paying. */
+export async function replaceRefundDestination(
+  refundId: string,
+  input: RefundDestinationInput & { expectedVersion: number },
+  idempotencyKey: string,
+): Promise<Refund> {
+  const result = await request<{ refund: Refund }>(
+    `/refund-requests/${encodeURIComponent(refundId)}/destination`,
+    {
+      method: "PATCH",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input),
+    },
+  );
+  return result.refund;
+}
+
+/** Withdraw a request Operations has not settled yet. */
+export async function withdrawRefund(
+  refundId: string,
+  input: { expectedVersion: number; reason: string },
+  idempotencyKey: string,
+): Promise<Refund> {
+  const result = await request<{ refund: Refund }>(
+    `/refund-requests/${encodeURIComponent(refundId)}/withdraw`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input),
+    },
+  );
+  return result.refund;
 }
 
 // ---------------------------------------------------------------------------

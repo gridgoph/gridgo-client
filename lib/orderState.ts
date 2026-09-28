@@ -244,6 +244,10 @@ const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
 };
 
 export function orderNextAction(order: Order): OrderNextAction | null {
+  // An open refund pauses the job: proofs, corrections, payments and the
+  // issue window all wait on Operations' decision, so nothing is asked of
+  // the client until it is made.
+  if (order.refundHold) return null;
   if (downpaymentDue(order)) {
     const amount = paymentInstallment(order, "downpayment")?.amountMinor;
     const inFull = paysInFull(order);
@@ -339,6 +343,9 @@ const PAID_IN_FULL_WAITING_ON: Record<string, string> = {
 };
 
 export function orderWaitingOn(order: Order): string | null {
+  if (order.refundHold) {
+    return "This job is paused while Operations reviews your refund request.";
+  }
   const underReview = installmentUnderReview(order);
   const inFull = paysInFull(order);
   if (underReview === "downpayment" && inFull) {

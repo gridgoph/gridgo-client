@@ -189,6 +189,39 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "invoice_not_found":
         return "GRIDGO has not issued a receipt for this order yet.";
 
+      // ---- refunds (docs/REFUNDS_API.md in gridgo-api) ----
+      case "refund_window_closed":
+        return "The time to ask for a refund in the app has passed. Message GRIDGO support and they will take it from there.";
+      case "refund_already_open":
+        return "This order already has a refund request open. Pull the order down to see where it stands.";
+      case "refund_payment_not_verified":
+        return "Operations has not confirmed your payment yet, so there is nothing to refund. Ask again once it is confirmed.";
+      case "refund_collection_reconciliation_required":
+        return "Operations is still checking a payment on this order. Ask again once it is confirmed, or message GRIDGO support.";
+      case "refund_stale":
+        return "This refund changed while the screen was open. Pull down to load the latest, then try again.";
+      case "refund_idempotency_conflict":
+        return "GRIDGO saw two different versions of this request. Go back, open the order again, and send it once more.";
+      case "refund_state_conflict":
+        return "This refund has moved on since the screen loaded. Pull down to see where it stands.";
+      case "refund_destination_locked":
+        return "Operations has started sending your refund, so the receiving account cannot change now. Message GRIDGO support if it is wrong.";
+      case "refund_qr_ownership_required":
+        return "Confirm the receiving account is your own. GRIDGO returns money only to the person who paid.";
+      case "invalid_refund_file":
+      case "file_already_attached":
+        return "That image could not be used. Upload the QR again and send it once it shows Uploaded.";
+      case "invalid_refund_provider":
+        return "Choose GCash, Maya, Bank or Other wallet for the receiving QR.";
+      case "invalid_refund_evidence":
+        return "Attach up to ten photos, each one only once.";
+      case "invalid_refund_kind":
+        return "Choose whether you are cancelling the order or reporting something wrong with it.";
+      case "invalid_refund_request":
+        return "Check the reason and the name on the account, then send it again.";
+      case "refund_fulfillment_stopped":
+        return "This job is paused for your refund request, so nothing else can happen on it until Operations decides.";
+
       // ---- creating an account ----
       case "email_already_registered":
         return "This email already has a GRIDGO account. Sign in with it instead, or use another address.";
@@ -258,6 +291,9 @@ export function userFacingError(error: unknown, fallback: string): string {
 
   return fallback;
 }
+
+/** Refund screens read the same map; the name says which codes it was written for. */
+export const refundErrorMessage = userFacingError;
 
 /**
  * The sentence the API sent, where it wrote one worth reading.

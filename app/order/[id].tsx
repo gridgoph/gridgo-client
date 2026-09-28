@@ -21,6 +21,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
+import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ReadyTime } from "@/components/ReadyTime";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -58,6 +59,7 @@ import {
 } from "@/lib/payment";
 import { physicalInvoiceEntry } from "@/lib/physicalInvoice";
 import { canRate } from "@/lib/rating";
+import { currentRefund, refundEntry } from "@/lib/refunds";
 import { printingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { describeQuantity } from "@/lib/quantity";
@@ -83,6 +85,8 @@ export default function OrderDetailScreen() {
   const [product, setProduct] = useState<api.CatalogProduct | null>(null);
   const [zones, setZones] = useState<Zone[]>([]);
   const [taxonomy, setTaxonomy] = useState<Taxonomy>(EMPTY_TAXONOMY);
+  /** Null until read, and after a failed read: no entry is offered blind. */
+  const [refunds, setRefunds] = useState<api.Refund[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadSequence = useRef(0);
@@ -95,18 +99,21 @@ export default function OrderDetailScreen() {
     const sequence = ++loadSequence.current;
     if (!id) return;
     try {
-      const [current, catalog, zoneList, taxonomyResult] = await Promise.all([
+      const [current, catalog, zoneList, taxonomyResult, refundList] = await Promise.all([
         api.getOrder(id),
         api.listCatalog(),
         api.listZones().catch(() => [] as Zone[]),
         // Labels only. A failure costs a nicer material name, never the order.
         api.getTaxonomy().catch(() => EMPTY_TAXONOMY),
+        // A failed read costs the refund card, never the order.
+        api.listOrderRefunds(id).catch(() => null),
       ]);
       if (sequence !== loadSequence.current) return;
       setOrder(current);
       setProduct(catalog.find((entry) => entry.id === current.productId) ?? null);
       setZones(zoneList);
       setTaxonomy(taxonomyResult);
+      setRefunds(refundList);
       setError(null);
     } catch (e) {
       if (sequence !== loadSequence.current) return;
@@ -116,7 +123,7 @@ export default function OrderDetailScreen() {
     }
   }, [id]);
 
-  useLiveRefresh(["orders", "dispatch", "claims"], load, { refreshOnFocus: false });
+  useLiveRefresh(["orders", "dispatch", "claims", "payouts"], load, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {
@@ -215,7 +222,20 @@ export default function OrderDetailScreen() {
     still taking a `gap-8` between the heading and whatever came next, which is
     a stripe of dead canvas on the states a client sees most.
   */
-  const actionZone = isProofApprovalState(order.state)
+  const refund = refunds ? refundEntry(order, refunds) : null;
+  const existingRefund = currentRefund(refunds);
+  const openRefund = () =>
+    router.push({ pathname: "/order/refund", params: { orderId: order.id } });
+  /*
+    An open refund pauses the job. Proofs, corrections, payments and the
+    issue window all wait on Operations' decision, so the refund is the whole
+    action zone — and the one thing on screen that says why nothing moves.
+  */
+  const actionZone = order.refundHold && existingRefund
+    ? "refund"
+    : order.refundHold
+      ? null
+      : isProofApprovalState(order.state)
     ? "proof"
     : isClientCorrectionState(order.state)
       ? "correction"
@@ -259,13 +279,20 @@ export default function OrderDetailScreen() {
 
         {finished ? <JobCompleteCard order={order} /> : null}
 
+        {/* A settled, refused or withdrawn refund stays on the job's record. */}
+        {existingRefund && actionZone !== "refund" ? (
+          <RefundOrderCard refund={existingRefund} onOpen={openRefund} />
+        ) : null}
+
         {/* One action zone at a time — the single yellow control lives here. */}
         {actionZone ? (
           <Animated.View
             key={`${order.state}:${actionZone}`}
             entering={reducedMotion ? undefined : FadeIn.duration(200)}
           >
-            {actionZone === "proof" ? (
+            {actionZone === "refund" && existingRefund ? (
+              <RefundOrderCard refund={existingRefund} onOpen={openRefund} />
+            ) : actionZone === "proof" ? (
               <ProofDecision
                 order={order}
                 family={family}
@@ -373,6 +400,14 @@ export default function OrderDetailScreen() {
           } onOpenPhysicalInvoice={() =>
             router.push({ pathname: "/order/physical-invoice", params: { orderId: order.id } })
           } />
+          {refund?.kind === "eligible" ? (
+            <RefundEntryRow
+              entry={refund}
+              onRequest={() =>
+                router.push({ pathname: "/order/refund-request", params: { orderId: order.id } })
+              }
+            />
+          ) : null}
         </View>
 
         {!showsOwnPreview ? (
@@ -480,7 +515,11 @@ function MoneyCard({
         ) : null}
         {balance ? (
           <SpecRow
-            label={`Balance · ${installmentStatusLabel(balance.status)}`}
+            label={
+              order.unpaidBalanceCancelled && balance.status !== "confirmed"
+                ? "Balance · Not owed after refund"
+                : `Balance · ${installmentStatusLabel(balance.status)}`
+            }
             value={balance.amountMinor != null ? formatPhp(balance.amountMinor) : "—"}
           />
         ) : null}
