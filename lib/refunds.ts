@@ -85,11 +85,10 @@ export function handoverCompleted(order: Pick<Order, "state" | "timeline" | "iss
 }
 
 /** Printing has started, so the shop may already have earned part of the price. */
-export function productionStarted(order: Pick<Order, "state" | "timeline" | "payoutMilestones">): boolean {
+export function productionStarted(order: Pick<Order, "state" | "timeline">): boolean {
   return (
     PRODUCTION_STATES.includes(order.state) ||
-    (order.timeline ?? []).some((event) => PRODUCTION_STATES.includes(event.state)) ||
-    (order.payoutMilestones ?? []).some((stage) => stage.status === "released")
+    (order.timeline ?? []).some((event) => PRODUCTION_STATES.includes(event.state))
   );
 }
 

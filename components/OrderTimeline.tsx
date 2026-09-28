@@ -1,18 +1,10 @@
 import { Text, View } from "react-native";
 
-import { actorLabel } from "@/lib/copy";
-import { getOrderStateMeta } from "@/lib/orderState";
+import { historyRows, type HistoryEntry } from "@/lib/orderHistory";
 import { formatRelativeTime, formatTimelineStamp } from "@/lib/relativeTime";
 
-export type TimelineEntry = {
-  at: string;
-  state: string;
-  by: string;
-  note: string;
-};
-
 type Props = {
-  timeline?: TimelineEntry[] | null;
+  timeline?: HistoryEntry[] | null;
   /** Current order state — that step is the one yellow marker. */
   currentState: string;
   /**
@@ -26,18 +18,30 @@ type Props = {
    * never call its one payment a downpayment.
    */
   paidInFull?: boolean;
+  /**
+   * `hasPlainHistory(order)`: the notes are GRIDGO's plain wording and may be
+   * drawn. False for an older payload, whose notes were internal free text.
+   */
+  plainNotes?: boolean;
 };
 
 /**
- * The order's history: who acted, when, and what they said.
+ * The order's history: what happened, and when.
  *
  * A timeline is genuinely chronological and causal, so its ordering carries
- * real meaning — and the accountability this product exists to provide is the
- * actor and the clock time on every entry, not just a status word.
+ * real meaning, and every entry carries the real clock time as well as a
+ * status word. What a row may say is `lib/orderHistory.ts`: never a shop's
+ * payout, a milestone or an internal code.
  */
-export function OrderTimeline({ timeline, currentState, fulfillmentMode, paidInFull = false }: Props) {
-  const entriesIn = Array.isArray(timeline) ? timeline : [];
-  if (!entriesIn.length) {
+export function OrderTimeline({
+  timeline,
+  currentState,
+  fulfillmentMode,
+  paidInFull = false,
+  plainNotes = false,
+}: Props) {
+  const rows = historyRows(timeline, { plainNotes, fulfillmentMode, paidInFull });
+  if (!rows.length) {
     return (
       <Text className="text-body text-text-muted">
         Nothing has happened on this job yet. Every step, and who took it, appears here.
@@ -46,17 +50,17 @@ export function OrderTimeline({ timeline, currentState, fulfillmentMode, paidInF
   }
 
   // Newest first: what just happened is what a client came to read.
-  const entries = [...entriesIn].reverse();
+  const entries = [...rows].reverse();
+  const current = currentState === "payout_released" ? "completed" : currentState;
 
   return (
     <View className="gap-0">
       {entries.map((entry, index) => {
-        const meta = getOrderStateMeta(entry.state, fulfillmentMode, paidInFull);
-        const isCurrent = index === 0 && entry.state === currentState;
+        const isCurrent = index === 0 && entry.state === current;
         const isLast = index === entries.length - 1;
 
         return (
-          <View key={`${entry.at}-${entry.state}-${index}`} className="flex-row gap-3">
+          <View key={entry.key} className="flex-row gap-3">
             <View className="items-center">
               {/* Ink, not yellow. The order screen already spends its one
                   yellow on the action it is asking for — a proof decision, a
@@ -81,17 +85,12 @@ export function OrderTimeline({ timeline, currentState, fulfillmentMode, paidInF
                     : "text-body-lg text-text-primary"
                 }
               >
-                {meta.label}
+                {entry.title}
               </Text>
               <Text className="mt-0.5 text-caption text-text-muted">
-                {entry.by ? `${actorLabel(entry.by)} · ` : ""}
+                {entry.actor ? `${entry.actor} · ` : ""}
                 {formatTimelineStamp(entry.at)} · {formatRelativeTime(entry.at)}
               </Text>
-              {entry.note ? (
-                <Text className="mt-1.5 text-body text-text-secondary" selectable>
-                  {entry.note}
-                </Text>
-              ) : null}
             </View>
           </View>
         );

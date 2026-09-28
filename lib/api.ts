@@ -94,18 +94,28 @@ export type PaymentInstallment = {
 export type OrderPayments = Partial<Record<InstallmentCode | "initial" | "final_online", PaymentInstallment>>;
 
 /**
- * Supplier fulfilment milestone as the client is allowed to see it.
+ * A photo the print shop filed while making the job (gridgo-api#112).
  *
- * The server's role projection withholds `amountMinor` — these are shares of
- * the supplier's earnings, not of what the client pays.
+ * `downloadUrl` is signed for a few minutes, exactly like artwork, and can be
+ * missing when storage could not sign it — the photo still exists, so ask
+ * `GET /files/:fileId/download-url` for a link rather than hiding it.
  */
-export type PayoutMilestone = {
-  /** `printing | packaging_qc | delivered | retention`. */
-  code: string;
-  sharePercent: number;
-  /** `pending_pof | pof_attached | released`. */
+export type ProductionPhoto = {
+  fileId: string;
+  contentType?: string;
+  at?: string;
+  downloadUrl?: string | null;
+  downloadUrlExpiresAt?: string | null;
+};
+
+/**
+ * The client's progress gallery. `status` is `waiting_for_photo |
+ * photos_available` today; read it through `progressView`, which trusts the
+ * photos over the word. Absent on an API that predates the gallery.
+ */
+export type ProductionProgress = {
   status: string;
-  pofFileIds: string[];
+  photos: ProductionPhoto[];
 };
 
 /**
@@ -194,7 +204,14 @@ export type Order = {
   deliveryDistanceMeters?: number | null;
   priceRange?: PriceRange | null;
   payments?: OrderPayments;
-  payoutMilestones?: PayoutMilestone[];
+  /**
+   * Why Operations turned the artwork back, from the latest correction they
+   * asked for (gridgo-api#115). Null when there is none to show; absent on an
+   * API from before it. Read it through `correctionReason`.
+   */
+  correction?: { reason: string; requestedAt: string | null } | null;
+  /** Progress photos, or the honest lack of one. See `lib/productionProgress.ts`. */
+  productionProgress?: ProductionProgress | null;
   paymentMethod: string | null;
   paymentStatus: string;
   /** When the client was told a supplier accepted. Payment is gated on it. */
@@ -223,7 +240,6 @@ export type Order = {
   pickup?: OrderPoint | null;
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
-  payoutHold?: boolean;
   /** True while a refund request is open: work and new payments are paused. */
   refundHold?: boolean;
   /** `cancelled | fulfilled_with_refund` once a refund was settled. */
@@ -232,7 +248,21 @@ export type Order = {
   unpaidBalanceCancelled?: boolean;
   createdAt: string;
   updatedAt: string;
-  timeline: { at: string; state: string; by: string; note: string; fileId?: string }[];
+  /**
+   * The job's history. Current APIs send the client `{at, state, note}` with
+   * GRIDGO's plain wording; older ones also sent who acted and free-text notes,
+   * which is why notes are only drawn from the plain projection
+   * (`lib/orderHistory.ts`).
+   */
+  timeline: {
+    at: string;
+    state: string;
+    by?: string;
+    note?: string;
+    fileId?: string;
+    /** Only on an older payload: a shop payout stage. Never drawn. */
+    milestoneCode?: string;
+  }[];
 };
 
 /** Platform-wide operational settings. The issue window is one of them. */

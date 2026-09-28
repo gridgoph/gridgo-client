@@ -1,0 +1,1 @@
+- Your order now shows the print shop's progress photos, or says it is waiting for one, and its history reads plainly.

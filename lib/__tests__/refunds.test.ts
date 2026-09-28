@@ -33,14 +33,13 @@ describe("refundEntry", () => {
     expect(entry).toEqual({ kind: "eligible", deadlineAt: null, beforeProduction: true, paidMinor: 115000 });
   });
 
-  it("knows printing started from the timeline or a released stage, not only the state", () => {
+  it("knows printing started from the timeline, not only the state", () => {
     expect(refundEntry(refundOrder(), [], NOW)).toMatchObject({ kind: "eligible", beforeProduction: false });
     expect(
       refundEntry(
         refundOrder({
           state: "approved_for_matching",
-          timeline: [],
-          payoutMilestones: [{ code: "printing", sharePercent: 40, status: "released", pofFileIds: [] }],
+          timeline: [{ at: "2026-09-27T08:00:00+08:00", state: "production", note: "In production" }],
         }),
         [],
         NOW,
