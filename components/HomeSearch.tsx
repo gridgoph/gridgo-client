@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Keyboard,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -26,6 +27,8 @@ type Props = {
    * between the field and the keyboard rather than behind the keyboard.
    */
   onActivate?: () => void;
+  /** The results opened or closed, so Home can stand the board aside. */
+  onResultsChange?: (showing: boolean) => void;
 };
 
 /** How long the results sit still before a screen reader hears the count. */
@@ -44,27 +47,39 @@ const ANNOUNCE_AFTER_MS = 600;
  *
  * The dropdown is laid out inline, not floated over the board. On Android a
  * child drawn outside its parent's box receives no touches, so an overlay
- * dropdown would paint results nobody could tap. Inline, it pushes the board
- * down, and Home scrolls the field to the top so it has room.
+ * dropdown would paint results nobody could tap. Inline, it takes the board's
+ * place while it is open — the picker does the same with its categories — so
+ * the results are the one list under the field rather than a second card
+ * stacked on the first. Home scrolls the field to the top so it has room.
  *
  * It closes when the keyboard goes — a tap outside, Android back, a drag —
  * and keeps what was typed, so tapping the field again brings the same
  * results back. It is ink, not yellow: the floating "+" is still the screen's
  * one primary action.
  */
-export function HomeSearch({ categories, onPick, onOpenPicker, onActivate }: Props) {
+export function HomeSearch({
+  categories,
+  onPick,
+  onOpenPicker,
+  onActivate,
+  onResultsChange,
+}: Props) {
   const colors = useThemeColors();
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const focusedRef = useRef(false);
-  // A press on a result began. On web the field blurs on pointer-down, before
-  // the press lands; closing then would remove the row being pressed.
-  const choosing = useRef(false);
+  const containerRef = useRef<View>(null);
 
   const search = useMemo(() => homeSearch(categories, query), [categories, query]);
   const showResults = open && search.searching;
+
+  useEffect(() => {
+    onResultsChange?.(showResults);
+    // The page is only tall enough to lift the field once the results exist.
+    if (showResults) onActivate?.();
+  }, [showResults, onResultsChange, onActivate]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -94,6 +109,33 @@ export function HomeSearch({ categories, onPick, onOpenPicker, onActivate }: Pro
     }, []),
   );
 
+  /*
+    On web, focus moves to a result on pointer-down, before the press lands,
+    and Tab walks from the field into the results. Closing on the field's own
+    blur would take the row away under the pointer, so the whole search —
+    field and results — is one focus region, and it closes when focus leaves
+    it. Escape closes it from anywhere inside.
+  */
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const node = containerRef.current as unknown as HTMLElement | null;
+    if (!node) return;
+    const onFocusOut = (event: FocusEvent) => {
+      if (!node.contains(event.relatedTarget as Node | null)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      inputRef.current?.focus();
+    };
+    node.addEventListener("focusout", onFocusOut);
+    node.addEventListener("keydown", onKeyDown);
+    return () => {
+      node.removeEventListener("focusout", onFocusOut);
+      node.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   useEffect(() => {
     if (!showResults) return;
     const timer = setTimeout(() => {
@@ -103,30 +145,21 @@ export function HomeSearch({ categories, onPick, onOpenPicker, onActivate }: Pro
   }, [showResults, search, query]);
 
   const pick = (category: ProductCategory, subcategory: ProductSubcategory) => {
-    choosing.current = false;
     setQuery("");
     close();
     onPick(category, subcategory);
   };
 
   const openPicker = (carry: boolean) => {
-    choosing.current = false;
     const typed = query.trim();
     close();
     onOpenPicker(carry && typed ? typed : null);
   };
 
-  const pressIn = () => {
-    choosing.current = true;
-  };
-  const pressOut = () => {
-    choosing.current = false;
-  };
-
   const more = search.total - search.rows.length;
 
   return (
-    <View>
+    <View ref={containerRef}>
       {/* Focus is drawn on the whole field, as on the picker's. */}
       <View
         className={
@@ -154,14 +187,13 @@ export function HomeSearch({ categories, onPick, onOpenPicker, onActivate }: Pro
           onBlur={() => {
             focusedRef.current = false;
             setFocused(false);
-            if (!choosing.current) setOpen(false);
+            // A phone only blurs the field when the keyboard goes: a tap on a
+            // result keeps it (`keyboardShouldPersistTaps`). Web closes above.
+            if (Platform.OS !== "web") setOpen(false);
           }}
           // Android keeps the field focused when back hides the keyboard, so a
           // second tap raises no focus event. It still presses.
           onPressIn={() => setOpen(true)}
-          onKeyPress={({ nativeEvent }) => {
-            if (nativeEvent.key === "Escape") close();
-          }}
           onSubmitEditing={() => {
             if (search.searching) openPicker(true);
           }}
@@ -177,10 +209,7 @@ export function HomeSearch({ categories, onPick, onOpenPicker, onActivate }: Pro
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Clear search"
-            onPressIn={pressIn}
-            onPressOut={pressOut}
             onPress={() => {
-              choosing.current = false;
               setQuery("");
               inputRef.current?.focus();
             }}
@@ -202,8 +231,6 @@ export function HomeSearch({ categories, onPick, onOpenPicker, onActivate }: Pro
                   caption={row.caption}
                   query={query}
                   accessibilityLabel={`${row.subcategory.name}, in ${row.category.name}`}
-                  onPressIn={pressIn}
-                  onPressOut={pressOut}
                   onPress={() => pick(row.category, row.subcategory)}
                 />
               </View>
@@ -224,8 +251,6 @@ export function HomeSearch({ categories, onPick, onOpenPicker, onActivate }: Pro
               <View className="gg-divider" />
               <Pressable
                 accessibilityRole="button"
-                onPressIn={pressIn}
-                onPressOut={pressOut}
                 onPress={() => openPicker(more > 0)}
                 className="gg-touch flex-row items-center gap-3 bg-surface-variant px-4 py-3"
               >
@@ -255,24 +280,18 @@ function ResultRow({
   query,
   accessibilityLabel,
   onPress,
-  onPressIn,
-  onPressOut,
 }: {
   name: string;
   caption: string;
   query: string;
   accessibilityLabel: string;
   onPress: () => void;
-  onPressIn: () => void;
-  onPressOut: () => void;
 }) {
   const colors = useThemeColors();
 
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       className="gg-touch flex-row items-center gap-3 px-4 py-3"

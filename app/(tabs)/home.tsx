@@ -196,9 +196,14 @@ export default function HomeScreen() {
 
   // Typing in the search opens results under it. The field goes to the top of
   // the screen, section label still in view, so the results have the room
-  // between it and the keyboard.
+  // between it and the keyboard. Instant on web: a browser cancels a smooth
+  // scroll at the next keystroke, which left the field where it was.
+  const [searchOpen, setSearchOpen] = useState(false);
   const makeRoomForSearch = useCallback(() => {
-    scrollRef.current?.scrollTo({ y: Math.max(0, startY.current - 8), animated: !reduceMotion });
+    scrollRef.current?.scrollTo({
+      y: Math.max(0, startY.current - 8),
+      animated: !reduceMotion && Platform.OS !== "web",
+    });
   }, [reduceMotion]);
 
   return (
@@ -213,7 +218,7 @@ export default function HomeScreen() {
         className="gg-screen"
         bottomOffset={KEYBOARD_CARET_GAP}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        keyboardDismissMode={KEYBOARD_DISMISS}
       >
         <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
           {/*
@@ -410,6 +415,7 @@ export default function HomeScreen() {
                     )
                   }
                   onActivate={makeRoomForSearch}
+                  onResultsChange={setSearchOpen}
                 />
               </TourTarget>
               {/*
@@ -418,23 +424,26 @@ export default function HomeScreen() {
                 off mid-item on most of the others; in one column every row is
                 full width, every name and contents line is set whole, and the
                 five read as one scan down the page. The crop-marked mark is
-                what keeps this board apart from the docket above it.
+                what keeps this board apart from the docket above it. It
+                stands aside while search results are open under the field.
               */}
-              <TourTarget
-                step="home.categories"
-                className="gg-card-flush"
-                onLayout={(y) => { boardY.current = y; }}
-              >
-                {categories.map((category, index) => (
-                  <View key={category.code}>
-                    {index > 0 ? <View className="gg-divider" /> : null}
-                    <HomeCategoryRow
-                      category={category}
-                      onPress={() => router.push(`/request/${category.code}`)}
-                    />
-                  </View>
-                ))}
-              </TourTarget>
+              {searchOpen ? null : (
+                <TourTarget
+                  step="home.categories"
+                  className="gg-card-flush"
+                  onLayout={(y) => { boardY.current = y; }}
+                >
+                  {categories.map((category, index) => (
+                    <View key={category.code}>
+                      {index > 0 ? <View className="gg-divider" /> : null}
+                      <HomeCategoryRow
+                        category={category}
+                        onPress={() => router.push(`/request/${category.code}`)}
+                      />
+                    </View>
+                  ))}
+                </TourTarget>
+              )}
             </View>
           ) : null}
 
@@ -443,6 +452,18 @@ export default function HomeScreen() {
     </TabScreen>
   );
 }
+
+/**
+ * A drag dismisses the keyboard on a phone. On web, react-native-web treats
+ * every scroll as a drag — including the one Home makes when the board stands
+ * aside for the results — so the field lost focus mid-word. A browser has no
+ * soft keyboard to dismiss.
+ */
+const KEYBOARD_DISMISS = Platform.select({
+  ios: "interactive",
+  android: "on-drag",
+  default: "none",
+} as const);
 
 /**
  * The way from Home's snapshot to the full list on Orders.

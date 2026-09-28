@@ -297,7 +297,9 @@ export function normalizeSearch(value: string): string {
  * Examples are searched as well as names, because "tote bag" and "x-stand" are
  * what a person types; neither is a subcategory name. Name matches rank above
  * example matches so an exact word does not sink below a category that merely
- * mentions it.
+ * mentions it, and both rank above a match on the family's own words — "event"
+ * finds Flyers through "event promos" before it finds Business cards only
+ * because the family is for "businesses, startups, and events".
  */
 export function searchSubcategories(
   categories: ProductCategory[],
@@ -308,17 +310,17 @@ export function searchSubcategories(
 
   const byName: SubcategoryHit[] = [];
   const byExample: SubcategoryHit[] = [];
+  const byFamily: SubcategoryHit[] = [];
 
   for (const category of categories) {
     const categoryMatches = normalizeSearch(`${category.name} ${category.bestFor}`).includes(needle);
     for (const subcategory of category.subcategories) {
       const hit = { category, subcategory };
       if (normalizeSearch(subcategory.name).includes(needle)) byName.push(hit);
-      else if (normalizeSearch(subcategory.examples).includes(needle) || categoryMatches) {
-        byExample.push(hit);
-      }
+      else if (normalizeSearch(subcategory.examples).includes(needle)) byExample.push(hit);
+      else if (categoryMatches) byFamily.push(hit);
     }
   }
 
-  return [...byName, ...byExample];
+  return [...byName, ...byExample, ...byFamily];
 }

@@ -325,6 +325,16 @@ describe("searchSubcategories", () => {
     expect(hits[0].subcategory.code).toBe("stickers_packaging_labels");
   });
 
+  it("ranks an example match above a match on the family's own words", () => {
+    const codes = searchSubcategories(seed, "event").map((hit) => hit.subcategory.code);
+    // "event promos" is a Flyers example; Business cards only shares a family
+    // whose audience line mentions events.
+    expect(codes.indexOf("flyers")).toBeLessThan(codes.indexOf("business_cards"));
+    expect(codes.indexOf("tarpaulins_outdoor_banners")).toBeLessThan(
+      codes.indexOf("business_cards"),
+    );
+  });
+
   it("matches the audience line, so a client who names themselves finds the category", () => {
     const hits = searchSubcategories(seed, "student org");
     expect(hits.map((h) => h.category.code)).toEqual(
