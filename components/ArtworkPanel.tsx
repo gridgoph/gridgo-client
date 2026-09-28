@@ -17,8 +17,10 @@ export function ArtworkPanel({ order }: { order: Order }) {
       ? `“${order.artworkName}” is recorded, but no stored file is available. Ask Operations for the production file.`
       : "No artwork or reference picture is attached yet. Ask Operations for the production file."}</Text>;
   }
+  // Which item a file belongs to only says something on a job with several.
+  const named = new Set(files.map((file) => file.itemName).filter(Boolean)).size > 1;
   return <View>{files.map((file) => (
-    <ArtworkFile key={`${order.id}:${file.fileId}`} orderId={order.id} reference={file} />
+    <ArtworkFile key={`${order.id}:${file.fileId}`} orderId={order.id} reference={named ? file : { ...file, itemName: undefined }} />
   ))}</View>;
 }
 

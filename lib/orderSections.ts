@@ -90,7 +90,10 @@ export function specificationsSummary(
     parts.push(countLabel(items.length, "item", "items"));
   } else {
     // One item: its quantity. Its name is the job's title, already on screen.
-    const quantity = describeQuantity(items[0]?.quantity ?? order.quantity, unit);
+    // With no unit the fallback noun is "items", and "2 items" reads as two
+    // different things rather than two of one.
+    const count = items[0]?.quantity ?? order.quantity;
+    const quantity = unit ? describeQuantity(count, unit) : Number.isFinite(Number(count)) ? `Quantity ${count}` : "—";
     if (quantity !== "—") parts.push(quantity);
     if (!items.length && order.size) parts.push(order.size);
   }

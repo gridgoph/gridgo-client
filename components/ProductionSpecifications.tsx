@@ -19,9 +19,12 @@ type Props = {
 
 /** The saved specification for every item, shared by job detail and counter QC. */
 export function ProductionSpecifications({ order, taxonomy = EMPTY_TAXONOMY, bare = false, showLinks = true }: Props) {
-  return <View className="gap-3">{orderProductionItems(order).map((item) => (
+  const items = orderProductionItems(order);
+  // Bare, a single item's name is the job's title already heading the screen.
+  const named = !bare || items.length > 1;
+  return <View className="gap-3">{items.map((item) => (
     <View key={item.id} className="gap-2">
-      <Text className="text-body font-medium text-text-primary">{item.itemName}</Text>
+      {named ? <Text className={bare ? "pt-3 text-body font-medium text-text-primary" : "text-body font-medium text-text-primary"}>{item.itemName}</Text> : null}
       <View className={bare ? undefined : "gg-card-flush px-4"}>
         {productionSpecRows(item, (value) => taxonomyLabel(taxonomy, value)).map((row, index) => <SpecRow key={`${row.label}:${index}`} label={row.label} value={row.value} />)}
         {showLinks ? (item.artworkLinks ?? []).map((link) => <DesignLinkRow key={`${link.formatCode}:${link.url}`} link={link} />) : null}

@@ -89,7 +89,7 @@ it("leads with the latest progress and folds the record, each heading saying wha
   for (const title of ["Specifications", "Artwork and references", "Payment details"]) {
     expect(sectionButton(title).props.accessibilityState).toMatchObject({ expanded: false });
   }
-  expect(screen.getByText(/^200 \w+ · Due (5 Oct|Oct 5)$/)).toBeTruthy();
+  expect(screen.getByText(/^Quantity 200 · Due (5 Oct|Oct 5)$/)).toBeTruthy();
   expect(screen.getByText("1 file · 1 design link")).toBeTruthy();
   expect(screen.getByText("Total ₱1,150.00")).toBeTruthy();
   // Folded means folded: no breakdown, no rows, no files behind the headings.

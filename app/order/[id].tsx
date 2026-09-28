@@ -379,9 +379,7 @@ export default function OrderDetailScreen() {
             summary={specificationsSummary(order, unit)}
           >
             {order.productionItems?.length ? (
-              <View className="pb-2">
-                <ProductionSpecifications order={order} taxonomy={taxonomy} bare showLinks={false} />
-              </View>
+              <ProductionSpecifications order={order} taxonomy={taxonomy} bare showLinks={false} />
             ) : (
               <>
                 <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
