@@ -49,4 +49,12 @@ describe("SettingsScreen", () => {
       params: { returnTo: "settings" },
     });
   });
+
+  it("opens What's new from its own row", async () => {
+    await renderInSafeArea(<SettingsScreen />);
+
+    expect(screen.getByText("Release notes for every version")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("What's new"));
+    expect(mockPush).toHaveBeenCalledWith("/whats-new");
+  });
 });
