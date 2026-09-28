@@ -12,9 +12,10 @@
  * produces a sentence: this shop won on speed, and speed is what you asked for
  * first. That sentence is the whole point — see `lib/shopMatch.ts`.
  *
- * The ranking lives on the phone (`store/priorities.ts`). GRIDGO has no route
- * for a client preference yet, so it does not follow the account to a second
- * device; when one lands, this module is what it reads and writes.
+ * The ranking belongs to the account: `store/priorities.ts` reads and writes
+ * it through `GET|PUT /me/preferences`, and `POST /me/matches` matches on the
+ * saved order. This module is the pure half — what a ranking is and how the
+ * screen reads it back.
  */
 
 export type Priority = "quality" | "speed" | "cost" | "distance";
@@ -90,6 +91,28 @@ export function togglePlacement(
   const index = order.indexOf(priority);
   if (index === -1) return [...order, priority];
   return order.slice(0, index);
+}
+
+/**
+ * The order the cards are drawn in: ranked ones first, in rank order, then the
+ * rest in their usual order.
+ *
+ * Cards drawn in a fixed order with a rank stamped on each read 1, 2, 4, 3 down
+ * the screen, and a client checking their choice reads the column, not the
+ * numerals (gridgo-client#127). Drawing in rank order makes the column the
+ * answer: the numbers always count down the screen.
+ */
+export function displayOrder(order: readonly Priority[]): Priority[] {
+  return [...order, ...PRIORITIES.filter((priority) => !order.includes(priority))];
+}
+
+/** Same factors in the same order. */
+export function sameRanking(
+  a: readonly Priority[] | null,
+  b: readonly Priority[] | null,
+): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((priority, index) => priority === b[index]);
 }
 
 /** The order, as one sentence a client can check at a glance. */

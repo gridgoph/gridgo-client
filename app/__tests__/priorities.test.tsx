@@ -116,6 +116,33 @@ describe("PrioritiesScreen", () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
+  it("draws the cards in rank order, so the numbers count down the screen", async () => {
+    // gridgo-client#127: drawn in a fixed order, quality, speed, distance, cost
+    // read 1, 2, 4, 3 down the column.
+    await renderInSafeArea(<PrioritiesScreen />);
+
+    fireEvent.press(screen.getByLabelText("Distance"));
+    await screen.findByText("So far: distance.");
+    fireEvent.press(screen.getByLabelText("Cost"));
+    await screen.findByText("So far: distance, then cost.");
+
+    const cards = screen
+      .getAllByRole("button")
+      .filter((node) => ["Quality", "Speed", "Cost", "Distance"].includes(node.props.accessibilityLabel));
+    expect(cards.map((node) => node.props.accessibilityLabel)).toEqual([
+      "Distance",
+      "Cost",
+      "Quality",
+      "Speed",
+    ]);
+    expect(cards.map((node) => node.props.accessibilityValue.text)).toEqual([
+      "Ranked 1",
+      "Ranked 2",
+      "Not ranked",
+      "Not ranked",
+    ]);
+  });
+
   it("says nothing about internal codes", async () => {
     await renderInSafeArea(<PrioritiesScreen />);
 
@@ -150,6 +177,8 @@ describe("saving", () => {
       expect(usePriorities.getState().ranking).toEqual(["distance", "quality", "speed", "cost"]),
     );
     expect(api.savePreferences).toHaveBeenCalledWith(["distance", "quality", "speed", "cost"]);
-    expect(mockReplace).toHaveBeenCalledWith("/(tabs)/home");
+    // Said before the screen closes, so the client sees it land.
+    expect(await screen.findByLabelText("Saved")).toBeTruthy();
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/(tabs)/home"));
   });
 });

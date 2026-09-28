@@ -1,8 +1,10 @@
 import {
   PRIORITIES,
+  displayOrder,
   isCompleteRanking,
   rankOf,
   rankingSentence,
+  sameRanking,
   togglePlacement,
   type Priority,
 } from "@/lib/priorities";
@@ -70,5 +72,30 @@ describe("rankingSentence", () => {
     for (const priority of PRIORITIES) {
       expect(sentence).toContain(priority);
     }
+  });
+});
+
+describe("displayOrder", () => {
+  it("draws ranked cards first, so the numbers count down the screen", () => {
+    // gridgo-client#127: drawn in a fixed order, this ranking read 1, 2, 4, 3.
+    const order: Priority[] = ["quality", "speed", "distance", "cost"];
+    const drawn = displayOrder(order);
+
+    expect(drawn).toEqual(["quality", "speed", "distance", "cost"]);
+    expect(drawn.map((priority) => rankOf(order, priority))).toEqual([1, 2, 3, 4]);
+  });
+
+  it("puts what is not ranked yet underneath, in the usual order", () => {
+    expect(displayOrder(["distance"])).toEqual(["distance", "quality", "speed", "cost"]);
+    expect(displayOrder([])).toEqual([...PRIORITIES]);
+  });
+});
+
+describe("sameRanking", () => {
+  it("matches only the same factors in the same order", () => {
+    expect(sameRanking(["quality", "speed", "cost", "distance"], ["quality", "speed", "cost", "distance"])).toBe(true);
+    expect(sameRanking(["quality", "speed", "distance", "cost"], ["quality", "speed", "cost", "distance"])).toBe(false);
+    expect(sameRanking(["quality", "speed"], ["quality", "speed", "cost", "distance"])).toBe(false);
+    expect(sameRanking(null, ["quality", "speed", "cost", "distance"])).toBe(false);
   });
 });
