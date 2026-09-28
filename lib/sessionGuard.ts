@@ -20,6 +20,7 @@ export const AUTHENTICATED_ROOT_SCREENS = [
   "order/refund-account",
   "design-system",
   "settings",
+  "whats-new",
   "saved-places",
   "saved-place",
 ] as const;

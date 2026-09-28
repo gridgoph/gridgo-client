@@ -359,6 +359,7 @@ function AppNavigation() {
                   options={pushedScreenOptions("Design system")}
                 />
                 <Stack.Screen name="settings" options={pushedScreenOptions("Settings")} />
+                <Stack.Screen name="whats-new" options={pushedScreenOptions("What's new")} />
                 {/*
                   The account's own details. The band names the screen, so the
                   form below it opens straight on the record rather than
