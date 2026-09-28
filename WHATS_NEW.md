@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.178 (Fix)
+
+- Adding something from a different print shop now explains why and lets you check out first or start a new order.
+
 ## 1.0.174 (Improvement)
 
 - Orders open on their latest progress. Tap it for the full history with photos; details fold away until needed.
