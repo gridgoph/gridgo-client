@@ -212,6 +212,7 @@ Never hand-roll a `<Modal animationType="slide">` again — a fixed ramp that ig
 - `react-native-keyboard-controller` is in Expo Go's bundled modules for SDK 57, so this needs no development build. Install it with `npx expo install` so the version stays the one Expo Go ships.
 - Pass no `statusBarTranslucent` / `navigationBarTranslucent` to `KeyboardProvider`: the library detects edge-to-edge and warns when they are set.
 - Where the content is a sheet rather than a scroll, use the library's `KeyboardAvoidingView`. It works inside a React Native `Modal` (since 1.13), which is what `components/Sheet.tsx` needs.
+- **A `KeyboardAvoidingView` under a stack header needs `keyboardVerticalOffset` = the header height** (`HeaderHeightContext`). It measures itself with `onLayout`, which reads y = 0 below the header, so without the offset it pads one header short and the field stays under the keyboard (#128, `components/SupportChatConversation.tsx`, which also re-pins the transcript through `lib/chatScroll.ts`).
 - On web every binding in the library is a documented no-op, so `FormScreen` is a plain `ScrollView` there and the whole thing degrades honestly. It also means **keyboard behaviour cannot be checked in a browser** — verify on a device.
 
 ### Honest-state rules that keep being re-broken
