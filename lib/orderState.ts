@@ -61,6 +61,9 @@ const STATE_META: Record<string, OrderStateMeta> = {
   issue_window_open: { label: "Check your delivery", tone: "warning", icon: "triangle-alert" },
   completed: { label: "Completed", tone: "success", icon: "circle-check" },
   payout_released: { label: "Completed", tone: "success", icon: "circle-check" },
+  // Reached by an Operations cancellation, and by a refund settled before
+  // handover. Neither is a failure the client caused, so it carries no red.
+  cancelled: { label: "Cancelled", tone: "neutral", icon: "circle-x" },
 };
 
 /**
@@ -244,6 +247,10 @@ const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
 };
 
 export function orderNextAction(order: Order): OrderNextAction | null {
+  // An open refund pauses the job: proofs, corrections, payments and the
+  // issue window all wait on Operations' decision, so nothing is asked of
+  // the client until it is made.
+  if (order.refundHold) return null;
   if (downpaymentDue(order)) {
     const amount = paymentInstallment(order, "downpayment")?.amountMinor;
     const inFull = paysInFull(order);
@@ -302,6 +309,7 @@ export function orderNeedsClient(order: Order): boolean {
  */
 const WAITING_ON: Record<string, string> = {
   draft: "This request has not been sent yet.",
+  cancelled: "This job was cancelled.",
   submitted: "Operations is picking this up for the artwork check.",
   needs_qa: "Operations is checking your artwork against the print specification.",
   approved_for_matching: "Operations is matching this job to a supplier who can print it.",
@@ -339,6 +347,15 @@ const PAID_IN_FULL_WAITING_ON: Record<string, string> = {
 };
 
 export function orderWaitingOn(order: Order): string | null {
+  if (order.refundDisposition === "cancelled") {
+    return "This job was cancelled for your refund. Open the refund to see when the money is sent.";
+  }
+  if (order.refundDisposition === "fulfilled_with_refund") {
+    return "This job is closed with a partial refund. Open the refund to see when the money is sent.";
+  }
+  if (order.refundHold) {
+    return "This job is paused while Operations reviews your refund request.";
+  }
   const underReview = installmentUnderReview(order);
   const inFull = paysInFull(order);
   if (underReview === "downpayment" && inFull) {

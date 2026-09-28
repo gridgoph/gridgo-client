@@ -145,13 +145,24 @@ export function paymentInstallment(order: Pick<Order, "payments">, code: Install
     : payments?.final_online ?? payments?.balance;
 }
 
+/**
+ * No payment is asked for while a refund is open or after one was settled.
+ * The platform refuses a new installment then, and a settled refund turns the
+ * unpaid half into history (`unpaidBalanceCancelled`) rather than a debt.
+ */
+export function collectionPaused(order: Pick<Order, "refundHold" | "unpaidBalanceCancelled">): boolean {
+  return order.refundHold === true || order.unpaidBalanceCancelled === true;
+}
+
 export function downpaymentDue(order: Order): boolean {
+  if (collectionPaused(order)) return false;
   if (!["awaiting_downpayment", "awaiting_initial_payment"].includes(order.state)) return false;
   const installment = paymentInstallment(order, "downpayment");
   return Boolean(installment && installment.amountMinor != null && installment.amountMinor > 0 && ["not_submitted", "rejected"].includes(installment.status));
 }
 
 export function balanceDue(order: Order): boolean {
+  if (collectionPaused(order)) return false;
   if (paysInFull(order)) return false;
   if (!(BALANCE_DUE_STATES as readonly string[]).includes(order.state)) return false;
   if (order.payments?.initial
