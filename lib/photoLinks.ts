@@ -32,6 +32,12 @@ export const HELD_READ_MAX_AGE_MS = 240_000;
 
 type ExpiringLink = { downloadUrlExpiresAt?: CatalogPhoto["downloadUrlExpiresAt"] | null } | null | undefined;
 
+/**
+ * Anything that holds signed photos: a listing, or an order's progress gallery
+ * (`productionProgress`), whose links are signed the same way.
+ */
+export type PhotoHolder = { photos?: readonly ExpiringLink[] | null };
+
 /** Milliseconds since epoch the link expires at, or null when it does not say. */
 export function photoLinkExpiry(photo: ExpiringLink): number | null {
   const stamp = photo?.downloadUrlExpiresAt;
@@ -52,7 +58,7 @@ export function photoLinkIsStale(photo: ExpiringLink, now: number = Date.now()):
 
 /** The soonest any photo on these listings expires, or null when none says. */
 export function earliestPhotoExpiry(
-  items: readonly (Pick<CatalogItem, "photos"> | null | undefined)[],
+  items: readonly (PhotoHolder | null | undefined)[],
 ): number | null {
   let earliest: number | null = null;
   for (const item of items) {
@@ -66,7 +72,7 @@ export function earliestPhotoExpiry(
 
 /** True when any photo on these listings is stale. */
 export function hasStalePhotoLink(
-  items: readonly (Pick<CatalogItem, "photos"> | null | undefined)[],
+  items: readonly (PhotoHolder | null | undefined)[],
   now: number = Date.now(),
 ): boolean {
   const at = earliestPhotoExpiry(items);

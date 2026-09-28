@@ -11,7 +11,6 @@ import { ErrorState } from "@/components/ErrorState";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
 import { FormScreen } from "@/components/FormScreen";
-import { FulfilmentProgress } from "@/components/FulfilmentProgress";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { JobCompleteCard } from "@/components/JobCompleteCard";
 import { OrderReference } from "@/components/OrderReference";
@@ -19,6 +18,7 @@ import { OrderTimeline } from "@/components/OrderTimeline";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
+import { ProductionProgress } from "@/components/ProductionProgress";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
 import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
@@ -47,7 +47,6 @@ import {
   orderNextAction,
   orderTotalMinor,
   orderWaitingOn,
-  showsFulfilmentProgress,
 } from "@/lib/orderState";
 import { isJobComplete } from "@/lib/jobComplete";
 import {
@@ -58,6 +57,7 @@ import {
   paysInFull,
 } from "@/lib/payment";
 import { physicalInvoiceEntry } from "@/lib/physicalInvoice";
+import { hasPlainHistory, progressView } from "@/lib/productionProgress";
 import { canRate } from "@/lib/rating";
 import { currentRefund, refundEntry } from "@/lib/refunds";
 import { printingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
@@ -209,6 +209,7 @@ export default function OrderDetailScreen() {
   const payable = payableInstallment(order);
   const underReview = installmentUnderReview(order);
   const showsOwnPreview = isProofApprovalState(order.state);
+  const progress = progressView(order);
   /*
     A closed job tells its own story in the card below the title: how it
     arrived, that nothing was wrong with it, that it is paid. The one-line
@@ -356,9 +357,12 @@ export default function OrderDetailScreen() {
           <DeliveryTrackingCard order={order} />
         ) : null}
 
-        {showsFulfilmentProgress(order.state) ? (
-          <FulfilmentProgress milestones={order.payoutMilestones} />
-        ) : null}
+        {/*
+          Photos from the press, or the plain fact that none has come. Never
+          the shop's payout stages: those are someone else's money, and their
+          "done" was never a thing a client could look at.
+        */}
+        {progress ? <ProductionProgress view={progress} /> : null}
 
         <View className="gap-4">
           <Text className="text-overline text-text-muted">SPECIFICATION</Text>
@@ -425,6 +429,7 @@ export default function OrderDetailScreen() {
               currentState={order.state}
               fulfillmentMode={order.fulfillmentMode}
               paidInFull={paysInFull(order)}
+              plainNotes={hasPlainHistory(order)}
             />
           </View>
         </View>

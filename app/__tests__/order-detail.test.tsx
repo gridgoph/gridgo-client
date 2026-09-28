@@ -122,32 +122,6 @@ const baseOrder: Order = {
       confirmedAt: null,
     },
   },
-  payoutMilestones: [
-    {
-      code: "printing",
-      sharePercent: 50,
-      status: "pof_attached",
-      pofFileIds: ["file_pof_1"],
-    },
-    {
-      code: "packaging_qc",
-      sharePercent: 15,
-      status: "pending_pof",
-      pofFileIds: [],
-    },
-    {
-      code: "delivered",
-      sharePercent: 25,
-      status: "pending_pof",
-      pofFileIds: [],
-    },
-    {
-      code: "retention",
-      sharePercent: 10,
-      status: "pending_pof",
-      pofFileIds: [],
-    },
-  ],
   paymentMethod: "qr_manual",
   paymentStatus: "downpayment_confirmed",
   promisedDate: null,
@@ -355,19 +329,53 @@ describe("OrderDetailScreen", () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
     expect(await screen.findByText("Grand opening tarpaulin")).toBeTruthy();
-    // Header says what is happening; the timeline carries the supplier's own note.
-    expect(screen.getAllByText(/on the press/i).length).toBeGreaterThan(1);
+    // Header says what is happening, in the chip and on the record.
+    expect(screen.getAllByText("In production").length).toBeGreaterThan(0);
     // The reference remains visible while the workflow state is human-readable.
     // The reference tag, not the raw key: `ord_demo_1` reads as DEMO_1.
     expect(screen.getByText("DEMO_1")).toBeTruthy();
     expect(screen.queryByText(baseOrder.state, { exact: true })).toBeNull();
   });
 
-  it("shows the operations note and the actor on the timeline", async () => {
+  it("keeps an older payload's typed notes off the history", async () => {
+    // Before gridgo-api#112 a note was whatever was typed as the job moved,
+    // shop payout stages and proof codes among them.
+    setOrder({
+      timeline: [
+        ...baseOrder.timeline,
+        {
+          at: "2026-08-09T10:05:00+08:00",
+          state: "production",
+          by: "user_ops",
+          note: "Payout milestone printing released",
+          milestoneCode: "printing",
+        },
+      ],
+    });
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText("On the press this afternoon")).toBeTruthy();
+    expect(await screen.findByText("Grand opening tarpaulin")).toBeTruthy();
     expect(screen.getByText(/Supplier ·/)).toBeTruthy();
+    expect(screen.queryByText("On the press this afternoon")).toBeNull();
+    expect(screen.queryByText(/payout|milestone/i)).toBeNull();
+  });
+
+  it("writes the history in GRIDGO's plain words once the API sends them", async () => {
+    setOrder({
+      state: "supplier_self_qc",
+      productionProgress: { status: "waiting_for_photo", photos: [] },
+      timeline: [
+        { at: "2026-08-08T10:00:00+08:00", state: "submitted", note: "Order submitted" },
+        { at: "2026-08-09T10:00:00+08:00", state: "production", note: "In production" },
+        { at: "2026-08-09T11:00:00+08:00", state: "supplier_self_qc", note: "Checking and packing your order" },
+      ],
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Checking and packing your order")).toBeTruthy();
+    expect(screen.getByText("Order submitted")).toBeTruthy();
+    // The plain projection names nobody, and nothing internal is on the record.
+    expect(screen.queryByText(/Supplier ·|Operations ·/)).toBeNull();
   });
 
   it("turns a rejection into a correction on the same job", async () => {
@@ -386,14 +394,51 @@ describe("OrderDetailScreen", () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
     expect(await screen.findByText("Replace the artwork")).toBeTruthy();
-    // Shown as the reason to act on, and kept on the record below.
+    // Shown as the reason to act on. History draws no typed notes from an
+    // older payload, so it is said once.
     expect(
       screen.getAllByText("Bleed is missing on all four edges").length,
-    ).toBe(2);
+    ).toBe(1);
     expect(screen.getByText("Choose a corrected file")).toBeTruthy();
     expect(
       screen.getByText(/history, price and any payment stay/i),
     ).toBeTruthy();
+  });
+
+  it("shows Operations' own reason for a correction from the plain projection", async () => {
+    setOrder({
+      state: "client_correction",
+      productionProgress: { status: "waiting_for_photo", photos: [] },
+      correction: {
+        reason: "Bleed is missing on all four edges",
+        requestedAt: "2026-08-09T11:00:00+08:00",
+      },
+      timeline: [
+        { at: "2026-08-08T10:00:00+08:00", state: "submitted", note: "Order submitted" },
+        { at: "2026-08-09T11:00:00+08:00", state: "client_correction", note: "Artwork needs a change" },
+      ],
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Bleed is missing on all four edges")).toBeTruthy();
+    expect(screen.getByText(/^What Operations found · /)).toBeTruthy();
+    // The step's fixed wording stays on the record, never offered as the reason.
+    expect(screen.getAllByText("Artwork needs a change")).toHaveLength(1);
+  });
+
+  it("says Operations left no note rather than passing off the step's wording", async () => {
+    setOrder({
+      state: "client_correction",
+      productionProgress: { status: "waiting_for_photo", photos: [] },
+      correction: null,
+      timeline: [
+        { at: "2026-08-09T11:00:00+08:00", state: "client_correction", note: "Artwork needs a change" },
+      ],
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText(/Operations did not leave a note with this one/)).toBeTruthy();
+    expect(screen.getAllByText("Artwork needs a change")).toHaveLength(1);
   });
 
   it("asks for a considered decision on the artwork proof, not a row tap", async () => {
@@ -579,17 +624,56 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText(/paid in full/i)).toBeNull();
   });
 
-  it("shows the supplier's milestones instead of a print proof to approve", async () => {
+  it("never reads the shop's payout stages, and says nothing of photos to an older API", async () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
     await screen.findByText("Grand opening tarpaulin");
-    expect(screen.getAllByText("Printing").length).toBeGreaterThan(0);
-    expect(screen.getByText("Packaging")).toBeTruthy();
-    expect(screen.getByText("Delivered")).toBeTruthy();
-    // Retention is a hold-back on someone else's payout, and the shares are
-    // shares of the supplier's earnings. Neither is the client's business.
-    expect(screen.queryByText(/retention/i)).toBeNull();
+    expect(screen.queryByText("PROGRESS")).toBeNull();
+    expect(screen.queryByText(/Waiting for a progress photo/)).toBeNull();
+    expect(screen.queryByText(/retention|milestone|payout/i)).toBeNull();
     expect(screen.queryByText(/50%|15%|10%/)).toBeNull();
+  });
+
+  it("says plainly that a progress photo has not come in yet", async () => {
+    setOrder({ productionProgress: { status: "waiting_for_photo", photos: [] } });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Waiting for a progress photo")).toBeTruthy();
+    expect(screen.getByText(/not packed without one/)).toBeTruthy();
+  });
+
+  it("still waits for a photo on a job Operations moved past the press", async () => {
+    setOrder({
+      state: "ready_for_dispatch",
+      productionProgress: { status: "waiting_for_photo", photos: [] },
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Waiting for a progress photo")).toBeTruthy();
+    expect(screen.getByText(/No photo came in while this job was being made/)).toBeTruthy();
+  });
+
+  it("shows the shop's progress photos, newest first", async () => {
+    const expires = new Date(Date.now() + 5 * 60_000).toISOString();
+    setOrder({
+      productionProgress: {
+        status: "photos_available",
+        photos: [
+          { fileId: "file_start", contentType: "image/jpeg", at: "2026-08-09T10:30:00+08:00", downloadUrl: "https://storage.test/start.jpg", downloadUrlExpiresAt: expires },
+          { fileId: "file_done", contentType: "image/jpeg", at: "2026-08-09T14:00:00+08:00", downloadUrl: "https://storage.test/done.jpg", downloadUrlExpiresAt: expires },
+        ],
+      },
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Latest photo")).toBeTruthy();
+    expect(screen.getByText("1 earlier photo")).toBeTruthy();
+    const images = screen.getAllByTestId("sample-photo-image");
+    expect(images.map((image) => image.props.source.uri)).toEqual([
+      "https://storage.test/done.jpg",
+      "https://storage.test/start.jpg",
+    ]);
+    expect(screen.queryByText("Waiting for a progress photo")).toBeNull();
   });
 
   it("says a delivery has no shared position rather than showing nothing", async () => {

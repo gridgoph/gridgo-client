@@ -13,7 +13,6 @@ import {
   orderStateMeta,
   orderTotalMinor,
   orderWaitingOn,
-  showsFulfilmentProgress,
 } from "@/lib/orderState";
 
 /** An order in one state, with whatever money and payment shape a case needs. */
@@ -155,13 +154,6 @@ describe("order state predicates", () => {
     expect(isClientCorrectionState("client_correction")).toBe(true);
   });
 
-  it("shows fulfilment progress from production onward, not before", () => {
-    expect(showsFulfilmentProgress("payment_authorized")).toBe(true);
-    expect(showsFulfilmentProgress("production")).toBe(true);
-    expect(showsFulfilmentProgress("completed")).toBe(true);
-    expect(showsFulfilmentProgress("submitted")).toBe(false);
-    expect(showsFulfilmentProgress("awaiting_downpayment")).toBe(false);
-  });
 });
 
 describe("orderNextAction", () => {
@@ -413,10 +405,6 @@ describe("a collected order speaks its own language", () => {
     // release has made the trip for nothing.
     expect(orderNextAction(owing)?.title).toBe("Pay the remaining 25%");
     expect(orderNextAction(owing)?.body).toMatch(/counter/i);
-  });
-
-  it("still shows the job as being fulfilled while it waits on the shelf", () => {
-    expect(showsFulfilmentProgress("awaiting_collection")).toBe(true);
   });
 });
 
