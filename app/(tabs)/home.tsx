@@ -1,17 +1,19 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronRight } from "lucide-react-native";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useReducedMotion } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TabScreen } from "@/components/TabScreen";
 import { ErrorState } from "@/components/ErrorState";
+import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { HomeCategoryRow } from "@/components/HomeCategoryRow";
 import { HomeSampleStrip } from "@/components/HomeSampleStrip";
-import { HomeSearchEntry } from "@/components/HomeSearchEntry";
+import { HomeSearch } from "@/components/HomeSearch";
 import { HomeActionRow, HomeFinishedRow, HomeJobRow } from "@/components/HomeRow";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -54,7 +56,8 @@ import { useSession } from "@/store/session";
  * "View all".
  *
  * Starting is one section, in the order a person arrives in: search first for
- * someone who already knows they want a tarpaulin, then the five categories
+ * someone who already knows they want a tarpaulin — typed in place, with
+ * matches dropping down under the field — then the five categories
  * for someone who is looking. Those five are one full-width board, not a grid:
  * two columns orphaned the fifth family beside an empty half-row and cut the
  * contents line off mid-item on most of the rest. The search bar deliberately
@@ -182,7 +185,7 @@ export default function HomeScreen() {
   useTourAutoStart(welcoming);
   const tourStep = useVisibleTourStep().step?.id;
   const reduceMotion = useReducedMotion();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   const startY = useRef(0);
   const boardY = useRef(0);
   useEffect(() => {
@@ -191,9 +194,27 @@ export default function HomeScreen() {
     scrollRef.current?.scrollTo({ y: Math.max(0, y - 96), animated: !reduceMotion });
   }, [tourStep, reduceMotion]);
 
+  // Typing in the search opens results under it. The field goes to the top of
+  // the screen, section label still in view, so the results have the room
+  // between it and the keyboard.
+  const makeRoomForSearch = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: Math.max(0, startY.current - 8), animated: !reduceMotion });
+  }, [reduceMotion]);
+
   return (
     <TabScreen>
-      <ScrollView ref={scrollRef} className="gg-screen">
+      {/*
+        Keyboard-aware because Home takes typing now: the search field sits
+        mid-page, and its results must not open behind the keyboard. A tap on
+        the background dismisses; a tap on a result still presses.
+      */}
+      <KeyboardAwareScrollView
+        ref={scrollRef}
+        className="gg-screen"
+        bottomOffset={KEYBOARD_CARET_GAP}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+      >
         <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
           {/*
             One header: the mark, and cart and chat as the two ways back into
@@ -380,7 +401,16 @@ export default function HomeScreen() {
               */}
               <SectionHead label={welcoming ? "START YOUR FIRST PRINT" : "START A PRINT"} />
               <TourTarget step="home.search">
-                <HomeSearchEntry onPress={() => router.push("/request/category")} />
+                <HomeSearch
+                  categories={categories}
+                  onPick={(category, subcategory) => startJob(category.code, subcategory.code)}
+                  onOpenPicker={(query) =>
+                    router.push(
+                      query ? { pathname: "/request/category", params: { q: query } } : "/request/category",
+                    )
+                  }
+                  onActivate={makeRoomForSearch}
+                />
               </TourTarget>
               {/*
                 One board, not a grid. Five families in two columns left the
@@ -409,7 +439,7 @@ export default function HomeScreen() {
           ) : null}
 
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </TabScreen>
   );
 }

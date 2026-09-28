@@ -278,12 +278,15 @@ export function splitByAvailability<T extends { family: string }>(
   return { orderable, quotedByOperations };
 }
 
+/** Fewer characters than this match too much to be a search. */
+export const SEARCH_MIN_CHARS = 2;
+
 export type SubcategoryHit = {
   category: ProductCategory;
   subcategory: ProductSubcategory;
 };
 
-function normalize(value: string): string {
+export function normalizeSearch(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
@@ -300,18 +303,18 @@ export function searchSubcategories(
   categories: ProductCategory[],
   query: string,
 ): SubcategoryHit[] {
-  const needle = normalize(query);
-  if (needle.length < 2) return [];
+  const needle = normalizeSearch(query);
+  if (needle.length < SEARCH_MIN_CHARS) return [];
 
   const byName: SubcategoryHit[] = [];
   const byExample: SubcategoryHit[] = [];
 
   for (const category of categories) {
-    const categoryMatches = normalize(`${category.name} ${category.bestFor}`).includes(needle);
+    const categoryMatches = normalizeSearch(`${category.name} ${category.bestFor}`).includes(needle);
     for (const subcategory of category.subcategories) {
       const hit = { category, subcategory };
-      if (normalize(subcategory.name).includes(needle)) byName.push(hit);
-      else if (normalize(subcategory.examples).includes(needle) || categoryMatches) {
+      if (normalizeSearch(subcategory.name).includes(needle)) byName.push(hit);
+      else if (normalizeSearch(subcategory.examples).includes(needle) || categoryMatches) {
         byExample.push(hit);
       }
     }
