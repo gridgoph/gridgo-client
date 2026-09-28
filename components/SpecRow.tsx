@@ -13,8 +13,9 @@ type Props = {
 export function SpecRow({ label, value }: Props) {
   return (
     <View className="flex-row items-baseline justify-between gap-4 border-b border-outline-subtle py-3">
-      <Text className="text-body text-text-secondary">{label}</Text>
-      <Text className="shrink text-body text-text-primary">{value}</Text>
+      {/* The label keeps its line; a long value (an address) wraps instead. */}
+      <Text className="shrink-0 text-body text-text-secondary">{label}</Text>
+      <Text className="shrink text-right text-body text-text-primary">{value}</Text>
     </View>
   );
 }

@@ -13,6 +13,7 @@ import OrderDetailScreen from "@/app/order/[id]";
 import { OrderCard } from "@/components/OrderCard";
 import type { Order } from "@/lib/api";
 import { useOrderPayment } from "@/store/checkoutPayment";
+import { useOrderSections } from "@/store/orderSections";
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
@@ -166,6 +167,11 @@ function setOrder(patch: Partial<Order>) {
 
 describe("OrderDetailScreen", () => {
   beforeEach(() => {
+    // The record's sections open, as a client who keeps them open sees them.
+    // Folding itself is tested in order-detail-sections.test.tsx.
+    useOrderSections.setState({
+      open: { history: true, specifications: true, artwork: true, payment: true },
+    });
     mockReplace.mockClear();
     mockStackOptions.mockClear();
     mockCanGoBack.mockReturnValue(true);
@@ -372,7 +378,8 @@ describe("OrderDetailScreen", () => {
     });
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText("Checking and packing your order")).toBeTruthy();
+    // The docket's latest step, and the same step heading the history.
+    expect(await screen.findAllByText("Checking and packing your order")).toHaveLength(2);
     expect(screen.getByText("Order submitted")).toBeTruthy();
     // The plain projection names nobody, and nothing internal is on the record.
     expect(screen.queryByText(/Supplier ·|Operations ·/)).toBeNull();
@@ -418,6 +425,9 @@ describe("OrderDetailScreen", () => {
         { at: "2026-08-09T11:00:00+08:00", state: "client_correction", note: "Artwork needs a change" },
       ],
     });
+    // History folded: the step's wording is then on screen once, as the
+    // docket's latest step, and never again as the reason.
+    useOrderSections.setState((state) => ({ open: { ...state.open, history: false } }));
     await renderInSafeArea(<OrderDetailScreen />);
 
     expect(await screen.findByText("Bleed is missing on all four edges")).toBeTruthy();
@@ -435,6 +445,9 @@ describe("OrderDetailScreen", () => {
         { at: "2026-08-09T11:00:00+08:00", state: "client_correction", note: "Artwork needs a change" },
       ],
     });
+    // History folded: the step's wording is then on screen once, as the
+    // docket's latest step, and never again as the reason.
+    useOrderSections.setState((state) => ({ open: { ...state.open, history: false } }));
     await renderInSafeArea(<OrderDetailScreen />);
 
     expect(await screen.findByText(/Operations did not leave a note with this one/)).toBeTruthy();
@@ -653,7 +666,7 @@ describe("OrderDetailScreen", () => {
     expect(screen.getByText(/No photo came in while this job was being made/)).toBeTruthy();
   });
 
-  it("shows the shop's progress photos, newest first", async () => {
+  it("shows the shop's progress photos under the step they were taken in, newest first", async () => {
     const expires = new Date(Date.now() + 5 * 60_000).toISOString();
     setOrder({
       productionProgress: {
@@ -666,13 +679,17 @@ describe("OrderDetailScreen", () => {
     });
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText("Latest photo")).toBeTruthy();
-    expect(screen.getByText("1 earlier photo")).toBeTruthy();
+    // The newest rides on the docket as a still; the history holds them all.
+    expect((await screen.findByTestId("sample-photo-thumbnail")).props.source.uri).toBe(
+      "https://storage.test/done.jpg",
+    );
+    expect(screen.getByText(/2 updates · 2 photos/)).toBeTruthy();
     const images = screen.getAllByTestId("sample-photo-image");
     expect(images.map((image) => image.props.source.uri)).toEqual([
       "https://storage.test/done.jpg",
       "https://storage.test/start.jpg",
     ]);
+    expect(screen.getByText(/Tap one to see it full size/)).toBeTruthy();
     expect(screen.queryByText("Waiting for a progress photo")).toBeNull();
   });
 

@@ -29,6 +29,11 @@ type Props = {
   gutter?: "tight" | "standard";
   /** What an empty frame says. A blank plate reads as a broken listing. */
   emptyLabel?: string;
+  /**
+   * False for a thumbnail inside a control that already does something on tap
+   * (the order's progress docket opens its history): no loupe of its own.
+   */
+  interactive?: boolean;
 };
 
 /**
@@ -64,6 +69,7 @@ export function SamplePhoto({
   ratio = "square",
   gutter = "standard",
   emptyLabel,
+  interactive = true,
 }: Props) {
   const colors = useThemeColors();
   // Everything below is remembered against the url it happened to, so a new
@@ -105,7 +111,7 @@ export function SamplePhoto({
   const refreshing = failedHere && failure.expired && rereadFor !== url;
   const failed = failedHere && !refreshing;
   const alt = altText || "Sample photo";
-  const canOpen = Boolean(url && !failedHere);
+  const canOpen = interactive && Boolean(url && !failedHere);
 
   // Native aspectRatio, not `aspect-[4/3]`: that arbitrary class has shipped as
   // a silent no-op in this pipeline before, and a frame with no ratio collapses.
@@ -123,15 +129,27 @@ export function SamplePhoto({
                 <SkeletonBlock className="h-full w-full" />
               </View>
             ) : null}
-            <Pressable
-              onPress={() => setOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${alt} larger`}
-              accessibilityHint="Opens the sample full screen so you can pinch to zoom"
-              style={{ width: "100%", height: "100%" }}
-            >
+            {interactive ? (
+              <Pressable
+                onPress={() => setOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${alt} larger`}
+                accessibilityHint="Opens the sample full screen so you can pinch to zoom"
+                style={{ width: "100%", height: "100%" }}
+              >
+                <Image
+                  testID="sample-photo-image"
+                  source={{ uri: url }}
+                  accessibilityLabel={alt}
+                  resizeMode="cover"
+                  style={{ width: "100%", height: "100%" }}
+                  onLoad={() => setLoadedUrl(url)}
+                  onError={onImageError}
+                />
+              </Pressable>
+            ) : (
               <Image
-                testID="sample-photo-image"
+                testID="sample-photo-thumbnail"
                 source={{ uri: url }}
                 accessibilityLabel={alt}
                 resizeMode="cover"
@@ -139,7 +157,7 @@ export function SamplePhoto({
                 onLoad={() => setLoadedUrl(url)}
                 onError={onImageError}
               />
-            </Pressable>
+            )}
             {canOpen ? (
               <SamplePhotoViewer
                 uri={url}

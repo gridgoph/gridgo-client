@@ -2,7 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { ProductionProgress } from "@/components/ProductionProgress";
+import { LatestProgressCard } from "@/components/LatestProgressCard";
+import type { Order, ProductionPhoto } from "@/lib/api";
+import { useOrderSections, ORDER_SECTIONS_FOLDED } from "@/store/orderSections";
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
@@ -11,6 +13,26 @@ jest.mock("@/lib/api", () => {
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
+
+/** A job on the press with these photos, its history opened. */
+function onThePress(photos: ProductionPhoto[]): Order {
+  return {
+    id: "ord_photos",
+    state: "production",
+    title: "Shop flyers",
+    fulfillmentMode: "delivery",
+    payments: {},
+    timeline: [
+      { at: "2026-09-28T07:00:00Z", state: "submitted", note: "Order submitted" },
+      { at: "2026-09-28T07:30:00Z", state: "production", note: "On the press" },
+    ],
+    productionProgress: { status: "photos_available", photos },
+  } as unknown as Order;
+}
+
+beforeEach(() => {
+  useOrderSections.setState({ open: { ...ORDER_SECTIONS_FOLDED, history: true } });
+});
 
 function renderWithInsets(ui: ReactElement) {
   return render(ui, {
@@ -27,7 +49,7 @@ function renderWithInsets(ui: ReactElement) {
   });
 }
 
-describe("ProductionProgress expired links", () => {
+describe("LatestProgressCard expired links", () => {
   it("re-signs an expired photo instead of calling it broken (gridgo-client#116)", async () => {
     api.getFileDownloadUrl.mockResolvedValue({
       fileId: "file_old",
@@ -36,10 +58,7 @@ describe("ProductionProgress expired links", () => {
       expiresInSeconds: 300,
     });
     await renderWithInsets(
-      <ProductionProgress
-        view={{
-          kind: "photos",
-          photos: [
+      <LatestProgressCard order={onThePress([
             {
               fileId: "file_old",
               contentType: "image/jpeg",
@@ -47,9 +66,7 @@ describe("ProductionProgress expired links", () => {
               downloadUrl: "https://storage.test/old.jpg",
               downloadUrlExpiresAt: new Date(Date.now() - 60_000).toISOString(),
             },
-          ],
-        }}
-      />,
+          ])} />,
     );
 
     await waitFor(() => expect(api.getFileDownloadUrl).toHaveBeenCalledWith("file_old"));
