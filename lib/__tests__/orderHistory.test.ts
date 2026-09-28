@@ -1,4 +1,4 @@
-import { historyRows } from "@/lib/orderHistory";
+import { correctionReason, historyRows } from "@/lib/orderHistory";
 
 const INTERNAL = /payout|milestone|retention|proof|pof|file_|sharePercent/i;
 
@@ -78,5 +78,39 @@ describe("historyRows", () => {
   it("survives a missing or malformed history", () => {
     expect(historyRows(undefined, { plainNotes: true })).toEqual([]);
     expect(historyRows([null as never], { plainNotes: true })).toEqual([]);
+  });
+});
+
+describe("correctionReason", () => {
+  const plain = { productionProgress: { status: "waiting_for_photo", photos: [] } };
+  const plainTimeline = [
+    { at: "2026-09-28T01:00:00Z", state: "client_correction", note: "Artwork needs a change" },
+  ];
+
+  it("reads Operations' reason from its own field", () => {
+    expect(
+      correctionReason({
+        ...plain,
+        timeline: plainTimeline,
+        correction: { reason: " Bleed is missing on all four edges ", requestedAt: "2026-09-28T01:00:00Z" },
+      }),
+    ).toBe("Bleed is missing on all four edges");
+  });
+
+  it("never offers GRIDGO's fixed step wording as the reason", () => {
+    expect(correctionReason({ ...plain, timeline: plainTimeline, correction: null })).toBeNull();
+    expect(
+      correctionReason({ ...plain, timeline: plainTimeline, correction: { reason: "  ", requestedAt: null } }),
+    ).toBeNull();
+  });
+
+  it("falls back to an older payload's correction note", () => {
+    expect(
+      correctionReason({
+        timeline: [
+          { at: "2026-09-28T01:00:00Z", state: "client_correction", by: "user_ops", note: "Text runs into the trim" },
+        ],
+      }),
+    ).toBe("Text runs into the trim");
   });
 });

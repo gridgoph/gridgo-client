@@ -204,6 +204,12 @@ export type Order = {
   deliveryDistanceMeters?: number | null;
   priceRange?: PriceRange | null;
   payments?: OrderPayments;
+  /**
+   * Why Operations turned the artwork back, from the latest correction they
+   * asked for (gridgo-api#115). Null when there is none to show; absent on an
+   * API from before it. Read it through `correctionReason`.
+   */
+  correction?: { reason: string; requestedAt: string | null } | null;
   /** Progress photos, or the honest lack of one. See `lib/productionProgress.ts`. */
   productionProgress?: ProductionProgress | null;
   paymentMethod: string | null;

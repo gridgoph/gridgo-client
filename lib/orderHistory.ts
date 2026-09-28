@@ -20,8 +20,10 @@
  *   that leaked the first time.
  */
 
+import type { Order } from "@/lib/api";
 import { actorLabel } from "@/lib/copy";
-import { getOrderStateMeta } from "@/lib/orderState";
+import { getOrderStateMeta, latestNoteForState } from "@/lib/orderState";
+import { hasPlainHistory } from "@/lib/productionProgress";
 
 export type HistoryEntry = {
   at: string;
@@ -69,4 +71,22 @@ export function historyRows(
     });
   }
   return rows;
+}
+
+/**
+ * Operations' reason for turning the artwork back, or null for none.
+ *
+ * The plain projection carries it as its own field (`correction`), because its
+ * timeline note is only GRIDGO's fixed wording for the step — "Artwork needs a
+ * change" is not a reason anyone can act on. An API from before the plain
+ * projection still wrote the reason as the correction step's note, so that is
+ * where an older payload's reason is read from.
+ */
+export function correctionReason(
+  order: Pick<Order, "correction" | "productionProgress" | "timeline">,
+): string | null {
+  const reason = order.correction?.reason?.trim();
+  if (reason) return reason;
+  if (hasPlainHistory(order)) return null;
+  return latestNoteForState(order.timeline, "client_correction");
 }

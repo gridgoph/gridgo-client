@@ -9,7 +9,8 @@ import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
 import { isArtworkBusy } from "@/lib/artworkUpload";
 import { userFacingError } from "@/lib/copy";
-import { latestNoteForState } from "@/lib/orderState";
+import { correctionReason } from "@/lib/orderHistory";
+import { formatTimelineStamp } from "@/lib/relativeTime";
 
 type Props = {
   order: Order;
@@ -29,7 +30,8 @@ export function CorrectionCard({ order, onUpdated }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reason = latestNoteForState(order.timeline, "client_correction");
+  const reason = correctionReason(order);
+  const requestedAt = reason ? order.correction?.requestedAt : null;
   const replacementReady = artwork.state.phase === "stored";
   const uploadBusy = isArtworkBusy(artwork.state);
 
@@ -68,10 +70,14 @@ export function CorrectionCard({ order, onUpdated }: Props) {
       </View>
 
       <View className="gg-panel gap-2">
-        <Text className="text-caption text-text-muted">What Operations found</Text>
-        <Text className="text-body-lg text-text-primary">
+        <Text className="text-caption text-text-muted">
+          {requestedAt
+            ? `What Operations found · ${formatTimelineStamp(requestedAt)}`
+            : "What Operations found"}
+        </Text>
+        <Text className="text-body-lg text-text-primary" selectable={Boolean(reason)}>
           {reason ??
-            "Operations did not leave a note with this one. Check the timeline below, or ask them what to change before you re-send."}
+            "Operations did not leave a note with this one. Message GRIDGO support to ask what to change before you re-send."}
         </Text>
         {order.artworkName ? (
           <Text className="text-caption text-text-muted">

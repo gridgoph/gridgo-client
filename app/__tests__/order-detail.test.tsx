@@ -405,6 +405,42 @@ describe("OrderDetailScreen", () => {
     ).toBeTruthy();
   });
 
+  it("shows Operations' own reason for a correction from the plain projection", async () => {
+    setOrder({
+      state: "client_correction",
+      productionProgress: { status: "waiting_for_photo", photos: [] },
+      correction: {
+        reason: "Bleed is missing on all four edges",
+        requestedAt: "2026-08-09T11:00:00+08:00",
+      },
+      timeline: [
+        { at: "2026-08-08T10:00:00+08:00", state: "submitted", note: "Order submitted" },
+        { at: "2026-08-09T11:00:00+08:00", state: "client_correction", note: "Artwork needs a change" },
+      ],
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Bleed is missing on all four edges")).toBeTruthy();
+    expect(screen.getByText(/^What Operations found · /)).toBeTruthy();
+    // The step's fixed wording stays on the record, never offered as the reason.
+    expect(screen.getAllByText("Artwork needs a change")).toHaveLength(1);
+  });
+
+  it("says Operations left no note rather than passing off the step's wording", async () => {
+    setOrder({
+      state: "client_correction",
+      productionProgress: { status: "waiting_for_photo", photos: [] },
+      correction: null,
+      timeline: [
+        { at: "2026-08-09T11:00:00+08:00", state: "client_correction", note: "Artwork needs a change" },
+      ],
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText(/Operations did not leave a note with this one/)).toBeTruthy();
+    expect(screen.getAllByText("Artwork needs a change")).toHaveLength(1);
+  });
+
   it("asks for a considered decision on the artwork proof, not a row tap", async () => {
     setOrder({ state: "proof_approval" });
     await renderInSafeArea(<OrderDetailScreen />);
