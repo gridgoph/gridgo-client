@@ -1,0 +1,1 @@
+- Orders open on their latest progress. Tap it for the full history with photos; details fold away until needed.

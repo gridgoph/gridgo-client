@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OrderDetailScreen from "@/app/order/[id]";
 import type { Order } from "@/lib/api";
+import { useOrderSections } from "@/store/orderSections";
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
@@ -194,6 +195,11 @@ function expectNoSplit() {
 
 describe("OrderDetailScreen, paid in full", () => {
   beforeEach(() => {
+    // The record's sections open, as a client who keeps them open sees them.
+    // Folding itself is tested in order-detail-sections.test.tsx.
+    useOrderSections.setState({
+      open: { history: true, specifications: true, artwork: true, payment: true },
+    });
     mockStackOptions.mockClear();
     mockCanGoBack.mockReturnValue(true);
     api.listCatalog.mockResolvedValue([]);

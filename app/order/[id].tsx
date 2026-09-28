@@ -1,5 +1,5 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, MessageCircle } from "lucide-react-native";
 import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -14,11 +14,12 @@ import { FormScreen } from "@/components/FormScreen";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { JobCompleteCard } from "@/components/JobCompleteCard";
 import { OrderReference } from "@/components/OrderReference";
-import { OrderTimeline } from "@/components/OrderTimeline";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
-import { ProductionProgress } from "@/components/ProductionProgress";
+import { DesignLinkRow } from "@/components/DesignLinkRow";
+import { FoldSection } from "@/components/FoldSection";
+import { LatestProgressCard } from "@/components/LatestProgressCard";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
 import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
@@ -28,7 +29,6 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonLine, SkeletonList, SkeletonPill } from "@/components/Skeleton";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
-import { StatusChip } from "@/components/StatusChip";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
@@ -38,7 +38,6 @@ import { formatDeadline } from "@/lib/deadline";
 import {
   collectsAtOffice,
   formatPriceRange,
-  orderStateMeta,
   isAwaitingCollectionState,
   isClientCorrectionState,
   isIssueWindowState,
@@ -57,7 +56,9 @@ import {
   paysInFull,
 } from "@/lib/payment";
 import { physicalInvoiceEntry } from "@/lib/physicalInvoice";
-import { hasPlainHistory, progressView } from "@/lib/productionProgress";
+import { orderArtwork } from "@/lib/orderArtwork";
+import { orderReference } from "@/lib/orderReference";
+import { artworkSummary, paymentSummary, specificationsSummary } from "@/lib/orderSections";
 import { canRate } from "@/lib/rating";
 import { currentRefund, refundEntry } from "@/lib/refunds";
 import { printingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
@@ -199,7 +200,6 @@ export default function OrderDetailScreen() {
     );
   }
 
-  const meta = orderStateMeta(order);
   const nextAction = orderNextAction(order);
   const waitingOn = orderWaitingOn(order);
   const unit = order.unit || product?.unit || "";
@@ -209,7 +209,6 @@ export default function OrderDetailScreen() {
   const payable = payableInstallment(order);
   const underReview = installmentUnderReview(order);
   const showsOwnPreview = isProofApprovalState(order.state);
-  const progress = progressView(order);
   /*
     A closed job tells its own story in the card below the title: how it
     arrived, that nothing was wrong with it, that it is paid. The one-line
@@ -250,33 +249,44 @@ export default function OrderDetailScreen() {
               ? "rate"
               : null;
 
+  /*
+    Design links travel with each item. They are artwork as much as a file is,
+    so they are listed with the files rather than inside the specification.
+  */
+  const designLinks = (order.productionItems ?? []).flatMap((item) =>
+    (item.artworkLinks ?? []).map((link) => ({ link, itemName: item.itemName })),
+  );
+  const artworkFiles = orderArtwork(order);
+  const openChat = () => router.push("/chat");
+
   return (
     /*
-      Two text inputs live inside this scroll and both sit near the bottom of
-      it: the payment reference on the money card, and the description on an
-      issue report. Neither had any keyboard handling, so on a job far enough
-      along to show them, typing happened underneath the keyboard.
+      Two text inputs live inside this scroll: the payment reference in the
+      action zone, and the description on an issue report. FormScreen keeps the
+      caret above the keyboard for both.
     */
     <FormScreen overlay={headerEscape}>
-      <View className="gg-page gap-8 pb-16 pt-4">
-        <View className="gap-3">
-          {/* A chip hugs its label — stretched to the column width it reads
-              as a banner, and its border stops meaning "this one thing". */}
-          <View className="flex-row">
-            <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
-          </View>
+      <View className="gg-page gap-6 pb-16 pt-4">
+        <View className="gap-2">
           <Text className="text-h1 text-text-primary">{order.title}</Text>
           <OrderReference id={order.id} />
-          {/* Only when nothing below is already saying it. An action zone
-              owns its instruction and reason, and so does the card that
-              explains a payment being checked — repeating either up here is
-              filler. */}
-          {!nextAction && !underReview && !finished && actionZone !== "refund" ? (
-            <Text className="text-body-lg text-text-secondary">
-              {waitingOn ?? "This job is in progress."}
-            </Text>
-          ) : null}
         </View>
+
+        {/*
+          The latest thing that happened leads, and opens onto the whole story
+          with the shop's photos (gridgo-client#129). The one-line wait is said
+          here only when nothing below is already saying it: an action zone
+          owns its instruction, and so does the card explaining a payment being
+          checked. A closed job tells its own story in the card under this.
+        */}
+        <LatestProgressCard
+          order={order}
+          note={
+            !nextAction && !underReview && !finished && actionZone !== "refund"
+              ? (waitingOn ?? "This job is in progress.")
+              : null
+          }
+        />
 
         {finished ? <JobCompleteCard order={order} /> : null}
 
@@ -335,21 +345,13 @@ export default function OrderDetailScreen() {
         ) : null}
 
         {/*
-          The other place the ask earns itself: a job that is waiting on
-          Operations, a supplier or a rider, with nothing for the client to do
-          but wonder when they will hear. "We will tell your phone" is the
-          answer to the question the screen has just raised. When there *is* an
-          action here the screen belongs to it, so nothing is offered.
-        */}
-        {!nextAction && !finished ? <PushEnableCard /> : null}
-
-        {/*
           Two different endings, two different things to show.
 
           A delivery is watched: the rider is coming to them, so the map is
-          theirs. A collected job is fetched: the rider only moves it between
-          two of GRIDGO's own places, and what the client needs is not a route
-          but an address and the word that it has arrived.
+          theirs, and it stays open — it is the latest progress, live. A
+          collected job is fetched: the rider only moves it between two of
+          GRIDGO's own places, and what the client needs is not a route but an
+          address and the word that it has arrived.
         */}
         {collectsAtOffice(order) ? (
           isAwaitingCollectionState(order.state) ? <PickupCounterCard order={order} /> : null
@@ -358,27 +360,38 @@ export default function OrderDetailScreen() {
         ) : null}
 
         {/*
-          Photos from the press, or the plain fact that none has come. Never
-          the shop's payout stages: those are someone else's money, and their
-          "done" was never a thing a client could look at.
+          The other place the ask earns itself: a job that is waiting on
+          Operations, a supplier or a rider, with nothing for the client to do
+          but wonder when they will hear. When there *is* an action here the
+          screen belongs to it, so nothing is offered.
         */}
-        {progress ? <ProductionProgress view={progress} /> : null}
+        {!nextAction && !finished ? <PushEnableCard /> : null}
 
-        <View className="gap-4">
-          <Text className="text-overline text-text-muted">SPECIFICATION</Text>
-          {order.productionItems?.length ? <ProductionSpecifications order={order} taxonomy={taxonomy} /> : null}
-          <View className="gg-card">
-            {!order.productionItems?.length ? <>
-            <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
-            <SpecRow label="Size" value={order.size || "—"} />
-            {/* Resolved through the taxonomy: an order can carry a code
-                rather than a name, and `hem_grommet` is not a finish a
-                client recognises. */}
-            <SpecRow label="Material" value={materialLabel} />
-            {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
-            </> : null}
+        {/*
+          The record, folded. One board rather than three cards: the docket
+          above is the one object on this screen, and these are its appendix.
+          Each heading keeps the fact it holds on show while folded.
+        */}
+        <View className="gg-card-flush">
+          <FoldSection
+            section="specifications"
+            title="Specifications"
+            summary={specificationsSummary(order, unit)}
+          >
+            {order.productionItems?.length ? (
+              <ProductionSpecifications order={order} taxonomy={taxonomy} bare showLinks={false} />
+            ) : (
+              <>
+                <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
+                <SpecRow label="Size" value={order.size || "—"} />
+                {/* Resolved through the taxonomy: an order can carry a code
+                    rather than a name, and `hem_grommet` is not a finish a
+                    client recognises. */}
+                <SpecRow label="Material" value={materialLabel} />
+                {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
+              </>
+            )}
             <SpecRow label="Deadline" value={formatDeadline(order.deadline)} />
-            <ReadyTime promiseBy={order.promiseBy} />
             {/* A collected job is not going to the address they shopped with.
                 Naming that address here is how a client ends up waiting at home
                 for something sitting on our counter. */}
@@ -388,22 +401,59 @@ export default function OrderDetailScreen() {
               <SpecRow label="Deliver to" value={order.address || "—"} />
             )}
             <SpecRow label="Area" value={zoneName(zones, order.zone)} />
-            <SpecRow
-              label="Artwork"
-              value={
-                order.artworkName ||
-                (order.productionItems?.some((item) => item.artworkLinks?.length)
-                  ? "Design link, shown above"
-                  : "Not uploaded")
+            <View className="pt-3">
+              <ReadyTime promiseBy={order.promiseBy} />
+            </View>
+          </FoldSection>
+
+          <FoldSection
+            section="artwork"
+            title="Artwork and references"
+            summary={artworkSummary({
+              files: artworkFiles.length,
+              links: designLinks.length,
+              inProof: showsOwnPreview,
+            })}
+            divided
+          >
+            {/* The proof card above already draws the artwork it asks about;
+                loading every file twice would only slow that decision. */}
+            {showsOwnPreview ? (
+              <Text className="py-3 text-body text-text-secondary">
+                Your artwork is shown in the proof above.
+              </Text>
+            ) : artworkFiles.length || !designLinks.length ? (
+              <ArtworkPanel order={order} />
+            ) : null}
+            {designLinks.map(({ link, itemName }) => (
+              <DesignLinkRow key={`${itemName}:${link.formatCode}:${link.url}`} link={link} />
+            ))}
+          </FoldSection>
+
+          <FoldSection
+            section="payment"
+            title="Payment details"
+            summary={paymentSummary(order)}
+            divided
+          >
+            <MoneyDetails
+              order={order}
+              onOpenReceipt={() =>
+                router.push({ pathname: "/order/receipt", params: { orderId: order.id } })
+              }
+              onOpenPhysicalInvoice={() =>
+                router.push({ pathname: "/order/physical-invoice", params: { orderId: order.id } })
               }
             />
-          </View>
+          </FoldSection>
+        </View>
 
-          <MoneyCard order={order} onOpenReceipt={() =>
-            router.push({ pathname: "/order/receipt", params: { orderId: order.id } })
-          } onOpenPhysicalInvoice={() =>
-            router.push({ pathname: "/order/physical-invoice", params: { orderId: order.id } })
-          } />
+        {/*
+          Help sits last and stays unfolded: a refund comes with a deadline
+          that is said up front, and a client stuck on anything else needs the
+          way to Operations without hunting for it.
+        */}
+        <View className="gap-3">
           {refund?.kind === "eligible" ? (
             <RefundEntryRow
               entry={refund}
@@ -412,26 +462,22 @@ export default function OrderDetailScreen() {
               }
             />
           ) : null}
-        </View>
-
-        {!showsOwnPreview ? (
-          <View className="gap-3">
-            <Text className="text-overline text-text-muted">ARTWORK AND REFERENCES</Text>
-            <ArtworkPanel order={order} />
-          </View>
-        ) : null}
-
-        <View className="gap-4">
-          <Text className="text-overline text-text-muted">HISTORY</Text>
-          <View className="gg-card">
-            <OrderTimeline
-              timeline={order.timeline}
-              currentState={order.state}
-              fulfillmentMode={order.fulfillmentMode}
-              paidInFull={paysInFull(order)}
-              plainNotes={hasPlainHistory(order)}
-            />
-          </View>
+          <Pressable
+            onPress={openChat}
+            accessibilityRole="button"
+            accessibilityLabel="Message GRIDGO about this order"
+            className="gg-touch flex-row items-center gap-3 py-2"
+            style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+          >
+            <MessageCircle size={20} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+            <View className="flex-1">
+              <Text className="text-body font-medium text-text-primary">Message GRIDGO</Text>
+              <Text className="text-caption text-text-muted">
+                Operations answers questions about this order. Mention {orderReference(order.id)}.
+              </Text>
+            </View>
+            <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} aria-hidden />
+          </Pressable>
         </View>
       </View>
     </FormScreen>
@@ -439,16 +485,17 @@ export default function OrderDetailScreen() {
 }
 
 /**
- * What this job costs, and how much of it is settled.
+ * What this job costs, and how much of it is settled — the Payment details
+ * section's body.
  *
  * Two shapes, because there are two truths. Before a supplier accepts there is
- * no exact price, so the card shows the platform's range and says why delivery
- * is missing from it. After acceptance it shows the receipt's own figures:
+ * no exact price, so it shows the platform's range and says why delivery is
+ * missing from it. After acceptance it shows the receipt's own figures:
  * Printing with GRIDGO's charge already inside it, then delivery, then total.
  * The service-fee row names the rate and shows no peso amount, because the
  * amount is not a second charge — see `lib/serviceFee.ts`.
  */
-function MoneyCard({
+function MoneyDetails({
   order,
   onOpenReceipt,
   onOpenPhysicalInvoice,
@@ -465,7 +512,7 @@ function MoneyCard({
 
   if (total == null) {
     return (
-      <View className="gg-card gap-3">
+      <View className="gap-3 pt-1">
         <View className="flex-row items-baseline justify-between gap-4">
           <Text className="text-body-lg text-text-secondary">Estimated print</Text>
           <Text className="text-h3 text-text-primary">
@@ -490,7 +537,7 @@ function MoneyCard({
 
   return (
     <View className="gap-3">
-      <View className="gg-card">
+      <View>
         <SpecRow
           label="Printing"
           value={

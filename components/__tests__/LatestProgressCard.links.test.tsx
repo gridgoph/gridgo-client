@@ -2,7 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { ProductionProgress } from "@/components/ProductionProgress";
+import { LatestProgressCard } from "@/components/LatestProgressCard";
+import type { Order, ProductionPhoto } from "@/lib/api";
+import { useOrderSections, ORDER_SECTIONS_FOLDED } from "@/store/orderSections";
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
@@ -11,6 +13,26 @@ jest.mock("@/lib/api", () => {
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
+
+/** A job on the press with these photos, its history opened. */
+function onThePress(photos: ProductionPhoto[]): Order {
+  return {
+    id: "ord_photos",
+    state: "production",
+    title: "Shop flyers",
+    fulfillmentMode: "delivery",
+    payments: {},
+    timeline: [
+      { at: "2026-09-28T07:00:00Z", state: "submitted", note: "Order submitted" },
+      { at: "2026-09-28T07:30:00Z", state: "production", note: "On the press" },
+    ],
+    productionProgress: { status: "photos_available", photos },
+  } as unknown as Order;
+}
+
+beforeEach(() => {
+  useOrderSections.setState({ open: { ...ORDER_SECTIONS_FOLDED, history: true } });
+});
 
 function renderWithInsets(ui: ReactElement) {
   return render(ui, {
@@ -29,7 +51,7 @@ function renderWithInsets(ui: ReactElement) {
 
 const inFive = () => new Date(Date.now() + 5 * 60_000).toISOString();
 
-describe("ProductionProgress photo links", () => {
+describe("LatestProgressCard photo links", () => {
   beforeEach(() => {
     api.getFileDownloadUrl.mockReset();
   });
@@ -42,12 +64,7 @@ describe("ProductionProgress photo links", () => {
       expiresInSeconds: 300,
     });
     await renderWithInsets(
-      <ProductionProgress
-        view={{
-          kind: "photos",
-          photos: [{ fileId: "file_unsigned", contentType: "image/jpeg", at: "2026-09-28T08:00:00Z" }],
-        }}
-      />,
+      <LatestProgressCard order={onThePress([{ fileId: "file_unsigned", contentType: "image/jpeg", at: "2026-09-28T08:00:00Z" }])} />,
     );
 
     expect(api.getFileDownloadUrl).toHaveBeenCalledWith("file_unsigned");
