@@ -13,6 +13,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.171
+
+- Typing in the Operations chat keeps the newest messages and your message in view above the keyboard.
+
 ## 1.0.166
 
 - Changing what GRIDGO matches on now saves reliably, says Saved or Not saved, and lets you try again.
