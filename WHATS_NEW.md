@@ -13,6 +13,14 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.174
+
+- Orders open on their latest progress. Tap it for the full history with photos; details fold away until needed.
+
+## 1.0.171
+
+- Typing in the Operations chat keeps the newest messages and your message in view above the keyboard.
+
 ## 1.0.166
 
 - Changing what GRIDGO matches on now saves reliably, says Saved or Not saved, and lets you try again.
