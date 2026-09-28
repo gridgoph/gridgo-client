@@ -1,0 +1,1 @@
+- Typing in the Operations chat keeps the newest messages and your message in view above the keyboard.
