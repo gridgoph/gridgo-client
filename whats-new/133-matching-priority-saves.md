@@ -1,1 +1,0 @@
-- Changing what GRIDGO matches on now saves reliably, says Saved or Not saved, and lets you try again.
