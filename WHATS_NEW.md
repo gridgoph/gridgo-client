@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.185 (New feature)
+
+- Settings now has a What's new page: every version's notes, newest first, marked New feature, Improvement or Fix.
+
 ## 1.0.178 (Fix)
 
 - Adding something from a different print shop now explains why and lets you check out first or start a new order.
