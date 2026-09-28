@@ -52,6 +52,16 @@ export type CartState = {
   /** Store whatever the API just returned. */
   adopt: (cart: api.Cart) => void;
   run: <T>(work: (cartId: string) => Promise<T>) => Promise<T>;
+  /**
+   * Replace the basket with a new one holding only what `work` puts in it.
+   *
+   * For a product GRIDGO matched to a different shop (`lib/otherShop.ts`),
+   * once the client has confirmed. The new basket is filled *before* the phone
+   * lets go of the old one, so a refusal of the new line loses nothing. Only
+   * then are the old basket's lines removed, so it is really empty rather than
+   * a draft nobody can reach — best effort, since no screen can reach it now.
+   */
+  startOver: (work: (cartId: string) => Promise<api.Cart>) => Promise<api.Cart>;
   /** After checkout: this basket is spent. */
   clear: () => void;
   /** Sign-out: forget the basket without touching the server's. */
@@ -183,6 +193,23 @@ export const useCart = create<CartState>()(
         }
       },
 
+      startOver: async (work) => {
+        const previous = get().cart;
+        set({ busy: true, error: null });
+        try {
+          const fresh = await api.createCart();
+          const filled = await work(fresh.id);
+          dropoffSequence++;
+          loadSequence++;
+          creating = null;
+          set({ cartId: filled.id, cart: hydrateCartListings(filled, null), loading: false, error: null });
+          if (previous && previous.id !== filled.id) void emptyCart(previous);
+          return filled;
+        } finally {
+          set({ busy: false });
+        }
+      },
+
       clear: () => {
         dropoffSequence++;
         loadSequence++;
@@ -216,6 +243,17 @@ export function cartHasContent(state: Pick<CartState, "cart">): boolean {
 /** How many things are in the basket, for the badge on Home. */
 export function cartLineCount(state: Pick<CartState, "cart">): number {
   return state.cart?.lines.length ?? 0;
+}
+
+/** Remove every line from a basket this phone has let go of. Failures are dropped. */
+async function emptyCart(cart: api.Cart): Promise<void> {
+  for (const line of cart.lines) {
+    try {
+      await api.removeCartLine(cart.id, line.id);
+    } catch {
+      // Nothing on screen reads this basket any more.
+    }
+  }
 }
 
 function writeDefaultDropoff(dropoff: api.OrderPoint, current: () => boolean): Promise<api.Cart> {
