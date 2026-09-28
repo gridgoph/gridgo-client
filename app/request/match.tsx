@@ -63,6 +63,10 @@ export default function MatchScreen() {
   }>();
 
   const ranking = usePriorities((state) => state.ranking);
+  // The order, not the array: a re-read that keeps the same order must not
+  // look like a new one. A changed order is a new question — "Change" on this
+  // screen saves one and comes back here — so it rematches.
+  const rankingKey = ranking?.join(",") ?? "";
   const cart = useCart((state) => state.cart);
   const dropoff = cart?.defaultDropoff ?? null;
   const dropoffKey =
@@ -117,8 +121,10 @@ export default function MatchScreen() {
       setLoading(false);
     }
     // `dropoffKey` is the pin, not the object: a cart hydrate that keeps the
-    // same coordinates must not look like a new drop-off.
-  }, [subcategory, dropoffKey, deadline]);
+    // same coordinates must not look like a new drop-off. `rankingKey` is not
+    // read inside: GRIDGO matches on the saved order, and this is the signal
+    // that the saved order moved.
+  }, [subcategory, dropoffKey, deadline, rankingKey]);
 
   // Deliberately not `useFocusEffect`: coming back from a listing sheet must
   // not re-run the match and quietly move the client to a different shop.
