@@ -146,6 +146,9 @@ export function userFacingError(error: unknown, fallback: string): string {
           ? `This shop takes orders of ${minimum} and up. Change the quantity and try again.`
           : "This shop takes a minimum quantity. Change the quantity and try again.";
       }
+      // ---- basket: one order goes to one shop (`lib/otherShop.ts`) ----
+      case "cart_belongs_to_another_shop":
+        return "Your order is already with a different shop. Check it out first, or start a new order with this.";
       // ---- basket: the press's widest print ----
       case "printer_cap_exceeded": {
         const cap =
