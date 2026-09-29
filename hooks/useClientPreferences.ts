@@ -2,7 +2,6 @@ import { useEffect } from "react";
 
 import { accountHold } from "@/lib/accountHold";
 import { clearBoardCache } from "@/lib/shopBoards";
-import { useCart } from "@/store/cart";
 import { usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
 
@@ -15,9 +14,11 @@ import { useSession } from "@/store/session";
  * ranking screen means the answer is already in hand by the time any screen
  * needs it.
  *
- * Signing out forgets it, along with the basket and the cached shop boards.
- * All three belong to the person who just left, and the next person to sign in
- * on this handset must not inherit any of them.
+ * Signing out forgets it, along with the cached shop boards: both belong to
+ * the person who just left. The basket is not reset here. `user` is also empty
+ * for the whole of a launch while the session restores, and resetting on that
+ * threw away a saved basket every time the app was reopened (#150); the
+ * session store lets go of it on a real sign-out or a change of account.
  */
 export function useClientPreferences(): void {
   const userId = useSession((state) => state.user?.id ?? null);
@@ -26,7 +27,6 @@ export function useClientPreferences(): void {
   useEffect(() => {
     if (!userId) {
       usePriorities.getState().reset();
-      useCart.getState().reset();
       clearBoardCache();
       return;
     }
