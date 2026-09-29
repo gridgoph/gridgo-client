@@ -1,3 +1,4 @@
+import { useCart } from "@/store/cart";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useNotifications } from "@/store/notifications";
 import { setLiveOwner } from "@/lib/live";
@@ -336,8 +337,13 @@ api.onUnauthorized(() => {
 // Synchronous identity boundary: old inbox data is gone before new screens render.
 useSession.subscribe((state, previous) => {
   if (state.user !== previous.user) accountReadSequence++;
+  // The basket goes on a real sign-out, and when a different account signs in
+  // (`claim`). An empty `user` alone is neither: every launch starts with one
+  // while the session restores, and forgetting the basket then is #150.
+  if (state.signingOut && !previous.signingOut) useCart.getState().reset();
   const id = state.user?.id ?? null;
   if (id === (previous.user?.id ?? null)) return;
+  if (id) useCart.getState().claim(id);
   useCheckoutPayment.getState().reset();
   useOrderPayment.getState().reset();
   clearBoardCache();
