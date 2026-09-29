@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.191 (Fix)
+
+- Closing and reopening the app no longer empties your basket.
+
 ## 1.0.188 (New feature)
 
 - Type in the Home search bar to see matching prints drop down under it, then tap one to start your order.
