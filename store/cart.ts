@@ -23,10 +23,18 @@ const STORAGE_KEY = "gridgo.client.cart.v2";
  * screens never hold a basket the server would disagree with. A cart the
  * server has lost, or that has already been checked out, is dropped here
  * rather than shown as a basket that cannot be paid for.
+ *
+ * The id belongs to one account. `claim` is told who is signed in the moment
+ * the session knows (`store/session.ts`), and lets go of a basket started under
+ * somebody else; sign-out lets go of it too. A session that is merely still
+ * restoring at launch is neither, so the basket survives the app being closed
+ * and reopened (gridgoph/gridgo-client#150).
  */
 export type CartState = {
   /** Persisted. The whole basket is re-read from GRIDGO with it. */
   cartId: string | null;
+  /** Persisted. The account the basket was started under. */
+  ownerId: string | null;
   cart: api.Cart | null;
   loading: boolean;
   /** True while a line is being added, changed or removed. */
@@ -36,6 +44,12 @@ export type CartState = {
 
   /** Read the basket this phone is holding, if any. */
   load: () => Promise<void>;
+  /**
+   * This account is signed in. Keeps the basket if it is theirs (or was saved
+   * before baskets carried an owner — GRIDGO refuses it on the next read if it
+   * is not), and lets go of it if it was started under another account.
+   */
+  claim: (userId: string) => void;
   setDefaultDropoff: (dropoff: api.OrderPoint) => Promise<api.Cart>;
   autofillDropoff: (isActive: () => boolean) => Promise<void>;
   /** The current draft basket, creating one the first time. */
@@ -70,6 +84,8 @@ export type CartState = {
 
 /** The single in-flight `POST /me/carts`, shared by everyone who asks. */
 let creating: Promise<string> | null = null;
+/** An account that signed in before the saved basket came back from storage. */
+let pendingOwner: string | null = null;
 let loadSequence = 0;
 let dropoffSequence = 0;
 let dropoffMutation: Promise<unknown> = Promise.resolve();
@@ -78,6 +94,7 @@ export const useCart = create<CartState>()(
   persist(
     (set, get) => ({
       cartId: null,
+      ownerId: null,
       cart: null,
       loading: false,
       busy: false,
@@ -86,6 +103,12 @@ export const useCart = create<CartState>()(
 
       load: async () => {
         const sequence = ++loadSequence;
+        // Read before the saved id is back and a basket is "empty" until the
+        // next focus, which is a lost basket as far as the badge can tell.
+        if (!get().hydrated) {
+          await hydration();
+          if (sequence !== loadSequence) return;
+        }
         const cartId = get().cartId;
         if (!cartId) {
           set({ cart: null, loading: false });
@@ -117,6 +140,18 @@ export const useCart = create<CartState>()(
         } finally {
           if (sequence === loadSequence) set({ loading: false });
         }
+      },
+
+      claim: (userId) => {
+        if (!get().hydrated) {
+          pendingOwner = userId;
+          return;
+        }
+        pendingOwner = null;
+        const { ownerId } = get();
+        if (ownerId === userId) return;
+        if (ownerId !== null) forget();
+        set({ ownerId: userId });
       },
 
       setDefaultDropoff: async (dropoff) => {
@@ -187,7 +222,17 @@ export const useCart = create<CartState>()(
         const cartId = await get().ensure();
         set({ busy: true, error: null });
         try {
-          return await work(cartId);
+          try {
+            return await work(cartId);
+          } catch (error) {
+            // The id this phone kept is no longer this client's basket —
+            // gone, checked out elsewhere, or someone else's. Nothing was
+            // written to it, so the change goes into a new basket instead of
+            // failing on a basket the client cannot see.
+            if (!isLostCart(error) || get().cartId !== cartId) throw error;
+            get().clear();
+            return await work(await get().ensure());
+          }
         } finally {
           set({ busy: false });
         }
@@ -210,30 +255,57 @@ export const useCart = create<CartState>()(
         }
       },
 
-      clear: () => {
-        dropoffSequence++;
-        loadSequence++;
-        creating = null;
-        set({ cartId: null, cart: null, loading: false, error: null });
-      },
+      clear: () => forget(),
 
       reset: () => {
-        dropoffSequence++;
-        loadSequence++;
-        creating = null;
-        set({ cartId: null, cart: null, loading: false, busy: false, error: null });
+        pendingOwner = null;
+        forget();
+        set({ ownerId: null, busy: false });
       },
     }),
     {
       name: STORAGE_KEY,
       storage: createPersistStorage(),
-      partialize: (state) => ({ cartId: state.cartId }) as unknown as CartState,
+      partialize: (state) => ({ cartId: state.cartId, ownerId: state.ownerId }) as unknown as CartState,
       onRehydrateStorage: () => () => {
         useCart.setState({ hydrated: true });
+        if (pendingOwner) useCart.getState().claim(pendingOwner);
       },
     },
   ),
 );
+
+/** Let go of the basket this phone holds, and of anything still in flight for it. */
+function forget(): void {
+  dropoffSequence++;
+  loadSequence++;
+  creating = null;
+  useCart.setState({ cartId: null, cart: null, loading: false, error: null });
+}
+
+/** Resolves once the saved basket id has come back from storage. */
+function hydration(): Promise<void> {
+  if (useCart.getState().hydrated) return Promise.resolve();
+  return new Promise((resolve) => {
+    const unsubscribe = useCart.subscribe((state) => {
+      if (!state.hydrated) return;
+      unsubscribe();
+      resolve();
+    });
+  });
+}
+
+/**
+ * GRIDGO refused a change because the id this phone kept is not a basket this
+ * client can use. Matched by code, not status: a missing *line* is also a 404,
+ * and a held account is also a 403, and neither means the basket is gone.
+ */
+function isLostCart(error: unknown): boolean {
+  if (!(error instanceof api.ApiError)) return false;
+  return (error.status === 404 && error.message === "cart_not_found") ||
+    (error.status === 403 && error.message === "forbidden") ||
+    (error.status === 409 && error.message === "cart_checked_out");
+}
 
 /** True when there is anything in the basket. */
 export function cartHasContent(state: Pick<CartState, "cart">): boolean {
