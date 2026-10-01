@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -21,6 +21,8 @@ type Props = {
   /** `destructive` for anything that removes work or cannot be undone. */
   tone?: "primary" | "destructive";
   busy?: boolean;
+  /** A mark above the question — a warning's icon, say. Decorative. */
+  leading?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -45,6 +47,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "primary",
   busy,
+  leading,
   onConfirm,
   onCancel,
 }: Props) {
@@ -89,6 +92,7 @@ export function ConfirmDialog({
           className="gap-4 rounded-card border border-outline bg-surface p-5"
           style={cardStyle}
         >
+          {leading ? <View aria-hidden>{leading}</View> : null}
           <Text className="text-h3 text-text-primary" accessibilityRole="header">
             {question}
           </Text>
