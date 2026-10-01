@@ -265,10 +265,40 @@ export type Order = {
   }[];
 };
 
+/** The four fixed zones. Labels come from the API; never re-spell them. */
+export type DistanceZoneKey = "nearby" | "away" | "long_distance" | "out_of_zone";
+
+/** Where a shop sits relative to the client's drop-off, as a word. */
+export type DistanceZone = { key: DistanceZoneKey | (string & {}); label: string };
+
+/**
+ * One row of `settings.deliveryFeeBands`. The first three zones are a flat
+ * `feeMinor`; Out of Zone has none and is `baseFeeMinor + perKmMinor` for
+ * every started kilometre. `zone` / `label` are absent on an API from before
+ * the zones (gridgo-api#121), which priced every band flat.
+ */
+export type DeliveryFeeBand = {
+  zone?: DistanceZoneKey | (string & {});
+  label?: string;
+  /** Inclusive. Null on the last, open-ended band. */
+  maxDistanceMeters: number | null;
+  feeMinor?: number;
+  baseFeeMinor?: number;
+  perKmMinor?: number;
+};
+
+/** A shop's established rating. Absent below five reviews — never zero. */
+export type ShopRating = { average: number; count: number };
+
 /** Platform-wide operational settings. The issue window is one of them. */
 export type PlatformSettings = {
   issueWindowHours: number;
-  deliveryFeeBands: { maxDistanceMeters: number | null; feeMinor: number }[];
+  /**
+   * The four delivery zones, in order: Nearby, Away, Long Distance, Out of
+   * Zone. One table drives both the word a client reads and the fee they pay
+   * — price it through `deliveryFeeForDistance` (`lib/distanceZone.ts`).
+   */
+  deliveryFeeBands: DeliveryFeeBand[];
   /**
    * GRIDGO's own charge, in basis points of the items subtotal. Never a
    * constant in the app: Operations changes it without a release, and a stale
@@ -1239,6 +1269,19 @@ export type CatalogItem = {
   optionGroups: CatalogOptionGroup[];
   version: number;
   serviceVersion: number;
+  /**
+   * The zone from the client's drop-off. Null when there is no drop-off (and
+   * on every generic catalogue read); absent on an older API.
+   */
+  distanceZone?: DistanceZone | null;
+  /**
+   * Kilometres to the drop-off, one decimal. Sent on Out of Zone listings
+   * only — the three nearer zones are a word, because a figure there would
+   * locate the shop. For display; never price from it.
+   */
+  distanceKm?: number;
+  /** Present only once the shop has five or more reviews. */
+  rating?: ShopRating;
 };
 
 /** Where a shop is. The same point delivery distance is measured from. */
@@ -1562,6 +1605,10 @@ export type MatchReason = {
 };
 
 export type MatchResult = {
+  /** The Top Pick's zone. Never carries kilometres; null with no drop-off. */
+  distanceZone?: DistanceZone | null;
+  /** Present only once the shop has five or more reviews. */
+  rating?: ShopRating;
   shop: ShopBoard;
   queue: MatchQueue;
   /** Absolute client promise; older deployments may only send queue.estimatedHours. */

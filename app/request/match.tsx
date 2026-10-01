@@ -1,8 +1,9 @@
-import { ChevronRight } from "lucide-react-native";
+import { ChevronRight, TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Screen } from "@/components/Screen";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorScreenState } from "@/components/ErrorState";
@@ -13,15 +14,22 @@ import { MatchingWait } from "@/components/MatchingWait";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { TourTarget } from "@/components/TourTarget";
+import { ZoneRatingLine } from "@/components/ZoneRatingLine";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { type CatalogItem, type MatchResult } from "@/lib/api";
 import { formatDeadline } from "@/lib/deadline";
+import {
+  OUT_OF_ZONE_QUESTION,
+  isOutOfZone,
+  listingZoneLine,
+  outOfZoneWarning,
+  ratingLabel,
+} from "@/lib/distanceZone";
 import { userFacingError } from "@/lib/copy";
 import { printTimeLine, samplePhotoUri, unitLine } from "@/lib/listing";
-import { matchDistanceMeters } from "@/lib/match";
 import { boardListings, withFreshPhotos } from "@/lib/photoLinks";
 import { printerCapLine } from "@/lib/printerWidth";
 import { clearMatchPrefetch, takeMatch } from "@/lib/matchPrefetch";
@@ -179,8 +187,13 @@ export default function MatchScreen() {
     return found?.name ?? "this";
   }, [category, subcategory]);
 
+  const settings = usePlatformSettings((state) => state.settings);
+  /** An Out of Zone listing the client tapped, waiting on the warning. */
+  const [farListing, setFarListing] = useState<CatalogItem | null>(null);
+
   const openListing = useCallback(
     (item: CatalogItem) => {
+      setFarListing(null);
       rememberListing(item);
       prefetchListing(item.id);
       // No shop name travels with the listing: the sheet it opens is
@@ -191,6 +204,24 @@ export default function MatchScreen() {
       });
     },
     [router],
+  );
+
+  /*
+    Choosing a listing. An Out of Zone shop is priced per kilometre for
+    delivery, which can cost far more than the three zones' flat fees — so the
+    client hears that before the listing opens, not at checkout (#156). It is a
+    warning, never a gate: "Choose this listing" goes on exactly as a nearer
+    one would.
+  */
+  const chooseListing = useCallback(
+    (item: CatalogItem) => {
+      if (isOutOfZone(item.distanceZone)) {
+        setFarListing(item);
+        return;
+      }
+      openListing(item);
+    },
+    [openListing],
   );
 
   if (error === "dropoff_required") {
@@ -331,7 +362,6 @@ export default function MatchScreen() {
           <MatchCard
             match={match}
             subcategoryName={subcategoryName}
-            distanceMeters={matchDistanceMeters(match, dropoff)}
             onStalePhoto={onStalePhoto}
           />
         </View>
@@ -346,7 +376,7 @@ export default function MatchScreen() {
             <ListingRow
               key={item.id}
               item={item}
-              onPress={() => openListing(item)}
+              onPress={() => chooseListing(item)}
               onStalePhoto={onStalePhoto}
             />
           ))}
@@ -366,11 +396,24 @@ export default function MatchScreen() {
           label="Continue"
           onPress={() => {
             const first = match.listings[0];
-            if (first) openListing(first);
+            if (first) chooseListing(first);
           }}
           disabled={match.listings.length === 0}
         />
       </TourTarget>
+
+      <ConfirmDialog
+        visible={farListing != null}
+        leading={<TriangleAlert size={24} color={colors.warning} strokeWidth={2} />}
+        question={OUT_OF_ZONE_QUESTION}
+        body={outOfZoneWarning({ distanceKm: farListing?.distanceKm, settings })}
+        confirmLabel="Choose this listing"
+        cancelLabel="Pick another listing"
+        onConfirm={() => {
+          if (farListing) openListing(farListing);
+        }}
+        onCancel={() => setFarListing(null)}
+      />
     </Screen>
   );
 }
@@ -398,12 +441,14 @@ function ListingRow({
   const pressTime = printTimeLine(item.turnaroundHours);
   const cap = printerCapLine(item);
   const from = item.fromPriceMinor !== item.basePriceMinor ? "From " : "";
+  const zone = listingZoneLine(item);
+  const rating = ratingLabel(item.rating);
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${item.name}, ${from.toLowerCase()}${gridgoPriceLabel(item.fromPriceMinor, rate)} ${unitLine(item)}${cap ? `, ${cap.toLowerCase()}` : ""}`}
+      accessibilityLabel={`${item.name}, ${from.toLowerCase()}${gridgoPriceLabel(item.fromPriceMinor, rate)} ${unitLine(item)}${cap ? `, ${cap.toLowerCase()}` : ""}${zone ? `, ${zone}` : ""}${rating ? `, ${rating}` : ""}`}
       className="gg-card-flush flex-row items-center gap-3 p-3"
     >
       {({ pressed }) => (
@@ -428,6 +473,11 @@ function ListingRow({
             />
             {pressTime ? <Text className="text-caption text-text-muted">{pressTime}</Text> : null}
             {cap ? <Text className="text-caption text-text-muted">{cap}</Text> : null}
+            <ZoneRatingLine
+              zone={item.distanceZone}
+              distanceKm={item.distanceKm}
+              rating={item.rating}
+            />
           </View>
           <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
           {pressed ? (

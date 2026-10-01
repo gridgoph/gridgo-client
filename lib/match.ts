@@ -17,8 +17,8 @@
  * one, or implies there is a list of them to go and browse.
  */
 
-import type { MatchQueue, MatchReason, MatchResult } from "@/lib/api";
-import { formatDistance, haversineMetres, type GeoPoint } from "@/lib/tracking";
+import type { DistanceZone, MatchQueue, MatchReason } from "@/lib/api";
+import { isOutOfZone } from "@/lib/distanceZone";
 
 /** The reason the card leads with — the bundle, else the top-ranked factor. */
 export function primaryReason(reasons: MatchReason[]): MatchReason | null {
@@ -45,8 +45,8 @@ export function reasonTag(factor: MatchReason["factor"]): string {
 /**
  * One line of why, in the client's own terms.
  *
- * Concrete wherever GRIDGO has a real distance, and
- * plain when it does not. It never claims to have beaten shops that were not
+ * Distance is the zone word GRIDGO sent (`distanceZone`), never a figure: a
+ * kilometre count on a near shop would say where it is (#156). It never claims to have beaten shops that were not
  * there: with no alternatives the line says this is the shop printing it,
  * which is true, rather than "fastest" with nothing to be faster than.
  * Timing belongs to the card's readout, so a relative estimate cannot compete
@@ -54,12 +54,12 @@ export function reasonTag(factor: MatchReason["factor"]): string {
  */
 export function reasonLine({
   reason,
-  distanceMeters,
+  zone,
   alternativesCount,
   subcategoryName,
 }: {
   reason: MatchReason | null;
-  distanceMeters: number | null;
+  zone: DistanceZone | null | undefined;
   alternativesCount: number;
   subcategoryName: string;
 }): string {
@@ -77,32 +77,15 @@ export function reasonLine({
     case "speed":
       return `Fastest on ${thing}.`;
     case "distance":
-      return distanceMeters == null
-        ? `Closest to your drop-off.`
-        : `Closest to your drop-off — ${formatDistance(distanceMeters / 1000)} away.`;
+      if (!zone?.label) return `Closest to your drop-off.`;
+      return isOutOfZone(zone)
+        ? `Closest to your drop-off, though outside GRIDGO's delivery zones.`
+        : `Closest to your drop-off — ${zone.label}.`;
     case "quality":
       return `Fullest ${thing} board on GRIDGO — the most choices, with real samples.`;
     default:
       return `GRIDGO's match for ${thing}.`;
   }
-}
-
-/**
- * How far the job's print run starts from where it is going.
- *
- * The API scores distance but reports it only inside a working note, so it is
- * measured again here from the assigned press's own pin — the same great-circle
- * metres the server used. It never reaches a screen as a place: only as this
- * one number, which is what delivery is priced on. Null when the client has not
- * given a drop-off, in which case distance did not enter the match either.
- */
-export function matchDistanceMeters(
-  match: Pick<MatchResult, "shop">,
-  dropoff: GeoPoint | null,
-): number | null {
-  const pin = match.shop.shop;
-  if (!pin || !dropoff) return null;
-  return Math.round(haversineMetres({ lat: pin.lat, lng: pin.lng }, dropoff));
 }
 
 /**

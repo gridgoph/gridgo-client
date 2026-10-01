@@ -14,6 +14,7 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { DeliveryZonesHelp } from "@/components/DeliveryZonesHelp";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
@@ -80,7 +81,8 @@ import {
   OCR_READING,
   OCR_UNREADABLE,
 } from "@/lib/receiptOcr";
-import { formatDistance, type GeoPoint } from "@/lib/tracking";
+import { type GeoPoint } from "@/lib/tracking";
+import { legZoneLine } from "@/lib/distanceZone";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
@@ -706,6 +708,7 @@ export default function CheckoutScreen() {
                   ? "Delivery is charged on each run, by the distance from where it is printed to your address."
                   : "Delivery is charged by the distance from where it is printed to your address."}
               </Text>
+              <DeliveryZonesHelp settings={settings} />
               <View collapsable={false} ref={(node) => { fields.current.address = node; }}>
                 <AddressBlock
                   cart={cart}
@@ -875,11 +878,7 @@ export default function CheckoutScreen() {
                   value={
                     leg.feeMinor == null
                       ? "Set with your address"
-                      : `${formatPhp(leg.feeMinor)}${
-                          leg.distanceMeters != null
-                            ? ` · ${formatDistance(leg.distanceMeters / 1000)}`
-                            : ""
-                        }`
+                      : withZone(formatPhp(leg.feeMinor), legZoneLine(leg.zone, leg.distanceMeters))
                   }
                 />
               ))
@@ -889,7 +888,12 @@ export default function CheckoutScreen() {
                 value={
                   totals.deliveryFeeMinor == null
                     ? "Set with your address"
-                    : formatPhp(totals.deliveryFeeMinor)
+                    : withZone(
+                        formatPhp(totals.deliveryFeeMinor),
+                        totals.legs[0]
+                          ? legZoneLine(totals.legs[0].zone, totals.legs[0].distanceMeters)
+                          : null,
+                      )
                 }
               />
             )}
@@ -940,6 +944,11 @@ export default function CheckoutScreen() {
 // ---------------------------------------------------------------------------
 // Pieces
 // ---------------------------------------------------------------------------
+
+/** "₱25.00 · Nearby" — the fee, then the zone it was priced in. */
+function withZone(fee: string, zone: string | null): string {
+  return zone ? `${fee} · ${zone}` : fee;
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

@@ -1,6 +1,7 @@
 import { Text, View } from "react-native";
 
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ZoneRatingLine } from "@/components/ZoneRatingLine";
 import { readyInShort, samplePhotoUri } from "@/lib/listing";
 import type { MatchResult } from "@/lib/api";
 import { primaryReason, queueLine, reasonLine, reasonTag } from "@/lib/match";
@@ -11,8 +12,6 @@ type Props = {
   match: MatchResult;
   /** What is being printed, for the reason line. */
   subcategoryName: string;
-  /** Straight-line metres to the drop-off, or null when none was given. */
-  distanceMeters: number | null;
   /** The screen's re-read for an expired photo link (`SamplePhoto.onStale`). */
   onStalePhoto?: () => Promise<unknown> | void;
 };
@@ -33,6 +32,10 @@ type Props = {
  * on and one concrete line of evidence — every number in it real, from the
  * match the platform actually ran.
  *
+ * Under the heading sit the zone word and the rating — the pick's distance as
+ * GRIDGO's delivery table names it, never a figure, and a star only once the
+ * shop has earned one (#156).
+ *
  * Underneath, the two facts a client plans around sit in a readout: where they
  * are in the queue, and how long the whole wait is. Neither is drawn unless the
  * match carried it.
@@ -41,7 +44,7 @@ type Props = {
  * and the one primary control in this flow waits on the listing sheet where the
  * client actually commits to something.
  */
-export function MatchCard({ match, subcategoryName, distanceMeters, onStalePhoto }: Props) {
+export function MatchCard({ match, subcategoryName, onStalePhoto }: Props) {
   const reason = primaryReason(match.reasons);
   const queue = queueLine(match.queue);
   const wait = readyInShort(match.queue.estimatedHours);
@@ -74,6 +77,8 @@ export function MatchCard({ match, subcategoryName, distanceMeters, onStalePhoto
           </Text>
         </View>
 
+        <ZoneRatingLine zone={match.distanceZone} rating={match.rating} />
+
         {/*
           The why band. A hairline rule with the reason set into it — the
           structure says "this is an annotation on the pick above", which is
@@ -89,7 +94,7 @@ export function MatchCard({ match, subcategoryName, distanceMeters, onStalePhoto
           <Text className="text-body-lg text-text-primary">
             {reasonLine({
               reason,
-              distanceMeters,
+              zone: match.distanceZone,
               alternativesCount: match.alternativesCount,
               subcategoryName,
             })}

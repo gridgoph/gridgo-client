@@ -1,6 +1,5 @@
 import type { MatchReason } from "@/lib/api";
 import {
-  matchDistanceMeters,
   ordinal,
   primaryReason,
   queueLine,
@@ -54,7 +53,7 @@ describe("reasonLine", () => {
   it("never repeats the API's working notes", () => {
     const line = reasonLine({
       reason: RANKED[0],
-      distanceMeters: 1240,
+      zone: { key: "nearby", label: "Nearby" },
       alternativesCount: 2,
       subcategoryName: "Flyers",
     });
@@ -67,29 +66,40 @@ describe("reasonLine", () => {
     expect(
       reasonLine({
         reason: RANKED[0],
-        distanceMeters: null,
+        zone: null,
         alternativesCount: 1,
         subcategoryName: "Flyers",
       }),
     ).toBe("Fastest on flyers.");
   });
 
-  it("gives the distance when that is what decided it", () => {
+  it("gives the zone word, never a figure, when distance decided it", () => {
+    const line = reasonLine({
+      reason: reason({ factor: "distance" }),
+      zone: { key: "nearby", label: "Nearby" },
+      alternativesCount: 3,
+      subcategoryName: "Flyers",
+    });
+    expect(line).toBe("Closest to your drop-off — Nearby.");
+    expect(line).not.toMatch(/\d|km|\bm\b/);
+  });
+
+  it("says when the closest is still outside GRIDGO's zones", () => {
     expect(
       reasonLine({
         reason: reason({ factor: "distance" }),
-        distanceMeters: 1400,
+        zone: { key: "out_of_zone", label: "Out of Zone" },
         alternativesCount: 3,
         subcategoryName: "Flyers",
       }),
-    ).toContain("Closest to your drop-off — 1.4 km away");
+    ).toBe("Closest to your drop-off, though outside GRIDGO's delivery zones.");
   });
 
   it("does not claim GRIDGO's pick is fastest when there was nothing to beat", () => {
     // "Fastest" against no alternatives is not true, however flattering.
     const line = reasonLine({
       reason: RANKED[0],
-      distanceMeters: null,
+      zone: null,
       alternativesCount: 0,
       subcategoryName: "Flyers",
     });
@@ -99,11 +109,11 @@ describe("reasonLine", () => {
 
   it("never names or counts shops — GRIDGO is who the client is buying from", () => {
     const lines = [
-      reasonLine({ reason: RANKED[0], distanceMeters: null, alternativesCount: 0, subcategoryName: "Flyers" }),
-      reasonLine({ reason: RANKED[0], distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
-      reasonLine({ reason: reason({ factor: "quality", rank: 1 }), distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
-      reasonLine({ reason: reason({ factor: "distance", rank: 1 }), distanceMeters: 1400, alternativesCount: 4, subcategoryName: "Flyers" }),
-      reasonLine({ reason: null, distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
+      reasonLine({ reason: RANKED[0], zone: null, alternativesCount: 0, subcategoryName: "Flyers" }),
+      reasonLine({ reason: RANKED[0], zone: null, alternativesCount: 4, subcategoryName: "Flyers" }),
+      reasonLine({ reason: reason({ factor: "quality", rank: 1 }), zone: null, alternativesCount: 4, subcategoryName: "Flyers" }),
+      reasonLine({ reason: reason({ factor: "distance", rank: 1 }), zone: { key: "nearby", label: "Nearby" }, alternativesCount: 4, subcategoryName: "Flyers" }),
+      reasonLine({ reason: null, zone: null, alternativesCount: 4, subcategoryName: "Flyers" }),
     ];
     for (const line of lines) expect(line.toLowerCase()).not.toMatch(/\bshops?\b/);
   });
@@ -112,7 +122,7 @@ describe("reasonLine", () => {
     expect(
       reasonLine({
         reason: reason({ factor: "bundle", rank: 0 }),
-        distanceMeters: null,
+        zone: null,
         alternativesCount: 4,
         subcategoryName: "Flyers",
       }),
@@ -150,27 +160,11 @@ describe("ordinal", () => {
   });
 });
 
-describe("matchDistanceMeters", () => {
-  const shop = { supplierId: "s", shopName: "Shop", shop: { lat: 7.0731, lng: 125.6128, label: "Bajada" }, media: [], categories: [], services: [] };
-
-  it("measures from the shop's own pin", () => {
-    const metres = matchDistanceMeters({ shop }, { lat: 7.076, lng: 125.615 });
-    expect(metres).toBeGreaterThan(0);
-    expect(metres).toBeLessThan(1000);
-  });
-
-  it("has no distance when the client gave no drop-off", () => {
-    // Distance did not enter the match either, so there is nothing to show.
-    expect(matchDistanceMeters({ shop }, null)).toBeNull();
-    expect(matchDistanceMeters({ shop: { ...shop, shop: null } }, { lat: 7, lng: 125 })).toBeNull();
-  });
-});
-
 describe("reasonLine and other shops", () => {
   it("does not send the client looking for another shop", () => {
     const line = reasonLine({
       reason: RANKED[0],
-      distanceMeters: null,
+      zone: null,
       alternativesCount: 4,
       subcategoryName: "Flyers",
     });
