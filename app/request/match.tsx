@@ -168,7 +168,10 @@ export default function MatchScreen() {
   */
   useFocusEffect(
     useCallback(() => {
+      // Not while a match is already on its way: asking again would cancel it,
+      // and with it the three-second hold a Change is owed.
       if (
+        loading ||
         !match ||
         (!selectionExpired(match.selectTokenExpiresAt) && !matchIsSpent(match.matchRequestId))
       ) {
@@ -176,7 +179,7 @@ export default function MatchScreen() {
       }
       clearMatchPrefetch();
       void load();
-    }, [match, load]),
+    }, [loading, match, load]),
   );
 
   /*
