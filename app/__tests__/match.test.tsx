@@ -3,16 +3,18 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import MatchScreen from "@/app/request/match";
+import { SHOP_IDENTITY, otherListing, topListing, topPickMatch } from "@/test/matchFixtures";
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
-import type { MatchReason, MatchResult } from "@/lib/api";
 import { clearMatchPrefetch } from "@/lib/matchPrefetch";
+import { clearMatchSelections, matchSelectionFor } from "@/lib/matchSelection";
 import { useCart } from "@/store/cart";
+import { useOrderRanking } from "@/store/orderRanking";
 import { usePriorities } from "@/store/priorities";
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
-const mockCanGoBack = jest.fn(() => true);
+const mockDismissTo = jest.fn();
 
 jest.mock("expo-router", () => ({
   // The first-order tour registers its screen on focus (`useTourScreen`).
@@ -21,9 +23,20 @@ jest.mock("expo-router", () => ({
     push: mockPush,
     back: mockBack,
     replace: mockReplace,
-    canGoBack: () => mockCanGoBack(),
+    dismissTo: mockDismissTo,
+    canGoBack: () => true,
   }),
-  useLocalSearchParams: () => ({ subcategory: "flyers", category: "marketing_collateral" }),
+  useLocalSearchParams: () => ({
+    subcategory: "tarpaulins_outdoor_banners",
+    category: "marketing_collateral",
+  }),
+  Redirect: ({ href }: { href: { pathname: string } }) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createElement } = require("react");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Text } = require("react-native");
+    return createElement(Text, null, `redirect:${href.pathname}`);
+  },
 }));
 
 jest.mock("@/lib/api", () => {
@@ -42,74 +55,6 @@ jest.mock("@/lib/api", () => {
 const api = require("@/lib/api");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { usePlatformSettings } = require("@/store/platformSettings");
-
-const RANKED: MatchReason[] = [
-  { code: "ranked_speed", factor: "speed", rank: 1, weight: 0.5, detail: "0 jobs ahead; about 48 hours" },
-  { code: "ranked_quality", factor: "quality", rank: 2, weight: 0.3, detail: "88% listing completeness" },
-  { code: "ranked_distance", factor: "distance", rank: 3, weight: 0.2, detail: "1240 metres from the delivery pin" },
-];
-
-function flyers(supplierId: string) {
-  return {
-    id: `${supplierId}_flyers`,
-    supplierId,
-    supplierServiceId: `svc_${supplierId}`,
-    categoryCode: "marketing_collateral",
-    subcategoryCode: "flyers",
-    name: "Flyers",
-    description: null,
-    basePriceMinor: 2500,
-    fromPriceMinor: 2500,
-    effectivePriceMinor: null,
-    pricingUnit: "per_package" as const,
-    packageQty: 100,
-    measurementKind: "none" as const,
-    measureUnit: null,
-    minimumWidthMilli: null,
-    minimumHeightMilli: null,
-    minimumLengthMilli: null,
-    minimumOrderQuantity: null,
-    priceTiers: [],
-    speedTiers: [],
-    pricingBasis: "per_unit",
-    turnaroundMode: "override" as const,
-    turnaroundHours: 48,
-    rush: null,
-    acceptedFormats: [],
-    photos: [],
-    prepSteps: [],
-    optionGroups: [],
-    version: 1,
-    serviceVersion: 1,
-  };
-}
-
-function match(
-  supplierId: string,
-  shopName: string,
-  overrides: Partial<MatchResult> = {},
-): MatchResult {
-  return {
-    shop: {
-      supplierId,
-      shopName,
-      shop: { lat: 7.0731, lng: 125.6128, label: `${shopName} · Bajada, Davao City` },
-      media: [],
-      categories: ["marketing_collateral"],
-      services: [],
-    },
-    queue: { jobsAhead: 0, estimatedHours: 48 },
-    reasons: RANKED,
-    listings: [flyers(supplierId)],
-    alternativesCount: 0,
-    score: {
-      total: 82,
-      weights: { quality: 0.3, speed: 0.4, cost: 0.2, distance: 0.1 },
-      factors: { quality: 88, speed: 100, cost: 100, distance: 0 },
-    },
-    ...overrides,
-  };
-}
 
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
@@ -130,187 +75,249 @@ beforeEach(() => {
   mockPush.mockClear();
   mockBack.mockClear();
   mockReplace.mockClear();
-  mockCanGoBack.mockReturnValue(true);
+  mockDismissTo.mockClear();
   api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
   api.getProductCategories.mockResolvedValue(PRODUCT_CATEGORY_SEED);
-  api.matchShop.mockResolvedValue(match("user_lovis", "Lovis Printshop"));
+  api.matchShop.mockReset();
+  api.matchShop.mockResolvedValue(topPickMatch());
   api.matchNextShop.mockReset();
   clearMatchPrefetch();
+  clearMatchSelections();
   useCart.getState().reset();
+  useOrderRanking.getState().clear();
   usePlatformSettings.getState().reset();
   usePlatformSettings.getState().adopt({
     issueWindowHours: 24,
     serviceFeeRateBps: 1000,
     deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
   });
-  usePriorities.setState({ ranking: ["speed", "quality", "cost", "distance"], loaded: true });
+  usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
 });
 
-describe("MatchScreen", () => {
-  it("distinguishes three hours on the press from the queued ready date", async () => {
-    api.matchShop.mockResolvedValue(
-      match("user_lovis", "Lovis Printshop", {
-        listings: [{ ...flyers("user_lovis"), turnaroundHours: 3 }],
-        queue: { jobsAhead: 2, estimatedHours: 48 },
-        promiseBy: "2026-09-26T06:00:00.000Z",
-      }),
-    );
+describe("MatchScreen — the Top Pick (#154)", () => {
+  it("leads with the Top Pick and the one reason GRIDGO matched on", async () => {
     await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
 
-    expect(screen.queryByText("Ready in 3 hours")).toBeNull();
-    expect(screen.getByText("Prints in about 3 hours")).toBeTruthy();
+    expect(await screen.findByText("TOP PICK")).toBeTruthy();
+    expect(screen.getByText("MATCHED FOR QUALITY")).toBeTruthy();
+    expect(screen.getByText("Tarpaulin Print")).toBeTruthy();
+    // GRIDGO's price per unit: the shop's ₱20.00 plus GRIDGO's 10%.
+    expect(screen.getByText("₱22.00 per sq ft")).toBeTruthy();
+    expect(screen.queryByText(/₱20\.00/)).toBeNull();
+    // The rating star and the zone word, never a distance on a near shop.
+    expect(screen.getByText("4.3 (12)")).toBeTruthy();
+    expect(screen.getAllByText("Nearby").length).toBeGreaterThan(0);
+    // The queue place, large, and the client promise with how far off it is.
+    expect(screen.getByText("YOUR PLACE")).toBeTruthy();
+    expect(screen.getByText("4th")).toBeTruthy();
     expect(screen.getByText("READY BY")).toBeTruthy();
-    expect(screen.getByText("Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
-    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
-    expect(screen.queryByText(/once your artwork is approved/)).toBeNull();
+    expect(screen.getByText("Ready in 12 hours")).toBeTruthy();
   });
 
-  it("shows GRIDGO's pick and the reason it was made", async () => {
+  it("dates the pick by its client promise, in Davao time", async () => {
     api.matchShop.mockResolvedValue(
-      match("user_rapid", "Rapid Print", {
-        alternativesCount: 1,
-        queue: { jobsAhead: 0, estimatedHours: 24 },
+      topPickMatch({ listings: [topListing("sci_lovis_tarp", { readyBy: "2026-10-12T02:58:00.000Z" })] }),
+    );
+    await renderInSafeArea(<MatchScreen />);
+
+    expect(await screen.findByText("Mon, Oct 12, 2026 · 10:58 AM")).toBeTruthy();
+  });
+
+  it("draws the API's badge for whichever factor decided it", async () => {
+    api.matchShop.mockResolvedValue(
+      topPickMatch({ matchReason: { key: "vetted", label: "GRIDGO-Vetted Supplier" } }),
+    );
+    await renderInSafeArea(<MatchScreen />);
+
+    expect(await screen.findByText("GRIDGO-VETTED SUPPLIER")).toBeTruthy();
+    expect(screen.queryByText("MATCHED FOR QUALITY")).toBeNull();
+  });
+
+  it("says Out of Zone with its kilometres on the pick, and only there", async () => {
+    api.matchShop.mockResolvedValue(
+      topPickMatch({
+        distanceZone: { key: "out_of_zone", label: "Out of Zone" },
+        listings: [topListing("sci_far", { distanceKm: 16.4 })],
       }),
     );
     await renderInSafeArea(<MatchScreen />);
 
-    expect(await screen.findByText("GRIDGO’s pick for flyers")).toBeTruthy();
-    expect(screen.getByText("FASTEST")).toBeTruthy();
-    expect(
-      screen.getByText("Fastest on flyers."),
-    ).toBeTruthy();
+    expect(await screen.findByText("Out of Zone · 16.4 km")).toBeTruthy();
   });
 
-  it("never shows the printer's name or address — GRIDGO is the counter", async () => {
-    await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
-
-    // The match still picked a real shop; the client simply never reads it.
-    expect(screen.queryByText(/Lovis/i)).toBeNull();
-    expect(screen.queryByLabelText(/Lovis/i)).toBeNull();
-    expect(screen.queryByText(/Bajada/i)).toBeNull();
-    expect(screen.queryByLabelText(/Bajada/i)).toBeNull();
-  });
-
-  it("asks GRIDGO to match on the thing being printed", async () => {
-    await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
-
-    expect(api.matchShop).toHaveBeenCalledWith(
-      expect.objectContaining({ subcategoryCode: "flyers" }),
+  it("reads back the ranking it matched on, with Change into this job's re-rank", async () => {
+    api.matchShop.mockResolvedValue(
+      topPickMatch({ ranking: ["cost", "speed", "quality", "distance"] }),
     );
-  });
-
-  it("reads the client's own ranking back, as a way into changing it", async () => {
     await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
+    await screen.findByText("TOP PICK");
 
-    // One chip per priority, in the order the client put them. The sentence
-    // this replaced said the same thing in a grey line nobody read.
     expect(screen.getByText("MATCHED ON")).toBeTruthy();
-    expect(screen.getByLabelText("1: Speed")).toBeTruthy();
-    expect(screen.getByLabelText("2: Quality")).toBeTruthy();
-    expect(screen.getByLabelText("3: Cost")).toBeTruthy();
+    expect(screen.getByLabelText("1: Cost")).toBeTruthy();
+    expect(screen.getByLabelText("2: Speed")).toBeTruthy();
+    expect(screen.getByLabelText("3: Quality")).toBeTruthy();
     expect(screen.getByLabelText("4: Distance")).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText("Change what GRIDGO matches on"));
-    // Back to this match afterwards, not Home: they came here to read one.
     expect(mockPush).toHaveBeenCalledWith({
-      pathname: "/priorities",
-      params: { returnTo: "match" },
+      pathname: "/request/rank",
+      params: {
+        subcategory: "tarpaulins_outdoor_banners",
+        category: "marketing_collateral",
+        returnTo: "match",
+      },
     });
   });
 
-  it("shows the client's real place in the queue", async () => {
+  it("matches on the usual order when the job was not re-ranked, with no basket bound", async () => {
+    useCart.setState({ cartId: "cart_held" });
+    await renderInSafeArea(<MatchScreen />);
+    await screen.findByText("TOP PICK");
+
+    const sent = api.matchShop.mock.calls[0][0];
+    expect(sent).toMatchObject({ subcategoryCode: "tarpaulins_outdoor_banners" });
+    // A skipped confirm sends no ranking: GRIDGO reads the saved one.
+    expect(sent).not.toHaveProperty("ranking");
+    // A pick token bound to a basket is refused by the fresh one "start a new
+    // order" makes, so the match is never tied to one.
+    expect(sent).not.toHaveProperty("cartId");
+  });
+
+  it("goes straight to the address when this job puts distance first and there is no pin", async () => {
+    useOrderRanking.getState().set(["distance", "quality", "speed", "cost"]);
+    await renderInSafeArea(<MatchScreen />);
+
+    expect(await screen.findByText("redirect:/request/where")).toBeTruthy();
+    // GRIDGO would refuse without a drop-off, so it is not asked — and no
+    // three-second wait is spent finding that out.
+    expect(api.matchShop).not.toHaveBeenCalled();
+  });
+
+  it("never draws the legacy reasons' working notes", async () => {
+    await renderInSafeArea(<MatchScreen />);
+    await screen.findByText("TOP PICK");
+
+    expect(screen.queryByText(/88% listing completeness/)).toBeNull();
+  });
+});
+
+describe("MatchScreen — other listings, and no shop identity", () => {
+  it("lists one row per other listing with the same facts and no badge", async () => {
+    await renderInSafeArea(<MatchScreen />);
+    await screen.findByText("TOP PICK");
+
+    expect(screen.getByText("OTHER LISTINGS FOR THIS DAY")).toBeTruthy();
+    expect(screen.getByText("UV Printing")).toBeTruthy();
+    expect(screen.getByText("Tarpaulin Banner")).toBeTruthy();
+    expect(screen.getByText("₱11.00 per sq ft")).toBeTruthy();
+    expect(screen.getByText("₱13.20 per sq ft")).toBeTruthy();
+    expect(screen.getAllByText("Ready in 1 hour")).toHaveLength(2);
+    expect(screen.getByText("Long Distance")).toBeTruthy();
+    expect(screen.getByText("4.6 (8)")).toBeTruthy();
+    // The place each would take, said the way a queue is said.
+    expect(screen.getByLabelText(/UV Printing, ₱11\.00 per sq ft, Ready in 1 hour, 1st in line/)).toBeTruthy();
+    expect(screen.getByLabelText(/Tarpaulin Banner, ₱13\.20 per sq ft, .*2nd in line/)).toBeTruthy();
+    // One badge on the whole screen: the Top Pick's.
+    expect(screen.getAllByText(/^MATCHED FOR/)).toHaveLength(1);
+  });
+
+  it("never shows a shop's name, address, contact or id — not the pick's, not anyone's", async () => {
+    await renderInSafeArea(<MatchScreen />);
+    await screen.findByText("TOP PICK");
+
+    for (const identity of SHOP_IDENTITY) {
+      const pattern = new RegExp(identity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      expect(screen.queryByText(pattern)).toBeNull();
+      expect(screen.queryByLabelText(pattern)).toBeNull();
+    }
+  });
+
+  it("puts the pick's own other listings after the other shops'", async () => {
     api.matchShop.mockResolvedValue(
-      match("user_lovis", "Lovis Printshop", {
-        queue: { jobsAhead: 2, estimatedHours: 144 },
+      topPickMatch({
+        listings: [topListing(), topListing("sci_lovis_tarp_13oz", { name: "Tarpaulin, 13 oz" })],
+        otherListings: [otherListing("sci_rapid_uv")],
       }),
     );
     await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
+    await screen.findByText("TOP PICK");
 
-    expect(screen.getByText("3rd in line")).toBeTruthy();
-    expect(screen.getByText("2 jobs ahead of yours")).toBeTruthy();
-    expect(screen.getByText("6 days")).toBeTruthy();
-    expect(screen.getByText("READY IN")).toBeTruthy();
-    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
-    expect(screen.queryByText("READY BY")).toBeNull();
+    const rows = screen.getAllByLabelText(/^(UV Printing|Tarpaulin, 13 oz),/);
+    expect(rows.map((row) => row.props.accessibilityLabel.split(",")[0])).toEqual([
+      "UV Printing",
+      "Tarpaulin",
+    ]);
   });
 
-  it("says nothing about the API's own working notes", async () => {
-    await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
-
-    expect(screen.queryByText(/88% listing completeness/)).toBeNull();
-    expect(screen.queryByText(/metres from the delivery pin/)).toBeNull();
-  });
-
-  it("does not offer another shop — GRIDGO answers once", async () => {
-    api.matchShop.mockResolvedValue(
-      match("user_rapid", "Rapid Print", { alternativesCount: 5 }),
-    );
-    await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
-
-    expect(screen.getByText("Your flyers")).toBeTruthy();
-    expect(screen.queryByText(/Another shop for/)).toBeNull();
-    expect(screen.queryByText(/See next shop/)).toBeNull();
-    expect(screen.queryByText(/Finding another shop/)).toBeNull();
-    expect(screen.queryByLabelText("See the next shop")).toBeNull();
-    expect(api.matchNextShop).not.toHaveBeenCalled();
-  });
-
-  it("draws the designed wait, naming the thing being printed", async () => {
+  it("draws the designed wait while GRIDGO is finding a printer", async () => {
     api.matchShop.mockReturnValue(new Promise(() => {}));
     await renderInSafeArea(<MatchScreen />);
 
-    // Same heading as the loaded screen, so nothing above the fold moves when
-    // the match lands.
-    expect(await screen.findByText("Your flyers")).toBeTruthy();
-    expect(screen.getByLabelText("Finding a printer for flyers")).toBeTruthy();
+    expect(
+      await screen.findByLabelText("Finding a printer for tarpaulins & outdoor banners"),
+    ).toBeTruthy();
     expect(screen.getByText("GRIDGO is finding a printer.")).toBeTruthy();
-    expect(screen.queryByText(/Finding your shop/)).toBeNull();
+    // The ranking row stays put above it.
+    expect(screen.getByLabelText("1: Quality")).toBeTruthy();
   });
+});
 
-  it("lists what GRIDGO can print and opens one", async () => {
+describe("MatchScreen — choosing", () => {
+  it("Proceed opens the Top Pick, carrying its pick token", async () => {
     await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
+    await screen.findByText("TOP PICK");
 
-    expect(screen.getByText("1 FLYERS LISTING")).toBeTruthy();
-    // GRIDGO's price: the shop's PHP 25.00 plus GRIDGO's 10%. The shop's own
-    // figure is what it is paid, and it never reaches a client's screen.
-    expect(screen.getByText("₱27.50 per pack of 100")).toBeTruthy();
-    expect(screen.queryByText(/₱25\.00/)).toBeNull();
-    fireEvent.press(screen.getByLabelText("Flyers, ₱27.50 per pack of 100"));
+    fireEvent.press(screen.getByRole("button", { name: "Proceed" }));
 
     // No shop name travels with the listing.
     expect(mockPush).toHaveBeenCalledWith({
       pathname: "/request/listing",
-      params: { itemId: "user_lovis_flyers" },
+      params: { itemId: "sci_lovis_tarp" },
+    });
+    expect(matchSelectionFor("sci_lovis_tarp")).toEqual({
+      matchRequestId: "req_match_1",
+      selectToken: "tok_sci_lovis_tarp",
+      expiresAt: "2099-01-01T00:00:00.000Z",
     });
   });
 
-  it("continues into the first listing from the foot of the match", async () => {
+  it("tapping another listing selects it by its own token", async () => {
     await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
+    await screen.findByText("TOP PICK");
 
-    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.press(screen.getByLabelText(/^Tarpaulin Banner, /));
 
     expect(mockPush).toHaveBeenCalledWith({
       pathname: "/request/listing",
-      params: { itemId: "user_lovis_flyers" },
+      params: { itemId: "sci_zone_tarp" },
     });
+    expect(matchSelectionFor("sci_zone_tarp")).toEqual({
+      matchRequestId: "req_match_1",
+      selectToken: "tok_sci_zone_tarp",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    expect(matchSelectionFor("sci_lovis_tarp")).toBeNull();
   });
 
+  it("Cancel leaves the flow for Home — nothing is in the basket yet", async () => {
+    await renderInSafeArea(<MatchScreen />);
+    await screen.findByText("TOP PICK");
+
+    fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(mockDismissTo).toHaveBeenCalledWith("/(tabs)/home");
+  });
+});
+
+describe("MatchScreen — when GRIDGO cannot answer", () => {
   it("says plainly when GRIDGO cannot print this yet", async () => {
     api.matchShop.mockRejectedValue(
       new api.ApiError(404, { error: "match_not_found", message: "No approved open shop." }),
     );
     await renderInSafeArea(<MatchScreen />);
 
-    expect(await screen.findByText("GRIDGO cannot print flyers today")).toBeTruthy();
+    expect(
+      await screen.findByText("GRIDGO cannot print tarpaulins & outdoor banners today"),
+    ).toBeTruthy();
     expect(screen.getByText(/Operations can still quote it with you/)).toBeTruthy();
   });
 
@@ -322,7 +329,7 @@ describe("MatchScreen", () => {
     expect(screen.getByText("Try again")).toBeTruthy();
   });
 
-  it("says when nobody can make the date, and Change my date goes back to pick one", async () => {
+  it("says when nobody can make the date, and Change my date goes back to the date", async () => {
     api.matchShop.mockRejectedValue(
       new api.ApiError(409, {
         error: "deadline_not_met",
@@ -331,10 +338,15 @@ describe("MatchScreen", () => {
     );
     await renderInSafeArea(<MatchScreen />);
 
-    expect(await screen.findByText("Nobody can finish flyers by then")).toBeTruthy();
+    expect(
+      await screen.findByText("Nobody can finish tarpaulins & outdoor banners by then"),
+    ).toBeTruthy();
     expect(screen.getByText(/The soonest anyone can do it/)).toBeTruthy();
 
     fireEvent.press(screen.getByText("Change my date"));
-    expect(mockBack).toHaveBeenCalled();
+    expect(mockDismissTo).toHaveBeenCalledWith({
+      pathname: "/request/when",
+      params: { subcategory: "tarpaulins_outdoor_banners", category: "marketing_collateral" },
+    });
   });
 });

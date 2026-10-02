@@ -16,6 +16,7 @@ import { userFacingError } from "@/lib/copy";
 import { prefetchMatch } from "@/lib/matchPrefetch";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
+import { withJobRanking } from "@/store/orderRanking";
 
 /**
  * Where is this going?
@@ -68,15 +69,16 @@ export default function WhereScreen() {
   /** Put the drop-off on the basket, then carry on where this came from. */
   const applyDropoff = useCallback(
     async (dropoff: OrderPoint) => {
-      const cart = await setDefaultDropoff(dropoff);
+      await setDefaultDropoff(dropoff);
       const target = next === "checkout" ? "/checkout" : "/request/match";
       if (target === "/request/match" && subcategory) {
-        prefetchMatch({
-          subcategoryCode: subcategory,
-          dropoff,
-          deadline: useJobDeadline.getState().by,
-          cartId: cart.id,
-        });
+        prefetchMatch(
+          withJobRanking({
+            subcategoryCode: subcategory,
+            dropoff,
+            deadline: useJobDeadline.getState().by,
+          }),
+        );
       }
       router.replace({
         pathname: target,

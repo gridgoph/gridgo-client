@@ -38,6 +38,12 @@ describe("match prefetch", () => {
     expect(api.matchShop).toHaveBeenCalledTimes(2);
   });
 
+  it("does not answer a job re-ranked for itself with the usual order's match", async () => {
+    prefetchMatch(input);
+    takeMatch({ ...input, ranking: ["cost", "speed", "quality", "distance"] });
+    expect(api.matchShop).toHaveBeenCalledTimes(2);
+  });
+
   it("drops a failed match so the screen can retry", async () => {
     api.matchShop.mockRejectedValueOnce(new Error("offline"));
     await expect(prefetchMatch(input)).rejects.toThrow("offline");

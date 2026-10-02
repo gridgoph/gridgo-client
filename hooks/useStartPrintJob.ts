@@ -1,37 +1,36 @@
 import { useCallback } from "react";
 import { useRouter } from "expo-router";
 
-import { prefetchMatch } from "@/lib/matchPrefetch";
-import { useCart } from "@/store/cart";
+import { clearMatchSelections } from "@/lib/matchSelection";
 import { useJobDeadline } from "@/store/jobDeadline";
-import { usePriorities } from "@/store/priorities";
+import { jobRankingNow, useOrderRanking } from "@/store/orderRanking";
 
 /**
  * Leaving the "what am I printing?" screens for the match.
  *
- * One decision lives here: whether GRIDGO has to ask where the job is going
- * before it can match. It does when the client put distance first and the
- * basket has no address yet — the matcher refuses without a drop-off in that
- * case, because "nearest" has no meaning until it knows what it is near.
- * Everyone else goes straight to the shop and gives the address at checkout,
- * where it is needed for the delivery charge instead.
+ * Every job goes the same way: the date (`app/request/when.tsx`), then
+ * confirming or re-ranking what it matches on (`app/request/rank.tsx`), then
+ * the match — with the drop-off asked first when distance leads and the basket
+ * has no address yet, because "nearest" has no meaning until GRIDGO knows what
+ * it is near. Everyone else gives the address at checkout, where it is needed
+ * for the delivery charge instead.
  *
- * Both category screens route through this, so the rule cannot be right on one
- * of them and missing on the other.
+ * Both category screens route through this, so a job cannot start with the
+ * last job's date, ranking or picks on one of them and not the other.
  */
 export function useStartPrintJob() {
   const router = useRouter();
 
   return useCallback(
     (categoryCode: string, subcategoryCode: string) => {
-      const { cart, cartId } = useCart.getState();
-      const dropoff = cart?.defaultDropoff ?? null;
-      const needsDropoff = needsDropoffFirst(dropoff);
-
       // The deadline comes before the match, because it decides which shops are
       // offered at all rather than how they are ranked. Nothing is prefetched
-      // here: a match run without the date would be a different match.
+      // here: a match run without the date would be a different match. A new
+      // job is asked its own ranking again, and no pick from an earlier match
+      // may ride along onto it.
       useJobDeadline.getState().clear();
+      useOrderRanking.getState().clear();
+      clearMatchSelections();
       router.push({
         pathname: "/request/when",
         params: { subcategory: subcategoryCode, category: categoryCode },
@@ -44,9 +43,10 @@ export function useStartPrintJob() {
 /**
  * Whether the drop-off has to come first.
  *
- * Read from the ranking held for this account. Exported so the match screen can
- * apply the same rule when the API refuses a match for want of a pin.
+ * Read from the order this job matches on — its own re-rank, else the usual
+ * order. Exported so the screens either side of the ranking step apply the
+ * same rule the API does when it refuses a match for want of a pin.
  */
 export function needsDropoffFirst(dropoff: unknown): boolean {
-  return usePriorities.getState().ranking?.[0] === "distance" && !dropoff;
+  return jobRankingNow()?.[0] === "distance" && !dropoff;
 }

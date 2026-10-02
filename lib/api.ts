@@ -1566,7 +1566,7 @@ export async function health(): Promise<{ ok: boolean }> {
 // ones the order is written with.
 // ---------------------------------------------------------------------------
 
-/** The three things a client ranks. The order is the whole preference. */
+/** The four things a client ranks. The order is the whole preference. */
 export type MatchFactor = "quality" | "speed" | "cost" | "distance";
 
 export type ClientPreferences = {
@@ -1604,17 +1604,94 @@ export type MatchReason = {
   detail: string;
 };
 
+/**
+ * The one badge on the Top Pick (gridgo-api#126): the first factor that
+ * separated the winner from the runner-up, or `vetted` when nothing did.
+ * Labels are the API's own ("Matched for Quality") and are drawn as sent.
+ */
+export type MatchReasonKey = "quality" | "cost" | "speed" | "distance" | "vetted";
+export type MatchReasonBadge = { key: MatchReasonKey | (string & {}); label: string };
+
+/** What every matched listing gains: its promise, its place, and its pick token. */
+export type MatchedListingFields = {
+  /** The padded client promise for this listing — the date to show. */
+  readyBy?: string | null;
+  /** Jobs ahead + 1: where this job would join that press's queue. */
+  placeInLine?: number | null;
+  /** Opaque, 15-minute token that picks this listing on add-line. */
+  selectToken?: string;
+};
+
+/** A listing on the Top Pick's own board, as the match returns it. */
+export type MatchListing = CatalogItem & MatchedListingFields;
+
+/**
+ * Another shop's best listing for the job. An allowlist: no supplier or
+ * service id, shop name, address, contact or logo ever travels in one, so
+ * nothing here can say which press it is.
+ */
+export type OtherListing = Pick<
+  CatalogItem,
+  | "id"
+  | "name"
+  | "photos"
+  | "fromPriceMinor"
+  | "clientFromPriceMinor"
+  | "pricingUnit"
+  | "packageQty"
+  | "distanceZone"
+  | "distanceKm"
+  | "rating"
+  | "categoryCode"
+  | "subcategoryCode"
+  | "basePriceMinor"
+  | "effectivePriceMinor"
+  | "clientEffectivePriceMinor"
+  | "measurementKind"
+  | "measureUnit"
+  | "minimumWidthMilli"
+  | "minimumHeightMilli"
+  | "minimumLengthMilli"
+  | "minimumOrderQuantity"
+  | "printerMaxWidthFeet"
+  | "priceTiers"
+  | "speedTiers"
+  | "pricingBasis"
+  | "turnaroundHours"
+  | "rush"
+  | "acceptedFormats"
+  | "optionGroups"
+  | "version"
+> &
+  MatchedListingFields & { minimumTurnaroundHours?: number | null };
+
 export type MatchResult = {
+  /** The ranking GRIDGO actually matched on, echoed back. */
+  ranking?: MatchFactor[];
+  /** The Top Pick's one badge. Render this, never the legacy `reasons`. */
+  matchReason?: MatchReasonBadge;
+  /** Every other shop's best listing for the job, in the same strict order. */
+  otherListings?: OtherListing[];
+  /** Sent back with a `selectToken` when a listing is added to the basket. */
+  matchRequestId?: string;
+  /** When every token in this answer stops working. */
+  selectTokenExpiresAt?: string;
   /** The Top Pick's zone. Never carries kilometres; null with no drop-off. */
   distanceZone?: DistanceZone | null;
   /** Present only once the shop has five or more reviews. */
   rating?: ShopRating;
+  /**
+   * Compatibility only (gridgo-api#126 keeps it for this rollout): the
+   * matching screen must never draw a field of it.
+   */
   shop: ShopBoard;
   queue: MatchQueue;
   /** Absolute client promise; older deployments may only send queue.estimatedHours. */
   promiseBy?: string | null;
+  /** Legacy working notes. Superseded by `matchReason`; never drawn. */
   reasons: MatchReason[];
-  listings: CatalogItem[];
+  /** The Top Pick's eligible listings, best first: index 0 is the pick. */
+  listings: MatchListing[];
   /** How many other shops could have printed it. */
   alternativesCount: number;
   score: {
@@ -1873,11 +1950,19 @@ function approvalCaseFromError(error: ApiError): ApprovalCaseSummary | null {
 
 export type MatchInput = {
   subcategoryCode: string;
-  /** Omit to use the ranking saved on the account. */
+  /**
+   * This order's ranking. Omit to use the one saved on the account — which is
+   * what skipping the per-order step means. Never saves the preference.
+   */
   ranking?: MatchFactor[];
   addressId?: string;
   dropoff?: OrderPoint | null;
-  /** Lets the matcher keep a basket with one shop in it on that shop. */
+  /**
+   * Validates the basket and binds every pick token to it. The matching flow
+   * leaves it out: a token bound to one basket is refused by the fresh basket
+   * "start a new order" makes, and the API no longer keeps a basket's shop
+   * ahead of the others (gridgo-api#126).
+   */
   cartId?: string;
   /**
    * When the client needs it. A filter, not a preference: a shop that cannot
@@ -1961,6 +2046,13 @@ export async function addCartLine(
   cartId: string,
   input: {
     catalogItemId: string;
+    /**
+     * A listing picked on the match screen travels as its token, so the
+     * server resolves the press and keeps the job's deadline on the line.
+     * Both or neither; without them this is the plain catalogue add.
+     */
+    matchRequestId?: string;
+    selectToken?: string;
     optionIds: string[];
     quantity: number;
     /** Required by a listing the shop prices by size; refused by any other. */

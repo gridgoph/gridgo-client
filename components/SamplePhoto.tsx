@@ -24,8 +24,12 @@ type Props = {
   onStale?: () => Promise<unknown> | void;
   /** What the sample shows, for anyone who cannot see it. */
   altText?: string | null;
-  /** Square on a list row, wider on a sheet header. */
-  ratio?: "square" | "wide";
+  /**
+   * Square on a list row, wider on a sheet header, and a short banner strip on
+   * the match's Top Pick, where the queue and date under it must stay in view.
+   * The loupe still opens the whole photo.
+   */
+  ratio?: "square" | "wide" | "banner";
   gutter?: "tight" | "standard";
   /** What an empty frame says. A blank plate reads as a broken listing. */
   emptyLabel?: string;
@@ -115,7 +119,7 @@ export function SamplePhoto({
 
   // Native aspectRatio, not `aspect-[4/3]`: that arbitrary class has shipped as
   // a silent no-op in this pipeline before, and a frame with no ratio collapses.
-  const aspectRatio = ratio === "wide" ? 4 / 3 : 1;
+  const aspectRatio = ratio === "banner" ? 5 / 2 : ratio === "wide" ? 4 / 3 : 1;
 
   return (
     <CropMarkFrame gutter={gutter}>

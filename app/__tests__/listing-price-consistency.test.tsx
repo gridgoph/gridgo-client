@@ -164,7 +164,7 @@ it.each(["match cache", "catalog read"])("keeps the unconfigured Flyers pack at 
   });
   await renderInSafeArea(<MatchScreen />);
   await screen.findByText("₱440.00 per pack of 100");
-  await fireEvent.press(screen.getByLabelText("Flyers, ₱440.00 per pack of 100"));
+  await fireEvent.press(screen.getByLabelText(/^Top pick, Flyers, ₱440\.00 per pack of 100/));
   expect(mockPush).toHaveBeenCalledWith({ pathname: "/request/listing", params: { itemId: item.id } });
   await cleanup();
 
