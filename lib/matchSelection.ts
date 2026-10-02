@@ -15,6 +15,7 @@
  */
 
 import { ApiError } from "@/lib/api";
+import { MATCH_REUSE_MS } from "@/lib/matchPrefetch";
 
 export type MatchSelection = {
   matchRequestId: string;
@@ -56,14 +57,18 @@ export function matchIsSpent(matchRequestId: string | null | undefined): boolean
   return matchRequestId != null && spent.has(matchRequestId);
 }
 
-/** True once a match's tokens have run out, by this phone's clock. */
-export function selectionExpired(
-  expiresAt: string | null | undefined,
-  now: number = Date.now(),
-): boolean {
-  if (!expiresAt) return false;
-  const at = Date.parse(expiresAt);
-  return Number.isFinite(at) && at <= now;
+/** How long the API keeps a match's pick tokens (gridgo-api#126). */
+export const SELECT_TOKEN_LIFETIME_MS = 15 * 60_000;
+
+/**
+ * True once a held match can no longer be trusted to be taken, by this phone's
+ * own clock alone: from when the answer reached the screen, less the longest a
+ * prefetched answer may have waited before that (`MATCH_REUSE_MS`). Comparing
+ * the server's `selectTokenExpiresAt` with the phone's clock instead would
+ * call every match expired on a phone running fast, and rematch forever.
+ */
+export function matchAgedOut(receivedAt: number, now: number = Date.now()): boolean {
+  return now - receivedAt >= SELECT_TOKEN_LIFETIME_MS - MATCH_REUSE_MS;
 }
 
 /**

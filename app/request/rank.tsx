@@ -1,5 +1,5 @@
 import { Check, CircleAlert, RotateCcw } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Animated from "react-native-reanimated";
@@ -75,6 +75,16 @@ export default function JobRankingScreen() {
   const [order, setOrder] = useState<Priority[]>(() => [...current]);
   const [makeUsual, setMakeUsual] = useState(false);
 
+  // A save can outlive the screen (swiped away mid-save); its answer must not
+  // navigate from a screen that is no longer there.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const complete = isCompleteRanking(order);
   const usualOrder = usual ?? PLATFORM_DEFAULT;
   const differsFromUsual = complete && !sameRanking(order, usualOrder);
@@ -120,7 +130,7 @@ export default function JobRankingScreen() {
       // refusal stops here with the reason on screen rather than matching on
       // an order the client was told was kept.
       const kept = await saveUsual(order);
-      if (!kept) return;
+      if (!kept || !mounted.current) return;
       setJobRanking(null);
       finish();
       return;

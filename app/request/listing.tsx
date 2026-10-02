@@ -335,6 +335,16 @@ export default function ListingScreen() {
     measurement,
   });
 
+  // The pick ran out or no longer fits — the token's fifteen minutes are up,
+  // or the listing or its queue moved. Nothing was added; the match screen
+  // asks again when the client goes back to it.
+  const staleMatch = (e: unknown): boolean => {
+    if (!picked || !isStaleMatchRefusal(e)) return false;
+    markMatchSpent(picked.matchRequestId);
+    setSaveError(STALE_MATCH_MESSAGE);
+    return true;
+  };
+
   const add = async () => {
     if (busy) return;
     if (!complete || !sized) {
@@ -375,14 +385,7 @@ export default function ListingScreen() {
         void reloadCart();
         return;
       }
-      // The pick ran out or no longer fits — the token's fifteen minutes are
-      // up, or the listing or its queue moved. Nothing was added; the match
-      // screen asks again when the client goes back to it.
-      if (picked && isStaleMatchRefusal(e)) {
-        markMatchSpent(picked.matchRequestId);
-        setSaveError(STALE_MATCH_MESSAGE);
-        return;
-      }
+      if (staleMatch(e)) return;
       // Only a request that never reached GRIDGO is worded as a connection
       // problem, and `userFacingError` says that itself. An answer GRIDGO did
       // give must not be blamed on the phone's signal.
@@ -417,6 +420,7 @@ export default function ListingScreen() {
       leaveForArtwork(updated);
     } catch (e) {
       setConfirmingStartOver(false);
+      if (staleMatch(e)) return;
       setSaveError(
         userFacingError(e, "GRIDGO could not start a new order with this. Your order is unchanged. Try again."),
       );

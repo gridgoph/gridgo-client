@@ -30,7 +30,13 @@ jest.mock("expo-router", () => ({
     subcategory: "tarpaulins_outdoor_banners",
     category: "marketing_collateral",
   }),
-  Redirect: () => null,
+  Redirect: ({ href }: { href: { pathname: string } }) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createElement } = require("react");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Text } = require("react-native");
+    return createElement(Text, null, `redirect:${href.pathname}`);
+  },
 }));
 
 jest.mock("@/lib/api", () => {
@@ -175,6 +181,16 @@ describe("MatchScreen — the Top Pick (#154)", () => {
     // A pick token bound to a basket is refused by the fresh one "start a new
     // order" makes, so the match is never tied to one.
     expect(sent).not.toHaveProperty("cartId");
+  });
+
+  it("goes straight to the address when this job puts distance first and there is no pin", async () => {
+    useOrderRanking.getState().set(["distance", "quality", "speed", "cost"]);
+    await renderInSafeArea(<MatchScreen />);
+
+    expect(await screen.findByText("redirect:/request/where")).toBeTruthy();
+    // GRIDGO would refuse without a drop-off, so it is not asked — and no
+    // three-second wait is spent finding that out.
+    expect(api.matchShop).not.toHaveBeenCalled();
   });
 
   it("never draws the legacy reasons' working notes", async () => {

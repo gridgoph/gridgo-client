@@ -15,6 +15,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { TopPickCard } from "@/components/TopPickCard";
 import { TourTarget } from "@/components/TourTarget";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
+import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
@@ -32,7 +33,7 @@ import {
   type PickableListing,
 } from "@/lib/match";
 import { clearMatchPrefetch, takeMatch } from "@/lib/matchPrefetch";
-import { holdMatchSelection, matchIsSpent, selectionExpired } from "@/lib/matchSelection";
+import { holdMatchSelection, matchAgedOut, matchIsSpent } from "@/lib/matchSelection";
 import { REMATCH_MINIMUM_MS, withMinimumWait } from "@/lib/minimumWait";
 import { rememberOrderFlow } from "@/lib/orderFlow";
 import { boardListings, withFreshPhotos } from "@/lib/photoLinks";
@@ -90,6 +91,8 @@ export default function MatchScreen() {
   const [earliest, setEarliest] = useState<string | null>(null);
   /** The ranking the last match was asked with, to tell a change from a first match. */
   const askedFor = useRef<string | null>(null);
+  /** When the answer on screen arrived, by this phone's clock. */
+  const [receivedAt, setReceivedAt] = useState(0);
   const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
@@ -100,13 +103,20 @@ export default function MatchScreen() {
     // drop-off moved, lands as soon as GRIDGO answers.
     const paced = askedFor.current != null && askedFor.current !== rankingKey;
     askedFor.current = rankingKey;
+    // Read the basket at call time. Subscribing to it would rematch the
+    // moment the listing sheet warms a cart — the client already has an
+    // answer. No `cartId`: a pick token bound to this basket would be
+    // refused by the fresh one "start a new order" makes.
+    const { cart: liveCart } = useCart.getState();
+    // Re-ranked to distance first with nowhere to measure from: GRIDGO would
+    // refuse, so go straight to the address rather than waiting to be told.
+    if (needsDropoffFirst(liveCart?.defaultDropoff ?? null)) {
+      setError("dropoff_required");
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      // Read the basket at call time. Subscribing to it would rematch the
-      // moment the listing sheet warms a cart — the client already has an
-      // answer. No `cartId`: a pick token bound to this basket would be
-      // refused by the fresh one "start a new order" makes.
-      const { cart: liveCart } = useCart.getState();
       const request = takeMatch(
         withJobRanking({
           subcategoryCode: subcategory,
@@ -117,6 +127,7 @@ export default function MatchScreen() {
       const result = paced ? await withMinimumWait(request, REMATCH_MINIMUM_MS) : await request;
       if (sequence !== loadSequence.current) return;
       setMatch(result);
+      setReceivedAt(Date.now());
       setError(null);
     } catch (e) {
       if (sequence !== loadSequence.current) return;
@@ -164,7 +175,8 @@ export default function MatchScreen() {
     taken. Every token in a match lives fifteen minutes, so a client coming
     back after that — or sent back by the order sheet because one ran out —
     would otherwise tap a listing GRIDGO will refuse. The held answer is spent;
-    asking again is the honest thing.
+    asking again is the honest thing. Its age is counted on this phone's clock
+    (`matchAgedOut`), so a phone running fast cannot rematch in a loop.
   */
   useFocusEffect(
     useCallback(() => {
@@ -173,13 +185,13 @@ export default function MatchScreen() {
       if (
         loading ||
         !match ||
-        (!selectionExpired(match.selectTokenExpiresAt) && !matchIsSpent(match.matchRequestId))
+        (!matchAgedOut(receivedAt) && !matchIsSpent(match.matchRequestId))
       ) {
         return;
       }
       clearMatchPrefetch();
       void load();
-    }, [loading, match, load]),
+    }, [loading, match, receivedAt, load]),
   );
 
   /*

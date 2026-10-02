@@ -6,7 +6,7 @@ import {
   markMatchSpent,
   matchIsSpent,
   matchSelectionFor,
-  selectionExpired,
+  matchAgedOut,
 } from "@/lib/matchSelection";
 
 beforeEach(() => {
@@ -32,11 +32,11 @@ describe("match selections", () => {
     expect(matchSelectionFor("sci_other")).toBeNull();
   });
 
-  it("knows when a match's tokens have run out", () => {
-    const now = Date.parse("2026-10-02T01:00:00.000Z");
-    expect(selectionExpired("2026-10-02T01:15:00.000Z", now)).toBe(false);
-    expect(selectionExpired("2026-10-02T00:59:59.000Z", now)).toBe(true);
-    expect(selectionExpired(null, now)).toBe(false);
+  it("ages a match out on the phone's own clock, allowing for a reused prefetch", () => {
+    const received = 1_000_000;
+    // Fifteen minutes of token, less the five a prefetched answer may have waited.
+    expect(matchAgedOut(received, received + 9 * 60_000)).toBe(false);
+    expect(matchAgedOut(received, received + 10 * 60_000)).toBe(true);
   });
 
   it("remembers a match GRIDGO refused as out of date", () => {

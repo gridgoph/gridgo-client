@@ -5,6 +5,7 @@ import { useOrderRanking } from "@/store/orderRanking";
 import { setLiveOwner } from "@/lib/live";
 import { clearBoardCache } from "@/lib/shopBoards";
 import { clearListingCache } from "@/lib/listingCache";
+import { clearMatchPrefetch } from "@/lib/matchPrefetch";
 import { clearMatchSelections } from "@/lib/matchSelection";
 import { create } from "zustand";
 
@@ -350,8 +351,9 @@ useSession.subscribe((state, previous) => {
   useOrderPayment.getState().reset();
   clearBoardCache();
   clearListingCache();
-  // Pick tokens are bound to the client who matched; another account's would
-  // be refused, and a job's re-rank is that client's answer, not this one's.
+  // A match and its pick tokens are bound to the client who asked; another
+  // account's would be refused, and a job's re-rank is that client's answer.
+  clearMatchPrefetch();
   clearMatchSelections();
   useOrderRanking.getState().clear();
   useNotifications.getState().setOwner(id);
