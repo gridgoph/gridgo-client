@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.197 (New feature)
+
+- Listings now show how far away they are as a zone, plus shop ratings, and warn before an out-of-zone pick.
+- Matching now shows a Top Pick and why it was chosen, other listings for your date, and a quick priority check per job.
+
 ## 1.0.191 (Fix)
 
 - Closing and reopening the app no longer empties your basket.
