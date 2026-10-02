@@ -4,6 +4,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import CheckoutScreen from "@/app/checkout";
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
+import { invoiceNote } from "@/lib/checkout";
+import { expectNoServiceFee } from "@/test/serviceFeeSwitch";
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
 
@@ -238,15 +240,27 @@ describe("CheckoutScreen", () => {
   });
 
   it("hides the service fee row when Operations has turned it off", async () => {
-    api.getSettings.mockResolvedValue({ ...SETTINGS, serviceFeeVisibleToClient: false });
+    // Paid in full, as new orders are, so no payment share is drawn as a
+    // percentage either: every % left on the sheet would be the fee's.
+    api.getSettings.mockResolvedValue({
+      ...SETTINGS,
+      downpaymentPercent: 100,
+      serviceFeeVisibleToClient: false,
+    });
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
     expect((await screen.findAllByText("₱44.00")).length).toBeGreaterThan(0);
 
     expect(screen.queryByText("Service fee · 10%")).toBeNull();
     expect(screen.queryByText("View more")).toBeNull();
+    expectNoServiceFee(screen);
+    // The receipt note stops naming the fee too.
+    expect(screen.getByText(invoiceNote(false))).toBeTruthy();
+    // Printing ₱44 (fee inside) + Delivery ₱25 = Total ₱69, as when shown.
     expect(screen.getAllByText("₱44.00").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("₱69.00")).toHaveLength(2);
+    expect(screen.getByText("₱25.00")).toBeTruthy();
+    // The total, and the whole of it asked for up front.
+    expect(screen.getAllByText("₱69.00").length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows GRIDGO amounts on each print run and a GRIDGO printing total", async () => {

@@ -46,15 +46,23 @@ export function showsServiceFee(input: {
 }
 
 /**
- * Whether Operations wants the client to see the `Service fee · N%` row.
+ * Whether Operations wants the client to see that a service fee exists at all.
  *
- * Live `GET /settings` is the authority. An older payload without the flag
- * keeps the row — hiding is an explicit off.
+ * Live `GET /settings` is the authority, and the switch covers every word, not
+ * just the `Service fee · N%` row: the row, its explainer, the checkout note,
+ * the receipt-ready notification. With it off a client sees no sign of a fee
+ * anywhere — the pesos stay inside Printing either way, so no total moves.
+ *
+ * An older payload without the flag keeps the fee named — hiding is an
+ * explicit off. Settings not read yet (`null`) cannot say the switch is on, so
+ * nothing is named until they are: a fee shown for a second and then hidden
+ * is still a fee shown.
  */
 export function serviceFeeVisibleToClient(
   settings: { serviceFeeVisibleToClient?: boolean | null } | null | undefined,
 ): boolean {
-  return settings?.serviceFeeVisibleToClient !== false;
+  if (!settings) return false;
+  return settings.serviceFeeVisibleToClient !== false;
 }
 
 /**
