@@ -1,179 +1,212 @@
-import type { MatchReason } from "@/lib/api";
+import type { MatchListing, OtherListing } from "@/lib/api";
 import {
-  matchDistanceMeters,
+  hasFullSheet,
+  matchBadge,
+  matchedRanking,
   ordinal,
-  primaryReason,
-  queueLine,
-  reasonLine,
-  reasonTag,
+  otherListingsOf,
+  placeLabel,
+  placeOrdinal,
+  readyInLine,
+  sheetListing,
+  topPickListing,
 } from "@/lib/match";
 
-function reason(overrides: Partial<MatchReason> = {}): MatchReason {
+function topListing(id: string, overrides: Partial<MatchListing> = {}): MatchListing {
   return {
-    code: "ranked_speed",
-    factor: "speed",
-    rank: 1,
-    weight: 0.5,
-    detail: "0 jobs ahead; about 48 hours",
+    id,
+    supplierId: "user_lovis",
+    supplierServiceId: "svc_lovis",
+    categoryCode: "marketing_collateral",
+    subcategoryCode: "tarpaulins_outdoor_banners",
+    name: "Tarpaulin Print",
+    description: "Lovis Printshop, open daily",
+    basePriceMinor: 1200,
+    fromPriceMinor: 1200,
+    effectivePriceMinor: null,
+    pricingUnit: "per_area",
+    packageQty: null,
+    measurementKind: "area",
+    measureUnit: "ft",
+    minimumWidthMilli: null,
+    minimumHeightMilli: null,
+    minimumLengthMilli: null,
+    minimumOrderQuantity: null,
+    priceTiers: [],
+    speedTiers: [],
+    pricingBasis: "per_area",
+    turnaroundMode: "override",
+    turnaroundHours: 12,
+    rush: null,
+    acceptedFormats: [],
+    photos: [],
+    prepSteps: [],
+    optionGroups: [],
+    version: 1,
+    serviceVersion: 1,
+    readyBy: "2026-10-12T02:58:00.000Z",
+    placeInLine: 4,
+    selectToken: `tok_${id}`,
     ...overrides,
   };
 }
 
-const RANKED: MatchReason[] = [
-  reason({ code: "ranked_speed", factor: "speed", rank: 1, weight: 0.5 }),
-  reason({ code: "ranked_quality", factor: "quality", rank: 2, weight: 0.3 }),
-  reason({ code: "ranked_distance", factor: "distance", rank: 3, weight: 0.2 }),
-];
+function otherListing(id: string, overrides: Partial<OtherListing> = {}): OtherListing {
+  return {
+    id,
+    name: "Tarpaulin Print",
+    photos: [],
+    fromPriceMinor: 1000,
+    clientFromPriceMinor: 1100,
+    pricingUnit: "per_area",
+    packageQty: null,
+    distanceZone: { key: "nearby", label: "Nearby" },
+    categoryCode: "marketing_collateral",
+    subcategoryCode: "tarpaulins_outdoor_banners",
+    basePriceMinor: 1000,
+    effectivePriceMinor: null,
+    measurementKind: "area",
+    measureUnit: "ft",
+    minimumWidthMilli: null,
+    minimumHeightMilli: null,
+    minimumLengthMilli: null,
+    minimumOrderQuantity: null,
+    priceTiers: [],
+    speedTiers: [],
+    pricingBasis: "per_area",
+    turnaroundHours: 12,
+    rush: null,
+    acceptedFormats: [],
+    optionGroups: [],
+    version: 1,
+    readyBy: "2026-10-12T02:58:00.000Z",
+    placeInLine: 1,
+    selectToken: `tok_${id}`,
+    ...overrides,
+  };
+}
 
-describe("primaryReason", () => {
-  it("leads with the top-ranked factor", () => {
-    expect(primaryReason(RANKED)?.factor).toBe("speed");
+describe("matchBadge", () => {
+  it("sets the API's own reason as the overline", () => {
+    expect(matchBadge({ matchReason: { key: "quality", label: "Matched for Quality" } })).toBe(
+      "MATCHED FOR QUALITY",
+    );
+    expect(matchBadge({ matchReason: { key: "cost", label: "Matched for Best Value" } })).toBe(
+      "MATCHED FOR BEST VALUE",
+    );
+    expect(
+      matchBadge({ matchReason: { key: "vetted", label: "GRIDGO-Vetted Supplier" } }),
+    ).toBe("GRIDGO-VETTED SUPPLIER");
   });
 
-  it("lets a same-shop bundle outrank the ranking", () => {
-    const bundled = [reason({ code: "same_shop_bundle", factor: "bundle", rank: 0 }), ...RANKED];
-    expect(primaryReason(bundled)?.factor).toBe("bundle");
-  });
-
-  it("has nothing to say when the match gave no reasons", () => {
-    expect(primaryReason([])).toBeNull();
+  it("says nothing on an API from before the badge, rather than guessing one", () => {
+    expect(matchBadge({})).toBeNull();
+    expect(matchBadge({ matchReason: { key: "quality", label: "  " } })).toBeNull();
   });
 });
 
-describe("reasonTag", () => {
-  it("names the factor in the client's words, not the API's", () => {
-    expect(reasonTag("speed")).toBe("FASTEST");
-    expect(reasonTag("distance")).toBe("CLOSEST");
-    expect(reasonTag("quality")).toBe("STRONGEST LISTING");
-    expect(reasonTag("bundle")).toBe("ALREADY IN YOUR ORDER");
+describe("topPickListing and otherListingsOf", () => {
+  const match = {
+    listings: [topListing("pick"), topListing("pick_second")],
+    otherListings: [otherListing("other_a"), otherListing("other_b")],
+  };
+
+  it("takes the Top Pick's recommended listing", () => {
+    expect(topPickListing(match)?.id).toBe("pick");
+    expect(topPickListing({ listings: [] })).toBeNull();
+  });
+
+  it("lists every other shop's listing in the API's order, then the pick's other listings", () => {
+    expect(otherListingsOf(match).map((listing) => listing.id)).toEqual([
+      "other_a",
+      "other_b",
+      "pick_second",
+    ]);
+  });
+
+  it("copes with an API that sends no other listings", () => {
+    expect(otherListingsOf({ listings: [topListing("pick")] })).toEqual([]);
   });
 });
 
-describe("reasonLine", () => {
-
-  it("never repeats the API's working notes", () => {
-    const line = reasonLine({
-      reason: RANKED[0],
-      distanceMeters: 1240,
-      alternativesCount: 2,
-      subcategoryName: "Flyers",
-    });
-    expect(line).not.toContain("jobs ahead");
-    expect(line).not.toContain("%");
-    expect(line).not.toContain("metres from the delivery pin");
+describe("matchedRanking", () => {
+  it("reads the ranking GRIDGO echoed back", () => {
+    expect(matchedRanking({ ranking: ["cost", "speed", "quality", "distance"] }, null)).toEqual([
+      "cost",
+      "speed",
+      "quality",
+      "distance",
+    ]);
   });
 
-  it("leaves the ready promise to the card readout when speed decided it", () => {
-    expect(
-      reasonLine({
-        reason: RANKED[0],
-        distanceMeters: null,
-        alternativesCount: 1,
-        subcategoryName: "Flyers",
-      }),
-    ).toBe("Fastest on flyers.");
-  });
-
-  it("gives the distance when that is what decided it", () => {
-    expect(
-      reasonLine({
-        reason: reason({ factor: "distance" }),
-        distanceMeters: 1400,
-        alternativesCount: 3,
-        subcategoryName: "Flyers",
-      }),
-    ).toContain("Closest to your drop-off — 1.4 km away");
-  });
-
-  it("does not claim GRIDGO's pick is fastest when there was nothing to beat", () => {
-    // "Fastest" against no alternatives is not true, however flattering.
-    const line = reasonLine({
-      reason: RANKED[0],
-      distanceMeters: null,
-      alternativesCount: 0,
-      subcategoryName: "Flyers",
-    });
-    expect(line).toContain("The only printer GRIDGO can put flyers on today");
-    expect(line).not.toContain("Fastest");
-  });
-
-  it("never names or counts shops — GRIDGO is who the client is buying from", () => {
-    const lines = [
-      reasonLine({ reason: RANKED[0], distanceMeters: null, alternativesCount: 0, subcategoryName: "Flyers" }),
-      reasonLine({ reason: RANKED[0], distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
-      reasonLine({ reason: reason({ factor: "quality", rank: 1 }), distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
-      reasonLine({ reason: reason({ factor: "distance", rank: 1 }), distanceMeters: 1400, alternativesCount: 4, subcategoryName: "Flyers" }),
-      reasonLine({ reason: null, distanceMeters: null, alternativesCount: 4, subcategoryName: "Flyers" }),
-    ];
-    for (const line of lines) expect(line.toLowerCase()).not.toMatch(/\bshops?\b/);
-  });
-
-  it("explains a bundle as the one job it keeps the order to", () => {
-    expect(
-      reasonLine({
-        reason: reason({ factor: "bundle", rank: 0 }),
-        distanceMeters: null,
-        alternativesCount: 4,
-        subcategoryName: "Flyers",
-      }),
-    ).toContain("travels as one job");
+  it("falls back to what the screen asked with", () => {
+    const asked = ["speed", "quality", "cost", "distance"] as const;
+    expect(matchedRanking({}, asked)).toBe(asked);
+    expect(matchedRanking(null, asked)).toBe(asked);
   });
 });
 
-describe("queueLine", () => {
-  it("puts the client one past whoever is in front", () => {
-    expect(queueLine({ jobsAhead: 2, estimatedHours: 96 })).toBe("3rd in line");
-    expect(queueLine({ jobsAhead: 0, estimatedHours: 48 })).toBe("Next in line");
+describe("placeOrdinal", () => {
+  it("says the place in line the way a queue is said", () => {
+    expect(placeOrdinal(1)).toBe("1st");
+    expect(placeOrdinal(4)).toBe("4th");
+    expect(placeLabel(4)).toBe("4th in line");
   });
 
-  it("says nothing at all when the match carried no queue", () => {
-    expect(queueLine(null)).toBeNull();
-    expect(queueLine(undefined)).toBeNull();
+  it("draws nothing for a place GRIDGO did not send", () => {
+    expect(placeOrdinal(null)).toBeNull();
+    expect(placeOrdinal(undefined)).toBeNull();
+    expect(placeOrdinal(0)).toBeNull();
+    expect(placeOrdinal(Number.NaN)).toBeNull();
+  });
+});
+
+describe("readyInLine", () => {
+  const now = Date.parse("2026-10-11T14:58:00.000Z");
+
+  it("counts from now to the client promise", () => {
+    expect(readyInLine("2026-10-12T02:58:00.000Z", now)).toBe("Ready in 12 hours");
+    expect(readyInLine("2026-10-11T15:30:00.000Z", now)).toBe("Ready in 1 hour");
+    expect(readyInLine("2026-10-14T14:58:00.000Z", now)).toBe("Ready in 3 days");
+  });
+
+  it("says nothing without a promise, or with one already past", () => {
+    expect(readyInLine(null, now)).toBeNull();
+    expect(readyInLine("not a date", now)).toBeNull();
+    expect(readyInLine("2026-10-10T00:00:00.000Z", now)).toBeNull();
   });
 });
 
 describe("ordinal", () => {
   it("handles the teens, which is where every naive version breaks", () => {
-    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101].map(ordinal)).toEqual([
-      "1st",
-      "2nd",
-      "3rd",
-      "4th",
-      "11th",
-      "12th",
-      "13th",
-      "21st",
-      "22nd",
-      "23rd",
-      "101st",
-    ]);
+    expect(ordinal(1)).toBe("1st");
+    expect(ordinal(2)).toBe("2nd");
+    expect(ordinal(3)).toBe("3rd");
+    expect(ordinal(4)).toBe("4th");
+    expect(ordinal(11)).toBe("11th");
+    expect(ordinal(12)).toBe("12th");
+    expect(ordinal(13)).toBe("13th");
+    expect(ordinal(21)).toBe("21st");
+    expect(ordinal(22)).toBe("22nd");
+    expect(ordinal(111)).toBe("111th");
   });
 });
 
-describe("matchDistanceMeters", () => {
-  const shop = { supplierId: "s", shopName: "Shop", shop: { lat: 7.0731, lng: 125.6128, label: "Bajada" }, media: [], categories: [], services: [] };
-
-  it("measures from the shop's own pin", () => {
-    const metres = matchDistanceMeters({ shop }, { lat: 7.076, lng: 125.615 });
-    expect(metres).toBeGreaterThan(0);
-    expect(metres).toBeLessThan(1000);
+describe("sheetListing", () => {
+  it("passes the Top Pick's full listing through", () => {
+    const pick = topListing("pick");
+    expect(hasFullSheet(pick)).toBe(true);
+    expect(sheetListing(pick)).toBe(pick);
   });
 
-  it("has no distance when the client gave no drop-off", () => {
-    // Distance did not enter the match either, so there is nothing to show.
-    expect(matchDistanceMeters({ shop }, null)).toBeNull();
-    expect(matchDistanceMeters({ shop: { ...shop, shop: null } }, { lat: 7, lng: 125 })).toBeNull();
-  });
-});
-
-describe("reasonLine and other shops", () => {
-  it("does not send the client looking for another shop", () => {
-    const line = reasonLine({
-      reason: RANKED[0],
-      distanceMeters: null,
-      alternativesCount: 4,
-      subcategoryName: "Flyers",
-    });
-    expect(line.toLowerCase()).not.toMatch(/another shop|next shop|shops open to you|of the \d+ shops/);
+  it("fills another shop's listing empty rather than guessing whose it is", () => {
+    const other = otherListing("other_a");
+    expect(hasFullSheet(other)).toBe(false);
+    const sheet = sheetListing(other);
+    expect(sheet.supplierId).toBe("");
+    expect(sheet.description).toBeNull();
+    expect(sheet.prepSteps).toEqual([]);
+    expect(sheet.name).toBe("Tarpaulin Print");
+    expect(sheet.optionGroups).toBe(other.optionGroups);
   });
 });

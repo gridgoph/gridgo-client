@@ -18,26 +18,15 @@
  * the supplier id stays where it belongs, in the calls.
  */
 
-import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
+import type { Cart, CartLineRecord, DistanceZone, PlatformSettings } from "@/lib/api";
 import { lineHasArtwork } from "@/lib/designLink";
+import { deliveryFeeForDistance, zoneForDistance } from "@/lib/distanceZone";
 import { clientAmountMinor, roundBps } from "@/lib/gridgoPrice";
 import { settingsDownpaymentPercent } from "@/lib/payment";
 import { haversineMetres, type GeoPoint } from "@/lib/tracking";
 
 export { roundBps } from "@/lib/gridgoPrice";
-
-/** The band a distance falls in. Bands are ordered, and the last has no max. */
-export function deliveryFeeForDistance(
-  settings: Pick<PlatformSettings, "deliveryFeeBands">,
-  metres: number,
-): number | null {
-  for (const band of settings.deliveryFeeBands) {
-    if (band.maxDistanceMeters == null || metres <= band.maxDistanceMeters) {
-      return band.feeMinor;
-    }
-  }
-  return null;
-}
+export { deliveryFeeForDistance } from "@/lib/distanceZone";
 
 export type PrintRun = {
   supplierId: string;
@@ -109,8 +98,14 @@ export function printRuns(lines: CartLineRecord[], serviceFeeRateBps = 0): Print
 export type DeliveryLeg = {
   supplierId: string;
   runLabel: string;
-  /** To the farthest drop-off this run has to reach, which is what is charged. */
+  /**
+   * To the farthest drop-off this run has to reach, which is what is charged.
+   * Prices the leg; reaches a screen only as `zone` (plus kilometres when
+   * that zone is Out of Zone).
+   */
   distanceMeters: number | null;
+  /** The delivery zone that distance falls in, from the same bands. */
+  zone: DistanceZone | null;
   feeMinor: number | null;
 };
 
@@ -189,6 +184,8 @@ export function basketTotals({ cart, settings, shopPoints }: TotalsInput): Baske
           supplierId: group.supplierId,
           runLabel: group.runLabel,
           distanceMeters,
+          zone:
+            settings && distanceMeters != null ? zoneForDistance(settings, distanceMeters) : null,
           feeMinor:
             settings && distanceMeters != null
               ? deliveryFeeForDistance(settings, distanceMeters)

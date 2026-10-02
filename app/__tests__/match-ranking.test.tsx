@@ -1,29 +1,29 @@
-import { act, render, screen, waitFor } from "@testing-library/react-native";
+import { act, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import MatchScreen from "@/app/request/match";
+import { topListing, topPickMatch } from "@/test/matchFixtures";
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
-import type { MatchReason, MatchResult } from "@/lib/api";
 import { clearMatchPrefetch } from "@/lib/matchPrefetch";
 import { useCart } from "@/store/cart";
+import { useOrderRanking } from "@/store/orderRanking";
 import { usePriorities } from "@/store/priorities";
 
-const mockPush = jest.fn();
-const mockBack = jest.fn();
-const mockReplace = jest.fn();
-const mockCanGoBack = jest.fn(() => true);
-
 jest.mock("expo-router", () => ({
-  // The first-order tour registers its screen on focus (`useTourScreen`).
   useFocusEffect: () => undefined,
   useRouter: () => ({
-    push: mockPush,
-    back: mockBack,
-    replace: mockReplace,
-    canGoBack: () => mockCanGoBack(),
+    push: jest.fn(),
+    back: jest.fn(),
+    replace: jest.fn(),
+    dismissTo: jest.fn(),
+    canGoBack: () => true,
   }),
-  useLocalSearchParams: () => ({ subcategory: "flyers", category: "marketing_collateral" }),
+  useLocalSearchParams: () => ({
+    subcategory: "tarpaulins_outdoor_banners",
+    category: "marketing_collateral",
+  }),
+  Redirect: () => null,
 }));
 
 jest.mock("@/lib/api", () => {
@@ -34,8 +34,6 @@ jest.mock("@/lib/api", () => {
     productCategoriesNow: jest.fn(() => seed),
     getProductCategories: jest.fn(),
     matchShop: jest.fn(),
-    matchNextShop: jest.fn(),
-    savePreferences: jest.fn(async (ranking: string[]) => ({ ranking, version: 2, updatedAt: null })),
   };
 });
 
@@ -43,74 +41,6 @@ jest.mock("@/lib/api", () => {
 const api = require("@/lib/api");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { usePlatformSettings } = require("@/store/platformSettings");
-
-const RANKED: MatchReason[] = [
-  { code: "ranked_speed", factor: "speed", rank: 1, weight: 0.5, detail: "0 jobs ahead; about 48 hours" },
-  { code: "ranked_quality", factor: "quality", rank: 2, weight: 0.3, detail: "88% listing completeness" },
-  { code: "ranked_distance", factor: "distance", rank: 3, weight: 0.2, detail: "1240 metres from the delivery pin" },
-];
-
-function flyers(supplierId: string) {
-  return {
-    id: `${supplierId}_flyers`,
-    supplierId,
-    supplierServiceId: `svc_${supplierId}`,
-    categoryCode: "marketing_collateral",
-    subcategoryCode: "flyers",
-    name: "Flyers",
-    description: null,
-    basePriceMinor: 2500,
-    fromPriceMinor: 2500,
-    effectivePriceMinor: null,
-    pricingUnit: "per_package" as const,
-    packageQty: 100,
-    measurementKind: "none" as const,
-    measureUnit: null,
-    minimumWidthMilli: null,
-    minimumHeightMilli: null,
-    minimumLengthMilli: null,
-    minimumOrderQuantity: null,
-    priceTiers: [],
-    speedTiers: [],
-    pricingBasis: "per_unit",
-    turnaroundMode: "override" as const,
-    turnaroundHours: 48,
-    rush: null,
-    acceptedFormats: [],
-    photos: [],
-    prepSteps: [],
-    optionGroups: [],
-    version: 1,
-    serviceVersion: 1,
-  };
-}
-
-function match(
-  supplierId: string,
-  shopName: string,
-  overrides: Partial<MatchResult> = {},
-): MatchResult {
-  return {
-    shop: {
-      supplierId,
-      shopName,
-      shop: { lat: 7.0731, lng: 125.6128, label: `${shopName} · Bajada, Davao City` },
-      media: [],
-      categories: ["marketing_collateral"],
-      services: [],
-    },
-    queue: { jobsAhead: 0, estimatedHours: 48 },
-    reasons: RANKED,
-    listings: [flyers(supplierId)],
-    alternativesCount: 0,
-    score: {
-      total: 82,
-      weights: { quality: 0.3, speed: 0.4, cost: 0.2, distance: 0.1 },
-      factors: { quality: 88, speed: 100, cost: 100, distance: 0 },
-    },
-    ...overrides,
-  };
-}
 
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
@@ -128,49 +58,78 @@ function renderInSafeArea(ui: ReactElement) {
 }
 
 beforeEach(() => {
-  mockPush.mockClear();
-  mockBack.mockClear();
-  mockReplace.mockClear();
-  mockCanGoBack.mockReturnValue(true);
   api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
   api.getProductCategories.mockResolvedValue(PRODUCT_CATEGORY_SEED);
-  api.matchShop.mockResolvedValue(match("user_lovis", "Lovis Printshop"));
-  api.matchNextShop.mockReset();
+  api.matchShop.mockReset();
+  api.matchShop.mockResolvedValue(topPickMatch());
   clearMatchPrefetch();
   useCart.getState().reset();
+  useOrderRanking.getState().clear();
   usePlatformSettings.getState().reset();
   usePlatformSettings.getState().adopt({
     issueWindowHours: 24,
     serviceFeeRateBps: 1000,
     deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
   });
-  usePriorities.setState({ ranking: ["speed", "quality", "cost", "distance"], loaded: true });
+  usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 /*
-  gridgo-client#127: "Change" on this screen saves a new order and comes back
-  here. GRIDGO matches on the saved order, so the shop on screen has to be
-  asked for again — keeping the old one would show the new chips over the old
-  order's pick. Its own file: it writes to a store after render (see AGENTS.md).
+  gridgo-client#155 and #157: "Change" re-ranks this job and comes back here.
+  GRIDGO is asked again with the job's own order, and "GRIDGO is finding a
+  printer" holds for a fixed three seconds however fast it answers. Its own
+  file: it writes to a store after render (see AGENTS.md).
 */
-describe("MatchScreen after the ranking changes", () => {
-  it("matches again on the new order, and not on a same-order re-read", async () => {
+describe("MatchScreen after the job is re-ranked", () => {
+  it("rematches on the new order, holding the wait for three seconds even when GRIDGO is instant", async () => {
     await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
+    await screen.findByText("MATCHED FOR QUALITY");
     expect(api.matchShop).toHaveBeenCalledTimes(1);
 
     // A re-read that keeps the same order is not a new question.
     await act(async () => {
-      usePriorities.setState({ ranking: ["speed", "quality", "cost", "distance"] });
+      usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"] });
     });
     expect(api.matchShop).toHaveBeenCalledTimes(1);
 
-    // What "Change" does: the ranking screen saves, then comes back here.
-    api.matchShop.mockResolvedValue(match("user_rapid", "Rapid Print"));
+    // What "Change" does: the job's own order is set, then the client is back here.
+    jest.useFakeTimers();
+    api.matchShop.mockResolvedValue(
+      topPickMatch({
+        ranking: ["cost", "speed", "quality", "distance"],
+        matchReason: { key: "cost", label: "Matched for Best Value" },
+        listings: [topListing("sci_cheapest", { name: "Budget Tarpaulin" })],
+      }),
+    );
     await act(async () => {
-      await usePriorities.getState().save(["cost", "speed", "quality", "distance"]);
+      useOrderRanking.getState().set(["cost", "speed", "quality", "distance"]);
     });
 
-    await waitFor(() => expect(api.matchShop).toHaveBeenCalledTimes(2));
+    // Asked again, with this job's order — the usual one is left alone.
+    expect(api.matchShop).toHaveBeenCalledTimes(2);
+    expect(api.matchShop.mock.calls[1][0]).toMatchObject({
+      ranking: ["cost", "speed", "quality", "distance"],
+    });
+    expect(usePriorities.getState().ranking).toEqual(["quality", "speed", "cost", "distance"]);
+
+    // GRIDGO has answered, but the wait holds: a fixed minimum, not the request time.
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(2999);
+    });
+    expect(screen.getByText("GRIDGO is finding a printer.")).toBeTruthy();
+    // The new order is already on the chips while GRIDGO looks.
+    expect(screen.getByLabelText("1: Cost")).toBeTruthy();
+    expect(screen.queryByText("MATCHED FOR BEST VALUE")).toBeNull();
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.queryByText("GRIDGO is finding a printer.")).toBeNull();
+    expect(screen.getByText("MATCHED FOR BEST VALUE")).toBeTruthy();
+    expect(screen.getByText("Budget Tarpaulin")).toBeTruthy();
   });
 });

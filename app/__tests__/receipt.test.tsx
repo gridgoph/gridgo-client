@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OrderReceiptScreen from "@/app/order/receipt";
 import { SERVICE_FEE_EXPLAINER } from "@/lib/serviceFee";
+import { setServiceFeeSwitch } from "@/test/serviceFeeSwitch";
 
 const mockPush = jest.fn();
 
@@ -49,6 +50,8 @@ const wrap = (node: ReactElement) => (
 
 describe("order receipt", () => {
   beforeEach(() => {
+    // Operations shows the fee; the switch-off case is receipt-fee-switch.test.tsx.
+    setServiceFeeSwitch(true);
     mockPush.mockReset();
     api.getInvoice.mockResolvedValue({
       invoiceNumber: "GG-20260824-0001",

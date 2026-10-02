@@ -64,7 +64,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     id: "match",
     screen: "match",
     title: "GRIDGO found your printer",
-    body: "GRIDGO matched this job to one printer. Tap Continue to set up its listing, or pick another below.",
+    body: "This is GRIDGO's Top Pick for your job. Tap Proceed to set it up, or pick another listing below.",
   },
   {
     id: "listing",

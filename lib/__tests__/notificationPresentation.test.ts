@@ -202,6 +202,29 @@ describe("presentNotification receipt ready", () => {
     expect(view.hint).toMatch(/receipt/i);
     expect(view.lane).toBe("update");
   });
+
+  const receiptReady = note({
+    title: "Your receipt is ready",
+    body: "Open the receipt to see printing, delivery, the service fee and your payment reference.",
+    type: "order_receipt_ready",
+    orderId: "ord_1",
+    orderTitle: "Flyers",
+    orderState: "needs_qa",
+  });
+
+  it("never names the fee while Operations hides it, even when the server's body does", () => {
+    for (const view of [
+      presentNotification(receiptReady),
+      presentNotification(receiptReady, { showServiceFee: false }),
+    ]) {
+      expect(`${view.title} ${view.body}`).not.toMatch(/service fee|\d+(\.\d+)?\s*%/i);
+      expect(view.body).toBe("It lists printing, delivery, the total and your payment reference.");
+    }
+  });
+
+  it("names the fee when Operations shows it", () => {
+    expect(presentNotification(receiptReady, { showServiceFee: true }).body).toMatch(/the service fee/);
+  });
 });
 
 describe("groupInbox", () => {

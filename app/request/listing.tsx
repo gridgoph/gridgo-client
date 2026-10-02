@@ -13,6 +13,7 @@ import { GridgoPrice } from "@/components/GridgoPrice";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
 import { OtherShopNotice } from "@/components/OtherShopNotice";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { TourTarget } from "@/components/TourTarget";
@@ -56,6 +57,12 @@ import {
 } from "@/lib/listing";
 import { userFacingError } from "@/lib/copy";
 import { isFullListing, listingNow, rereadListing, takeListing } from "@/lib/listingCache";
+import {
+  STALE_MATCH_MESSAGE,
+  isStaleMatchRefusal,
+  markMatchSpent,
+  matchSelectionFor,
+} from "@/lib/matchSelection";
 import { orderFlowNow } from "@/lib/orderFlow";
 import {
   isOtherShopRefusal,
@@ -308,8 +315,16 @@ export default function ListingScreen() {
   const otherShop =
     otherShopCart != null && !editing && (cart == null || (cart.id === otherShopCart && cart.lines.length > 0));
 
+  // A listing picked on the match goes in by its pick token, so GRIDGO keeps
+  // the job's date on the line through checkout. A basket row reopened to
+  // change it has nothing to pick.
+  const picked = editing ? null : matchSelectionFor(item.id);
+
   const lineInput = () => ({
     catalogItemId: item.id,
+    ...(picked
+      ? { matchRequestId: picked.matchRequestId, selectToken: picked.selectToken }
+      : {}),
     optionIds: selectedOptionIds(item, selection),
     quantity,
     structuredSpec: {
@@ -319,6 +334,16 @@ export default function ListingScreen() {
     },
     measurement,
   });
+
+  // The pick ran out or no longer fits — the token's fifteen minutes are up,
+  // or the listing or its queue moved. Nothing was added; the match screen
+  // asks again when the client goes back to it.
+  const staleMatch = (e: unknown): boolean => {
+    if (!picked || !isStaleMatchRefusal(e)) return false;
+    markMatchSpent(picked.matchRequestId);
+    setSaveError(STALE_MATCH_MESSAGE);
+    return true;
+  };
 
   const add = async () => {
     if (busy) return;
@@ -360,6 +385,7 @@ export default function ListingScreen() {
         void reloadCart();
         return;
       }
+      if (staleMatch(e)) return;
       // Only a request that never reached GRIDGO is worded as a connection
       // problem, and `userFacingError` says that itself. An answer GRIDGO did
       // give must not be blamed on the phone's signal.
@@ -394,6 +420,7 @@ export default function ListingScreen() {
       leaveForArtwork(updated);
     } catch (e) {
       setConfirmingStartOver(false);
+      if (staleMatch(e)) return;
       setSaveError(
         userFacingError(e, "GRIDGO could not start a new order with this. Your order is unchanged. Try again."),
       );
@@ -705,6 +732,11 @@ export default function ListingScreen() {
                 : "Delivery is added at checkout."}
           </Text>
         )}
+        {saveError === STALE_MATCH_MESSAGE ? (
+          <View className="mt-2">
+            <SecondaryButton label="Back to the match" onPress={() => router.back()} />
+          </View>
+        ) : null}
       </TourTarget>
 
       <ConfirmDialog

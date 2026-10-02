@@ -3,6 +3,7 @@ import { screen } from "@testing-library/react-native";
 import RefundScreen from "@/app/order/refund";
 import { renderScreen } from "@/test/renderScreen";
 import { approvedRefund, refundOrder } from "@/test/refundFixtures";
+import { setServiceFeeSwitch } from "@/test/serviceFeeSwitch";
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => true }),
@@ -29,6 +30,7 @@ jest.mock("@/lib/api", () => {
 const api = require("@/lib/api");
 
 it("keeps an approved refund visibly unsent, with the fee inside Printing", async () => {
+  setServiceFeeSwitch(true);
   api.getOrder.mockResolvedValue(refundOrder({ state: "cancelled", refundHold: true }));
   api.listOrderRefunds.mockResolvedValue([approvedRefund()]);
   await renderScreen(<RefundScreen />);

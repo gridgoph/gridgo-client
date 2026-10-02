@@ -190,10 +190,14 @@ function rateReminderCopy(): { title: string; body: string; hint: string } {
   };
 }
 
-function receiptReadyCopy(): { title: string; body: string; hint: string } {
+function receiptReadyCopy(showServiceFee: boolean): { title: string; body: string; hint: string } {
   return {
     title: "Your receipt is ready",
-    body: "It lists printing, delivery, the service fee, the total and your payment reference.",
+    // The server's own body names the fee; this copy replaces it so the
+    // switch decides (`serviceFeeVisibleToClient`).
+    body: showServiceFee
+      ? "It lists printing, delivery, the service fee, the total and your payment reference."
+      : "It lists printing, delivery, the total and your payment reference.",
     hint: "Opens the receipt",
   };
 }
@@ -288,7 +292,10 @@ function calloutFor(
   return asked.callout;
 }
 
-export function presentNotification(notification: Notification): PresentedNotification {
+export function presentNotification(
+  notification: Notification,
+  { showServiceFee = false }: { showServiceFee?: boolean } = {},
+): PresentedNotification {
   const eventState = notification.eventState ?? notification.orderState;
   const event = notification.eventState ? { ...notification, orderState: eventState } : notification;
   const payment = notification.paymentAction;
@@ -301,7 +308,7 @@ export function presentNotification(notification: Notification): PresentedNotifi
     : notification.type === "order_rate_reminder"
       ? rateReminderCopy()
       : notification.type === "order_receipt_ready"
-        ? receiptReadyCopy()
+        ? receiptReadyCopy(showServiceFee)
         : isJobComplete(eventState)
           ? completeCopy(collect)
           : collect

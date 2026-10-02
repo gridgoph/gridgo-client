@@ -145,8 +145,17 @@ export const PAYMENT_CHOICE_BLURB =
  * note cannot be a constant here.
  */
 
-export const INVOICE_NOTE =
-  "GRIDGO issues a receipt with this order. You can open it the moment it is placed — printing, delivery, the service fee and your payment reference.";
+/**
+ * What the receipt lists. It names the service fee only when Operations shows
+ * the fee to clients (`serviceFeeVisibleToClient`); otherwise the fee is inside
+ * Printing and the note says nothing of it.
+ */
+export function invoiceNote(showServiceFee: boolean): string {
+  const lists = showServiceFee
+    ? "printing, delivery, the service fee and your payment reference"
+    : "printing, delivery, the total and your payment reference";
+  return `GRIDGO issues a receipt with this order. You can open it the moment it is placed — ${lists}.`;
+}
 
 /** Screenshot rules, said before a client picks a file GRIDGO cannot store. */
 export const PROOF_ACCEPTED = "JPEG, PNG or WebP";

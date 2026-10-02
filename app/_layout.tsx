@@ -273,9 +273,9 @@ function AppNavigation() {
                   options={pushedScreenOptions("New request")}
                 />
                 {/*
-                  GRIDGO's match. Not named in the band: the screen's own
-                  heading already says what the job is, and repeating it in the
-                  header would spend the band saying nothing new.
+                  GRIDGO's match: the Top Pick and the other listings that can
+                  make the date. The band names the choice being made, since
+                  the screen opens on the ranking row rather than a heading.
                 */}
         {/*
           The deadline, asked before any shop is chosen. It is the one question
@@ -286,9 +286,17 @@ function AppNavigation() {
           name="request/when"
           options={pushedScreenOptions("When you need it")}
         />
+                {/*
+                  Confirm or re-rank what this one job matches on — after the
+                  date, and again from "Change" on the match.
+                */}
+                <Stack.Screen
+                  name="request/rank"
+                  options={pushedScreenOptions("Your priorities")}
+                />
                 <Stack.Screen
                   name="request/match"
-                  options={pushedScreenOptions("New request")}
+                  options={pushedScreenOptions("Choose a supplier")}
                 />
                 <Stack.Screen
                   name="request/listing"

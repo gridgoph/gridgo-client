@@ -5,6 +5,7 @@ import type { ProductionItem } from "@/lib/api";
 import { ORDER_SECTIONS_FOLDED, useOrderSections } from "@/store/orderSections";
 import { refundOrder } from "@/test/refundFixtures";
 import { renderScreen } from "@/test/renderScreen";
+import { setServiceFeeSwitch } from "@/test/serviceFeeSwitch";
 
 /*
   The order screen's shape (gridgo-client#129): the latest progress leads and
@@ -154,6 +155,7 @@ it("opens Artwork and references with each file's type and size, and the design 
 });
 
 it("opens Payment details with the breakdown and the total, and GRIDGO's cut in no peso figure", async () => {
+  setServiceFeeSwitch(true);
   await renderScreen(<OrderDetailScreen />);
   await screen.findByText("Printing your order");
 

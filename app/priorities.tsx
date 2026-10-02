@@ -2,15 +2,14 @@ import { Check, CircleAlert, RotateCcw } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Animated, { Easing, LinearTransition, ReduceMotion } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
+import { PRIORITY_CARD_MOVE, PriorityCard } from "@/components/PriorityCard";
 import { Screen } from "@/components/Screen";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import {
   displayOrder,
   isCompleteRanking,
-  priorityBlurb,
-  priorityLabel,
   rankOf,
   rankingSentence,
   sameRanking,
@@ -21,11 +20,6 @@ import { usePriorities } from "@/store/priorities";
 
 /** Long enough to read "Saved" before the screen closes, short enough not to wait on. */
 const SAVED_BEAT_MS = 600;
-
-/** A card moving to its new place. Ease-out inside the motion budget; still under reduce motion. */
-const CARD_MOVE = LinearTransition.duration(200)
-  .easing(Easing.out(Easing.cubic))
-  .reduceMotion(ReduceMotion.System);
 
 /**
  * Putting quality, speed, cost and distance in order.
@@ -131,7 +125,7 @@ export default function PrioritiesScreen() {
 
         <View className="mt-8 gap-3">
           {displayOrder(order).map((priority) => (
-            <Animated.View key={priority} layout={CARD_MOVE}>
+            <Animated.View key={priority} layout={PRIORITY_CARD_MOVE}>
               <PriorityCard
                 priority={priority}
                 rank={rankOf(order, priority)}
@@ -218,61 +212,5 @@ export default function PrioritiesScreen() {
         </Text>
       </ScrollView>
     </Screen>
-  );
-}
-
-/**
- * One priority, and what ranking it first would cost.
- *
- * The numeral is the state: a placed card carries its rank in a filled accent
- * disc, an unplaced one carries an empty ring. Monochrome, because the yellow
- * on this screen belongs to the one button at the bottom, and because a ranking
- * has to be readable with no colour at all.
- */
-function PriorityCard({
-  priority,
-  rank,
-  onPress,
-}: {
-  priority: Priority;
-  rank: number | null;
-  onPress: () => void;
-}) {
-  const placed = rank != null;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={priorityLabel(priority)}
-      accessibilityValue={placed ? { text: `Ranked ${rank}` } : { text: "Not ranked" }}
-      accessibilityHint={
-        placed ? "Removes it and anything ranked after it" : "Puts it next in your order"
-      }
-      className={placed ? "gg-panel-high flex-row gap-4" : "gg-card flex-row gap-4"}
-      style={({ pressed }) => (pressed ? { opacity: 0.92 } : undefined)}
-    >
-      <View
-        className={
-          placed
-            ? "h-8 w-8 items-center justify-center rounded-pill bg-accent"
-            : "h-8 w-8 items-center justify-center rounded-pill border border-outline"
-        }
-        aria-hidden
-      >
-        <Text
-          className={
-            placed ? "text-body font-bold text-accent-on" : "text-body text-text-muted"
-          }
-        >
-          {placed ? rank : "–"}
-        </Text>
-      </View>
-
-      <View className="min-w-0 flex-1 gap-1">
-        <Text className="text-h3 text-text-primary">{priorityLabel(priority)}</Text>
-        <Text className="text-body text-text-secondary">{priorityBlurb(priority)}</Text>
-      </View>
-    </Pressable>
   );
 }

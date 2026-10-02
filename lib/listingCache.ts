@@ -10,7 +10,13 @@
 
 import * as api from "@/lib/api";
 
-type Entry = { at: number; item: api.CatalogItem };
+/**
+ * `partial` marks another shop's listing from the match: the anonymous
+ * projection, without the shop's own free text (description, preparation
+ * steps). It paints the sheet at once like any cached listing, but the sheet
+ * always reads the full listing behind it rather than trusting it as complete.
+ */
+type Entry = { at: number; item: api.CatalogItem; partial: boolean };
 
 const cache = new Map<string, Entry>();
 const inflight = new Map<string, Promise<api.CatalogItem>>();
@@ -18,8 +24,11 @@ const inflight = new Map<string, Promise<api.CatalogItem>>();
 /** Long enough to cross the tap from match to the sheet. */
 export const LISTING_TTL_MS = 60_000;
 
-export function rememberListing(item: api.CatalogItem): void {
-  cache.set(item.id, { at: Date.now(), item });
+export function rememberListing(
+  item: api.CatalogItem,
+  { partial = false }: { partial?: boolean } = {},
+): void {
+  cache.set(item.id, { at: Date.now(), item, partial });
 }
 
 export function listingNow(itemId: string | null | undefined): api.CatalogItem | null {
@@ -32,7 +41,7 @@ export function listingNow(itemId: string | null | undefined): api.CatalogItem |
 export function listingIsFresh(itemId: string | null | undefined): boolean {
   if (!itemId) return false;
   const held = cache.get(itemId);
-  if (!held) return false;
+  if (!held || held.partial) return false;
   return Date.now() - held.at < LISTING_TTL_MS;
 }
 
@@ -98,13 +107,16 @@ export function prefetchListing(itemId: string): void {
 
 /**
  * Instant if the match already gave us this listing; otherwise one network read.
- * A stale cache still returns immediately and refreshes in the background.
+ * A stale cache still returns immediately and refreshes in the background. A
+ * partial listing is not an answer: the sheet has already painted it from
+ * `listingNow`, so this waits on the full read, and the sheet keeps the
+ * partial on screen if that read fails.
  */
 export async function takeListing(itemId: string): Promise<api.CatalogItem> {
-  const held = listingNow(itemId);
-  if (held) {
+  const held = cache.get(itemId);
+  if (held && !held.partial) {
     if (!listingIsFresh(itemId)) void refresh(itemId).catch(() => undefined);
-    return held;
+    return held.item;
   }
   return refresh(itemId);
 }

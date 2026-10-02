@@ -14,6 +14,8 @@ import { OrderCard } from "@/components/OrderCard";
 import type { Order } from "@/lib/api";
 import { useOrderPayment } from "@/store/checkoutPayment";
 import { useOrderSections } from "@/store/orderSections";
+import { usePlatformSettings } from "@/store/platformSettings";
+import { expectNoServiceFee, setServiceFeeSwitch } from "@/test/serviceFeeSwitch";
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
@@ -172,6 +174,8 @@ describe("OrderDetailScreen", () => {
     useOrderSections.setState({
       open: { history: true, specifications: true, artwork: true, payment: true },
     });
+    // Operations shows the fee, as on dev today; the switch-off case is its own test.
+    setServiceFeeSwitch(true);
     mockReplace.mockClear();
     mockStackOptions.mockClear();
     mockCanGoBack.mockReturnValue(true);
@@ -563,6 +567,37 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText("₱84.00")).toBeNull();
     expect(screen.getByText("₱75.00")).toBeTruthy();
     expect(screen.getByText("₱999.00")).toBeTruthy();
+  });
+
+  it("shows no sign of a service fee while Operations hides it, and the total still adds up", async () => {
+    setServiceFeeSwitch(false);
+    setOrder({
+      subtotalMinor: 100000,
+      serviceFeeMinor: 10000,
+      serviceFeeRateBps: 1000,
+      deliveryFeeMinor: 2500,
+      totalMinor: 112500,
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    await screen.findByText("Grand opening tarpaulin");
+    // Printing ₱1,100 (fee inside) + Delivery ₱25 = Total ₱1,125, as when shown.
+    expect(screen.getByText("₱1,100.00")).toBeTruthy();
+    expect(screen.getByText("₱25.00")).toBeTruthy();
+    expect(screen.getByText("₱1,125.00")).toBeTruthy();
+    expect(screen.queryByText("₱100.00")).toBeNull();
+    expectNoServiceFee(screen);
+  });
+
+  it("names no fee before GRIDGO's settings are read", async () => {
+    usePlatformSettings.setState({ settings: null });
+    setOrder({ subtotalMinor: 84000, serviceFeeMinor: 8400, deliveryFeeMinor: 7500, totalMinor: 99900 });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    await screen.findByText("Grand opening tarpaulin");
+    expect(screen.getByText("₱924.00")).toBeTruthy();
+    expect(screen.getByText("₱999.00")).toBeTruthy();
+    expectNoServiceFee(screen);
   });
 
   it("asks for the downpayment by QR, and never for cash or credits", async () => {

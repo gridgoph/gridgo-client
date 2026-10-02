@@ -88,6 +88,23 @@ describe("listing cache", () => {
     expect(api.getCatalogItem).toHaveBeenCalledTimes(1);
   });
 
+  it("paints another shop's anonymous listing at once, but reads the full sheet behind it", async () => {
+    rememberListing({ ...item("sci_other"), description: null, prepSteps: [] }, { partial: true });
+    api.getCatalogItem.mockResolvedValue({
+      ...item("sci_other"),
+      description: "Weather-resistant inks.",
+    });
+
+    // Painted from the match straight away...
+    expect(listingNow("sci_other")?.name).toBe("Flyers");
+    // ...but not trusted as the whole listing: the sheet waits on the read.
+    await expect(takeListing("sci_other")).resolves.toMatchObject({
+      description: "Weather-resistant inks.",
+    });
+    expect(api.getCatalogItem).toHaveBeenCalledWith("sci_other");
+    expect(listingNow("sci_other")?.description).toBe("Weather-resistant inks.");
+  });
+
   it("fills a compact cart line from the listing the sheet already holds", () => {
     rememberListing(item("sci_1"));
     const cart = {

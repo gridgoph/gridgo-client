@@ -10,21 +10,22 @@ type Props = {
 };
 
 /**
- * Why this shop, in three chips.
+ * What GRIDGO matched on, in four chips.
  *
  * It used to be one grey sentence — "Matched on quality, then speed, then
  * distance · change" — which is the whole answer buried in a line nobody
  * reads at 12px. A client scanning this screen wants two things: what decided
- * it, and how to argue with it. So the ranking becomes three ordered chips
+ * it, and how to argue with it. So the ranking becomes four ordered chips
  * they can take in at a glance, and Change becomes a control that looks like
- * one.
+ * one. Change re-ranks this job only (`app/request/rank.tsx`); the usual
+ * order on the account stays as it is unless the client says otherwise.
  *
  * The numerals earn their place here in a way they do not on the step trail:
  * the rank *is* the information. First beat second, and that is the sentence
  * the whole match rests on.
  *
  * Change sits next to the overline, not at the far edge: that is the
- * argument, not a second action. Continue, below the pick, is the yellow.
+ * argument, not a second action. Proceed, under the pick, is the yellow.
  */
 export function MatchRankingRow({ ranking, onChange }: Props) {
   const colors = useThemeColors();
