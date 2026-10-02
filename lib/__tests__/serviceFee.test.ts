@@ -31,11 +31,16 @@ describe("showsServiceFee", () => {
 });
 
 describe("serviceFeeVisibleToClient", () => {
-  it("hides only when Operations has turned the row off", () => {
+  it("hides when Operations has turned the fee off", () => {
     expect(serviceFeeVisibleToClient({ serviceFeeVisibleToClient: false })).toBe(false);
     expect(serviceFeeVisibleToClient({ serviceFeeVisibleToClient: true })).toBe(true);
+    // An older payload without the flag keeps the fee named.
     expect(serviceFeeVisibleToClient({})).toBe(true);
-    expect(serviceFeeVisibleToClient(null)).toBe(true);
+  });
+
+  it("names nothing before settings are read, since the switch may be off", () => {
+    expect(serviceFeeVisibleToClient(null)).toBe(false);
+    expect(serviceFeeVisibleToClient(undefined)).toBe(false);
   });
 });
 

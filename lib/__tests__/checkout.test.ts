@@ -1,5 +1,6 @@
 import {
   fulfilmentModeFor,
+  invoiceNote,
   blockerLine,
   isTimingAvailable,
   placeOrderBlockers,
@@ -197,5 +198,13 @@ describe("how it travels", () => {
     expect(travelCaveat("pickup")).toContain("brings your finished job to the office");
     expect(travelBlurb("pickup")).not.toMatch(/shop/i);
     expect(travelCaveat("pickup")).not.toMatch(/shop/i);
+  });
+});
+
+describe("invoiceNote", () => {
+  it("names the service fee only while Operations shows it", () => {
+    expect(invoiceNote(true)).toMatch(/the service fee/);
+    expect(invoiceNote(false)).not.toMatch(/fee|\d+(\.\d+)?\s*%/i);
+    expect(invoiceNote(false)).toMatch(/printing, delivery, the total/);
   });
 });

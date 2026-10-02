@@ -28,7 +28,9 @@ import {
   type NotificationGroup,
 } from "@/lib/notificationPresentation";
 import type { OrderStatusTone } from "@/lib/orderState";
+import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
 import { formatRelativeTime, formatTimelineStamp } from "@/lib/relativeTime";
+import { usePlatformSettings } from "@/store/platformSettings";
 
 /** Timeline point: its size, and its drop to sit on the title's first line. */
 const DOT_SIZE = 8;
@@ -106,7 +108,10 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
   // State rather than a ref: the value object is read during render for the
   // transform, and a ref must not be.
   const [translateX] = useState(() => new Animated.Value(0));
-  const presented = presentNotification(notification);
+  const showServiceFee = usePlatformSettings((state) =>
+    serviceFeeVisibleToClient(state.settings),
+  );
+  const presented = presentNotification(notification, { showServiceFee });
   const picture = notificationImageUrl(notification.imageUrl);
   // A row with no job is GRIDGO speaking, and says so rather than leaving the
   // strip empty beside its time.

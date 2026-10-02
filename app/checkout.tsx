@@ -52,7 +52,7 @@ import { clearOrderFlow } from "@/lib/orderFlow";
 import {
   blockerLine,
   fulfilmentModeFor,
-  INVOICE_NOTE,
+  invoiceNote,
   PAYMENT_CHOICE_BLURB,
   PAYMENT_CHOICE_LABEL,
   placeOrderBlockers,
@@ -932,7 +932,9 @@ export default function CheckoutScreen() {
               drop-off, so the total lands once every item has an address with a map pin.
             </Text>
           ) : null}
-          <Text className="text-caption text-text-muted">{INVOICE_NOTE}</Text>
+          <Text className="text-caption text-text-muted">
+            {invoiceNote(serviceFeeVisibleToClient(settings))}
+          </Text>
         </Section>
 
       </View>
