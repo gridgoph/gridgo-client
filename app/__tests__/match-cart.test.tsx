@@ -3,22 +3,29 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import MatchScreen from "@/app/request/match";
+import { ZONE_BANDS, topPickMatch } from "@/test/matchFixtures";
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
-import type { MatchReason, MatchResult } from "@/lib/api";
 import { clearMatchPrefetch } from "@/lib/matchPrefetch";
 import { useCart } from "@/store/cart";
+import { useOrderRanking } from "@/store/orderRanking";
 import { usePriorities } from "@/store/priorities";
 
+const mockPush = jest.fn();
+
 jest.mock("expo-router", () => ({
-  // The first-order tour registers its screen on focus (`useTourScreen`).
   useFocusEffect: () => undefined,
   useRouter: () => ({
-    push: jest.fn(),
+    push: mockPush,
     back: jest.fn(),
     replace: jest.fn(),
+    dismissTo: jest.fn(),
     canGoBack: () => true,
   }),
-  useLocalSearchParams: () => ({ subcategory: "flyers", category: "marketing_collateral" }),
+  useLocalSearchParams: () => ({
+    subcategory: "tarpaulins_outdoor_banners",
+    category: "marketing_collateral",
+  }),
+  Redirect: () => null,
 }));
 
 jest.mock("@/lib/api", () => {
@@ -29,75 +36,13 @@ jest.mock("@/lib/api", () => {
     productCategoriesNow: jest.fn(() => seed),
     getProductCategories: jest.fn(),
     matchShop: jest.fn(),
-    matchNextShop: jest.fn(),
   };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
-
-const RANKED: MatchReason[] = [
-  { code: "ranked_speed", factor: "speed", rank: 1, weight: 0.5, detail: "0 jobs ahead; about 48 hours" },
-  { code: "ranked_quality", factor: "quality", rank: 2, weight: 0.3, detail: "88% listing completeness" },
-  { code: "ranked_distance", factor: "distance", rank: 3, weight: 0.2, detail: "1240 metres from the delivery pin" },
-];
-
-function flyers(): MatchResult["listings"][number] {
-  return {
-    id: "user_lovis_flyers",
-    supplierId: "user_lovis",
-    supplierServiceId: "svc_user_lovis",
-    categoryCode: "marketing_collateral",
-    subcategoryCode: "flyers",
-    name: "Flyers",
-    description: null,
-    basePriceMinor: 2500,
-    fromPriceMinor: 2500,
-    effectivePriceMinor: null,
-    pricingUnit: "per_package",
-    packageQty: 100,
-    measurementKind: "none",
-    measureUnit: null,
-    minimumWidthMilli: null,
-    minimumHeightMilli: null,
-    minimumLengthMilli: null,
-    minimumOrderQuantity: null,
-    priceTiers: [],
-    speedTiers: [],
-    pricingBasis: "per_unit",
-    turnaroundMode: "override",
-    turnaroundHours: 48,
-    rush: null,
-    acceptedFormats: [],
-    photos: [],
-    prepSteps: [],
-    optionGroups: [],
-    version: 1,
-    serviceVersion: 1,
-  };
-}
-
-function pick(): MatchResult {
-  return {
-    shop: {
-      supplierId: "user_lovis",
-      shopName: "Lovis Printshop",
-      shop: { lat: 7.0731, lng: 125.6128, label: "Lovis Printshop · Bajada, Davao City" },
-      media: [],
-      categories: ["marketing_collateral"],
-      services: [],
-    },
-    queue: { jobsAhead: 0, estimatedHours: 48 },
-    reasons: RANKED,
-    listings: [flyers()],
-    alternativesCount: 0,
-    score: {
-      total: 82,
-      weights: { quality: 0.3, speed: 0.4, cost: 0.2, distance: 0.1 },
-      factors: { quality: 88, speed: 100, cost: 100, distance: 0 },
-    },
-  };
-}
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { usePlatformSettings } = require("@/store/platformSettings");
 
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
@@ -115,24 +60,33 @@ function renderInSafeArea(ui: ReactElement) {
 }
 
 beforeEach(() => {
+  mockPush.mockClear();
   api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
   api.getProductCategories.mockResolvedValue(PRODUCT_CATEGORY_SEED);
-  api.matchShop.mockResolvedValue(pick());
+  api.matchShop.mockReset();
+  api.matchShop.mockResolvedValue(topPickMatch());
   clearMatchPrefetch();
   useCart.getState().reset();
-  usePriorities.setState({ ranking: ["speed", "quality", "cost", "distance"], loaded: true });
+  useOrderRanking.getState().clear();
+  usePlatformSettings.getState().reset();
+  usePlatformSettings.getState().adopt({
+    issueWindowHours: 24,
+    serviceFeeRateBps: 1000,
+    deliveryFeeBands: ZONE_BANDS,
+  });
+  usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"], loaded: true });
 });
 
 describe("MatchScreen after the listing warms a cart", () => {
   it("does not rematch when a basket id appears", async () => {
     await renderInSafeArea(<MatchScreen />);
-    await screen.findByText("GRIDGO’s pick for flyers");
+    await screen.findByText("TOP PICK");
     const calls = api.matchShop.mock.calls.length;
 
     await act(async () => {
       useCart.setState({ cartId: "cart_warmed" });
     });
     expect(api.matchShop).toHaveBeenCalledTimes(calls);
-    expect(screen.getByText("GRIDGO’s pick for flyers")).toBeTruthy();
+    expect(screen.getByText("TOP PICK")).toBeTruthy();
   });
 });

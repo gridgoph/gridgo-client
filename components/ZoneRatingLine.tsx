@@ -10,6 +10,11 @@ type Props = {
   /** Sent on Out of Zone listings only; the Top Pick never has it. */
   distanceKm?: number | null;
   rating: ShopRating | null | undefined;
+  /**
+   * `stacked` sets the two halves one above the other, rating first, against
+   * the right edge — the Top Pick card's corner beside its name and price.
+   */
+  layout?: "row" | "stacked";
 };
 
 /**
@@ -23,7 +28,7 @@ type Props = {
  * Out of Zone takes the warning tone on its pin. The word says the same thing,
  * so colour is never the only carrier.
  */
-export function ZoneRatingLine({ zone, distanceKm, rating }: Props) {
+export function ZoneRatingLine({ zone, distanceKm, rating, layout = "row" }: Props) {
   const colors = useThemeColors();
   const where = zoneLine(zone, distanceKm);
   const score = ratingLine(rating);
@@ -31,37 +36,53 @@ export function ZoneRatingLine({ zone, distanceKm, rating }: Props) {
   const far = isOutOfZone(zone);
   const label = [where, ratingLabel(rating)].filter(Boolean).join(", ");
 
+  const place = where ? (
+    <View className="flex-row items-center gap-1">
+      <MapPin
+        size={14}
+        color={far ? colors.warning : colors.textMuted}
+        strokeWidth={2}
+        aria-hidden
+      />
+      <Text
+        className={
+          far
+            ? "text-caption font-medium text-text-primary"
+            : "text-caption text-text-secondary"
+        }
+      >
+        {where}
+      </Text>
+    </View>
+  ) : null;
+  const stars = score ? (
+    <View className="flex-row items-center gap-1">
+      <Star size={14} color={colors.brand} fill={colors.brand} strokeWidth={2} aria-hidden />
+      <Text className="text-caption text-text-secondary">{score}</Text>
+    </View>
+  ) : null;
+
   return (
     <View
       accessible
       accessibilityLabel={label}
-      className="flex-row flex-wrap items-center gap-x-3 gap-y-1"
+      className={
+        layout === "stacked"
+          ? "items-end gap-1"
+          : "flex-row flex-wrap items-center gap-x-3 gap-y-1"
+      }
     >
-      {where ? (
-        <View className="flex-row items-center gap-1">
-          <MapPin
-            size={14}
-            color={far ? colors.warning : colors.textMuted}
-            strokeWidth={2}
-            aria-hidden
-          />
-          <Text
-            className={
-              far
-                ? "text-caption font-medium text-text-primary"
-                : "text-caption text-text-secondary"
-            }
-          >
-            {where}
-          </Text>
-        </View>
-      ) : null}
-      {score ? (
-        <View className="flex-row items-center gap-1">
-          <Star size={14} color={colors.brand} fill={colors.brand} strokeWidth={2} aria-hidden />
-          <Text className="text-caption text-text-secondary">{score}</Text>
-        </View>
-      ) : null}
+      {layout === "stacked" ? (
+        <>
+          {stars}
+          {place}
+        </>
+      ) : (
+        <>
+          {place}
+          {stars}
+        </>
+      )}
     </View>
   );
 }

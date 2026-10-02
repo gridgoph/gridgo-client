@@ -1,9 +1,11 @@
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useNotifications } from "@/store/notifications";
+import { useOrderRanking } from "@/store/orderRanking";
 import { setLiveOwner } from "@/lib/live";
 import { clearBoardCache } from "@/lib/shopBoards";
 import { clearListingCache } from "@/lib/listingCache";
+import { clearMatchSelections } from "@/lib/matchSelection";
 import { create } from "zustand";
 
 import type { User } from "@/lib/api";
@@ -348,6 +350,10 @@ useSession.subscribe((state, previous) => {
   useOrderPayment.getState().reset();
   clearBoardCache();
   clearListingCache();
+  // Pick tokens are bound to the client who matched; another account's would
+  // be refused, and a job's re-rank is that client's answer, not this one's.
+  clearMatchSelections();
+  useOrderRanking.getState().clear();
   useNotifications.getState().setOwner(id);
   setLiveOwner(id);
 });

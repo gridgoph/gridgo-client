@@ -14,6 +14,7 @@ import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
+import { withJobRanking } from "@/store/orderRanking";
 import {
   canStep,
   deadlineFor,
@@ -52,7 +53,6 @@ export default function WhenScreen() {
 
   const setDeadline = useJobDeadline((state) => state.set);
   const cart = useCart((state) => state.cart);
-  const cartId = useCart((state) => state.cartId);
   const dropoff = cart?.defaultDropoff ?? null;
 
   const [chosen, setChosen] = useState<string | null>(null);
@@ -141,17 +141,14 @@ export default function WhenScreen() {
 
   const go = (by: string | null) => {
     setDeadline(by);
-    const needsDropoff = needsDropoffFirst(dropoff);
-    if (!needsDropoff && subcategory) {
-      prefetchMatch({
-        subcategoryCode: subcategory,
-        dropoff,
-        deadline: by,
-        ...(cartId ? { cartId } : {}),
-      });
+    // The match on the usual order starts now, while the client confirms or
+    // re-ranks it on the next step: confirming or skipping — the common case —
+    // then finds the answer already waiting. A re-rank asks again.
+    if (!needsDropoffFirst(dropoff) && subcategory) {
+      prefetchMatch(withJobRanking({ subcategoryCode: subcategory, dropoff, deadline: by }));
     }
     router.push({
-      pathname: needsDropoff ? "/request/where" : "/request/match",
+      pathname: "/request/rank",
       params: { subcategory: subcategory ?? "", category: category ?? "" },
     });
   };

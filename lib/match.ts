@@ -1,106 +1,105 @@
 /**
  * Reading GRIDGO's match back to the client.
  *
- * The matching itself is the platform's: `POST /me/matches` scores every
- * approved open shop with a public listing for the thing being printed,
- * weighted by the order the client put quality, speed and distance in, and
- * answers with one shop, the queue in front of it, and the reasons it won.
+ * The matching itself is the platform's (`POST /me/matches`, gridgo-api#126):
+ * it ranks every shop that can make the client's date strictly by the order
+ * they put quality, speed, cost and distance in — the first factor that
+ * differs decides, later ones only break ties — and answers with a Top Pick,
+ * one badge saying which factor decided it, and every other shop's best
+ * listing for the job.
  *
- * This module turns that into something a person can read. The API's `detail`
- * strings are working notes — "0 jobs ahead; about 48 hours", "88% listing
- * completeness" — and none of them belongs on a client's screen, so the
- * sentence is written here from the structured fields instead. Nothing is
- * invented: every number in it came back from the match.
+ * This module turns that answer into what the screen draws. The badge is the
+ * API's `matchReason.label`, never the legacy `reasons` (their `detail` strings
+ * are working notes like "88% listing completeness" and must not reach a
+ * screen). Nothing is invented: every place in line, date and price came back
+ * from the match.
  *
- * The shop is GRIDGO's business, not the client's. These lines say what GRIDGO
- * decided and what it means for the job; none of them names a press, locates
- * one, or implies there is a list of them to go and browse.
+ * No line here names a press, locates one, or counts them. Other shops'
+ * listings arrive with no shop identity at all, and the Top Pick's compatibility
+ * `shop` block is never read.
  */
 
-import type { DistanceZone, MatchQueue, MatchReason } from "@/lib/api";
-import { isOutOfZone } from "@/lib/distanceZone";
+import type {
+  CatalogItem,
+  MatchListing,
+  MatchResult,
+  OtherListing,
+} from "@/lib/api";
+import { readyInShort } from "@/lib/listing";
+import { completeRanking, type PriorityRanking } from "@/lib/priorities";
 
-/** The reason the card leads with — the bundle, else the top-ranked factor. */
-export function primaryReason(reasons: MatchReason[]): MatchReason | null {
-  if (reasons.length === 0) return null;
-  return [...reasons].sort((left, right) => left.rank - right.rank)[0];
+/** Either kind of listing a client can pick on the match screen. */
+export type PickableListing = MatchListing | OtherListing;
+
+/**
+ * The Top Pick's badge, as the overline sets it: "MATCHED FOR QUALITY".
+ * Null on an API from before the badge, where nothing honest can be said.
+ */
+export function matchBadge(match: Pick<MatchResult, "matchReason">): string | null {
+  const label = match.matchReason?.label?.trim();
+  return label ? label.toUpperCase() : null;
 }
 
-/** The overline on the match card. */
-export function reasonTag(factor: MatchReason["factor"]): string {
-  switch (factor) {
-    case "quality":
-      return "STRONGEST LISTING";
-    case "speed":
-      return "FASTEST";
-    case "cost":
-      return "BEST PRICE";
-    case "distance":
-      return "CLOSEST";
-    case "bundle":
-      return "ALREADY IN YOUR ORDER";
-  }
+/** The listing the Top Pick card shows and Proceed opens. */
+export function topPickListing(match: Pick<MatchResult, "listings">): MatchListing | null {
+  return match.listings[0] ?? null;
 }
 
 /**
- * One line of why, in the client's own terms.
- *
- * Distance is the zone word GRIDGO sent (`distanceZone`), never a figure: a
- * kilometre count on a near shop would say where it is (#156). It never claims to have beaten shops that were not
- * there: with no alternatives the line says this is the shop printing it,
- * which is true, rather than "fastest" with nothing to be faster than.
- * Timing belongs to the card's readout, so a relative estimate cannot compete
- * here with the API's absolute promise.
+ * Everything else the client could take instead, for the "Other listings"
+ * section: one listing from every other shop that can make the date, in the
+ * API's order, then the Top Pick board's other listings for the same job.
+ * None of them says whose it is.
  */
-export function reasonLine({
-  reason,
-  zone,
-  alternativesCount,
-  subcategoryName,
-}: {
-  reason: MatchReason | null;
-  zone: DistanceZone | null | undefined;
-  alternativesCount: number;
-  subcategoryName: string;
-}): string {
-  const thing = subcategoryName.toLowerCase();
-
-  if (reason?.factor === "bundle") {
-    return `Already printing something else in this order, so it travels as one job.`;
-  }
-
-  if (alternativesCount === 0) {
-    return `The only printer GRIDGO can put ${thing} on today.`;
-  }
-
-  switch (reason?.factor) {
-    case "speed":
-      return `Fastest on ${thing}.`;
-    case "distance":
-      if (!zone?.label) return `Closest to your drop-off.`;
-      return isOutOfZone(zone)
-        ? `Closest to your drop-off, though outside GRIDGO's delivery zones.`
-        : `Closest to your drop-off — ${zone.label}.`;
-    case "quality":
-      return `Fullest ${thing} board on GRIDGO — the most choices, with real samples.`;
-    default:
-      return `GRIDGO's match for ${thing}.`;
-  }
+export function otherListingsOf(
+  match: Pick<MatchResult, "listings" | "otherListings">,
+): PickableListing[] {
+  return [...(match.otherListings ?? []), ...match.listings.slice(1)];
 }
 
 /**
- * Where a new job would sit in the queue it is joining.
- *
- * `jobsAhead` is how many are in front, so the client's own place is one past
- * that. GRIDGO counts it from jobs that are actually live on that press, which
- * is why it can be shown at all — a guess here is the one number a client
- * would book a launch date against.
+ * The ranking the match was made on. GRIDGO echoes it (`ranking`); before it
+ * answers, or on an older API, it is whatever the screen asked with.
  */
-export function queueLine(queue: MatchQueue | null | undefined): string | null {
-  const ahead = queue?.jobsAhead;
-  if (typeof ahead !== "number" || !Number.isFinite(ahead) || ahead < 0) return null;
-  if (ahead === 0) return "Next in line";
-  return `${ordinal(ahead + 1)} in line`;
+export function matchedRanking(
+  match: Pick<MatchResult, "ranking"> | null | undefined,
+  asked: PriorityRanking | null,
+): PriorityRanking | null {
+  return completeRanking(match?.ranking) ?? asked;
+}
+
+/**
+ * "4th" — the place this job would take in that press's queue, drawn large.
+ * GRIDGO counts it from jobs really in front, so it can be shown at all; a
+ * missing or nonsensical place draws nothing rather than a guess.
+ */
+export function placeOrdinal(placeInLine: number | null | undefined): string | null {
+  if (typeof placeInLine !== "number" || !Number.isFinite(placeInLine) || placeInLine < 1) {
+    return null;
+  }
+  return ordinal(placeInLine);
+}
+
+/** The same place, as a screen reader should say it. */
+export function placeLabel(placeInLine: number | null | undefined): string | null {
+  const place = placeOrdinal(placeInLine);
+  return place ? `${place} in line` : null;
+}
+
+/**
+ * "Ready in 12 hours", counted from now to the listing's client promise. Only
+ * the promise (`readyBy`) is read — never press time or the shop's own date —
+ * so this line and the READY BY date can never disagree.
+ */
+export function readyInLine(
+  readyBy: string | null | undefined,
+  now: number = Date.now(),
+): string | null {
+  const at = readyBy ? Date.parse(readyBy) : Number.NaN;
+  if (!Number.isFinite(at)) return null;
+  const hours = Math.ceil((at - now) / 3_600_000);
+  const short = readyInShort(hours);
+  return short ? `Ready in ${short}` : null;
 }
 
 /** "1st", "2nd", "3rd" — how a queue position is said out loud. */
@@ -118,4 +117,32 @@ export function ordinal(position: number): string {
     default:
       return `${rounded}th`;
   }
+}
+
+/**
+ * True for a listing that came with the whole catalogue sheet — the Top Pick's
+ * own board. Another shop's listing is the anonymous projection, which leaves
+ * out the free text a shop writes (description, preparation steps).
+ */
+export function hasFullSheet(listing: PickableListing): listing is MatchListing {
+  return Array.isArray((listing as Partial<CatalogItem>).prepSteps);
+}
+
+/**
+ * The listing as the order sheet reads it. Another shop's listing carries no
+ * shop and none of the shop's free text, so those fields are filled empty —
+ * never guessed — and the sheet's own read of the listing fills in what is
+ * real (`lib/listingCache.ts`).
+ */
+export function sheetListing(listing: PickableListing): CatalogItem {
+  if (hasFullSheet(listing)) return listing;
+  return {
+    ...listing,
+    supplierId: "",
+    supplierServiceId: "",
+    description: null,
+    turnaroundMode: "inherit",
+    prepSteps: [],
+    serviceVersion: 0,
+  };
 }

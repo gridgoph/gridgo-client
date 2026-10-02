@@ -7,10 +7,10 @@ import path from "node:path";
  * match row and hero drifted into empty "No sample" plates.
  */
 const SURFACES = [
-  "app/request/match.tsx",
+  "components/TopPickCard.tsx",
+  "components/OtherListingRow.tsx",
   "app/request/listing.tsx",
   "app/checkout.tsx",
-  "components/MatchCard.tsx",
 ] as const;
 
 describe("sample photo surfaces", () => {
