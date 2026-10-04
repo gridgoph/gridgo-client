@@ -106,6 +106,9 @@ export function parsePushData(raw: unknown): PushData {
   };
 }
 
+/** The push type gridgo-api sends six to four weeks before a season window opens. */
+export const SEASON_PUSH_TYPE = "season_window";
+
 /**
  * Where a tapped notification opens. **App-specific** — the supplier and rider
  * apps map the same payload onto their own routes.
@@ -118,6 +121,9 @@ export function parsePushData(raw: unknown): PushData {
  * fetches the order as it always does.
  */
 export function pushTargetRoute(data: PushData): string {
+  // A season heads-up names no job and no window (`season_window`, gridgo-api
+  // `docs/SEASON_WINDOWS_API.md`). Home is where its banner lives.
+  if (data.type === SEASON_PUSH_TYPE) return "/(tabs)/home";
   if (!data.orderId) return "/(tabs)/notifications";
   if (data.type === "order_receipt_ready") {
     return `/order/receipt?orderId=${encodeURIComponent(data.orderId)}`;

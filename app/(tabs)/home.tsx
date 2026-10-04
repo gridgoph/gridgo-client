@@ -17,6 +17,7 @@ import { HomeSearch } from "@/components/HomeSearch";
 import { HomeActionRow, HomeFinishedRow, HomeJobRow } from "@/components/HomeRow";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { SeasonBanner } from "@/components/SeasonBanner";
 import { SkeletonHomeDocket } from "@/components/Skeleton";
 import { TourTarget } from "@/components/TourTarget";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
@@ -30,10 +31,12 @@ import { userFacingError } from "@/lib/copy";
 import { pickHomeSamples } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
 import { boardListings } from "@/lib/photoLinks";
+import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
 import { type ProductCategory } from "@/lib/productCategories";
 import { HOME_BOARDS, loadCategoryBoards } from "@/lib/shopBoards";
 import { useCart } from "@/store/cart";
 import { useNotifications } from "@/store/notifications";
+import { useSeasonWindows } from "@/store/seasonWindows";
 import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
 
@@ -76,6 +79,11 @@ export default function HomeScreen() {
   const refreshNotifications = useNotifications((s) => s.refresh);
   const startJob = useStartPrintJob();
   const loadCart = useCart((s) => s.load);
+  const seasons = useSeasonWindows((s) => s.seasons);
+  const dismissedSeasons = useSeasonWindows((s) => s.dismissed);
+  const seasonsHydrated = useSeasonWindows((s) => s.hydrated);
+  const loadSeasons = useSeasonWindows((s) => s.load);
+  const dismissSeason = useSeasonWindows((s) => s.dismiss);
 
   const [orders, setOrders] = useState<api.Order[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
@@ -149,7 +157,8 @@ export default function HomeScreen() {
     // honest if it is re-read. Coming back from checkout is exactly when it
     // has changed.
     void loadCart();
-  }, [refreshNotifications, loadCart, loadSamples]);
+    void loadSeasons();
+  }, [refreshNotifications, loadCart, loadSamples, loadSeasons]);
 
   useLiveRefresh(["orders", "catalog", "services", "availability", "settings", "credits"], load, { refreshOnFocus: false });
 
@@ -161,6 +170,12 @@ export default function HomeScreen() {
   );
 
   const jobs = homeJobs(orders);
+  // Held until the phone has read its dismissals back, or a banner already
+  // put away would flash on every cold start.
+  const seasonToday = davaoToday();
+  const seasonBanners = seasonsHydrated
+    ? bannersToShow(seasons, dismissedSeasons, seasonToday)
+    : [];
   const showJobs = !loading && !error;
   // "View all" rides on whichever of the two quieter sections comes first.
   // The docket never needs it: every waiting job is already on it.
@@ -320,6 +335,26 @@ export default function HomeScreen() {
                   </View>
                 ))}
               </View>
+            </View>
+          ) : null}
+
+          {/*
+            A season coming up, six to four weeks out. After the docket,
+            because a job waiting on the client still outranks a heads-up;
+            above everything else, because the heads-up only matters while
+            there is still time to act on it. Closing it is remembered for
+            that season on this phone.
+          */}
+          {seasonBanners.length ? (
+            <View className="mt-8 gap-3">
+              {seasonBanners.map((window) => (
+                <SeasonBanner
+                  key={window.id}
+                  window={window}
+                  today={seasonToday}
+                  onDismiss={() => dismissSeason(window.id)}
+                />
+              ))}
             </View>
           ) : null}
 
