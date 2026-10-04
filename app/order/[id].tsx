@@ -257,6 +257,9 @@ export default function OrderDetailScreen() {
     (item.artworkLinks ?? []).map((link) => ({ link, itemName: item.itemName })),
   );
   const artworkFiles = orderArtwork(order);
+  const designLinkRows = designLinks.map(({ link, itemName }) => (
+    <DesignLinkRow key={`${itemName}:${link.formatCode}:${link.url}`} link={link} />
+  ));
   const openChat = () => router.push("/chat");
 
   return (
@@ -422,12 +425,12 @@ export default function OrderDetailScreen() {
               <Text className="py-3 text-body text-text-secondary">
                 Your artwork is shown in the proof above.
               </Text>
-            ) : artworkFiles.length || !designLinks.length ? (
-              <ArtworkPanel order={order} />
             ) : null}
-            {designLinks.map(({ link, itemName }) => (
-              <DesignLinkRow key={`${itemName}:${link.formatCode}:${link.url}`} link={link} />
-            ))}
+            {/* Links sit with the files, above the retention line and the
+                delete action that close the section. */}
+            {!showsOwnPreview && (artworkFiles.length || !designLinks.length) ? (
+              <ArtworkPanel order={order} refunds={refunds}>{designLinkRows}</ArtworkPanel>
+            ) : designLinkRows}
           </FoldSection>
 
           <FoldSection

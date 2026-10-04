@@ -23,7 +23,18 @@ describe("production artwork", () => {
   it("refuses unrelated evidence, another order and unfinished files", () => {
     expect(isOrderArtwork(file({ purpose: "verification_document" }), "order1", "artwork")).toBe(false);
     expect(isOrderArtwork(file(), "order2", "artwork")).toBe(false);
-    expect(isOrderArtwork(file({ state: "deleted" }), "order1", "artwork")).toBe(false);
+    expect(isOrderArtwork(file({ state: "pending_upload" }), "order1", "artwork")).toBe(false);
+  });
+  it("reads a client's reference, which carries no field, by order and purpose", () => {
+    expect(isOrderArtwork(file({ references: [{ type: "order", id: "order1" }] }), "order1", "artwork")).toBe(true);
+    expect(isOrderArtwork(file({ references: [{ type: "order", id: "order2" }] }), "order1", "artwork")).toBe(false);
+  });
+  it("keeps a deleted file on the order so its row can say it was deleted, without asking for bytes", async () => {
+    expect(isOrderArtwork(file({ state: "deleted" }), "order1", "artwork")).toBe(true);
+    expect(isOrderArtwork(file({ state: "delete_pending" }), "order1", "artwork")).toBe(true);
+    const reader = { getFile: jest.fn(async () => file({ state: "deleted", detectedContentType: "image/png" })), getDownloadUrl: jest.fn() };
+    await expect(readOrderArtwork({ fileId: "art1", kind: "artwork" }, "order1", reader)).resolves.toMatchObject({ previewUrl: null });
+    expect(reader.getDownloadUrl).not.toHaveBeenCalled();
   });
   it("keeps PDF metadata usable without requesting an image URL", async () => {
     const reader = { getFile: jest.fn(async () => file()), getDownloadUrl: jest.fn(async () => ({ url: "signed" })) };
