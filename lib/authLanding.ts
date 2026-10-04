@@ -9,7 +9,8 @@
  * The ladder, in order:
  * - a client whose profile the app cannot read → complete profile;
  * - a Clerk identity GRIDGO has not mapped yet → complete profile;
- * - a client who has not ranked quality, speed and distance → rank them;
+ * - a client who has not ranked quality, speed, cost and distance → onboarding,
+ *   whose last page is that ranking (gridgo-client#159);
  * - any other signed-in client → Home.
  *
  * The ranking rung waits for its own durable read. It is stored on the phone,
@@ -18,9 +19,10 @@
  * storage answers would be a bug they could see. `pending` is that half-second:
  * the caller draws nothing rather than the wrong thing.
  *
- * First-run onboarding is no longer a landing destination. `justProvisioned`
- * is still written when activate creates the client, and Settings still offers
- * “View onboarding”; a just-verified client must leave the code form for Home.
+ * Onboarding is keyed to the ranking, not to `justProvisioned`: a new client
+ * has never ranked, so they meet the features, the notification ask and the
+ * ranking in that order, and a client who ranked on another phone goes
+ * straight Home. Either way a just-verified client leaves the code form.
  */
 
 import type { User } from "@/lib/api";
@@ -28,7 +30,7 @@ import { needsClientProfile } from "@/lib/signup";
 
 export type AuthLanding =
   | { kind: "complete_profile" }
-  | { kind: "priorities" }
+  /** Unranked: the feature pages, the notification ask, then the ranking. */
   | { kind: "onboarding" }
   | { kind: "home" }
   /** Durable ranking read has not answered yet. Show nothing; do not guess. */
@@ -47,7 +49,7 @@ export type AuthLandingState = {
   justProvisioned: boolean;
   /** False until this phone's stored ranking has been read. */
   prioritiesReady: boolean;
-  /** All three ranked. Only meaningful once `prioritiesReady`. */
+  /** All four ranked. Only meaningful once `prioritiesReady`. */
   hasRanked: boolean;
   /** Local session is gone; Clerk sign-out may still be in flight. */
   signingOut?: boolean;
@@ -78,7 +80,7 @@ export function authLanding(state: AuthLandingState): AuthLanding {
   if (!state.user && state.pendingClerkProfile) return { kind: "complete_profile" };
   if (state.user) {
     if (!state.prioritiesReady) return { kind: "pending" };
-    if (!state.hasRanked) return { kind: "priorities" };
+    if (!state.hasRanked) return { kind: "onboarding" };
     return { kind: "home" };
   }
   // Google join after the Gmail is actually in. A leftover Clerk session

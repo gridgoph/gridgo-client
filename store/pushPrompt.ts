@@ -19,6 +19,11 @@ type PushPromptStore = {
   mode: PushExplainerMode;
   /** Draw the explainer and start the re-offer clock. */
   offer: (mode: PushExplainerMode, now?: number) => void;
+  /**
+   * Onboarding's notification page has been shown: start the re-offer clock
+   * without drawing the sheet, so the client is not asked twice in a row.
+   */
+  markOffered: (now?: number) => void;
   /** Every way the explainer is put away: either button, the scrim, a drag, back. */
   dismiss: () => void;
   reset: () => void;
@@ -40,6 +45,7 @@ export const usePushPrompt = create<PushPromptStore>()(
       open: false,
       mode: "ask",
       offer: (mode, now = Date.now()) => set({ open: true, mode, lastOfferedAt: now }),
+      markOffered: (now = Date.now()) => set({ lastOfferedAt: now }),
       dismiss: () => set({ open: false }),
       reset: () => set({ lastOfferedAt: null, open: false }),
     }),
