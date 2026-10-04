@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { pushExplainerDue } from "@/lib/push";
 import { usePushPrompt } from "@/store/pushPrompt";
 
 /**
@@ -24,4 +25,19 @@ it("persists when it was offered, and nothing about whether it is on screen", as
 
   const stored = await AsyncStorage.getItem("gridgo.client.pushPrompt.v1");
   expect(JSON.parse(stored ?? "{}").state).toEqual({ lastOfferedAt: 42_000 });
+});
+
+it("lets onboarding's notification page start the clock without drawing the sheet", () => {
+  usePushPrompt.getState().markOffered(5_000);
+  expect(usePushPrompt.getState()).toMatchObject({ open: false, lastOfferedAt: 5_000 });
+  // So the explainer on Home does not ask a second time straight after (#159).
+  expect(
+    pushExplainerDue({
+      supported: true,
+      signedIn: true,
+      permission: "undetermined",
+      lastOfferedAt: usePushPrompt.getState().lastOfferedAt,
+      now: 5_000 + 60_000,
+    }),
+  ).toBeNull();
 });

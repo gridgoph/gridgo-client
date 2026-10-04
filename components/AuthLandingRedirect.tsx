@@ -3,7 +3,6 @@ import { Redirect, type Href } from "expo-router";
 
 import { SessionWait } from "@/components/SessionWait";
 import { authLanding, type AuthLanding } from "@/lib/authLanding";
-import { PRIORITIES_ROUTE } from "@/lib/priorities";
 import { hasRanked, usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
 
@@ -17,7 +16,6 @@ import { useSession } from "@/store/session";
  */
 
 const COMPLETE_PROFILE = "/complete-profile" as Href;
-const PRIORITIES = PRIORITIES_ROUTE as Href;
 
 export function useAuthLanding(): AuthLanding {
   const user = useSession((state) => state.user);
@@ -59,7 +57,6 @@ export function AuthLandingRedirect({
   if (landing.kind === "signing_out") return <SessionWait tone="out" role="client" />;
   // Ranking read: show nothing rather than identity copy.
   if (landing.kind === "pending") return null;
-  if (landing.kind === "priorities") return <Redirect href={PRIORITIES} />;
   if (landing.kind === "onboarding") {
     return <Redirect href={{ pathname: "/onboarding", params: { returnTo: "home" } }} />;
   }
