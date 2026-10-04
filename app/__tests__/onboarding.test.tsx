@@ -1,9 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
+import * as Location from "expo-location";
+import * as Notifications from "expo-notifications";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OnboardingScreen from "@/app/onboarding";
-import { onboardingSlides } from "@/data/onboarding";
+import { onboardingSteps } from "@/data/onboarding";
+import { usePriorities } from "@/store/priorities";
 
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
@@ -34,38 +37,86 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
+/*
+ * One press per test, and pressing tests after the ones that only read: see
+ * AGENTS.md "Running and testing" — a second press empties later renders.
+ */
 describe("OnboardingScreen", () => {
   beforeEach(() => {
     mockReplace.mockClear();
     mockBack.mockClear();
     mockCanGoBack.mockReturnValue(false);
     mockParams = {};
+    usePriorities.setState({ ranking: null, loaded: true, saving: false, saveError: null });
+    jest.mocked(Location.requestForegroundPermissionsAsync).mockClear();
+    jest.mocked(Location.getForegroundPermissionsAsync).mockClear();
+    jest.mocked(Notifications.requestPermissionsAsync).mockClear();
   });
 
-  it("renders skip, first slide copy, and the primary CTA", async () => {
+  it("lays the pages out in the #159 order: tracking, notifications, then the ranking last", async () => {
     await renderInSafeArea(<OnboardingScreen />);
 
-    expect(screen.getByText("Skip")).toBeTruthy();
-    expect(screen.getByText(onboardingSlides[0].title)).toBeTruthy();
-    expect(screen.getByText(onboardingSlides[0].cta)).toBeTruthy();
+    const headings = screen
+      .getAllByRole("header", { includeHiddenElements: true })
+      .map((node) => node.props.children);
+    expect(headings).toEqual(onboardingSteps.map((step) => step.title));
+    expect(headings[0]).toBe("Watch it come to you");
+    expect(headings[1]).toBe("Know when your job moves");
+    expect(headings[headings.length - 1]).toBe("What matters most on a print job?");
   });
 
-  it("returns to Settings when skip is pressed with returnTo=settings", async () => {
+  it("opens on the tracking preview with a Next button and the step count", async () => {
+    await renderInSafeArea(<OnboardingScreen />);
+
+    expect(screen.getByText("01 / 06")).toBeTruthy();
+    expect(screen.getByText("Next")).toBeTruthy();
+    expect(screen.getByLabelText("Skip to your ranking")).toBeTruthy();
+  });
+
+  it("asks for no location and raises no notification dialog on its own", async () => {
+    await renderInSafeArea(<OnboardingScreen />);
+
+    expect(Location.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(Location.getForegroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    expect(screen.queryByPlaceholderText(/address|street|location/i)).toBeNull();
+  });
+
+  it("draws the ranking board on the last page, with nothing pre-ranked", async () => {
+    await renderInSafeArea(<OnboardingScreen />);
+
+    for (const label of ["Quality", "Speed", "Cost", "Distance"]) {
+      const card = screen.getByLabelText(label, { includeHiddenElements: true });
+      expect(card.props.accessibilityValue.text).toBe("Not ranked");
+    }
+  });
+
+  it("does not let an unranked client skip out — Skip goes to the ranking", async () => {
+    await renderInSafeArea(<OnboardingScreen />);
+    fireEvent.press(screen.getByLabelText("Skip to your ranking"));
+
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it("returns to Settings when a ranked client skips a replay", async () => {
+    usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"] });
     mockParams = { returnTo: "settings" };
     mockCanGoBack.mockReturnValue(true);
 
     await renderInSafeArea(<OnboardingScreen />);
-    fireEvent.press(screen.getByText("Skip"));
+    fireEvent.press(screen.getByLabelText("Skip onboarding"));
 
     expect(mockReplace).toHaveBeenCalledWith("/settings");
     expect(mockBack).not.toHaveBeenCalled();
   });
 
-  it("replaces to the launcher when skip is pressed with no history", async () => {
+  it("replaces to the launcher when a ranked client skips with no history", async () => {
+    usePriorities.setState({ ranking: ["quality", "speed", "cost", "distance"] });
     mockCanGoBack.mockReturnValue(false);
 
     await renderInSafeArea(<OnboardingScreen />);
-    fireEvent.press(screen.getByText("Skip"));
+    fireEvent.press(screen.getByLabelText("Skip onboarding"));
 
     expect(mockReplace).toHaveBeenCalledWith("/");
     expect(mockBack).not.toHaveBeenCalled();

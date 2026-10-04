@@ -1,22 +1,53 @@
-import { onboardingSlides } from "@/data/onboarding";
+import { onboardingSteps } from "@/data/onboarding";
+import { images } from "@/constants/images";
 
-describe("client onboarding slides", () => {
-  it("has three beats with step labels and CTAs", () => {
-    expect(onboardingSlides).toHaveLength(3);
-    expect(onboardingSlides.map((s) => s.step)).toEqual(["01 / 03", "02 / 03", "03 / 03"]);
-    expect(onboardingSlides[0].cta).toBe("Next");
-    expect(onboardingSlides[1].cta).toBe("Next");
-    expect(onboardingSlides[2].cta).toBe("Get Started");
+/**
+ * gridgo-client#159: features first, the notification ask straight after the
+ * tracking preview, the ranking last, and nothing that asks where the client is.
+ */
+describe("client onboarding sequence", () => {
+  it("runs tracking, notifications, payment, checks, scheduling, then the ranking", () => {
+    expect(onboardingSteps.map((step) => step.id)).toEqual([
+      "tracking",
+      "notifications",
+      "escrow",
+      "quality",
+      "scheduling",
+      "ranking",
+    ]);
   });
 
-  it("uses the captain-picked client pictures", () => {
-    expect(onboardingSlides.map((s) => s.art)).toEqual(["order", "approve", "track"]);
+  it("asks for notifications once, immediately after the tracking preview", () => {
+    const kinds = onboardingSteps.map((step) => step.kind);
+    expect(kinds.filter((kind) => kind === "notifications")).toHaveLength(1);
+    const tracking = onboardingSteps.findIndex((step) => step.id === "tracking");
+    expect(onboardingSteps[tracking + 1].kind).toBe("notifications");
   });
 
-  it("does not carry the old scene-SVG art keys", () => {
-    const arts = onboardingSlides.map((s) => s.art);
-    expect(arts).not.toContain("scooter");
-    expect(arts).not.toContain("proof");
-    expect(arts).not.toContain("workstation");
+  it("opens on features and ends on the ranking", () => {
+    expect(onboardingSteps[0].kind).toBe("feature");
+    expect(onboardingSteps[onboardingSteps.length - 1].kind).toBe("ranking");
+    expect(onboardingSteps.filter((step) => step.kind === "feature")).toHaveLength(4);
+  });
+
+  it("has no location or address step, and no copy asking for one", () => {
+    const kinds = onboardingSteps.map((step) => step.kind as string);
+    expect(kinds).not.toContain("location");
+    expect(kinds).not.toContain("address");
+    for (const step of onboardingSteps) {
+      expect(step.title).not.toMatch(/location|address|where are you/i);
+    }
+  });
+
+  it("uses artwork the app already ships, never a new illustration", () => {
+    for (const step of onboardingSteps) {
+      if (step.kind !== "feature" || step.visual.type !== "art") continue;
+      expect(Object.keys(images.onboarding)).toContain(step.visual.art);
+    }
+  });
+
+  it("promises no ETA on the tracking page — GRIDGO publishes none", () => {
+    const tracking = onboardingSteps.find((step) => step.id === "tracking");
+    expect(tracking?.body).not.toMatch(/\bETA\b|arrival time/i);
   });
 });

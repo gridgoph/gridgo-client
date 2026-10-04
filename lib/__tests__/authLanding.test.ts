@@ -78,10 +78,14 @@ describe("the ranking rung", () => {
     ).toEqual({ kind: "pending" });
   });
 
-  it("asks a client who has never ranked", () => {
+  it("sends a client who has never ranked into onboarding, which ends on the ranking", () => {
     expect(
       authLanding({ ...base, prioritiesReady: true, hasRanked: false }),
-    ).toEqual({ kind: "priorities" });
+    ).toEqual({ kind: "onboarding" });
+    // A brand-new client straight out of sign-up (#159).
+    expect(
+      authLanding({ ...base, justProvisioned: true, prioritiesReady: true, hasRanked: false }),
+    ).toEqual({ kind: "onboarding" });
   });
 
   it("lets a ranked client through to Home", () => {

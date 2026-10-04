@@ -1,17 +1,13 @@
-import { Check, CircleAlert, RotateCcw } from "lucide-react-native";
+import { Check } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Animated from "react-native-reanimated";
-import { PRIORITY_CARD_MOVE, PriorityCard } from "@/components/PriorityCard";
+import { PriorityRankingBoard } from "@/components/PriorityRankingBoard";
 import { Screen } from "@/components/Screen";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import {
-  displayOrder,
   isCompleteRanking,
-  rankOf,
-  rankingSentence,
   sameRanking,
   togglePlacement,
   type Priority,
@@ -24,8 +20,9 @@ const SAVED_BEAT_MS = 600;
 /**
  * Putting quality, speed, cost and distance in order.
  *
- * Asked once, immediately after the account exists, because it is what every
- * match afterwards is decided on — and asked as an ordering rather than as
+ * First set on the last page of onboarding (gridgo-client#159), because it is
+ * what every match afterwards is decided on; this screen is where Account sends
+ * a client to change it. Asked as an ordering rather than as
  * sliders, because nobody can honestly say "quality 0.6" and two shops would
  * tie in ways GRIDGO could not then explain.
  *
@@ -90,8 +87,8 @@ export default function PrioritiesScreen() {
     const kept = await saveRanking(order);
     if (!kept) return;
     // Any `returnTo` means the client came here from a screen they were using
-    // — Settings, or the match they were reading — so saving puts them back on
-    // it. Only the one-off gate on the way in has none, and that lands Home.
+    // — Account, or the match they were reading — so saving puts them back on
+    // it. Opened with none (a stale link), saving lands Home.
     leaveTimer.current = setTimeout(() => {
       if (returnTo) {
         router.back();
@@ -123,69 +120,18 @@ export default function PrioritiesScreen() {
           time, and tells you which one decided it.
         </Text>
 
-        <View className="mt-8 gap-3">
-          {displayOrder(order).map((priority) => (
-            <Animated.View key={priority} layout={PRIORITY_CARD_MOVE}>
-              <PriorityCard
-                priority={priority}
-                rank={rankOf(order, priority)}
-                onPress={() => place(priority)}
-              />
-            </Animated.View>
-          ))}
+        <View className="mt-8">
+          <PriorityRankingBoard
+            order={order}
+            onPlace={place}
+            onReset={() => {
+              setOrder([]);
+              if (saveError) clearSaveError();
+            }}
+            saveError={saveError}
+            saving={saving}
+          />
         </View>
-
-        {/*
-          The order read back in words. Someone who tapped the cards in a
-          hurry checks this line, not the numerals — and it is the same sentence
-          the match card will echo.
-        */}
-        <View className="mt-6 flex-row items-start justify-between gap-3">
-          <Text className="min-w-0 flex-1 text-body text-text-secondary">
-            {rankingSentence(order)}
-          </Text>
-          {order.length ? (
-            <Pressable
-              onPress={() => {
-                setOrder([]);
-                if (saveError) clearSaveError();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Start the ranking over"
-              className="gg-touch flex-row items-center gap-1.5 px-1"
-              style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-            >
-              <RotateCcw
-                size={14}
-                color={colors.textSecondary}
-                strokeWidth={2}
-                aria-hidden
-              />
-              <Text className="text-caption text-text-secondary">Start over</Text>
-            </Pressable>
-          ) : null}
-        </View>
-
-        {/*
-          Right above the button that retries it, and said as a state — icon,
-          label, reason — so a client knows the order on screen is not the one
-          GRIDGO holds yet.
-        */}
-        {saveError && !saving ? (
-          <View
-            className="mt-6 flex-row items-start gap-3"
-            accessible
-            accessibilityRole="alert"
-            accessibilityLiveRegion="polite"
-            accessibilityLabel={`Not saved. ${saveError}`}
-          >
-            <CircleAlert size={20} color={colors.error} strokeWidth={2} aria-hidden />
-            <View className="min-w-0 flex-1 gap-1">
-              <Text className="text-body font-bold text-error">Not saved</Text>
-              <Text className="text-body text-text-secondary">{saveError}</Text>
-            </View>
-          </View>
-        ) : null}
 
         <Pressable
           onPress={() => void save()}
