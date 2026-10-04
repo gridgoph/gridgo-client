@@ -11,7 +11,12 @@
  * so no `Date` is built from them except to word them.
  */
 
-import { SHOP_TIME_ZONE } from "@/lib/deadlineCalendar";
+/**
+ * The zone season dates are counted in. The same zone as `SHOP_TIME_ZONE` in
+ * `lib/deadlineCalendar.ts`, spelled out here because that module imports this
+ * one and a cycle between them leaves one side's constants undefined at load.
+ */
+const SEASON_TIME_ZONE = "Asia/Manila";
 
 export type DemandLevel = "Normal" | "Busy" | "Peak";
 
@@ -124,7 +129,7 @@ export function davaoToday(now: Date = new Date()): string {
   try {
     // en-CA formats as YYYY-MM-DD.
     return new Intl.DateTimeFormat("en-CA", {
-      timeZone: SHOP_TIME_ZONE,
+      timeZone: SEASON_TIME_ZONE,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",

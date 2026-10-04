@@ -17,6 +17,7 @@ import {
   shiftMonth,
   shopClock,
 } from "@/lib/deadlineCalendar";
+import type { SeasonWindow } from "@/lib/seasonWindows";
 
 const MARCH = new Date(2026, 2, 9);
 const NOW = new Date(2026, 2, 9, 9, 0, 0);
@@ -220,16 +221,16 @@ describe("the clock", () => {
 });
 
 describe("season windows on the month", () => {
-  const busy = {
+  const busy: SeasonWindow = {
     id: "sea_busy",
     name: "Graduation",
     startDate: "2026-03-12",
     endDate: "2026-03-18",
-    demandLevel: "Busy" as const,
+    demandLevel: "Busy",
     message: "Book early.",
     banner: { startDate: "2026-01-29", endDate: "2026-02-12" },
   };
-  const peak = { ...busy, id: "sea_peak", name: "Recognition day", startDate: "2026-03-14", endDate: "2026-03-14", demandLevel: "Peak" as const };
+  const peak: SeasonWindow = { ...busy, id: "sea_peak", name: "Recognition day", startDate: "2026-03-14", endDate: "2026-03-14", demandLevel: "Peak" };
 
   const grid = (entries: Record<string, DeadlineDay["state"]>, seasons = [busy]) =>
     monthGrid({ month: MARCH, availability: availability(entries), now: NOW, seasons });

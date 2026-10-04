@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react-native";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -535,12 +535,11 @@ function SeasonList({
                     {window.name}
                   </Text>
                   <Text className="text-caption text-text-muted">{seasonRange(window)}</Text>
-                  <ChevronDown
-                    size={16}
-                    color={colors.textMuted}
-                    strokeWidth={2}
-                    style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}
-                  />
+                  {open ? (
+                    <ChevronUp size={16} color={colors.textMuted} strokeWidth={2} />
+                  ) : (
+                    <ChevronDown size={16} color={colors.textMuted} strokeWidth={2} />
+                  )}
                 </View>
                 {open && window.message ? (
                   <Text className="mt-2 text-body text-text-secondary">{window.message}</Text>
