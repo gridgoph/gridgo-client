@@ -13,9 +13,11 @@ import {
   parsePushData,
   PUSH_FOREGROUND_BEHAVIOR,
   pushTargetRoute,
+  SEASON_PUSH_TYPE,
 } from "@/lib/push";
 import { hasActiveSession } from "@/lib/sessionGuard";
 import { useNotifications } from "@/store/notifications";
+import { useSeasonWindows } from "@/store/seasonWindows";
 import { getNotificationsNative, pushSupported, usePush } from "@/store/push";
 import { useSession } from "@/store/session";
 
@@ -123,7 +125,10 @@ export function usePushNotifications(): void {
       routed.current.add(identifier);
       const sequence = ++tapSequence.current;
       pending.current = null;
-      const target = pushTargetRoute(parsePushData(data));
+      const parsed = parsePushData(data);
+      const target = pushTargetRoute(parsed);
+      // Public and not tied to an account, so it need not wait for a session.
+      if (parsed.type === SEASON_PUSH_TYPE) void useSeasonWindows.getState().reveal();
       if (!hasActiveSession(useSession.getState().user) || !readyRef.current) {
         pending.current = {target, ownerId: useSession.getState().user?.id ?? null, sequence};
         return;

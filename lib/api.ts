@@ -7,6 +7,7 @@ import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
 import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
 import type { DevicePlatform } from "@/lib/push";
+import { parseSeasonWindows, type SeasonWindows } from "@/lib/seasonWindows";
 
 /**
  * GRIDGO demo API client.
@@ -2127,6 +2128,16 @@ export async function deadlineDays(
 ): Promise<{ days: DeadlineDay[]; earliest: string | null }> {
   const query = `?subcategoryCode=${encodeURIComponent(subcategoryCode)}&days=${days}`;
   return request<{ days: DeadlineDay[]; earliest: string | null }>(`/me/deadline-days${query}`);
+}
+
+/**
+ * Season windows: when shops fill up early (`docs/SEASON_WINDOWS_API.md`).
+ *
+ * Public and awareness only. Read through `parseSeasonWindows`, which drops a
+ * malformed row rather than failing the read.
+ */
+export async function getSeasonWindows(): Promise<SeasonWindows> {
+  return parseSeasonWindows(await request<unknown>("/season-windows"));
 }
 
 export async function rateOrder(

@@ -218,3 +218,57 @@ describe("the clock", () => {
     expect(SHOP_TIME_ZONE).toBe("Asia/Manila");
   });
 });
+
+describe("season windows on the month", () => {
+  const busy = {
+    id: "sea_busy",
+    name: "Graduation",
+    startDate: "2026-03-12",
+    endDate: "2026-03-18",
+    demandLevel: "Busy" as const,
+    message: "Book early.",
+    banner: { startDate: "2026-01-29", endDate: "2026-02-12" },
+  };
+  const peak = { ...busy, id: "sea_peak", name: "Recognition day", startDate: "2026-03-14", endDate: "2026-03-14", demandLevel: "Peak" as const };
+
+  const grid = (entries: Record<string, DeadlineDay["state"]>, seasons = [busy]) =>
+    monthGrid({ month: MARCH, availability: availability(entries), now: NOW, seasons });
+
+  it("marks only the days inside a window, both ends included", () => {
+    const days = grid({});
+    expect(dayOf(days, "2026-03-11").season).toBeNull();
+    expect(dayOf(days, "2026-03-12").season?.level).toBe("Busy");
+    expect(dayOf(days, "2026-03-18").season?.windows.map((w) => w.id)).toEqual(["sea_busy"]);
+    expect(dayOf(days, "2026-03-19").season).toBeNull();
+  });
+
+  it("never blocks a date: a season day is exactly as selectable as without it", () => {
+    const entries = { "2026-03-12": "open", "2026-03-13": "tight", "2026-03-16": "cannot" } as const;
+    const plain = grid(entries, []);
+    const shaded = grid(entries);
+    expect(shaded.map((day) => [day.dayKey, day.choice, day.selectable])).toEqual(
+      plain.map((day) => [day.dayKey, day.choice, day.selectable]),
+    );
+    expect(dayOf(shaded, "2026-03-12").selectable).toBe(true);
+    expect(dayOf(shaded, "2026-03-13").selectable).toBe(true);
+  });
+
+  it("joins the track along a week row and breaks it at the row's end", () => {
+    const days = grid({});
+    // 12 Mar is a Thursday: the track starts there, runs to Sunday the 15th,
+    // and picks up again on Monday the 16th.
+    expect(dayOf(days, "2026-03-12").season).toMatchObject({ joinsPrevious: false, joinsNext: true });
+    expect(dayOf(days, "2026-03-15").season).toMatchObject({ joinsPrevious: true, joinsNext: false });
+    expect(dayOf(days, "2026-03-16").season).toMatchObject({ joinsPrevious: false, joinsNext: true });
+    expect(dayOf(days, "2026-03-18").season).toMatchObject({ joinsPrevious: true, joinsNext: false });
+  });
+
+  it("shades an overlap in the busier level, with both windows named", () => {
+    const days = grid({}, [busy, peak]);
+    const fourteenth = dayOf(days, "2026-03-14").season;
+    expect(fourteenth?.level).toBe("Peak");
+    expect(fourteenth?.windows.map((w) => w.id)).toEqual(["sea_busy", "sea_peak"]);
+    expect(fourteenth).toMatchObject({ joinsPrevious: false, joinsNext: false });
+    expect(dayOf(days, "2026-03-13").season).toMatchObject({ level: "Busy", joinsNext: false });
+  });
+});
