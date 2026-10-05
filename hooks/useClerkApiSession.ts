@@ -1,5 +1,5 @@
 import { useAuth, useClerk } from "@clerk/expo";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import * as api from "@/lib/api";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
@@ -8,6 +8,7 @@ import {
   CLERK_SSO_TOKEN_WAIT,
   clerkTokenProvider,
   releaseClerkSession,
+  type ClerkGetToken,
 } from "@/lib/clerkSignIn";
 import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
@@ -27,6 +28,23 @@ export function useClerkApiSession(): void {
   const syncedSessionId = useRef<string | null>(null);
   const clerkOwnerPresent = useRef(false);
   const wasSigningOut = useRef(false);
+
+  // Clerk recreates `getToken` (and can recreate `signOut`) on its own
+  // schedule — on web about once a second while idle. Neither is a reason to
+  // ask gridgo-api who the user is again: with them in the sync's deps, an
+  // idle Home sent `/auth/me` every tick (#173). The effects below read the
+  // newest functions through these refs and re-run only on session events.
+  const getTokenRef = useRef(getToken);
+  const signOutRef = useRef(signOut);
+  useEffect(() => {
+    getTokenRef.current = getToken;
+    signOutRef.current = signOut;
+  }, [getToken, signOut]);
+  const latestGetToken = useCallback<ClerkGetToken>(
+    (options) => getTokenRef.current(options),
+    [],
+  );
+  const latestSignOut = useCallback(() => signOutRef.current(), []);
 
   useEffect(() => {
     // Never rejects: the session store awaits this from `logout`,
@@ -56,8 +74,8 @@ export function useClerkApiSession(): void {
     // would drop the Bearer. The provider also swallows Clerk's "you are
     // signed out" throw, so a request that races a sign-out fails as
     // unauthorized rather than as an uncaught identity error.
-    api.setTokenProvider(clerkTokenProvider(getToken));
-  }, [getToken, isLoaded, isSignedIn, sessionId]);
+    api.setTokenProvider(clerkTokenProvider(latestGetToken));
+  }, [latestGetToken, isLoaded, isSignedIn, sessionId]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -122,7 +140,7 @@ export function useClerkApiSession(): void {
         // would throw away a session that was about to work. This runs once
         // per launch / session change, not per request, so it can afford to
         // be more patient than the bearer path.
-        const token = await awaitClerkSessionToken(getToken, CLERK_SSO_TOKEN_WAIT);
+        const token = await awaitClerkSessionToken(latestGetToken, CLERK_SSO_TOKEN_WAIT);
         if (cancelled) return;
         if (!token) {
           // A Google return is signed in at Clerk before a JWT is cached.
@@ -131,11 +149,15 @@ export function useClerkApiSession(): void {
           if (useSession.getState().loading) return;
           // Dead leftover (failed Google, expired cache): drop it quietly so
           // login can accept the password or Google tap the person just made.
-          await releaseClerkSession(signOut);
+          await releaseClerkSession(latestSignOut);
           return;
         }
 
-        await syncClerkToGridgo({ getToken, signOut, sessionId });
+        await syncClerkToGridgo({
+          getToken: latestGetToken,
+          signOut: latestSignOut,
+          sessionId,
+        });
       } catch {
         // The bridge already reported anything the person can act on.
       }
@@ -145,11 +167,11 @@ export function useClerkApiSession(): void {
       cancelled = true;
     };
   }, [
-    getToken,
+    latestGetToken,
+    latestSignOut,
     isLoaded,
     isSignedIn,
     sessionId,
-    signOut,
     clerkSyncNonce,
     signingOut,
     loginStep,
