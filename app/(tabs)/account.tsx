@@ -19,8 +19,10 @@ import {
   businessApplicationPending,
   canApplyAsBusiness,
 } from "@/lib/accountProfile";
+import { officerState } from "@/lib/organization";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
 import { accountTypeOption } from "@/lib/signup";
+import { useIsApprovedOrganization, useOrganization } from "@/store/organization";
 import { usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
 import { useTour } from "@/store/tour";
@@ -53,6 +55,8 @@ export default function AccountScreen() {
   const colors = useThemeColors();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const approvedOrganization = useIsApprovedOrganization();
+  const organization = useOrganization((s) => s.organization);
 
   /*
    * Read the account again every time this screen comes back into view.
@@ -164,16 +168,31 @@ export default function AccountScreen() {
               above already says Business — leaving it up would invite a client
               to apply for what they already are.
             */}
-            {applicationPending ? (
+            {approvedOrganization ? (
+              /*
+                The officer of record, on the account it answers for (#164).
+                The detail is the name itself, so a treasurer can check it
+                without opening anything; the Organizations tab holds the rest.
+              */
               <DestinationRow
-                title="Business application"
-                detail="Waiting for Operations to review. You stay a personal client until they approve it"
+                title="Officer of record"
+                detail={officerRowDetail(organization)}
+                onPress={() => router.navigate("/(tabs)/organizations")}
+              />
+            ) : applicationPending ? (
+              <DestinationRow
+                title="Account application"
+                detail="With Operations for review. You keep ordering as you do now until they decide"
                 onPress={() => router.push("/business-apply")}
               />
             ) : canApplyAsBusiness(user) ? (
               <DestinationRow
-                title="Apply as a business"
-                detail="Ask Operations to put your company or organization name on this account"
+                title={
+                  (user?.accountType ?? "individual") === "individual"
+                    ? "Register an organization or business"
+                    : `Verify your ${user?.accountType === "business" ? "business" : "organization"}`
+                }
+                detail="Send your documents to Operations. Approved organizations get a discount on every order"
                 onPress={() => router.push("/business-apply")}
               />
             ) : null}
@@ -256,6 +275,21 @@ export default function AccountScreen() {
       />
     </TabScreen>
   );
+}
+
+/** The officer row's line: the name, and anything open about it. */
+function officerRowDetail(organization: ReturnType<typeof useOrganization.getState>["organization"]): string {
+  const name = organization?.currentOfficer?.fullName;
+  switch (officerState(organization)) {
+    case "no_officer":
+      return "No verified officer yet. Verify one so their name goes on invoices";
+    case "handover_pending":
+      return `${name} · a change of officer is with Operations`;
+    case "confirmation_due":
+      return `${name} · confirm they are still the officer`;
+    default:
+      return `${name} · printed on invoices and statements`;
+  }
 }
 
 /**

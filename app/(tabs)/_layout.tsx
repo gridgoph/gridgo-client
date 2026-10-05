@@ -1,13 +1,17 @@
 import { Tabs } from "expo-router";
+import { useEffect } from "react";
 
 import { GridgoTabBar } from "@/components/GridgoTabBar";
 import { ACTION_TAB, TABS } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
+import { useIsApprovedOrganization, useOrganization } from "@/store/organization";
+import { useSession } from "@/store/session";
 
 /**
  * The client tab shell.
  *
- * The bar is four destinations. The yellow "+" floats on each of those
+ * The bar is four destinations, and a fifth — Organizations — for an
+ * approved organization account. The yellow "+" floats on each of those
  * screens (`StartPrintFab`) and is the one start-a-print-request control.
  * With nothing chosen yet that is the category screen, not an empty stepper —
  * a client should never meet a form before they have said what they are
@@ -19,6 +23,15 @@ import { useThemeColors } from "@/hooks/useTheme";
  */
 export default function TabsLayout() {
   const colors = useThemeColors();
+  const approvedOrganization = useIsApprovedOrganization();
+  const userId = useSession((s) => s.user?.id ?? null);
+  const accountType = useSession((s) => s.user?.accountType ?? null);
+
+  // The officer record decides the tab during a handover, so an organization
+  // account reads it once per sign-in. Nobody else is asked.
+  useEffect(() => {
+    if (userId && accountType === "organization") void useOrganization.getState().load();
+  }, [userId, accountType]);
 
   return (
     <Tabs
@@ -41,7 +54,11 @@ export default function TabsLayout() {
           name={tab.name}
           options={{
             title: tab.label,
-            href: tab.name === ACTION_TAB ? null : undefined,
+            // Organizations exists for approved organizations only (#160).
+            href:
+              tab.name === ACTION_TAB || (tab.name === "organizations" && !approvedOrganization)
+                ? null
+                : undefined,
           }}
         />
       ))}

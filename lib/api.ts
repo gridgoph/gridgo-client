@@ -191,6 +191,10 @@ export type Order = {
   totalMinor: number | null;
   /** The invoice number GRIDGO issued with this order, when one exists. */
   invoiceNumber?: string | null;
+  /** An approved organization's discount, already inside `totalMinor`. */
+  organizationDiscountMinor?: number;
+  /** The officer of record when the order was placed. Never today's officer. */
+  organizationOfficer?: OrganizationOfficerSnapshot | null;
   /** A printed-invoice request this client filed, when there is one. */
   physicalInvoiceRequest?: PhysicalInvoiceRequest | null;
   downpaymentMinor: number | null;
@@ -354,6 +358,8 @@ export type PlatformSettings = {
    * an API from before the hub settings.
    */
   hubPickup?: HubPickup;
+  /** The approved-organization discount on printing. Absent on an older API. */
+  organizationDiscountRateBps?: number;
 };
 
 /** One opening window in the hub's week. Weekday 0 is Sunday. */
@@ -517,6 +523,10 @@ export type Notification = {
   imageUrl?: string | null;
   read: boolean;
   at: string;
+  /** Organization reminders and notices (gridgo-client#165). */
+  organizationUserId?: string;
+  officerId?: string | null;
+  actions?: string[];
 };
 
 export type NotificationList = {
@@ -1909,6 +1919,11 @@ export type CartQuote = {
   downpaymentPercent: number;
   downpaymentMinor: number | null;
   balanceMinor: number | null;
+  /**
+   * An approved organization's discount, already taken out of `totalMinor`
+   * (gridgo-api#155). Drawn as its own line, never subtracted again.
+   */
+  organizationDiscountMinor?: number;
 };
 
 export type CartLineRecord = {
@@ -2028,6 +2043,10 @@ export type Invoice = {
   pickupFeeMinor?: number;
   totalMinor: number;
   paymentPlan: { method: "qr_manual"; downpaymentMinor: number; balanceMinor: number };
+  /** An approved organization's discount, already inside `totalMinor`. */
+  organizationDiscountMinor?: number;
+  /** The officer of record when the order was placed (gridgo-client#164). */
+  organizationOfficer?: OrganizationOfficerSnapshot | null;
 };
 
 /**
@@ -2093,13 +2112,6 @@ export type AccountPatch = {
   orgName?: string;
 };
 
-/** What a personal client sends to ask Operations for a business account. */
-export type BusinessApplyInput = {
-  businessName: string;
-  businessNature: string;
-  accountType?: Extract<AccountType, "business" | "organization">;
-};
-
 /** The account, re-read. Carries the `version` every correction must quote. */
 export async function getAccount(): Promise<User> {
   const result = await request<{ user: User; approvalCase?: ApprovalCaseSummary | null }>("/me");
@@ -2121,55 +2133,6 @@ export function newIdempotencyKey(): string {
   const uuid = globalThis.crypto?.randomUUID?.();
   if (uuid) return uuid;
   return `apply-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-}
-
-/**
- * Submit a pending business/organization application.
- *
- * Posts `POST /me/business-application`. The account stays personal until
- * Operations approves the case. A replay of the same idempotency key, or a
- * 409 for an already-pending case, is treated as the current account.
- */
-export async function applyAsBusiness(
-  input: BusinessApplyInput,
-  idempotencyKey: string,
-): Promise<User> {
-  try {
-    await request("/me/business-application", {
-      method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify({
-        businessName: input.businessName,
-        businessNature: input.businessNature,
-        ...(input.accountType ? { accountType: input.accountType } : {}),
-      }),
-    });
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 409) {
-      const existing = approvalCaseFromError(error);
-      if (existing?.status === "pending") return getAccount();
-      if (existing?.status === "rejected") {
-        await request("/me/approval-cases/business-client/reapply", {
-          method: "POST",
-          headers: { "Idempotency-Key": idempotencyKey },
-          body: JSON.stringify({
-            expectedVersion: existing.version,
-            correctionSummary: `${input.accountType ?? "business"}: ${input.businessName}. ${input.businessNature}`,
-          }),
-        });
-        return getAccount();
-      }
-    }
-    throw error;
-  }
-  return getAccount();
-}
-
-function approvalCaseFromError(error: ApiError): ApprovalCaseSummary | null {
-  if (typeof error.body !== "object" || error.body == null) return null;
-  const caseBody = (error.body as { approvalCase?: ApprovalCaseSummary }).approvalCase;
-  if (!caseBody || typeof caseBody !== "object") return null;
-  return caseBody;
 }
 
 export type MatchInput = {
@@ -3028,4 +2991,238 @@ export async function markSupportChatRead(threadId?: string): Promise<{
     });
   }
   return request("/support-chat/me/read", { method: "PATCH", body: JSON.stringify({}) });
+}
+
+/* --------------------------------------------------------------------------
+   Organization and business accounts (gridgo-client#160, #163–#166)
+
+   Contracts: gridgo-api `docs/ORGANIZATION_ACCOUNTS_API.md` (applications,
+   officer of record, reminders) and `docs/ORGANIZATION_MONEY_API.md`
+   (discount and statements).
+   -------------------------------------------------------------------------- */
+
+/** The officer stamped on an order or invoice when it was placed. */
+export type OrganizationOfficerSnapshot = {
+  id: string;
+  fullName: string;
+  verifiedAt: string | null;
+};
+
+/** The verified officer currently responsible for the organization. */
+export type OrganizationOfficer = OrganizationOfficerSnapshot & {
+  startedAt?: string | null;
+  endedAt?: string | null;
+};
+
+export type ClientOrganization = {
+  userId: string;
+  name: string | null;
+  school: string | null;
+  email: string | null;
+  /** Null while the first officer is still being verified. */
+  currentOfficer: OrganizationOfficer | null;
+  confirmedAt: string | null;
+  nextConfirmationAt: string | null;
+  /** Set while the quarterly "is this still the officer?" question is open. */
+  confirmationRequestedAt: string | null;
+  approvalCase: Pick<ApprovalCaseSummary, "id" | "status" | "version" | "applicationRevision"> | null;
+  actions: string[];
+};
+
+/** Which checklist a business applicant follows. */
+export type BusinessType = "sole_proprietor" | "partnership" | "corporation";
+
+export type GovernmentIdType = "philid" | "ephilid" | "passport" | "drivers_license" | "umid";
+
+/** The person behind an application: an organization's officer, a business's signatory. */
+export type ApplicantPerson = {
+  fullName: string;
+  dateOfBirth: string;
+  address: string;
+  phone: string;
+  governmentIdType: GovernmentIdType;
+  governmentIdExpiresOn?: string;
+  governmentIdHasNoExpiry?: boolean;
+  originalId: true;
+  detailsMatchId: true;
+  /** Organizations only. */
+  studentIdExpiresOn?: string;
+};
+
+export type ClientApplicationInput =
+  | {
+      accountType: "organization";
+      businessName: string;
+      businessNature: string;
+      school: string;
+      organizationEmail: string;
+      officer: ApplicantPerson;
+      documents: Record<string, string>;
+      facultyAdviserContact?: string;
+      expectedVersion?: number;
+    }
+  | {
+      accountType: "business";
+      businessType: BusinessType;
+      businessName: string;
+      businessNature: string;
+      signatory: ApplicantPerson;
+      documents: Record<string, string>;
+      expectedVersion?: number;
+    };
+
+export type ApplicationChecklist = {
+  requiredDocuments: Record<string, string[]>;
+  optionalDocuments: Record<string, string[]>;
+  optionalFields: string[];
+  filePurpose: string;
+  /** Operations asked a business applicant for the otherwise optional permit. */
+  businessPermitRequired: boolean;
+};
+
+export async function getApplicationChecklist(): Promise<ApplicationChecklist> {
+  return request("/me/client-application/checklist");
+}
+
+/** Sends a six-digit code to the organization's shared sign-in email. */
+export async function requestOrganizationEmailCode(
+  email: string,
+): Promise<{ expiresAt: string; resendAfter: string }> {
+  return request("/me/organization/email-code", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function verifyOrganizationEmailCode(
+  code: string,
+): Promise<{ verified: true; expiresAt: string }> {
+  return request("/me/organization/email-code/verify", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+/**
+ * Send (or correct) an organization or business application with its whole
+ * checklist. `expectedVersion` is set when a case already exists — a pending
+ * or turned-down one being corrected, or an approved organization verifying
+ * its first officer. The account stays as it is until Operations approves.
+ */
+export async function submitClientApplication(
+  input: ClientApplicationInput,
+  idempotencyKey: string,
+): Promise<User> {
+  await request("/me/business-application", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return getAccount();
+}
+
+/** Null when this account has no organization record. */
+export async function getOrganization(): Promise<ClientOrganization | null> {
+  const result = await request<{ organization: ClientOrganization | null }>("/me/organization");
+  return result.organization ?? null;
+}
+
+/**
+ * Hand the account to a new officer. Needs a fresh email code first; the
+ * current officer stays responsible until Operations approves the new one.
+ */
+export async function handoverOrganizationOfficer(
+  input: { expectedVersion: number; officer: ApplicantPerson; documents: Record<string, string> },
+  idempotencyKey: string,
+): Promise<ClientOrganization | null> {
+  const result = await request<{ organization: ClientOrganization | null }>(
+    "/me/organization/officer/handover",
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input),
+    },
+  );
+  return result.organization ?? null;
+}
+
+/** "Yes, they are still the officer." */
+export async function confirmOrganizationOfficer(
+  officerId: string,
+): Promise<ClientOrganization | null> {
+  const result = await request<{ organization: ClientOrganization | null }>(
+    "/me/organization/officer/confirm",
+    { method: "POST", body: JSON.stringify({ officerId }) },
+  );
+  return result.organization ?? null;
+}
+
+export type StatementPeriod =
+  | { kind: "this_month" }
+  | { kind: "this_quarter" }
+  | { kind: "custom"; from: string; to: string };
+
+export type StatementRow = {
+  date: string;
+  closedAt: string;
+  orderId: string;
+  product: string;
+  amountMinor: number;
+  organizationDiscountMinor: number;
+  invoiceNumber: string;
+  /** The officer at the time of the order; a string, `{ name }` or blank. */
+  officerOfRecord: string | { name?: string; fullName?: string } | null;
+};
+
+export type OrganizationStatement = {
+  notice: string;
+  currency: string;
+  period: { from: string; to: string; timezone: string };
+  orderCount: number;
+  totalSpendMinor: number;
+  discountEarnedMinor: number;
+  orders: StatementRow[];
+};
+
+export function statementQuery(
+  period: StatementPeriod,
+  format: "json" | "pdf" | "csv" = "json",
+): string {
+  const params = new URLSearchParams();
+  if (period.kind === "custom") {
+    params.set("period", "custom");
+    params.set("from", period.from);
+    params.set("to", period.to);
+  } else {
+    params.set("period", period.kind);
+  }
+  if (format !== "json") params.set("format", format);
+  return `/me/organization/statements?${params.toString()}`;
+}
+
+export async function getOrganizationStatement(
+  period: StatementPeriod,
+): Promise<OrganizationStatement> {
+  const result = await request<{ statement: OrganizationStatement }>(statementQuery(period));
+  return result.statement;
+}
+
+/**
+ * What an export download needs: the absolute URL and the headers a signed-in
+ * request carries. The bytes are fetched by `lib/statementExport.ts`, which
+ * knows how each platform keeps a file.
+ */
+export async function statementExportRequest(
+  period: StatementPeriod,
+  format: "pdf" | "csv",
+): Promise<{ url: string; headers: Record<string, string> }> {
+  const token = await getAuthToken();
+  const headers: Record<string, string> = {
+    Accept: format === "pdf" ? "application/pdf" : "text/csv",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+    headers["X-GRIDGO-Role"] = "client";
+  }
+  return { url: `${getApiBase()}${statementQuery(period, format)}`, headers };
 }

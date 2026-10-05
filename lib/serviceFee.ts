@@ -95,9 +95,13 @@ export function orderPrintingMinor(order: {
   deliveryFeeMinor?: number | null;
   subtotalMinor?: number | null;
   serviceFeeMinor?: number | null;
+  organizationDiscountMinor?: number | null;
 }): number | null {
   if (order.totalMinor != null && order.deliveryFeeMinor != null) {
-    return order.totalMinor - order.deliveryFeeMinor;
+    // An organization's discount is already out of the total; Printing is
+    // drawn before it, with the discount on its own line (#166).
+    const discount = order.organizationDiscountMinor ?? 0;
+    return order.totalMinor - order.deliveryFeeMinor + (discount > 0 ? discount : 0);
   }
   if (order.subtotalMinor == null) return null;
   return printingMinor(order.subtotalMinor, order.serviceFeeMinor);

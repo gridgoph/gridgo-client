@@ -6,6 +6,7 @@ import Svg, { Line, Path } from "react-native-svg";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
+import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
 import { orderReference } from "@/lib/orderReference";
 import {
   RECEIPT_BLURB,
@@ -94,6 +95,12 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
 
         <View className="gap-1.5">
           <SlipRow label="Printing" value={formatPhp(view.money.printingMinor)} />
+          {view.money.organizationDiscountMinor ? (
+            <SlipRow
+              label={ORGANIZATION_DISCOUNT_LABEL}
+              value={discountAmount(view.money.organizationDiscountMinor)}
+            />
+          ) : null}
           <SlipRow {...receiptFulfilmentRow(view.money)} />
           {showServiceFee ? (
             <ServiceFeeRow explainOnly divider={false} rateBps={view.money.serviceFeeRateBps} />

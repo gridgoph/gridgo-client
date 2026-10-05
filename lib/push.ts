@@ -109,6 +109,13 @@ export function parsePushData(raw: unknown): PushData {
 /** The push type gridgo-api sends six to four weeks before a season window opens. */
 export const SEASON_PUSH_TYPE = "season_window";
 
+/** Organization pushes (gridgo-api `docs/ORGANIZATION_ACCOUNTS_API.md`). Name no job. */
+const ORGANIZATION_PUSH_TYPES = new Set([
+  "organization_officer_confirmation",
+  "organization_officer_confirmed",
+  "organization_notice",
+]);
+
 /**
  * Where a tapped notification opens. **App-specific** — the supplier and rider
  * apps map the same payload onto their own routes.
@@ -124,6 +131,9 @@ export function pushTargetRoute(data: PushData): string {
   // A season heads-up names no job and no window (`season_window`, gridgo-api
   // `docs/SEASON_WINDOWS_API.md`). Home is where its banner lives.
   if (data.type === SEASON_PUSH_TYPE) return "/(tabs)/home";
+  // The officer check and Operations' notices belong to the organization,
+  // and its tab is where they are answered (gridgo-client#165).
+  if (data.type && ORGANIZATION_PUSH_TYPES.has(data.type)) return "/(tabs)/organizations";
   if (!data.orderId) return "/(tabs)/notifications";
   if (data.type === "order_receipt_ready") {
     return `/order/receipt?orderId=${encodeURIComponent(data.orderId)}`;

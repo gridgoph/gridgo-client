@@ -413,13 +413,22 @@ function AppNavigation() {
                   options={pushedScreenOptions("Password")}
                 />
                 {/*
-                  Becoming a business client. Each step carries its own
+                  Becoming an organization or business client, and handing an
+                  organization to a new officer. Each step carries its own
                   question as the heading, so the band names the flow they are
                   in and never repeats what is under it.
                 */}
                 <Stack.Screen
                   name="business-apply"
-                  options={pushedScreenOptions("Apply as a business")}
+                  options={pushedScreenOptions("Account application")}
+                />
+                <Stack.Screen
+                  name="officer-handover"
+                  options={pushedScreenOptions("Change of officer")}
+                />
+                <Stack.Screen
+                  name="statement-period"
+                  options={pushedScreenOptions("Statement period")}
                 />
                 {/*
                   A bug report, sent to Operations as a chat message. The band
