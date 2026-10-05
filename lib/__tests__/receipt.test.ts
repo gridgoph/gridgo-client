@@ -53,6 +53,7 @@ describe("receiptFromInvoice", () => {
     expect(view.money).toEqual({
       printingMinor: 4400,
       deliveryFeeMinor: 2500,
+      pickup: false,
       serviceFeeMinor: 400,
       serviceFeeRateBps: 1000,
       totalMinor: 6900,

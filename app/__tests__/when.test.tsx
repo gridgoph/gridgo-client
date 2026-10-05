@@ -61,9 +61,9 @@ describe("WhenScreen", () => {
     // handed a deadline the client never gave.
     expect(useJobDeadline.getState().answered).toBe(true);
     expect(useJobDeadline.getState().by).toBeNull();
-    // Next is the job's own ranking: confirm it, re-rank it, or skip it.
+    // Next is delivery or pick-up, before the match is asked (#158).
     expect(mockPush).toHaveBeenCalledWith(
-      expect.objectContaining({ pathname: "/request/rank" }),
+      expect.objectContaining({ pathname: "/request/fulfilment" }),
     );
   });
 

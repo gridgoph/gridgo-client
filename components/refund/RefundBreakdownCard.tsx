@@ -17,13 +17,21 @@ export function RefundBreakdownCard({ settlement, order }: { settlement: RefundS
   const settings = usePlatformSettings((state) => state.settings);
   const breakdown = refundBreakdown(settlement, order);
   const delivered = order.fulfillmentMode !== "pickup";
+  // A pick-up order's hub fee comes back in the delivery slot; with none to
+  // return, a collected order has no row for it at all.
+  const pickupFeeBack = !delivered && breakdown.deliveryMinor > 0;
 
   return (
     <View className="gap-3">
       <Text className="text-body text-text-secondary">{breakdown.scope}</Text>
       <View className="gg-card">
         <SpecRow label="Printing" value={formatPhp(breakdown.printingMinor)} />
-        {delivered ? <SpecRow label="Delivery" value={formatPhp(breakdown.deliveryMinor)} /> : null}
+        {delivered || pickupFeeBack ? (
+          <SpecRow
+            label={delivered ? "Delivery" : "Pick-up fee"}
+            value={formatPhp(breakdown.deliveryMinor)}
+          />
+        ) : null}
         {breakdown.includesFee && serviceFeeVisibleToClient(settings) ? (
           <ServiceFeeRow explainOnly rateBps={order.serviceFeeRateBps ?? null} />
         ) : null}

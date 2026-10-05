@@ -30,16 +30,18 @@ type CardProps = Props & {
 /**
  * The peso line: GRIDGO's price for the cheapest way this sells, and its unit.
  * `spoken` is the same figure for the row's label; the drawn one goes through
- * `GridgoPrice`, which waits for the rate rather than showing the shop's own.
+ * `GridgoPrice`, which draws the API's client figure — and on an older payload
+ * waits for the rate rather than showing the shop's own.
  */
 function moneyLine(
   listing: CatalogItem | null,
   rate: number | null,
-): { supplierMinor: number; spoken: string; unit: string } | null {
+): { clientMinor: number | null; supplierMinor: number; spoken: string; unit: string } | null {
   if (!listing) return null;
   return {
+    clientMinor: listing.clientFromPriceMinor ?? null,
     supplierMinor: listing.fromPriceMinor,
-    spoken: `from ${gridgoPriceLabel(listing.fromPriceMinor, rate)}`,
+    spoken: `from ${gridgoPriceLabel(listing.fromPriceMinor, rate, listing.clientFromPriceMinor)}`,
     unit: unitLine(listing),
   };
 }
@@ -102,6 +104,7 @@ export function CategorySampleRow({ subcategory, listing, onPress, onStalePhoto 
         {money ? (
           <View className="max-w-[42%] shrink-0 items-end gap-0.5 py-3">
             <GridgoPrice
+              clientMinor={money.clientMinor}
               supplierMinor={money.supplierMinor}
               prefix="From "
               className="text-body font-medium text-text-primary"
@@ -248,6 +251,7 @@ export function CategorySampleCard({
               {money ? (
                 <>
                   <GridgoPrice
+                    clientMinor={money.clientMinor}
                     supplierMinor={money.supplierMinor}
                     prefix="From "
                     className="text-text-primary"

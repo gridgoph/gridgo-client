@@ -1,4 +1,4 @@
-import { FileCheck, TriangleAlert } from "lucide-react-native";
+import { CircleAlert, FileCheck, TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -16,6 +16,7 @@ import { TourTarget } from "@/components/TourTarget";
 import { useArtworkUpload, type FormatGuard } from "@/hooks/useArtworkUpload";
 import {
   applyDetectedPages,
+  artworkCheckFailure,
   detectedProportions,
   detectedSummary,
   missingPageCountMessage,
@@ -50,7 +51,7 @@ import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { MOCKUP_LABEL } from "@/lib/productPreview";
 import { useCart } from "@/store/cart";
-import { checkKey, useDesignLink } from "@/store/designLink";
+import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
 
 /**
  * The artwork for one thing in the basket.
@@ -131,8 +132,13 @@ export default function ArtworkScreen() {
   const linkSaveError = useDesignLink((state) => (line ? state.saveError[line.id] ?? null : null));
   const commitLink = useDesignLink((state) => state.commit);
   const seedLink = useDesignLink((state) => state.seed);
+  const verifyLink = useDesignLink((state) => state.verify);
+  const artworkProblems = useDesignLink((state) => state.problems);
   useEffect(() => {
     if (line && savedUrl) seedLink(line.id, savedUrl);
+    // A link kept on an earlier visit meets the same check a new paste does,
+    // so its answer is on screen before the client heads for checkout.
+    if (savedLinks[0]) void verifyLink(savedLinks[0]);
   }, [line?.id, savedUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Put the file on the basket line as soon as GRIDGO holds it, so leaving this
@@ -317,16 +323,22 @@ export default function ArtworkScreen() {
   const parsedLink = committedLink ? parseDesignLink(committedLink, acceptedFormats) : null;
   const linkState = parsedLink?.ok ? linkChecks[checkKey(parsedLink.link)] : undefined;
   const linkChecking = linkState?.phase === "checking";
-  const verdict = linkVerdict(linkState);
-  const linkOnLine = savedLinks.length > 0;
-  const hasArtwork = onLine || linkOnLine;
-  const canCheckout = hasArtwork && !saving && !linkSaving && !linkChecking && !unreadPages;
   const asksPages = item?.pricingUnit === "per_page";
   const links = item ? designLinkFormats(item.acceptedFormats) : [];
   // Link formats the cart cannot keep yet (Drive, Dropbox, WeTransfer filed
   // under their own codes): named, never offered as a field that cannot save.
   const otherLinks = item ? linkFormats(item).filter((format) => !links.includes(format)) : [];
   const uploads = item ? fileFormats(item) : [];
+  const verdict = linkVerdict(linkState, { canUpload: uploads.length > 0 });
+  const linkOnLine = savedLinks.length > 0;
+  const hasArtwork = onLine || linkOnLine;
+  // Checkout refuses a line whose link fails, even beside a good file, and a
+  // file that failed GRIDGO's own check (gridgo-api#122). Both stop here first.
+  const linkBlocked = linkOnLine && Boolean(verdict?.blocks);
+  const fileProblem = onLine ? artworkCheckFailure(upload.state.fileCheck) : null;
+  const checkoutProblem = currentProblem(artworkProblems, line);
+  const canCheckout =
+    hasArtwork && !saving && !linkSaving && !linkChecking && !unreadPages && !linkBlocked && !fileProblem;
   const name = item?.name ?? "this item";
   /** Check the link and, unless it plainly cannot be opened, keep it on the line. */
   const commitLinkText = (text: string, options?: { recheck?: boolean }) =>
@@ -344,6 +356,26 @@ export default function ArtworkScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text className="text-h1 text-text-primary">Your artwork</Text>
+        {/*
+          Why checkout sent the client back here, until the artwork it was
+          about is replaced. The server's own words: it names the file or link
+          and what to do with it.
+        */}
+        {checkoutProblem ? (
+          <View
+            className="mt-4 flex-row items-start gap-3 rounded-field border border-error bg-surface p-3"
+            accessible
+            accessibilityRole="alert"
+          >
+            <View className="pt-0.5">
+              <CircleAlert size={16} color={colors.error} strokeWidth={2} aria-hidden />
+            </View>
+            <View className="min-w-0 flex-1 gap-1">
+              <Text className="text-body font-medium text-text-primary">Checkout could not use this artwork</Text>
+              <Text className="text-caption text-text-secondary">{checkoutProblem.message}</Text>
+            </View>
+          </View>
+        ) : null}
         <Text className="mt-3 text-body-lg text-text-secondary">
           For {name}
           {size ? ` · ${size}` : ""}.
@@ -375,6 +407,11 @@ export default function ArtworkScreen() {
         ) : null}
 
         {saveError ? <Text className="mt-3 text-body text-error">{saveError}</Text> : null}
+        {fileProblem ? (
+          <Text className="mt-3 text-body text-error" accessibilityRole="alert">
+            {fileProblem}
+          </Text>
+        ) : null}
 
         {links.length ? (
           <>
@@ -549,9 +586,14 @@ export default function ArtworkScreen() {
             style={({ pressed }) => (pressed && canCheckout ? { opacity: 0.9 } : undefined)}
           >
             <Text className="text-button text-action-yellow-on">
-              {saving ? "Saving…" : "Go to checkout"}
+              {saving ? "Saving…" : linkChecking ? "Checking your link…" : "Go to checkout"}
             </Text>
           </Pressable>
+        ) : null}
+        {hasArtwork && linkBlocked ? (
+          <Text className="mt-2 text-center text-caption text-error">
+            {"Fix the link's sharing, or clear it to go on with"} {onLine ? "your file" : "an upload"}.
+          </Text>
         ) : null}
 
         <Pressable

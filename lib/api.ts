@@ -241,6 +241,17 @@ export type Order = {
   pickup?: OrderPoint | null;
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
+  /** The choice made before matching, snapshotted at checkout (gridgo-api#148). */
+  requestFulfillment?: RequestFulfilment | null;
+  /** A pick-up order's hub hours and fee as they stood at checkout. */
+  hubPickup?: HubPickup | null;
+  /** The hub fee on a pick-up order, already inside `deliveryFeeMinor`. */
+  pickupFeeMinor?: number | null;
+  /**
+   * GRIDGO's check of the artwork before the shop hears of the job
+   * (gridgo-api#122). `pending` from checkout until Operations passes it.
+   */
+  fileCheck?: OrderFileCheck | null;
   /** True while a refund request is open: work and new payments are paused. */
   refundHold?: boolean;
   /** `cancelled | fulfilled_with_refund` once a refund was settled. */
@@ -275,6 +286,14 @@ export type Order = {
     /** Only on an older payload: a shop payout stage. Never drawn. */
     milestoneCode?: string;
   }[];
+};
+
+/** The client's view of the artwork check: no reviewer, a reason only on a failure. */
+export type OrderFileCheck = {
+  status: "pending" | "passed" | "failed" | "cancelled" | (string & {});
+  requestedAt?: string | null;
+  reviewedAt?: string | null;
+  reason?: string | null;
 };
 
 /** The four fixed zones. Labels come from the API; never re-spell them. */
@@ -328,6 +347,33 @@ export type PlatformSettings = {
    * orders — read it through `settingsDownpaymentPercent`.
    */
   downpaymentPercent?: number;
+  /**
+   * GRIDGO Office as a pick-up hub (gridgo-api#148): its fixed point, the
+   * hours Super Admin set, and the flat pick-up fee. `schedule: null` means
+   * nobody has set hours yet — say so, never invent opening days. Absent on
+   * an API from before the hub settings.
+   */
+  hubPickup?: HubPickup;
+};
+
+/** One opening window in the hub's week. Weekday 0 is Sunday. */
+export type HubOpeningWindow = { weekday: number; opensMinute: number; closesMinute: number };
+
+/** A run of days the hub is shut, inclusive, as `YYYY-MM-DD`. */
+export type HubClosure = { startDay: string; endDay: string; reason?: string | null };
+
+export type HubSchedule = {
+  /** The hub's offset from UTC; Davao is +480. Minutes in `week` are local to it. */
+  utcOffsetMinutes: number;
+  week: HubOpeningWindow[];
+  closures?: HubClosure[];
+};
+
+export type HubPickup = {
+  point?: OrderPoint;
+  schedule: HubSchedule | null;
+  /** Once per order, already inside any delivery total it is quoted in. */
+  feeMinor: number;
 };
 
 /** Platform-defined categories, materials and finishes. */
@@ -404,6 +450,20 @@ export type StoredFile = {
   references: { type: string; id: string; field?: string }[];
   /** Present only when the bytes carried something worth reading. */
   detected?: DetectedArtwork;
+  /**
+   * GRIDGO's structural check of uploaded artwork (gridgo-api#122). `ready`
+   * means uploaded, not approved: a `failed` file is refused at checkout and
+   * has to be replaced. Absent on an older API and on non-artwork files.
+   */
+  artworkCheck?: ArtworkFileCheck | null;
+};
+
+export type ArtworkFileCheck = {
+  status: "passed" | "failed" | (string & {});
+  checkedAt?: string | null;
+  reason?: string | null;
+  /** Plain words for the client; never branch on them. */
+  message?: string | null;
 };
 
 /** Newest rider position for an order, or null when none has been shared. */
@@ -1171,7 +1231,15 @@ export type CatalogPhoto = {
 export type CatalogOption = {
   id: string;
   label: string;
+  /** Shop / ops amount. A client reads `clientPriceModifierMinor`. */
   priceModifierMinor: number;
+  /**
+   * GRIDGO's amount for this option, fee inside, sign kept (gridgo-api#132).
+   * Display only: never sum these into an amount due — quote the line.
+   */
+  clientPriceModifierMinor?: number | null;
+  /** A multiplier option scales the rate instead of adding to it. */
+  priceMultiplierBps?: number | null;
   specBinding: { fieldCode: string; value?: string; valueCode?: string } | null;
   sortOrder: number;
 };
@@ -1220,7 +1288,13 @@ export type LineMeasurement = {
 };
 
 /** A cheaper rate from a quantity up. */
-export type CatalogPriceTier = { minQuantity: number; unitPriceMinor: number };
+export type CatalogPriceTier = {
+  minQuantity: number;
+  /** Shop / ops amount. */
+  unitPriceMinor: number;
+  /** GRIDGO's rate from this quantity up, fee inside. */
+  clientUnitPriceMinor?: number | null;
+};
 
 /**
  * A speed the shop sells. `priceMinor` replaces the rate outright; the other
@@ -1232,6 +1306,9 @@ export type CatalogSpeedTier = {
   turnaroundHours: number;
   priceMinor: number | null;
   surchargeMinor: number | null;
+  /** GRIDGO's amounts for the two above; null where the shop's is. */
+  clientPriceMinor?: number | null;
+  clientSurchargeMinor?: number | null;
 };
 
 /** One listing on a shop's board. */
@@ -1243,7 +1320,10 @@ export type CatalogItem = {
   subcategoryCode: string;
   name: string;
   description: string | null;
+  /** Shop / ops amount. A client reads `clientBasePriceMinor`. */
   basePriceMinor: number;
+  /** GRIDGO amount for `basePriceMinor`, fee inside (gridgo-api#132). */
+  clientBasePriceMinor?: number | null;
   /** Base plus the cheapest option of every required group. Shop / ops amount. */
   fromPriceMinor: number;
   /** Only present when option ids were sent; null otherwise. Shop / ops amount. */
@@ -1281,7 +1361,7 @@ export type CatalogItem = {
   pricingBasis: string;
   turnaroundMode: "inherit" | "override";
   turnaroundHours: number | null;
-  rush: { turnaroundHours: number; priceMinor: number } | null;
+  rush: { turnaroundHours: number; priceMinor: number; clientPriceMinor?: number | null } | null;
   acceptedFormats: AcceptedFormat[];
   photos: CatalogPhoto[];
   prepSteps: CatalogPrepStep[];
@@ -1350,6 +1430,52 @@ export type ShopBoard = {
 };
 
 const CATALOG_SHOP_PAGE_CAP = 25;
+
+/** What `POST /me/catalog-quotes` prices: one configured listing, nothing saved. */
+export type CatalogQuoteInput = {
+  catalogItemId: string;
+  quantity: number;
+  optionIds?: string[];
+  measurement?: LineMeasurement | null;
+  structuredSpec?: Record<string, unknown>;
+};
+
+/**
+ * GRIDGO's price for a configured listing, fee inside (gridgo-api#132).
+ *
+ * The amount due is `clientLineSubtotalMinor`; `clientUnitRateMinor` is the
+ * rate it was worked from and must not be multiplied back up — tiers,
+ * minimum sizes and rounding happen before the fee.
+ */
+export type CatalogQuote = {
+  catalogItemId: string;
+  version: number;
+  serviceVersion: number;
+  quantity: number;
+  clientUnitRateMinor: number;
+  clientLineSubtotalMinor: number;
+  billableMilliUnits: number;
+  minimumMeasurementApplied: boolean;
+};
+
+/**
+ * Price one configured listing. Read-only: no cart, no reservation, no lock.
+ * Selection, quantity, size and printer-width refusals use the cart's codes.
+ */
+export async function catalogQuote(input: CatalogQuoteInput): Promise<CatalogQuote> {
+  const body: Record<string, unknown> = {
+    catalogItemId: input.catalogItemId,
+    quantity: input.quantity,
+    optionIds: input.optionIds ?? [],
+  };
+  if (input.measurement) body.measurement = input.measurement;
+  if (input.structuredSpec) body.structuredSpec = input.structuredSpec;
+  const result = await request<{ quote: CatalogQuote }>("/me/catalog-quotes", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.quote;
+}
 
 /** Approved shops with at least one complete listing. Follows catalog pages. */
 export async function listCatalogShops(
@@ -1639,6 +1765,13 @@ export type MatchedListingFields = {
   placeInLine?: number | null;
   /** Opaque, 15-minute token that picks this listing on add-line. */
   selectToken?: string;
+  /**
+   * The delivery (or pick-up) charge this listing would carry, when the match
+   * was asked with a fulfilment choice. Already GRIDGO's figure.
+   */
+  deliveryFeeMinor?: number | null;
+  /** On a pick-up match: the hub fee, the same amount as `deliveryFeeMinor`. */
+  pickupFeeMinor?: number | null;
 };
 
 /** A listing on the Top Pick's own board, as the match returns it. */
@@ -1664,6 +1797,7 @@ export type OtherListing = Pick<
   | "categoryCode"
   | "subcategoryCode"
   | "basePriceMinor"
+  | "clientBasePriceMinor"
   | "effectivePriceMinor"
   | "clientEffectivePriceMinor"
   | "measurementKind"
@@ -1711,6 +1845,10 @@ export type MatchResult = {
   reasons: MatchReason[];
   /** The Top Pick's eligible listings, best first: index 0 is the pick. */
   listings: MatchListing[];
+  /** Echoed when the match was asked with a fulfilment choice (gridgo-api#148). */
+  requestFulfillment?: RequestFulfilment | null;
+  /** On a pick-up match: the hub's point, hours and fee as they stand now. */
+  hubPickup?: HubPickup | null;
   /** How many other shops could have printed it. */
   alternativesCount: number;
   score: {
@@ -1722,6 +1860,56 @@ export type MatchResult = {
 
 export type FulfilmentMode = "delivery" | "pickup";
 export type ServiceLevel = "standard" | "scheduled";
+
+/**
+ * Delivery or pick-up, chosen before matching (gridgo-api#148), and the point
+ * it was matched against: the client's address, or GRIDGO Office for pick-up.
+ * Once a basket holds one it is locked — changing it means a new match and a
+ * new basket.
+ */
+export type RequestFulfilment = { fulfillmentMode: FulfilmentMode; dropoff: OrderPoint | null };
+
+/** Why a basket quote has no total yet. Codes are open: an unknown one is still "not yet". */
+export type CartQuoteReason = {
+  code:
+    | "cart_empty"
+    | "catalog_item_stale"
+    | "line_unpriced"
+    | "shop_unavailable"
+    | "dropoff_required"
+    | (string & {});
+  lineId?: string;
+  lineIds?: string[];
+};
+
+/** One delivery leg: a print run's lines and the zone its farthest drop falls in. */
+export type CartQuoteDeliveryLine = {
+  lineIds: string[];
+  distanceZone: DistanceZone | null;
+  deliveryFeeMinor: number | null;
+  /** Out of Zone only, one decimal. For display; never price from it. */
+  distanceKm?: number;
+};
+
+/**
+ * GRIDGO's own figures for a draft basket (gridgo-api#146): every amount is
+ * already the client's, fee inside. Read these rather than adding anything up
+ * on the phone.
+ */
+export type CartQuote = {
+  status: "priced" | "incomplete" | (string & {});
+  reasons: CartQuoteReason[];
+  clientItemSubtotalMinor: number | null;
+  deliveryLines: CartQuoteDeliveryLine[];
+  /** Every leg plus any pick-up fee. Null while a leg is unknown. */
+  deliveryFeeMinor: number | null;
+  /** On a pick-up basket chosen before matching: the hub fee, already inside `deliveryFeeMinor`. */
+  pickupFeeMinor?: number;
+  totalMinor: number | null;
+  downpaymentPercent: number;
+  downpaymentMinor: number | null;
+  balanceMinor: number | null;
+};
 
 export type CartLineRecord = {
   id: string;
@@ -1756,6 +1944,12 @@ export type Cart = {
   scheduledFor: string | null;
   fulfillmentMode: FulfilmentMode;
   defaultDropoff: OrderPoint | null;
+  /** Set when the basket was filled through the choose-before-matching flow; then read-only. */
+  requestFulfillment?: RequestFulfilment | null;
+  /** On a pick-up basket chosen before matching: the hub as it stands now. */
+  hubPickup?: HubPickup | null;
+  /** GRIDGO's figures for this draft. Null once checked out; absent on an older API. */
+  clientQuote?: CartQuote | null;
   lines: CartLineRecord[];
   checkedOutOrderId: string | null;
   createdAt: string;
@@ -1809,18 +2003,29 @@ export type Invoice = {
     jobId: string;
     itemName: string;
     quantity: number;
-    unitPriceMinor: number;
-    amountMinor: number;
+    /** Shop figures, deprecated on client reads (gridgo-api#132 phase 3). */
+    unitPriceMinor?: number;
+    amountMinor?: number;
+    /** GRIDGO's figures for the line, fee inside, from the stored invoice. */
+    clientUnitPriceMinor?: number | null;
+    clientAmountMinor?: number | null;
     artworkFileId: string | null;
     mockupFileId: string | null;
     artworkLinks?: ArtworkLink[];
     dropoff: OrderPoint | null;
   }[];
-  itemSubtotalMinor: number;
-  serviceFeeRateBps: number;
-  serviceFeeMinor: number;
-  deliveryLines: { jobId: string; shopName: string; amountMinor: number }[];
+  /** Shop items before the fee. Deprecated on client reads — use `clientItemSubtotalMinor`. */
+  itemSubtotalMinor?: number;
+  /** GRIDGO's printing figure for the whole invoice, fee rounded once on the aggregate. */
+  clientItemSubtotalMinor?: number | null;
+  serviceFeeRateBps?: number;
+  serviceFeeMinor?: number;
+  /** One leg per job. `shopName` is withheld from clients in phase 3 — never draw it. */
+  deliveryLines: { jobId: string; shopName?: string; amountMinor: number }[];
+  /** Every fulfilment charge; a pick-up's hub fee is already inside it. */
   deliveryFeeMinor: number;
+  /** Present on a pick-up chosen before matching: the hub fee inside `deliveryFeeMinor`. */
+  pickupFeeMinor?: number;
   totalMinor: number;
   paymentPlan: { method: "qr_manual"; downpaymentMinor: number; balanceMinor: number };
 };
@@ -1989,6 +2194,13 @@ export type MatchInput = {
    * make Friday" is not something to weigh against a price.
    */
   deadline?: string | null;
+  /**
+   * Delivery or pick-up, chosen before matching (gridgo-api#148). Delivery
+   * needs `dropoff` or `addressId`; pick-up is matched against GRIDGO Office.
+   * Omitted on a basket that started before the choice moved here, which
+   * keeps its checkout-time choice.
+   */
+  fulfillmentMode?: FulfilmentMode;
 };
 
 /**

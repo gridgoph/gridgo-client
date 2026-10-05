@@ -38,6 +38,9 @@ function keyOf(input: api.MatchInput): string {
     ranking: input.ranking ?? null,
     cartId: input.cartId ?? null,
     deadline: input.deadline ?? null,
+    // Delivery and pick-up are measured from different points, and a pick
+    // token carries the choice it was matched under.
+    fulfillmentMode: input.fulfillmentMode ?? null,
     dropoff: dropoff
       ? { lat: dropoff.lat, lng: dropoff.lng, label: dropoff.label ?? null }
       : null,

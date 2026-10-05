@@ -1,4 +1,5 @@
 import type { Order } from "@/lib/api";
+import { FILE_CHECK_AFTER_PAYMENT } from "@/lib/checkout";
 import {
   collectsAtOffice,
   formatPriceRange,
@@ -488,5 +489,17 @@ describe("an order paid in full up front", () => {
     expect(orderNextAction(pricedOrder({ state: "awaiting_downpayment" }))?.title).toBe(
       "Pay the 75% downpayment",
     );
+  });
+});
+
+describe("waiting on the file check (gridgo-api#122)", () => {
+  it("says the file is with GRIDGO before the shop starts", () => {
+    const order = { state: "needs_qa", fileCheck: { status: "pending" }, payments: {} } as unknown as Order;
+    expect(orderWaitingOn(order)).toBe(FILE_CHECK_AFTER_PAYMENT);
+  });
+
+  it("keeps the usual words for an order with no file check on it", () => {
+    const order = { state: "needs_qa", payments: {} } as unknown as Order;
+    expect(orderWaitingOn(order)).toMatch(/Operations is checking your artwork/);
   });
 });

@@ -48,6 +48,21 @@ export function clientAmountMinor(
 export { clientAmountMinor as gridgoAmountMinor };
 
 /**
+ * The client figure for any amount the API sends in both shapes: its own
+ * client field when that is a safe integer (already GRIDGO's, fee inside —
+ * never marked up again), else the shop figure marked up once. Only an older
+ * payload without the client field ever takes the second path.
+ */
+export function clientFigureMinor(
+  clientMinor: number | null | undefined,
+  shopMinor: number | null | undefined,
+  rateBps: number | null | undefined,
+): number | null {
+  if (Number.isSafeInteger(clientMinor)) return clientMinor as number;
+  return clientAmountMinor(shopMinor, rateBps);
+}
+
+/**
  * The figure a client-facing surface should show for a "From" price.
  *
  * Prefer the API's `clientFromPriceMinor` (already marked up). Fall back to
@@ -58,6 +73,29 @@ export function clientFromPriceMinorOf(
   item: { fromPriceMinor: number; clientFromPriceMinor?: number | null },
   serviceFeeRateBps?: number | null,
 ): number | null {
-  if (Number.isSafeInteger(item.clientFromPriceMinor)) return item.clientFromPriceMinor as number;
-  return clientAmountMinor(item.fromPriceMinor, serviceFeeRateBps);
+  return clientFigureMinor(item.clientFromPriceMinor, item.fromPriceMinor, serviceFeeRateBps);
+}
+
+/** The same for the listing's base price, before any option. */
+export function clientBasePriceMinorOf(
+  item: { basePriceMinor: number; clientBasePriceMinor?: number | null },
+  serviceFeeRateBps?: number | null,
+): number | null {
+  return clientFigureMinor(item.clientBasePriceMinor, item.basePriceMinor, serviceFeeRateBps);
+}
+
+/**
+ * Whether a listing's price is a "From" price — something required adds to
+ * the base. Compared on GRIDGO's figures when both are sent.
+ */
+export function startsFromBase(item: {
+  basePriceMinor: number;
+  fromPriceMinor: number;
+  clientBasePriceMinor?: number | null;
+  clientFromPriceMinor?: number | null;
+}): boolean {
+  if (Number.isSafeInteger(item.clientBasePriceMinor) && Number.isSafeInteger(item.clientFromPriceMinor)) {
+    return item.clientBasePriceMinor !== item.clientFromPriceMinor;
+  }
+  return item.fromPriceMinor !== item.basePriceMinor;
 }

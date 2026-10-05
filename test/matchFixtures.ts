@@ -132,6 +132,7 @@ export function topPickMatch(overrides: Partial<MatchResult> = {}): MatchResult 
       otherListing("sci_zone_tarp", {
         name: "Tarpaulin Banner",
         fromPriceMinor: 1200,
+        clientFromPriceMinor: 1320,
         basePriceMinor: 1200,
         placeInLine: 2,
         distanceZone: { key: "nearby", label: "Nearby" },
