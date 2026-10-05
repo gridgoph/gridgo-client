@@ -110,7 +110,7 @@ export function unclaimedNotice(
     return {
       tone: "info",
       title: "1 hub day missed",
-      body: "Your order is still waiting at the hub. Come on the next open day with the QR and code below.",
+      body: "Your order is still waiting at the hub. Come on the next open day with this QR and code.",
     };
   }
   return null;

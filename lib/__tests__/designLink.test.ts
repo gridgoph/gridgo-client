@@ -196,6 +196,19 @@ describe("link check verdicts", () => {
     });
   });
 
+  it("says to upload the file once, whatever the API's message already says", () => {
+    const message =
+      "The link check timed out. Try again or upload the artwork. Make the link viewable by anyone with the link, then retry; or upload the file instead.";
+    const verdict = linkVerdict({ phase: "checked", check: check({ reachable: false, httpStatus: null, message }) });
+    expect(verdict?.body).toBe("The link check timed out. Try again. Or upload the file instead.");
+    expect(verdict?.body?.match(/upload/gi)).toHaveLength(1);
+    // Where the listing takes no file, no upload advice is relayed at all.
+    expect(
+      linkVerdict({ phase: "checked", check: check({ reachable: false, httpStatus: null, message }) }, { canUpload: false })
+        ?.body,
+    ).toBe("The link check timed out. Try again.");
+  });
+
   it("blocks a link it could not check yet, and says to try again", () => {
     expect(
       linkVerdict({ phase: "failed", message: "GRIDGO has checked a lot of links in the last minute.", blocks: false }),
