@@ -21,6 +21,17 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.221 (New feature)
+
+- The app no longer keeps checking your sign-in in the background, saving battery and data.
+- If your shop cannot take an order or asks for more time, choose a new shop, a new date or a full refund.
+- Choose delivery or pick-up before GRIDGO finds your printer, and fix a private design link before you pay.
+- One order can now hold products from several shops, grouped as Shop A and Shop B, with one payment and one receipt.
+- Organizations can apply with their documents, then get a discount, spend statements and an Organizations tab.
+- Pick-up orders show a QR and code to claim at the hub, and deliveries show a code to match with your rider.
+- The reference number is read from your payment screenshot and filled in correctly again.
+- Cancelled jobs now read as cancelled on Home and Orders, without a ready date, and no longer hide live jobs.
+
 ## 1.0.209 (New feature)
 
 - Busy and peak seasons are shaded on the date picker, and Home gives you a heads-up weeks before one starts.
