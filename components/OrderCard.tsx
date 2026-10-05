@@ -38,7 +38,8 @@ type Props = {
 export function OrderCard({ order, onPress, onReorder }: Props) {
   const colors = useThemeColors();
   const meta = orderStateMeta(order);
-  const readyBy = readyByDate(order.promiseBy);
+  // A cancelled job will not be ready, so it carries no ready date.
+  const readyBy = order.state === "cancelled" ? null : readyByDate(order.promiseBy);
   // Before a supplier accepts there is no exact price, so the card carries the
   // platform's range and marks it as one. It must never round an estimate into
   // a figure the client could hold GRIDGO to.

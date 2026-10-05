@@ -227,6 +227,21 @@ function orUpload(canUpload: boolean): string {
 }
 
 /**
+ * The API's own reason, without its upload advice.
+ *
+ * The client says "Or upload the file instead." itself, and only where the
+ * listing takes a file; an API that also says it read the advice twice. Only
+ * a trailing "or upload" clause and the API's appended retry sentence go —
+ * the reason itself (a timeout, a bad redirect) stays.
+ */
+export function withoutUploadAdvice(message: string): string {
+  return message
+    .replace(/\s*Make the link viewable by anyone with the link, then retry; or upload the file instead\.?/gi, "")
+    .replace(/,?\s+or (?:export and )?upload the (?:artwork|file)\./gi, ".")
+    .trim();
+}
+
+/**
  * What a check result says to the client.
  *
  * Decided from `access` and `reachable`, never from `message` — the API says
@@ -283,7 +298,7 @@ export function linkVerdict(
         : {
             tone: "error",
             title: "We couldn't open this link",
-            body: `${check.message}${orUpload(canUpload)}`.trim(),
+            body: `${withoutUploadAdvice(check.message)}${orUpload(canUpload)}`.trim() || null,
             blocks: true,
           };
   }

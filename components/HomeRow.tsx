@@ -199,7 +199,8 @@ export function HomeJobRow({ order, onPress }: { order: Order; onPress: () => vo
   const stage = orderStageIndex(order.state, order.fulfillmentMode);
   const moved = order.updatedAt ? formatRelativeTime(order.updatedAt) : null;
   const next = orderWaitingOn(order);
-  const promised = readyByDate(order.promiseBy);
+  // A cancelled job will not be ready, so it carries no ready date.
+  const promised = order.state === "cancelled" ? null : readyByDate(order.promiseBy);
   const StateIcon = ICONS[meta.icon];
 
   return (
@@ -272,14 +273,16 @@ export function HomeJobRow({ order, onPress }: { order: Order; onPress: () => vo
  * colour-filled chip to compete with live work — three finished cards used to
  * push "Start a print" off the first screen. The check mark, the word
  * ("Completed", "Delivered", "Collected") and the success colour still say the
- * same thing three ways, so the row reads in grayscale. A tap reopens the job,
- * which is where the receipt and a reorder live.
+ * same thing three ways, so the row reads in grayscale. A cancelled job keeps
+ * its own mark rather than a check. A tap reopens the job, which is where the
+ * receipt and a reorder live.
  */
 export function HomeFinishedRow({ order, onPress }: { order: Order; onPress: () => void }) {
   const colors = useThemeColors();
   const meta = orderStateMeta(order);
   const when = order.updatedAt ? formatRelativeTime(order.updatedAt) : null;
   const status = when && when !== "—" ? `${meta.label} ${lowerFirst(when)}` : meta.label;
+  const Mark = order.state === "cancelled" ? CircleX : CircleCheck;
 
   return (
     <Pressable
@@ -291,7 +294,7 @@ export function HomeFinishedRow({ order, onPress }: { order: Order; onPress: () 
       {({ pressed }) => (
         <>
           <View aria-hidden>
-            <CircleCheck size={18} color={colors[TONE_TOKEN[meta.tone]]} strokeWidth={2} />
+            <Mark size={18} color={colors[TONE_TOKEN[meta.tone]]} strokeWidth={2} />
           </View>
           <View className="min-w-0 flex-1">
             <Text className="text-body text-text-primary" numberOfLines={1}>

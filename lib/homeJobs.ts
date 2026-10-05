@@ -21,8 +21,10 @@ export const HOME_FINISHED_LIMIT = 3;
  * States after which nothing more happens to the job from the client's side.
  * `delivered` counts: the issue window it opens is its own state
  * (`issue_window_open`), which asks for the client and so is never here.
+ * `cancelled` counts too: nothing more will be printed, and Orders already
+ * files it under Done.
  */
-const FINISHED_STATES = new Set(["delivered", "completed", "payout_released"]);
+const FINISHED_STATES = new Set(["delivered", "completed", "payout_released", "cancelled"]);
 
 export function isFinishedOrderState(state: string): boolean {
   return FINISHED_STATES.has(state);

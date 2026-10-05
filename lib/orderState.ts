@@ -368,6 +368,14 @@ export function orderWaitingOn(order: Order): string | null {
   if (order.refundHold) {
     return "This job is paused while Operations reviews your refund request.";
   }
+  // Ahead of the payment check: a multi-shop basket shares one payment, so a
+  // cancelled group would otherwise read as waiting on the review its
+  // siblings are still in.
+  if (order.state === "cancelled") {
+    return order.groupLabel
+      ? "This part of your order was cancelled. Its share is refunded on its own; the rest of the order carries on."
+      : WAITING_ON.cancelled;
+  }
   const shopChange = shopRecoveryWaitingOn(order) ?? rescheduleWaitingOn(order);
   if (shopChange) return shopChange;
   const underReview = installmentUnderReview(order);
