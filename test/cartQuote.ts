@@ -1,3 +1,4 @@
+import { lineGroupKey } from "@/lib/basketGroups";
 import type { Cart, CartQuote, CartQuoteDeliveryLine, DistanceZone } from "@/lib/api";
 import { clientLineAmountMinor } from "@/lib/basket";
 import { roundBps } from "@/lib/gridgoPrice";
@@ -21,7 +22,7 @@ export type QuoteOptions = {
 export function cartQuote(cart: Pick<Cart, "lines" | "fulfillmentMode">, options: QuoteOptions = {}): CartQuote {
   const rate = options.rateBps ?? 1000;
   const runs = new Map<string, string[]>();
-  for (const line of cart.lines) runs.set(line.supplierId, [...(runs.get(line.supplierId) ?? []), line.id]);
+  for (const line of cart.lines) runs.set(lineGroupKey(line), [...(runs.get(lineGroupKey(line)) ?? []), line.id]);
   const amounts = cart.lines.map((line) => clientLineAmountMinor(line, rate));
   const reasons: CartQuote["reasons"] = cart.lines
     .filter((_, index) => amounts[index] == null)

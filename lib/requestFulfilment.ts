@@ -19,7 +19,7 @@
  *   (`request_fulfillment_requires_empty_cart`).
  */
 
-import type { Cart, FulfilmentMode, MatchResult, OrderPoint, RequestFulfilment } from "@/lib/api";
+import { ApiError, type Cart, type FulfilmentMode, type MatchResult, type OrderPoint, type RequestFulfilment } from "@/lib/api";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 
 export type FulfilmentStep = "ask" | "locked" | "legacy";
@@ -103,3 +103,18 @@ export function pickupMatchView(match: MatchResult): MatchResult {
     ...(match.otherListings ? { otherListings: match.otherListings.map(strip) } : {}),
   };
 }
+
+/**
+ * GRIDGO refused this line because the basket was matched for delivery or
+ * pick-up another way (gridgo-api#148): a rule with a way on, never a
+ * connection problem.
+ */
+export function isFulfilmentLockRefusal(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  const code = (error.body as { error?: unknown } | null)?.error;
+  return code === "request_fulfillment_locked" || code === "request_fulfillment_requires_empty_cart";
+}
+
+export const FULFILMENT_LOCK_MESSAGE =
+  "Your order is already set to travel another way, and everything in one order travels together. " +
+  "Check out your order first, then start this one.";

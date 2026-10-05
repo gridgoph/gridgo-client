@@ -24,7 +24,7 @@ beforeEach(() => {
   api.removeCartLine.mockResolvedValue(basket({ lines: [] }));
 });
 
-describe("starting a new order for a product from another shop", () => {
+describe("starting a new order for a job that travels another way", () => {
   it("fills a new basket, then empties the old one", async () => {
     api.addCartLine.mockResolvedValue(freshBasketWithFlyers());
 

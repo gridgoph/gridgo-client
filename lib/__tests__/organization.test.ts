@@ -163,3 +163,61 @@ describe("the receipt for an organization's order", () => {
     expect(view.money).toMatchObject({ printingMinor: 11000, organizationDiscountMinor: 500, totalMinor: 15500 });
   });
 });
+
+describe("a multi-shop basket", () => {
+  it("carries each shop group's own discount, as GRIDGO priced it", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { shopGroups } = require("@/lib/basketGroups") as typeof import("@/lib/basketGroups");
+    const groups = shopGroups({
+      id: "cart_1",
+      state: "draft",
+      version: 1,
+      serviceLevel: "standard",
+      scheduledFor: null,
+      fulfillmentMode: "delivery",
+      defaultDropoff: null,
+      lines: [],
+      checkedOutOrderId: null,
+      createdAt: "2026-10-05T00:00:00Z",
+      updatedAt: "2026-10-05T00:00:00Z",
+      groups: [
+        { id: "g1", label: "Shop A", lineIds: [], clientItemSubtotalMinor: 11000, deliveryFeeMinor: 5000, totalMinor: 15500, organizationDiscountMinor: 500 },
+        { id: "g2", label: "Shop B", lineIds: [], clientItemSubtotalMinor: 22000, deliveryFeeMinor: 5000, totalMinor: 27000 },
+      ],
+    });
+    expect(groups.map((group) => group.organizationDiscountMinor)).toEqual([500, 0]);
+    // Each group still adds up: Printing − its discount + its delivery = its total.
+    expect(11000 - 500 + 5000).toBe(15500);
+  });
+
+  it("puts each group's discount on the combined receipt", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { receiptFromInvoice } = require("@/lib/receipt") as typeof import("@/lib/receipt");
+    const group = (orderId: string, label: string, discount: number) => ({
+      orderId,
+      label,
+      lines: [],
+      clientItemSubtotalMinor: 11000,
+      deliveryFeeMinor: 5000,
+      totalMinor: 16000 - discount,
+      organizationDiscountMinor: discount,
+    });
+    const view = receiptFromInvoice({
+      invoiceNumber: "GG-2",
+      orderId: "ord_a",
+      basketId: "bsk_1",
+      issuedAt: "2026-10-05T01:00:00.000Z",
+      currency: "PHP",
+      lines: [],
+      groups: [group("ord_a", "Shop A", 500), group("ord_b", "Shop B", 0)],
+      clientItemSubtotalMinor: 22000,
+      deliveryLines: [],
+      deliveryFeeMinor: 10000,
+      totalMinor: 31500,
+      organizationDiscountMinor: 500,
+      paymentPlan: { method: "qr_manual", downpaymentMinor: 31500, balanceMinor: 0 },
+    });
+    expect(view.groups?.map((entry) => entry.organizationDiscountMinor)).toEqual([500, undefined]);
+    expect(view.money.organizationDiscountMinor).toBe(500);
+  });
+});

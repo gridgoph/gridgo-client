@@ -1,6 +1,6 @@
 import { TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -40,6 +40,8 @@ import { withFreshPhotos } from "@/lib/photoLinks";
 import { findCategory } from "@/lib/productCategories";
 import { fulfilmentSummary, pickupMatchView } from "@/lib/requestFulfilment";
 import { HOME_TAB } from "@/lib/receipt";
+import { basketMatchContext } from "@/lib/basketGroups";
+import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
 import { useJobFulfilment, withJobFulfilment } from "@/store/jobFulfilment";
@@ -89,6 +91,9 @@ export default function MatchScreen() {
   const point = fulfilment ? fulfilment.dropoff : dropoff;
   const dropoffKey = `${fulfilment?.fulfillmentMode ?? ""}:${point == null ? "" : `${point.lat},${point.lng}`}`;
   const deadline = useJobDeadline((state) => state.by);
+  // "Add more from Shop A", when the client came from that group's control.
+  const targetGroupId = useBasketGroupTarget((state) => state.groupId);
+  const targetLabel = useBasketGroupTarget((state) => state.label);
 
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,8 +116,9 @@ export default function MatchScreen() {
     askedFor.current = rankingKey;
     // Read the basket at call time. Subscribing to it would rematch the
     // moment the listing sheet warms a cart — the client already has an
-    // answer. No `cartId`: a pick token bound to this basket would be
-    // refused by the fresh one "start a new order" makes.
+    // answer. A basket with something in it goes with the match, so GRIDGO
+    // holds this product to the basket's one date and can add it to a shop
+    // group (gridgo-api#117); an empty or unstarted one does not.
     const { cart: liveCart } = useCart.getState();
     // Re-ranked to distance first with nowhere to measure from: GRIDGO would
     // refuse, so go straight to the address rather than waiting to be told.
@@ -126,7 +132,10 @@ export default function MatchScreen() {
       const request = takeMatch(
         withJobRanking(
           withJobFulfilment(
-            { subcategoryCode: subcategory, deadline },
+            {
+              subcategoryCode: subcategory,
+              ...basketMatchContext(liveCart, deadline, targetGroupId),
+            },
             liveCart?.defaultDropoff ?? null,
           ),
         ),
@@ -166,7 +175,7 @@ export default function MatchScreen() {
     // `dropoffKey` is the pin, not the object: a cart hydrate that keeps the
     // same coordinates must not look like a new drop-off. `rankingKey` is read
     // through `withJobRanking`; it is here because a changed order rematches.
-  }, [subcategory, dropoffKey, deadline, rankingKey]);
+  }, [subcategory, dropoffKey, deadline, rankingKey, targetGroupId]);
 
   // Deliberately not `useFocusEffect`: coming back from a listing sheet must
   // not re-run the match and quietly move the client to a different shop.
@@ -366,6 +375,30 @@ export default function MatchScreen() {
     );
   }
 
+  /*
+    The shop behind this group does not print it, or cannot make the order's
+    date. Not a dead end: any other shop can still take it, as its own group.
+  */
+  if (error === "match_not_found" && targetGroupId) {
+    return (
+      <Screen edges={["bottom"]}>
+        <View className="gg-screen gg-page justify-center">
+          <EmptyState
+            title={`${targetLabel ?? "This shop"} cannot print ${subcategoryName.toLowerCase()}`}
+            body="GRIDGO can look at every shop instead. A different shop joins your order as its own group, with its own delivery fee."
+            actionLabel="Look at every shop"
+            onAction={() => {
+              clearMatchPrefetch();
+              useBasketGroupTarget.getState().clear();
+            }}
+            altActionLabel="Choose something else"
+            onAltAction={() => router.dismissTo("/request/category")}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
   if (error === "match_not_found") {
     return (
       <Screen edges={["bottom"]}>
@@ -432,6 +465,16 @@ export default function MatchScreen() {
         */}
         <MatchRankingRow ranking={matchedRanking(match, asked)} onChange={changeRanking} />
 
+        {targetGroupId && targetLabel ? (
+          <GroupTargetNote
+            label={targetLabel}
+            onWiden={() => {
+              clearMatchPrefetch();
+              useBasketGroupTarget.getState().clear();
+            }}
+          />
+        ) : null}
+
         <View className="mt-4">
           <TopPickCard
             match={match}
@@ -496,5 +539,30 @@ export default function MatchScreen() {
         onCancel={() => setFarListing(null)}
       />
     </Screen>
+  );
+}
+
+/**
+ * Said out loud while the match is held to one shop group: the client asked
+ * for more from Shop A, and that is the only shop on this screen. The way out
+ * is right beside it, so a target nobody remembers setting cannot trap them.
+ */
+function GroupTargetNote({ label, onWiden }: { label: string; onWiden: () => void }) {
+  return (
+    <View className="gg-panel mt-4 gap-2" accessible accessibilityLabel={`Adding to ${label}. No extra delivery fee.`}>
+      <Text className="text-body font-medium text-text-primary">Adding to {label}</Text>
+      <Text className="text-caption text-text-muted">
+        Only {label}&apos;s listings are shown, so this rides with it at no extra delivery fee.
+      </Text>
+      <Pressable
+        onPress={onWiden}
+        accessibilityRole="button"
+        accessibilityLabel="Look at every shop instead"
+        className="gg-touch self-start justify-center"
+        style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+      >
+        <Text className="text-button text-text-primary underline">Look at every shop instead</Text>
+      </Pressable>
+    </View>
   );
 }

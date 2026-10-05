@@ -6,6 +6,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-rou
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Screen } from "@/components/Screen";
 
+import { BasketGroupsCard } from "@/components/BasketGroupsCard";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
@@ -93,6 +94,8 @@ export default function OrderDetailScreen() {
   const [taxonomy, setTaxonomy] = useState<Taxonomy>(EMPTY_TAXONOMY);
   /** Null until read, and after a failed read: no entry is offered blind. */
   const [refunds, setRefunds] = useState<api.Refund[] | null>(null);
+  /** The multi-shop basket this order is one group of, when it is one. */
+  const [basket, setBasket] = useState<api.Basket | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadSequence = useRef(0);
@@ -115,6 +118,12 @@ export default function OrderDetailScreen() {
         api.listOrderRefunds(id).catch(() => null),
       ]);
       if (sequence !== loadSequence.current) return;
+      // A failed basket read costs the other groups' states, never the order.
+      const group = current.basketId
+        ? await api.getBasket(current.basketId).catch(() => null)
+        : null;
+      if (sequence !== loadSequence.current) return;
+      setBasket(group);
       setOrder(current);
       setProduct(catalog.find((entry) => entry.id === current.productId) ?? null);
       setZones(zoneList);
@@ -211,8 +220,14 @@ export default function OrderDetailScreen() {
   const family = product?.family ?? null;
   const materialLabel = taxonomyLabel(taxonomy, order.material);
   const finishLabel = order.finish ? taxonomyLabel(taxonomy, order.finish) : null;
-  const payable = payableInstallment(order);
-  const underReview = installmentUnderReview(order);
+  /*
+    A cancelled shop group of a multi-shop order is out of the basket's one
+    payment: the other groups carry it, so this group asks nothing about it
+    and its share is settled on its own.
+  */
+  const groupStopped = Boolean(order.basketId) && order.state === "cancelled";
+  const payable = groupStopped ? null : payableInstallment(order);
+  const underReview = groupStopped ? null : installmentUnderReview(order);
   const showsOwnPreview = isProofApprovalState(order.state);
   /*
     A closed job tells its own story in the card below the title: how it
@@ -294,6 +309,19 @@ export default function OrderDetailScreen() {
         </View>
 
         {/*
+          One of several shops in a multi-shop order: every card below is this
+          group's own — its progress, rider, action and money — and this is
+          the way to the others (gridgo-api#117).
+        */}
+        {order.basketId ? (
+          <BasketGroupsCard
+            order={order}
+            basket={basket}
+            onSelect={(groupOrderId) => router.setParams({ id: groupOrderId })}
+          />
+        ) : null}
+
+        {/*
           The latest thing that happened leads, and opens onto the whole story
           with the shop's photos (gridgo-client#129). The one-line wait is said
           here only when nothing below is already saying it: an action zone
@@ -303,7 +331,7 @@ export default function OrderDetailScreen() {
         <LatestProgressCard
           order={order}
           note={
-            !nextAction && !underReview && !finished && !shopDecision
+            !nextAction && !underReview && !finished && !shopDecision && !groupStopped
               ? (waitingOn ?? "This job is in progress.")
               : null
           }
@@ -340,9 +368,14 @@ export default function OrderDetailScreen() {
             ) : actionZone === "correction" ? (
               <CorrectionCard order={order} onUpdated={applyOrderUpdate} />
             ) : actionZone === "pay" && payable ? (
-              <PaymentPanel order={order} installment={payable} onSubmitted={applyOrderUpdate} />
+              <PaymentPanel
+                order={order}
+                installment={payable}
+                basket={basket}
+                onSubmitted={applyOrderUpdate}
+              />
             ) : actionZone === "review" && underReview ? (
-              <PaymentUnderReviewCard order={order} installment={underReview} />
+              <PaymentUnderReviewCard order={order} installment={underReview} basket={basket} />
             ) : actionZone === "rate" ? (
               /*
                 The last thing asked, and only once. It sits in the same one

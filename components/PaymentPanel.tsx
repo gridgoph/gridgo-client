@@ -13,21 +13,30 @@ import { QrPaySheet, paymentQrFromSettings } from "@/components/QrPaySheet";
 import { SpecRow } from "@/components/SpecRow";
 import { usePaymentProof } from "@/hooks/usePaymentProof";
 import * as api from "@/lib/api";
-import { formatPhp, type InstallmentCode, type Order } from "@/lib/api";
+import { formatPhp, type Basket, type InstallmentCode, type Order } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { afterPayCopy, checkPaymentReference, downpaymentPercentOf, installmentLabel, MANUAL_CONFIRMATION_NOTICE, paymentInstallment, paysInFull, payInstruction } from "@/lib/payment";
 import { liveGeneration } from "@/lib/live";
 import { OCR_READING, OCR_UNREADABLE } from "@/lib/receiptOcr";
 import { useOrderPayment } from "@/store/checkoutPayment";
 
-type Props = { order: Order; installment: InstallmentCode; onSubmitted: (order: Order) => void };
+type Props = {
+  order: Order;
+  installment: InstallmentCode;
+  /**
+   * The multi-shop basket this order is a group of. Its one payment covers
+   * every group and is sent to the basket, never to one group's order.
+   */
+  basket?: Basket | null;
+  onSubmitted: (order: Order) => void;
+};
 
 /** A new order/installment gets fresh local confirmation state. */
 export function PaymentPanel(props: Props) {
   return <PaymentForm key={`${props.order.id}:${props.installment}`} {...props} />;
 }
 
-function PaymentForm({ order, installment, onSubmitted }: Props) {
+function PaymentForm({ order, installment, basket, onSubmitted }: Props) {
   const owner = `order:${order.id}:${installment}`;
   const proof = usePaymentProof(owner, useOrderPayment);
   // A stacked order screen can regain focus after another order owned the draft.
@@ -50,7 +59,9 @@ function PaymentForm({ order, installment, onSubmitted }: Props) {
   useEffect(() => { void loadSettings(); }, [loadSettings]);
 
   const record = paymentInstallment(order, installment);
-  const dueMinor = record?.amountMinor ?? null;
+  // One transfer for the whole multi-shop basket: its total, not this group's.
+  const basketId = order.basketId ?? null;
+  const dueMinor = basketId ? (basket?.totalMinor ?? null) : (record?.amountMinor ?? null);
   const inFull = paysInFull(order);
   const check = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
@@ -65,7 +76,11 @@ function PaymentForm({ order, installment, onSubmitted }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const updated = await api.submitPayment(order.id, installment, reference.trim(), proof.state.fileId);
+      const updated = basketId
+        ? await api
+            .submitBasketPayment(basketId, reference.trim(), proof.state.fileId)
+            .then(() => api.getOrder(order.id))
+        : await api.submitPayment(order.id, installment, reference.trim(), proof.state.fileId);
       const current = useOrderPayment.getState();
       if (liveGeneration() !== sessionGeneration || current.cartId !== owner || current.generation !== receiptGeneration) return;
       current.reset();
@@ -86,6 +101,11 @@ function PaymentForm({ order, installment, onSubmitted }: Props) {
         <Text className="text-body text-text-secondary">{payInstruction(installment)}</Text>
         <Text className="text-display text-text-primary">{dueMinor !== null ? formatPhp(dueMinor) : "Amount unavailable"}</Text>
         <Text className="text-body text-text-secondary">{afterPayCopy(installment)}</Text>
+        {basketId && basket ? (
+          <Text className="text-body text-text-secondary">
+            One payment for all {basket.groups.length} shops in this order.
+          </Text>
+        ) : null}
       </View>
 
       {record?.rejectionReason ? <ErrorState label="Payment needs correction" body={`${record.rejectionReason} Check the existing transfer before paying again.`} /> : null}
@@ -130,11 +150,17 @@ function PaymentForm({ order, installment, onSubmitted }: Props) {
 export function PaymentUnderReviewCard({
   order,
   installment,
+  basket,
 }: {
   order: Order;
   installment: InstallmentCode;
+  /** A multi-shop basket's one payment: its total is what was sent. */
+  basket?: Basket | null;
 }) {
   const record = paymentInstallment(order, installment);
+  const sentMinor = order.basketId
+    ? (basket?.totalMinor ?? null)
+    : (record?.amountMinor ?? null);
 
   return (
     <View className="gg-card gap-4">
@@ -149,8 +175,11 @@ export function PaymentUnderReviewCard({
 
       <View className="gg-panel">
         <SpecRow label={installmentLabel(installment, order)} value={
-          record?.amountMinor != null ? formatPhp(record.amountMinor) : "—"
+          sentMinor != null ? formatPhp(sentMinor) : "—"
         } />
+        {order.basketId && basket ? (
+          <SpecRow label="Covers" value={`All ${basket.groups.length} shops in this order`} />
+        ) : null}
         <SpecRow label="Reference you sent" value={record?.reference || "—"} />
       </View>
 
