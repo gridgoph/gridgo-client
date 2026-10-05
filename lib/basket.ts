@@ -19,6 +19,7 @@
  */
 
 import type { Cart, CartLineRecord, DistanceZone, PlatformSettings } from "@/lib/api";
+import { lineGroupKey } from "@/lib/basketGroups";
 import { lineHasArtwork } from "@/lib/designLink";
 import { deliveryFeeForDistance, zoneForDistance } from "@/lib/distanceZone";
 import { clientAmountMinor, roundBps } from "@/lib/gridgoPrice";
@@ -29,6 +30,7 @@ export { roundBps } from "@/lib/gridgoPrice";
 export { deliveryFeeForDistance } from "@/lib/distanceZone";
 
 export type PrintRun = {
+  /** The shop's id, or the group's on a multi-shop basket (`lineGroupKey`). */
   supplierId: string;
   /** What the client calls this run. Never a shop. */
   runLabel: string;
@@ -80,9 +82,10 @@ export function clientLineAmountMinor(
 export function printRuns(lines: CartLineRecord[], serviceFeeRateBps = 0): PrintRun[] {
   const groups = new Map<string, CartLineRecord[]>();
   for (const line of lines) {
-    const existing = groups.get(line.supplierId);
+    const key = lineGroupKey(line);
+    const existing = groups.get(key);
     if (existing) existing.push(line);
-    else groups.set(line.supplierId, [line]);
+    else groups.set(key, [line]);
   }
   return [...groups.entries()].map(([supplierId, runLines], index) => ({
     supplierId,

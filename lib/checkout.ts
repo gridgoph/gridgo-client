@@ -171,6 +171,7 @@ export type PlaceOrderBlocker =
   | "price"
   | "artwork"
   | "address"
+  | "date"
   | "schedule"
   | "reference"
   | "proof"
@@ -194,6 +195,7 @@ export function placeOrderBlockers({
   linesUnpriced = 0,
   linesMissingArtwork,
   linesMissingDropoff,
+  missingBasketDate = false,
   referenceOk,
   hasProof,
   hasSettings,
@@ -203,6 +205,11 @@ export function placeOrderBlockers({
   linesUnpriced?: number;
   linesMissingArtwork: number;
   linesMissingDropoff: number;
+  /**
+   * A basket printed by several shops has no date yet. GRIDGO holds every shop
+   * to one date and refuses the checkout without it (gridgo-api#117).
+   */
+  missingBasketDate?: boolean;
   scheduledFor?: string | null;
   timing?: Timing;
   referenceOk: boolean;
@@ -214,6 +221,7 @@ export function placeOrderBlockers({
   if (linesUnpriced > 0) blockers.push("price");
   if (linesMissingArtwork > 0) blockers.push("artwork");
   if (linesMissingDropoff > 0) blockers.push("address");
+  if (missingBasketDate) blockers.push("date");
   if (!hasProof) blockers.push("proof");
   if (!referenceOk) blockers.push("reference");
   if (!hasSettings) blockers.push("settings");
@@ -234,6 +242,8 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
         : "Attach artwork to every item before you place this.";
     case "address":
       return "Set a delivery address for every item.";
+    case "date":
+      return "Choose one date for your whole order.";
     case "schedule":
       return "Pick the day and time you want it.";
     case "proof":

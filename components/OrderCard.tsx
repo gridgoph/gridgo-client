@@ -64,7 +64,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${order.title}, ${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
+        accessibilityLabel={`${order.title}, ${order.groupLabel ? `${order.groupLabel} of a multi-shop order, ` : ""}${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
         accessibilityHint={orderWaitingOn(order) ?? undefined}
         className="p-4"
       >
@@ -77,8 +77,16 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
             >
               {order.title}
             </Text>
-            <View className="mt-2 flex-row">
+            <View className="mt-2 flex-row items-center gap-2">
               <OrderReference id={order.id} />
+              {/* One shop group of a multi-shop order: its letter, never its shop. */}
+              {order.groupLabel ? (
+                <View className="gg-chip">
+                  <Text className="text-caption text-text-secondary">
+                    {order.groupLabel} · multi-shop
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <Text className="mt-1 text-caption text-text-muted" numberOfLines={1}>
               {spec}

@@ -7,11 +7,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { GridgoPrice } from "@/components/GridgoPrice";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
-import { OtherShopNotice } from "@/components/OtherShopNotice";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
@@ -65,11 +63,6 @@ import {
 } from "@/lib/matchSelection";
 import { orderFlowNow } from "@/lib/orderFlow";
 import {
-  isOtherShopRefusal,
-  otherShopExplanation,
-  startOverConfirmation,
-} from "@/lib/otherShop";
-import {
   printerCapFeet,
   printerCapLine,
   printerWidthProblem,
@@ -78,6 +71,7 @@ import {
 } from "@/lib/printerWidth";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { designLinkPhrase } from "@/lib/designLink";
+import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 
@@ -118,8 +112,6 @@ export default function ListingScreen() {
   const run = useCart((state) => state.run);
   const adopt = useCart((state) => state.adopt);
   const warmCart = useCart((state) => state.warm);
-  const startOver = useCart((state) => state.startOver);
-  const reloadCart = useCart((state) => state.load);
   const editing = lineId ? cart?.lines.find((line) => line.id === lineId) ?? null : null;
 
   const [item, setItem] = useState<CatalogItem | null>(
@@ -134,10 +126,6 @@ export default function ListingScreen() {
   const [showMissing, setShowMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  // The basket GRIDGO said is with another shop. Kept by id so the notice goes
-  // away by itself once that basket is checked out or emptied.
-  const [otherShopCart, setOtherShopCart] = useState<string | null>(null);
-  const [confirmingStartOver, setConfirmingStartOver] = useState(false);
   const loadSettings = usePlatformSettings((state) => state.load);
   useTourScreen("listing", item != null && !error);
 
@@ -310,11 +298,6 @@ export default function ListingScreen() {
     typedSize,
   );
 
-  // A product matched to a different shop from the basket's. Only while that
-  // basket still has something in it: checked out or emptied, adding works.
-  const otherShop =
-    otherShopCart != null && !editing && (cart == null || (cart.id === otherShopCart && cart.lines.length > 0));
-
   // A listing picked on the match goes in by its pick token, so GRIDGO keeps
   // the job's date on the line through checkout. A basket row reopened to
   // change it has nothing to pick.
@@ -377,14 +360,6 @@ export default function ListingScreen() {
       const updated = await run((cartId) => api.addCartLine(cartId, lineInput()));
       leaveForArtwork(updated);
     } catch (e) {
-      // One order goes to one shop. That is a rule with two ways on, not a
-      // failure — and never a connection problem (issue report B057A39C).
-      if (!editing && isOtherShopRefusal(e)) {
-        setOtherShopCart(useCart.getState().cartId);
-        // Re-read the basket so the notice can name what is in it.
-        void reloadCart();
-        return;
-      }
       if (staleMatch(e)) return;
       // Only a request that never reached GRIDGO is worded as a connection
       // problem, and `userFacingError` says that itself. An answer GRIDGO did
@@ -404,32 +379,10 @@ export default function ListingScreen() {
     }
     setBusy(false);
     adopt(updated);
+    // Added: an "add more from Shop A" errand is done.
+    useBasketGroupTarget.getState().clear();
     router.replace({ pathname: "/request/artwork", params: { lineId: added.id } });
   };
-
-  // Confirmed: replace the basket with one holding only this. The new basket
-  // is filled before the old one is let go, so a refusal here loses nothing.
-  const startNewOrder = async () => {
-    if (busy) return;
-    setBusy(true);
-    setSaveError(null);
-    try {
-      const updated = await startOver((cartId) => api.addCartLine(cartId, lineInput()));
-      setConfirmingStartOver(false);
-      setOtherShopCart(null);
-      leaveForArtwork(updated);
-    } catch (e) {
-      setConfirmingStartOver(false);
-      if (staleMatch(e)) return;
-      setSaveError(
-        userFacingError(e, "GRIDGO could not start a new order with this. Your order is unchanged. Try again."),
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const startOverQuestion = startOverConfirmation(cart?.lines ?? []);
 
   return (
     <Screen edges={["bottom"]}>
@@ -694,44 +647,33 @@ export default function ListingScreen() {
           />
         </View>
 
-        {otherShop ? (
-          <OtherShopNotice
-            explanation={otherShopExplanation(cart?.lines ?? [])}
-            busy={busy}
-            onCheckout={() => router.push("/checkout")}
-            onStartOver={() => setConfirmingStartOver(true)}
-          />
-        ) : (
-          <Pressable
-            onPress={() => void add()}
-            disabled={busy}
-            accessibilityRole="button"
-            accessibilityLabel={editing ? "Save this change" : "Add to my order"}
-            accessibilityState={{ disabled: busy }}
-            className={busy ? "gg-btn-primary gg-disabled mt-3" : "gg-btn-primary mt-3"}
-            style={({ pressed }) => (pressed && !busy ? { opacity: 0.9 } : undefined)}
-          >
-            <Text className="text-button text-action-yellow-on">
-              {busy ? "Saving…" : editing ? "Save this change" : "Add to my order"}
-            </Text>
-          </Pressable>
-        )}
-
-        {otherShop && !saveError ? null : (
-          <Text
-            className={
-              saveError
-                ? "mt-2 text-center text-caption text-error"
-                : "mt-2 text-center text-caption text-text-muted"
-            }
-          >
-            {saveError
-              ? saveError
-              : showMissing && missing
-                ? `Pick a ${missing.name.toLowerCase()} first.`
-                : "Delivery is added at checkout."}
+        <Pressable
+          onPress={() => void add()}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={editing ? "Save this change" : "Add to my order"}
+          accessibilityState={{ disabled: busy }}
+          className={busy ? "gg-btn-primary gg-disabled mt-3" : "gg-btn-primary mt-3"}
+          style={({ pressed }) => (pressed && !busy ? { opacity: 0.9 } : undefined)}
+        >
+          <Text className="text-button text-action-yellow-on">
+            {busy ? "Saving…" : editing ? "Save this change" : "Add to my order"}
           </Text>
-        )}
+        </Pressable>
+
+        <Text
+          className={
+            saveError
+              ? "mt-2 text-center text-caption text-error"
+              : "mt-2 text-center text-caption text-text-muted"
+          }
+        >
+          {saveError
+            ? saveError
+            : showMissing && missing
+              ? `Pick a ${missing.name.toLowerCase()} first.`
+              : "Delivery is added at checkout."}
+        </Text>
         {saveError === STALE_MATCH_MESSAGE ? (
           <View className="mt-2">
             <SecondaryButton label="Back to the match" onPress={() => router.back()} />
@@ -739,17 +681,6 @@ export default function ListingScreen() {
         ) : null}
       </TourTarget>
 
-      <ConfirmDialog
-        visible={confirmingStartOver}
-        question={startOverQuestion.question}
-        body={startOverQuestion.body}
-        confirmLabel="Remove and start new"
-        cancelLabel="Keep my order"
-        tone="destructive"
-        busy={busy}
-        onConfirm={() => void startNewOrder()}
-        onCancel={() => setConfirmingStartOver(false)}
-      />
     </Screen>
   );
 }

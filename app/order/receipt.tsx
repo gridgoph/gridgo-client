@@ -11,6 +11,7 @@ import { PrintedReceipt } from "@/components/PrintedReceipt";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
+import { GroupPlate } from "@/components/ShopGroupSection";
 import { SkeletonLine, SkeletonList } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -28,6 +29,7 @@ import {
   RECEIPT_HEADLINE,
   receiptFromInvoice,
   receiptFromOrder,
+  withGroupStanding,
   type ReceiptView,
 } from "@/lib/receipt";
 import { formatTimelineStamp } from "@/lib/relativeTime";
@@ -81,9 +83,16 @@ export default function OrderReceiptScreen() {
         api.getOrder(orderId),
       ]);
       if (sequence !== loadSequence.current) return;
-      const next = invoiceResult
+      // A multi-shop receipt marks any group that stopped since it was paid.
+      // A failed basket read costs only that mark, never the receipt.
+      const basket = invoiceResult?.groups && current.basketId
+        ? await api.getBasket(current.basketId).catch(() => null)
+        : null;
+      if (sequence !== loadSequence.current) return;
+      const built = invoiceResult
         ? receiptFromInvoice(invoiceResult, current)
         : receiptFromOrder(current);
+      const next = built && basket ? withGroupStanding(built, basket.groups) : built;
       if (!next) {
         setView(null);
         setOrder(current);
@@ -152,7 +161,7 @@ export default function OrderReceiptScreen() {
       <Screen edges={["bottom"]}>
         {headerEscape}
         <PrintedReceipt
-          view={view}
+          view={withFeeRate(view, order?.serviceFeeRateBps ?? settings?.serviceFeeRateBps)}
           showServiceFee={serviceFeeVisibleToClient(settings)}
           thanks={<OrderPlacedThanks />}
           actions={
@@ -203,7 +212,38 @@ export default function OrderReceiptScreen() {
           )}
         </View>
 
-        {view.lines.length ? (
+        {view.groups ? (
+          <View className="gap-3">
+            <Text className="text-overline text-text-muted">WHAT WAS ORDERED</Text>
+            {view.groups.map((group) => (
+              <View key={group.orderId} className="gg-card" testID={`receipt-group-${group.letter}`}>
+                <View className="flex-row items-center gap-3 pb-2">
+                  <GroupPlate letter={group.letter} size="sm" />
+                  <Text className="min-w-0 flex-1 text-body-lg font-medium text-text-primary">
+                    {group.label}
+                  </Text>
+                  <Text className="text-body font-medium text-text-primary">
+                    {formatPhp(group.totalMinor)}
+                  </Text>
+                </View>
+                {group.stopped ? (
+                  <Text className="pb-2 text-caption text-text-secondary">{group.stopped}</Text>
+                ) : null}
+                {group.lines.map((line) => (
+                  <SpecRow
+                    key={line.id}
+                    label={line.quantity > 1 ? `${line.name} · ${line.quantity}` : line.name}
+                    value={line.amountLabel}
+                  />
+                ))}
+                <SpecRow
+                  label="Delivery"
+                  value={group.deliveryFeeMinor === 0 ? "None" : formatPhp(group.deliveryFeeMinor)}
+                />
+              </View>
+            ))}
+          </View>
+        ) : view.lines.length ? (
           <View className="gap-3">
             <Text className="text-overline text-text-muted">WHAT WAS ORDERED</Text>
             <View className="gg-card">
@@ -223,7 +263,13 @@ export default function OrderReceiptScreen() {
           <View className="gg-card">
             <SpecRow label="Printing" value={formatPhp(view.money.printingMinor)} />
             <SpecRow
-              label="Delivery"
+              label={
+                view.money.pickupFeeMinor
+                  ? "Pick-up fee, once per order"
+                  : view.groups
+                    ? `Delivery · ${view.groups.length} shops`
+                    : "Delivery"
+              }
               value={
                 view.money.deliveryFeeMinor === 0
                   ? "None — you collect"
@@ -231,7 +277,15 @@ export default function OrderReceiptScreen() {
               }
             />
             {serviceFeeVisibleToClient(settings) ? (
-              <ServiceFeeRow explainOnly rateBps={view.money.serviceFeeRateBps} />
+              <ServiceFeeRow
+                explainOnly
+                rateBps={
+                  view.money.serviceFeeRateBps ??
+                  order?.serviceFeeRateBps ??
+                  settings?.serviceFeeRateBps ??
+                  null
+                }
+              />
             ) : null}
             <View className="flex-row items-baseline justify-between gap-4 pt-3">
               <Text className="text-body-lg text-text-secondary">Total</Text>
@@ -270,6 +324,16 @@ export default function OrderReceiptScreen() {
       </ScrollView>
     </Screen>
   );
+}
+
+/**
+ * A multi-shop receipt withholds the fee rate from a client (the figures carry
+ * the fee inside them), so the row naming it borrows the order's snapshotted
+ * rate — or, on the moment of checkout, the live one it was priced at.
+ */
+function withFeeRate(view: ReceiptView | null, rateBps: number | null | undefined): ReceiptView | null {
+  if (!view || view.money.serviceFeeRateBps != null || rateBps == null) return view;
+  return { ...view, money: { ...view.money, serviceFeeRateBps: rateBps } };
 }
 
 /**

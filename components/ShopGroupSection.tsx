@@ -1,0 +1,142 @@
+import { Plus } from "lucide-react-native";
+import { type ReactNode } from "react";
+import { Pressable, Text, View } from "react-native";
+
+import { useThemeColors } from "@/hooks/useTheme";
+import { formatPhp } from "@/lib/api";
+import { addMoreFromLabel, type ShopGroupView } from "@/lib/basketGroups";
+import { listingZoneLine } from "@/lib/distanceZone";
+
+/**
+ * The letter a shop group goes by, set as a plate.
+ *
+ * GRIDGO names groups "Shop A", "Shop B" and never by who the shop is, so the
+ * letter is the group's whole identity on every screen — checkout, the order
+ * and the receipt draw the same plate, and a client learns "B" once. Ink on a
+ * quiet panel, never yellow: a group is a thing to tell apart, not to press.
+ */
+export function GroupPlate({ letter, size = "md" }: { letter: string; size?: "sm" | "md" }) {
+  return (
+    <View
+      aria-hidden
+      className={
+        size === "sm"
+          ? "h-7 w-7 items-center justify-center rounded-field border border-outline bg-surface-variant"
+          : "h-10 w-10 items-center justify-center rounded-field border border-outline bg-surface-variant"
+      }
+    >
+      <Text
+        className={
+          size === "sm"
+            ? "text-caption font-bold text-text-primary"
+            : "text-h3 font-bold text-text-primary"
+        }
+      >
+        {letter}
+      </Text>
+    </View>
+  );
+}
+
+type Props = {
+  group: ShopGroupView;
+  /** Collected at GRIDGO Office rather than delivered. */
+  pickup: boolean;
+  /**
+   * A hub pick-up fee is charged once for the whole order. Each group's share
+   * is not a charge of its own, so the group says so instead of a figure.
+   */
+  sharedPickupFee?: boolean;
+  busy: boolean;
+  /** A hairline above the group, to part it from the one before. */
+  divided?: boolean;
+  /** The group's basket lines, drawn by checkout. */
+  children: ReactNode;
+  onAddMore: () => void;
+};
+
+/**
+ * One shop's share of a multi-shop basket on checkout (gridgo-api#117).
+ *
+ * Plate and label, what the group's items come to, its lines, then its own
+ * delivery fee — each shop delivers on its own, so each has one — and the way
+ * to add more from the same shop, which rides with it at no extra delivery fee.
+ */
+export function ShopGroupSection({
+  group,
+  pickup,
+  sharedPickupFee = false,
+  busy,
+  divided = false,
+  children,
+  onAddMore,
+}: Props) {
+  const colors = useThemeColors();
+  const count = group.lines.length;
+  const zone = listingZoneLine({
+    distanceZone: group.zone,
+    distanceKm: group.distanceKm ?? undefined,
+  });
+
+  return (
+    <View
+      className={divided ? "gap-3 border-t border-outline pt-6" : "gap-3"}
+      testID={`shop-group-${group.letter}`}
+    >
+      <View
+        className="flex-row items-center gap-3"
+        accessible
+        accessibilityRole="header"
+        accessibilityLabel={`${group.label}. ${count === 1 ? "1 item" : `${count} items`}. ${
+          group.itemsMinor == null ? "Price not yet known" : formatPhp(group.itemsMinor)
+        }`}
+      >
+        <GroupPlate letter={group.letter} />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text className="text-body-lg font-medium text-text-primary">{group.label}</Text>
+          <Text className="text-caption text-text-muted">
+            {count === 1 ? "1 item" : `${count} items`}
+          </Text>
+        </View>
+        <Text className="text-body text-text-secondary">
+          {group.itemsMinor == null ? "Not yet" : formatPhp(group.itemsMinor)}
+        </Text>
+      </View>
+
+      {children}
+
+      <View className="gg-panel flex-row items-baseline justify-between gap-3">
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text className="text-body text-text-secondary">
+            {pickup ? "Brought to GRIDGO Office" : `Delivery from ${group.label}`}
+          </Text>
+          {!pickup && zone ? <Text className="text-caption text-text-muted">{zone}</Text> : null}
+        </View>
+        <Text className="text-body font-medium text-text-primary">
+          {pickup && sharedPickupFee
+            ? "In the one pick-up fee"
+            : group.deliveryFeeMinor == null
+              ? "Set with your address"
+              : group.deliveryFeeMinor === 0
+                ? pickup
+                  ? "No charge"
+                  : formatPhp(0)
+                : formatPhp(group.deliveryFeeMinor)}
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={onAddMore}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={`${addMoreFromLabel(group.label)}. No extra delivery fee.`}
+        accessibilityState={{ disabled: busy }}
+        className={busy ? "gg-btn-secondary gg-disabled" : "gg-btn-secondary"}
+        style={({ pressed }) => (pressed && !busy ? { opacity: 0.85 } : undefined)}
+      >
+        <Plus size={16} color={colors.textPrimary} strokeWidth={2.5} aria-hidden />
+        <Text className="text-button text-text-primary">{addMoreFromLabel(group.label)}</Text>
+      </Pressable>
+    </View>
+  );
+}

@@ -16,6 +16,7 @@ import {
   type ProductCategory,
   type ProductSubcategory,
 } from "@/lib/productCategories";
+import { useBasketGroupTarget } from "@/store/basketGroup";
 
 /**
  * The front of the print request: what are you printing?
@@ -41,7 +42,14 @@ export default function ChooseCategoryScreen() {
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   // Home's dropdown hands its query over through "See all".
-  const { q } = useLocalSearchParams<{ q?: string }>();
+  const { q, forGroup } = useLocalSearchParams<{
+    q?: string;
+    /** Set by checkout's "Add more from Shop A"; anything else starts afresh. */
+    forGroup?: string;
+  }>();
+  useEffect(() => {
+    if (!forGroup) useBasketGroupTarget.getState().clear();
+  }, [forGroup]);
   const [query, setQuery] = useState(() => (typeof q === "string" ? q : ""));
   const [focused, setFocused] = useState(false);
   useTourScreen("pick");
