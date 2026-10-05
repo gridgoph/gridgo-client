@@ -480,3 +480,68 @@ describe("timelineRows", () => {
     expect(rows[1]).toMatchObject({ kind: "entry", time: null });
   });
 });
+
+describe("when the shop cannot carry on", () => {
+  it("draws a shop that could not take the order as a choice the client owes", () => {
+    const view = presentNotification(
+      note({
+        title: "Order fulfilment update",
+        body: "The original shop could not fulfil your order. A vetted replacement is available. Accept the revised date or choose a full refund.",
+        type: "shop_recovery",
+        orderId: "ord_1",
+        orderState: "production",
+      }),
+    );
+    expect(view.title).toBe("Your shop could not take this order");
+    expect(view.lane).toBe("need_you");
+    expect(view.callout?.title).toBe("Choose the new shop or a refund");
+    expect(view.hint).toBe("Opens this job");
+  });
+
+  it("asks for an answer to the shop's new date within the window", () => {
+    const view = presentNotification(
+      note({
+        title: "Order deadline request",
+        body: "A new production deadline needs the client’s answer within 24 hours.",
+        type: "order_reschedule_requested",
+        orderId: "ord_1",
+        orderState: "production",
+      }),
+    );
+    expect(view.title).toBe("Your shop asked for more time");
+    expect(view.body).not.toMatch(/the client/i);
+    expect(view.lane).toBe("need_you");
+    expect(view.callout).toEqual(expect.objectContaining({ icon: "clock", title: "Answer within 24 hours" }));
+  });
+
+  it("files an expired request as an update that says Operations will call", () => {
+    const view = presentNotification(
+      note({
+        title: "Order deadline request",
+        body: "The client did not answer within 24 hours. The original deadline still applies; Operations must follow up.",
+        type: "order_reschedule_expired",
+        orderId: "ord_1",
+        orderState: "production",
+      }),
+    );
+    expect(view.lane).toBe("update");
+    expect(view.body).toMatch(/Operations will contact you/);
+    expect(view.callout).toBeNull();
+  });
+});
+
+it("never asks for a payment on a row about a shop that dropped the job", () => {
+  const view = presentNotification(
+    note({
+      title: "Order fulfilment update",
+      body: "The shop cannot fulfil this order. Operations is reviewing the next step.",
+      type: "shop_recovery",
+      orderId: "ord_1",
+      orderState: "production",
+      paymentAction: { installment: "final_online", status: "due", amountMinor: 111250 },
+    }),
+  );
+  expect(view.callout).toBeNull();
+  expect(view.lane).toBe("update");
+  expect(view.hint).toBe("Opens this job");
+});

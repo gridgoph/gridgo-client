@@ -23,6 +23,8 @@ import { LatestProgressCard } from "@/components/LatestProgressCard";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
 import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
+import { RescheduleCard } from "@/components/RescheduleCard";
+import { ShopRecoveryCard } from "@/components/ShopRecoveryCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ReadyTime } from "@/components/ReadyTime";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -61,6 +63,8 @@ import { orderReference } from "@/lib/orderReference";
 import { artworkSummary, paymentSummary, specificationsSummary } from "@/lib/orderSections";
 import { canRate } from "@/lib/rating";
 import { currentRefund, refundEntry } from "@/lib/refunds";
+import { rescheduleView } from "@/lib/reschedule";
+import { shopRecoveryView } from "@/lib/shopRecovery";
 import { printingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { describeQuantity } from "@/lib/quantity";
@@ -231,11 +235,22 @@ export default function OrderDetailScreen() {
     issue window all wait on Operations' decision, so the refund is the whole
     action zone — and the one thing on screen that says why nothing moves.
   */
+  /*
+    A shop that could not take the job, or asked for more time, stops it on
+    the client's decision (gridgo-supplier#101/#102). That decision is the
+    action zone until it is made; once a refund is chosen, the refund is.
+  */
+  const recovery = shopRecoveryView(order);
+  const reschedule = recovery ? null : rescheduleView(order);
   const actionZone = order.refundHold && existingRefund
     ? "refund"
     : order.refundHold
       ? null
-      : isProofApprovalState(order.state)
+      : recovery
+        ? "recovery"
+        : reschedule
+          ? "reschedule"
+          : isProofApprovalState(order.state)
     ? "proof"
     : isClientCorrectionState(order.state)
       ? "correction"
@@ -261,6 +276,8 @@ export default function OrderDetailScreen() {
     <DesignLinkRow key={`${itemName}:${link.formatCode}:${link.url}`} link={link} />
   ));
   const openChat = () => router.push("/chat");
+  /** These zones say their own wait, and offer their own refund. */
+  const shopDecision = actionZone === "refund" || actionZone === "recovery" || actionZone === "reschedule";
 
   return (
     /*
@@ -285,7 +302,7 @@ export default function OrderDetailScreen() {
         <LatestProgressCard
           order={order}
           note={
-            !nextAction && !underReview && !finished && actionZone !== "refund"
+            !nextAction && !underReview && !finished && !shopDecision
               ? (waitingOn ?? "This job is in progress.")
               : null
           }
@@ -301,11 +318,15 @@ export default function OrderDetailScreen() {
         {/* One action zone at a time — the single yellow control lives here. */}
         {actionZone ? (
           <Animated.View
-            key={`${order.state}:${actionZone}`}
+            key={`${order.state}:${actionZone}:${recovery?.kind ?? reschedule?.kind ?? ""}`}
             entering={reducedMotion ? undefined : FadeIn.duration(200)}
           >
             {actionZone === "refund" && existingRefund ? (
               <RefundOrderCard refund={existingRefund} onOpen={openRefund} />
+            ) : actionZone === "recovery" && recovery ? (
+              <ShopRecoveryCard order={order} view={recovery} onChanged={() => void load()} />
+            ) : actionZone === "reschedule" && reschedule ? (
+              <RescheduleCard order={order} view={reschedule} onChanged={() => void load()} />
             ) : actionZone === "proof" ? (
               <ProofDecision
                 order={order}
@@ -457,7 +478,7 @@ export default function OrderDetailScreen() {
           way to Operations without hunting for it.
         */}
         <View className="gap-3">
-          {refund?.kind === "eligible" ? (
+          {refund?.kind === "eligible" && !shopDecision ? (
             <RefundEntryRow
               entry={refund}
               onRequest={() =>

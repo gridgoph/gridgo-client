@@ -4,6 +4,12 @@ import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
 import { refundNotificationCopy } from "@/lib/refunds";
 import { formatTimelineStamp } from "@/lib/relativeTime";
+import { rescheduleNotificationCopy, rescheduleNotificationNeedsYou } from "@/lib/reschedule";
+import {
+  SHOP_RECOVERY_NOTIFICATION_TYPE,
+  shopRecoveryNotificationCopy,
+  shopRecoveryNotificationNeedsYou,
+} from "@/lib/shopRecovery";
 import type { OrderStatusTone } from "@/lib/orderState";
 import {
   fulfilmentRailKind,
@@ -208,6 +214,13 @@ function receiptReadyCopy(showServiceFee: boolean): { title: string; body: strin
  * the price notice is still the newest row while the job is on the press, and
  * telling that client to pay would be a callout nobody can act on.
  */
+const SHOP_CHOICE_CALLOUT: NotificationCallout = {
+  tone: "info",
+  icon: "square-pen",
+  title: "Choose the new shop or a refund",
+  detail: "Open the order to decide.",
+};
+
 const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCallout }> = {
   order_client_correction: {
     states: ["client_correction"],
@@ -236,6 +249,25 @@ const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCal
       detail: "Production starts once Operations confirms your payment.",
     },
   },
+  // The shop's request leaves the order in production; answering it writes a
+  // newer row, so the ask only stands while this row leads the job.
+  order_reschedule_requested: {
+    states: ["production", "supplier_self_qc"],
+    callout: {
+      tone: "warning",
+      icon: "clock",
+      title: "Answer within 24 hours",
+      detail: "Accept the new date or decline it from the order.",
+    },
+  },
+  order_reschedule_declined: {
+    states: ["production", "supplier_self_qc"],
+    callout: SHOP_CHOICE_CALLOUT,
+  },
+  order_reschedule_rematch_refreshed: {
+    states: ["production", "supplier_self_qc"],
+    callout: SHOP_CHOICE_CALLOUT,
+  },
   order_rate_reminder: {
     states: ["delivered", "issue_window_open", "completed", "payout_released"],
     callout: {
@@ -247,12 +279,21 @@ const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCal
   },
 };
 
+function isShopChangeRow(notification: Pick<Notification, "type">): boolean {
+  return (
+    notification.type === SHOP_RECOVERY_NOTIFICATION_TYPE ||
+    Boolean(notification.type?.startsWith("order_reschedule_"))
+  );
+}
+
 function calloutFor(
   notification: Notification,
   hold: boolean,
   collectReady: boolean,
 ): NotificationCallout | null {
-  const payment = notification.paymentAction;
+  // A shop that dropped the job, or asked for more time, holds it: the row
+  // says what to decide, never "pay" for work that is not being done.
+  const payment = isShopChangeRow(notification) ? undefined : notification.paymentAction;
   if (payment && payment.amountMinor > 0) {
     const amount = formatPhp(payment.amountMinor);
     return payment.status === "due"
@@ -285,6 +326,11 @@ function calloutFor(
       detail: "Give the name you ordered under.",
     };
   }
+  if (shopRecoveryNotificationNeedsYou(notification)) {
+    return /no replacement/i.test(notification.body)
+      ? { ...SHOP_CHOICE_CALLOUT, title: "Choose a full refund" }
+      : SHOP_CHOICE_CALLOUT;
+  }
   const asked = notification.type ? TYPE_CALLOUTS[notification.type] : undefined;
   if (!asked) return null;
   // An older record with no live state cannot be shown stale, so it keeps its ask.
@@ -298,11 +344,14 @@ export function presentNotification(
 ): PresentedNotification {
   const eventState = notification.eventState ?? notification.orderState;
   const event = notification.eventState ? { ...notification, orderState: eventState } : notification;
-  const payment = notification.paymentAction;
+  const payment = isShopChangeRow(notification) ? undefined : notification.paymentAction;
   const paymentPending = payment != null && payment.amountMinor > 0;
   const collect = isCollect(notification);
   const hold = collectionHeld(notification);
-  const refund = refundNotificationCopy(notification.type);
+  const refund =
+    refundNotificationCopy(notification.type) ??
+    shopRecoveryNotificationCopy(notification) ??
+    rescheduleNotificationCopy(notification.type);
   const overlay = refund
     ? { ...refund, hint: notification.orderId ? "Opens this job" : null }
     : notification.type === "order_rate_reminder"
@@ -324,7 +373,9 @@ export function presentNotification(
     payment?.status === "due" ||
     hold ||
     collectReady ||
-    (notification.type != null && NEED_YOU_TYPES.has(notification.type));
+    (notification.type != null && NEED_YOU_TYPES.has(notification.type)) ||
+    shopRecoveryNotificationNeedsYou(notification) ||
+    rescheduleNotificationNeedsYou(notification.type);
 
   const railKind = eventState
     ? fulfilmentRailKind(collect ? "pickup" : notification.fulfillmentMode)
