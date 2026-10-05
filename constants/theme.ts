@@ -110,6 +110,19 @@ export const colors = {
 export type ColorToken = keyof typeof colors.light;
 
 /**
+ * The handover claim slip's paper and ink — the one surface that does not
+ * switch with the theme. A QR scans as dark modules on light paper, and a
+ * code shown to a rider in daylight wants the most contrast there is. Mirrors
+ * the `slip-*` colours in `global.css`.
+ */
+export const claimSlip = {
+  paper: "#FFFFFF",
+  ink: "#000000",
+  inkMuted: "#4A4A4A",
+  rule: "#DCDCDC",
+} as const;
+
+/**
  * Type scale. Each step names the Satoshi cut it is set in — React Native
  * resolves a font by family, not by weight. Mirrors the `text-*` utilities.
  */

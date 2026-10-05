@@ -1627,6 +1627,68 @@ export async function getOrder(orderId: string): Promise<Order> {
   return result.order;
 }
 
+/**
+ * A client's paid redelivery of an unclaimed pick-up (gridgo-api#124). The API
+ * records the choice for Operations, who arrange the delivery and its cost;
+ * nothing is charged or rescheduled by the request itself.
+ */
+export type HubRedeliveryRequest = {
+  status: string;
+  costAccepted: boolean;
+  at: string;
+};
+
+/**
+ * The handover credential for one order (gridgo-api#125,
+ * `docs/HUB_HANDOVER_API.md`). Delivery orders carry only the six-digit
+ * `otp` the rider also sees. A hub pick-up adds the opaque `qrToken` — the
+ * only thing ever drawn inside the QR — and the hub snapshot and unclaimed
+ * count the reminders are counted from.
+ */
+export type OrderHandover = {
+  otp: string;
+  qrToken?: string;
+  hub?: { id: string; point?: OrderPoint; schedule: HubSchedule | null };
+  readyAt?: string | null;
+  missedDays?: number;
+  operationsRequired?: boolean;
+  redeliveryRequest?: HubRedeliveryRequest | null;
+};
+
+/**
+ * `GET /orders/:id/handover`. Null until the order is physically ready, after
+ * the handover is used, for orders from before the handover switch, and on an
+ * API that does not have the route yet (`404 not_found`).
+ */
+export async function getOrderHandover(orderId: string): Promise<OrderHandover | null> {
+  try {
+    const result = await request<{ handover: OrderHandover | null }>(
+      `/orders/${encodeURIComponent(orderId)}/handover`,
+    );
+    return result.handover ?? null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404 && error.message === "not_found") return null;
+    throw error;
+  }
+}
+
+/** `POST /orders/:id/hub-redelivery` — only after three missed hub days. */
+export async function requestHubRedelivery(orderId: string): Promise<HubRedeliveryRequest> {
+  const result = await request<{ request: HubRedeliveryRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/hub-redelivery`,
+    { method: "POST", body: JSON.stringify({ costAccepted: true }) },
+  );
+  return result.request;
+}
+
+/** `POST /orders/:id/handover/escalate` — tells Operations the codes did not match. */
+export async function escalateHandover(orderId: string, reason: string): Promise<void> {
+  await request<{ escalated: boolean }>(
+    `/orders/${encodeURIComponent(orderId)}/handover/escalate`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
 export async function createOrder(input: CreateOrderInput): Promise<Order> {
   const result = await request<{ order: Order }>("/orders", {
     method: "POST",

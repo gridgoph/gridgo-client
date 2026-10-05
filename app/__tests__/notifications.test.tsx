@@ -255,7 +255,7 @@ describe("NotificationsScreen", () => {
     expect(screen.getByText("NEEDS YOU")).toBeTruthy();
     expect(screen.getByLabelText("Stage 4 of 4: Counter")).toBeTruthy();
     expect(screen.getByText("Collect at GRIDGO Office")).toBeTruthy();
-    expect(screen.getByText("Give the name you ordered under.")).toBeTruthy();
+    expect(screen.getByText("Open the order for what to bring.")).toBeTruthy();
   });
 
   it("does not call a pickup on the way to the office a door delivery", async () => {

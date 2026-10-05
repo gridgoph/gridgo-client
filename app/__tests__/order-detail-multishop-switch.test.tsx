@@ -27,6 +27,8 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     getOrder: jest.fn(),
+    // No handover credential: an order made ready before the switch (gridgo-api#125).
+    getOrderHandover: jest.fn(async () => null),
     getBasket: jest.fn(),
     getTaxonomy: jest.fn(async () => ({ categories: [], materials: [], finishes: [] })),
     listCatalog: jest.fn(async () => []),
