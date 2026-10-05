@@ -7,6 +7,7 @@ import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { GroupPlate } from "@/components/ShopGroupSection";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
+import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
 import { orderReference } from "@/lib/orderReference";
 import {
   RECEIPT_BLURB,
@@ -99,6 +100,12 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
 
         <View className="gap-1.5">
           <SlipRow label="Printing" value={formatPhp(view.money.printingMinor)} />
+          {view.money.organizationDiscountMinor ? (
+            <SlipRow
+              label={ORGANIZATION_DISCOUNT_LABEL}
+              value={discountAmount(view.money.organizationDiscountMinor)}
+            />
+          ) : null}
           <SlipRow {...receiptFulfilmentRow(view.money, view.groups?.length ?? 0)} />
           {showServiceFee ? (
             <ServiceFeeRow explainOnly divider={false} rateBps={view.money.serviceFeeRateBps} />
@@ -181,6 +188,12 @@ function SlipGroup({ group }: { group: ReceiptGroup }) {
         label="Delivery"
         value={group.deliveryFeeMinor === 0 ? "None" : formatPhp(group.deliveryFeeMinor)}
       />
+      {group.organizationDiscountMinor ? (
+        <SlipRow
+          label={ORGANIZATION_DISCOUNT_LABEL}
+          value={discountAmount(group.organizationDiscountMinor)}
+        />
+      ) : null}
     </View>
   );
 }

@@ -15,6 +15,7 @@ import { FormScreen } from "@/components/FormScreen";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { JobCompleteCard } from "@/components/JobCompleteCard";
 import { OrderReference } from "@/components/OrderReference";
+import { OrganizationDiscountRow } from "@/components/OrganizationDiscount";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
@@ -604,6 +605,7 @@ function MoneyDetails({
     <View className="gap-3">
       <View>
         <SpecRow label="Printing" value={printing != null ? formatPhp(printing) : "—"} />
+        <OrganizationDiscountRow source={order} />
         <SpecRow
           label={pickupFee ? "Pick-up fee" : "Delivery"}
           value={

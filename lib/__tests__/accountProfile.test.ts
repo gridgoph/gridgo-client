@@ -1,25 +1,20 @@
-import { ApiError, type ClientAddress, type User } from "@/lib/api";
+import { ApiError, type User } from "@/lib/api";
 import {
   accountHeadline,
   accountInitials,
   accountPatch,
   accountProblems,
   accountSubName,
-  applyContactProblems,
-  applySteps,
-  applyStepProblem,
-  businessApplyInput,
   canApplyAsBusiness,
   draftFromUser,
   hasAccountChanges,
   mobileNumberProblem,
   saveAccount,
-  submitBusinessApply,
 } from "@/lib/accountProfile";
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
-  return { ...actual, patchAccount: jest.fn(), applyAsBusiness: jest.fn() };
+  return { ...actual, patchAccount: jest.fn() };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -39,17 +34,6 @@ const BUSINESS: User = {
   ...PERSONAL,
   accountType: "business",
   orgName: "Bautista Trading",
-};
-
-const ADDRESS: ClientAddress = {
-  id: "addr_1",
-  label: "Office",
-  addressLine: "12 Quimpo Blvd, Talomo",
-  point: { lat: 7.07, lng: 125.61, label: "12 Quimpo Blvd, Talomo" },
-  isDefault: false,
-  version: 1,
-  createdAt: "2026-08-01T00:00:00.000Z",
-  updatedAt: "2026-08-01T00:00:00.000Z",
 };
 
 describe("the identity card", () => {
@@ -79,9 +63,19 @@ describe("the identity card", () => {
     expect(accountInitials("   ")).toBe("");
   });
 
-  it("stops offering the upgrade once the account is one", () => {
-    expect(canApplyAsBusiness(BUSINESS)).toBe(false);
+  it("stops offering the upgrade once Operations has approved it", () => {
+    const approved: User = {
+      ...BUSINESS,
+      approvalCase: { id: "apc_1", kind: "business_client", status: "approved", version: 2 },
+    };
+    expect(canApplyAsBusiness(approved)).toBe(false);
     expect(canApplyAsBusiness(null)).toBe(false);
+  });
+
+  it("still offers the checklist to a business only declared at sign-up", () => {
+    // Declaring is not being approved: no discount and no Organizations tab
+    // until the documents have been checked.
+    expect(canApplyAsBusiness(BUSINESS)).toBe(true);
   });
 
   it("stops offering a new application while one is waiting", () => {
@@ -182,105 +176,5 @@ describe("saving", () => {
   it("says a missing route is not open yet rather than showing a failure", async () => {
     api.patchAccount.mockRejectedValue(new ApiError(404, { error: "not_found" }));
     expect(await saveAccount({ name: "x" }, 3)).toEqual({ status: "not_open_yet" });
-  });
-});
-
-describe("applying as a business", () => {
-  beforeEach(() => {
-    api.applyAsBusiness.mockReset();
-  });
-
-  it("skips the contact step when GRIDGO already holds a name and a number", () => {
-    expect(applySteps(PERSONAL).map((step) => step.id)).toEqual(["name", "where", "review"]);
-  });
-
-  it("asks for contact details when the account has none", () => {
-    const bare: User = { ...PERSONAL, phone: undefined };
-    expect(applySteps(bare).map((step) => step.id)).toEqual([
-      "name",
-      "contact",
-      "where",
-      "review",
-    ]);
-  });
-
-  it("will not leave the first step without a business name and nature", () => {
-    const draft = {
-      orgName: "  ",
-      nature: "",
-      accountType: "business" as const,
-      contactName: "Ana",
-      phone: "0917 123 4567",
-      addressId: null,
-    };
-    expect(applyStepProblem("name", draft)).toContain("business name");
-    expect(applyStepProblem("name", { ...draft, orgName: "Bautista Trading" })).toContain("what this business does");
-    expect(
-      applyStepProblem("name", { ...draft, orgName: "Bautista Trading", nature: "Events" }),
-    ).toBeNull();
-  });
-
-  it("says which of the two contact answers is wrong, not just that one is", () => {
-    // A number rejected for its format, explained under the name, sends a
-    // client to correct the field that is already right.
-    const problems = applyContactProblems({
-      orgName: "Bautista Trading",
-      nature: "Events",
-      accountType: "business",
-      contactName: "Ana",
-      phone: "12345",
-      addressId: null,
-    });
-    expect(problems.contactName).toBeNull();
-    expect(problems.phone).toContain("Philippine mobile number");
-  });
-
-  it("never blocks on the address — GRIDGO asks again at checkout", () => {
-    const draft = {
-      orgName: "Bautista Trading",
-      nature: "Events",
-      accountType: "business" as const,
-      contactName: "Ana",
-      phone: "0917",
-      addressId: null,
-    };
-    expect(applyStepProblem("where", draft)).toBeNull();
-    expect(applyStepProblem("review", draft)).toBeNull();
-  });
-
-  it("sends the name, nature, and requested account type", () => {
-    const input = businessApplyInput({
-      orgName: " Bautista Trading ",
-      nature: " Events and merchandise ",
-      accountType: "organization",
-      contactName: "Ana Bautista",
-      phone: "0917 123 4567",
-      addressId: ADDRESS.id,
-    });
-
-    expect(input).toEqual({
-      businessName: "Bautista Trading",
-      businessNature: "Events and merchandise",
-      accountType: "organization",
-    });
-  });
-
-  it("hands back the pending account GRIDGO returned", async () => {
-    const pending = {
-      ...PERSONAL,
-      approvalCase: { id: "apc_1", kind: "business_client" as const, status: "pending" as const, version: 1 },
-    };
-    api.applyAsBusiness.mockResolvedValue(pending);
-    expect(await submitBusinessApply({
-      businessName: "Bautista Trading",
-      businessNature: "Events",
-    }, "apply-1")).toEqual({
-      status: "ok",
-      value: pending,
-    });
-    expect(api.applyAsBusiness).toHaveBeenCalledWith(
-      { businessName: "Bautista Trading", businessNature: "Events" },
-      "apply-1",
-    );
   });
 });

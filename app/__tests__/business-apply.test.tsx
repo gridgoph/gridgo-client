@@ -1,44 +1,33 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import BusinessApplyScreen from "@/app/business-apply";
-import { useBusinessApply } from "@/store/businessApply";
+import { useClientApplication } from "@/store/clientApplication";
 import { useSession } from "@/store/session";
 
-const mockBack = jest.fn();
+const mockParams: { mode?: string } = {};
 
 jest.mock("expo-router", () => ({
-  router: { back: (...args: unknown[]) => mockBack(...args), push: jest.fn() },
+  router: { back: jest.fn(), push: jest.fn() },
+  useLocalSearchParams: () => mockParams,
 }));
+
+jest.mock("expo-document-picker", () => ({ getDocumentAsync: jest.fn() }));
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
-  return { ...actual, applyAsBusiness: jest.fn(), listAddresses: jest.fn() };
+  return { ...actual, getApplicationChecklist: jest.fn(async () => ({ businessPermitRequired: false })) };
 });
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const api = require("@/lib/api");
 
 const CLIENT = {
   id: "u1",
-  email: "ana@bautista.ph",
-  name: "Ana Bautista",
+  email: "pta@school.edu.ph",
+  name: "Ana Reyes",
   role: "client" as const,
   phone: "+639171234567",
   accountType: "individual" as const,
   version: 3,
-};
-
-const ADDRESS = {
-  id: "addr_1",
-  label: "Office",
-  addressLine: "12 Quimpo Blvd, Talomo",
-  point: { lat: 7.07, lng: 125.61, label: "12 Quimpo Blvd, Talomo" },
-  isDefault: false,
-  version: 1,
-  createdAt: "2026-08-01T00:00:00.000Z",
-  updatedAt: "2026-08-01T00:00:00.000Z",
 };
 
 function renderInSafeArea(ui: ReactElement) {
@@ -57,73 +46,70 @@ function renderInSafeArea(ui: ReactElement) {
 }
 
 /*
-  One test in this file, and deliberately so: the submission drives an async
-  update into two stores outside React, and this project's stack leaves every
-  later render in the same file empty once that has happened (see AGENTS.md).
-  The refusal paths are asserted against `lib/accountProfile.ts` directly.
+  Render-only. The steps themselves — what each checks, what is sent, how a
+  refusal lands — are asserted against `store/clientApplication.ts` and
+  `lib/clientApplication.ts`, because this stack empties every later render in
+  a file once a press drives an async store update (see AGENTS.md).
 */
-describe("applying as a business", () => {
+describe("the account application", () => {
   beforeEach(() => {
-    mockBack.mockClear();
-    api.applyAsBusiness.mockReset();
-    api.listAddresses.mockReset();
-    api.listAddresses.mockResolvedValue([ADDRESS]);
-    useBusinessApply.getState().reset();
+    delete mockParams.mode;
+    useClientApplication.getState().reset();
     useSession.setState({ user: CLIENT, source: "clerk", loading: false, error: null });
   });
 
-  it("walks the steps, sends what GRIDGO asked for, and lands back on Account", async () => {
-    api.applyAsBusiness.mockResolvedValue({
-      ...CLIENT,
-      approvalCase: {
-        id: "apc_1",
-        kind: "business_client",
-        status: "pending",
-        version: 1,
-      },
-    });
-
+  it("opens on the two tracks, organization first, with the steps numbered", async () => {
     await renderInSafeArea(<BusinessApplyScreen />);
 
-    // Step 1 — the business name. Contact is skipped: GRIDGO already holds a
-    // name and a number, and retyping them is friction, not diligence.
-    expect(screen.getByText("What is the business called?")).toBeTruthy();
-    fireEvent.changeText(screen.getByLabelText("Business name"), "Bautista Trading");
-    fireEvent.changeText(screen.getByLabelText("What do you do?"), "Events and merchandise");
-    await waitFor(() =>
-      expect(screen.getByLabelText("Business name").props.value).toBe("Bautista Trading"),
-    );
-    fireEvent.press(screen.getByText("Continue"));
-
-    // Step 2 — where orders go, chosen from what is already saved.
-    await waitFor(() => expect(screen.getByText("Where do orders go?")).toBeTruthy());
-    await waitFor(() => expect(screen.getByLabelText("Send orders to Office")).toBeTruthy());
-    fireEvent.press(screen.getByLabelText("Send orders to Office"));
-    fireEvent.press(screen.getByText("Continue"));
-
-    // Step 3 — every answer shown back before anything is written.
-    await waitFor(() => expect(screen.getByText("Is this right?")).toBeTruthy());
-    expect(screen.getByText("Bautista Trading")).toBeTruthy();
-    expect(screen.getByText("Office")).toBeTruthy();
-    expect(screen.getByText("ana@bautista.ph")).toBeTruthy();
-
-    // The primary action carries its verb as its label, not an aria name.
-    fireEvent.press(screen.getByText("Send application"));
-
-    await waitFor(() => expect(api.applyAsBusiness).toHaveBeenCalled());
-    expect(api.applyAsBusiness).toHaveBeenCalledWith(
-      {
-        businessName: "Bautista Trading",
-        businessNature: "Events and merchandise",
-        accountType: "business",
-      },
-      expect.any(String),
-    );
-
-    // The session stays personal. GRIDGO's answer is the pending case.
-    await waitFor(() => expect(useSession.getState().user?.approvalCase?.status).toBe("pending"));
-    expect(useSession.getState().user?.accountType).toBe("individual");
-    expect(useSession.getState().user?.orgName).toBeUndefined();
-    await waitFor(() => expect(mockBack).toHaveBeenCalled());
+    expect(screen.getByText("Who is this account for?")).toBeTruthy();
+    expect(screen.getByLabelText("Organization")).toBeTruthy();
+    expect(screen.getByLabelText("Business")).toBeTruthy();
+    expect(screen.getByLabelText("School")).toBeTruthy();
+    expect(screen.getByLabelText("Step 4: Email")).toBeTruthy();
+    expect(screen.getByLabelText("Step 5: Send")).toBeTruthy();
   });
+
+  it("shows a pending application as with Operations, with a way to resend it complete", async () => {
+    useSession.setState({
+      user: {
+        ...CLIENT,
+        approvalCase: { id: "apc_1", kind: "business_client", status: "pending", version: 1 },
+      },
+    });
+    await renderInSafeArea(<BusinessApplyScreen />);
+
+    expect(screen.getByText("Application sent")).toBeTruthy();
+    expect(screen.getByText("Send it again with documents")).toBeTruthy();
+  });
+
+  it("verifies an approved organization's first officer without asking which track", async () => {
+    mockParams.mode = "first_officer";
+    useSession.setState({
+      user: {
+        ...CLIENT,
+        accountType: "organization",
+        orgName: "Grade 10 PTA",
+        approvalCase: { id: "apc_1", kind: "business_client", status: "approved", version: 4 },
+      },
+    });
+    await renderInSafeArea(<BusinessApplyScreen />);
+
+    expect(screen.getByText("Confirm your organization")).toBeTruthy();
+    expect(screen.queryByLabelText("Business")).toBeNull();
+    expect(useClientApplication.getState().expectedVersion).toBe(4);
+  });
+  // Last in the file: moving the step from outside React spends the render budget.
+  it("lists every required document for the track, with who can see them", async () => {
+    await renderInSafeArea(<BusinessApplyScreen />);
+    useClientApplication.setState({ index: 2 });
+
+    expect(await screen.findByText("Add your documents")).toBeTruthy();
+    expect(screen.getByText("0 of 3 required added")).toBeTruthy();
+    expect(screen.getByText("Primary government ID")).toBeTruthy();
+    expect(screen.getByText("Student ID")).toBeTruthy();
+    expect(screen.getByText("Proof of enrolment")).toBeTruthy();
+    expect(screen.getByText("School recognition certificate")).toBeTruthy();
+    expect(screen.getByText(/Only GRIDGO Operations can open these files/)).toBeTruthy();
+  });
+
 });

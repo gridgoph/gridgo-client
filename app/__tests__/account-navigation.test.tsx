@@ -107,7 +107,7 @@ describe("Account destinations", () => {
     fireEvent.press(screen.getByLabelText("Saved Places"));
     expect(mockPush).toHaveBeenCalledWith("/saved-places");
 
-    fireEvent.press(screen.getByLabelText("Apply as a business"));
+    fireEvent.press(screen.getByLabelText("Register an organization or business"));
     expect(mockPush).toHaveBeenCalledWith("/business-apply");
 
     // Back where it came from, not Home: a client changing the ranking from

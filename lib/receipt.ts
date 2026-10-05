@@ -17,6 +17,7 @@ import { formatPhp } from "@/lib/api";
 import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { orderReference } from "@/lib/orderReference";
 import { FULL_PAYMENT_PERCENT, isInstallmentConfirmed, paysInFull } from "@/lib/payment";
+import { organizationDiscountOf } from "@/lib/organization";
 import { orderPrintingMinor, printingMinor, showsServiceFee } from "@/lib/serviceFee";
 
 export const RECEIPT_HEADLINE = "Order receipt";
@@ -51,6 +52,12 @@ export function openReceiptAfterCheckout(router: ReceiptLandingRouter, orderId: 
   });
 }
 
+/** Only an order that had one carries the discount, so other receipts read as before. */
+function discountField(source: { organizationDiscountMinor?: number | null }): { organizationDiscountMinor?: number } {
+  const minor = organizationDiscountOf(source);
+  return minor ? { organizationDiscountMinor: minor } : {};
+}
+
 export function isCheckoutReceipt(from: string | string[] | undefined): boolean {
   return from === RECEIPT_FROM_CHECKOUT;
 }
@@ -66,6 +73,8 @@ export type ReceiptMoney = {
   /** Withheld on a multi-shop receipt; the fee is inside printing either way. */
   serviceFeeMinor: number | null;
   serviceFeeRateBps: number | null;
+  /** An approved organization's discount, already inside `totalMinor` (#166). */
+  organizationDiscountMinor?: number;
   totalMinor: number;
 };
 
@@ -84,6 +93,8 @@ export type ReceiptGroup = {
   printingMinor: number;
   deliveryFeeMinor: number;
   totalMinor: number;
+  /** This group's own organization discount, already out of `totalMinor`. */
+  organizationDiscountMinor?: number;
   stopped?: string | null;
 };
 
@@ -169,6 +180,7 @@ function invoiceParts(invoice: Invoice) {
         printingMinor: group.clientItemSubtotalMinor,
         deliveryFeeMinor: group.deliveryFeeMinor,
         totalMinor: group.totalMinor,
+        ...discountField(group),
       }))
     : undefined;
   return {
@@ -184,6 +196,7 @@ function invoiceParts(invoice: Invoice) {
       pickup: invoice.pickupFeeMinor != null,
       serviceFeeMinor: invoice.serviceFeeMinor ?? null,
       serviceFeeRateBps: invoice.serviceFeeRateBps ?? null,
+      ...discountField(invoice),
       totalMinor: invoice.totalMinor,
     },
   };
@@ -331,6 +344,7 @@ export function receiptFromOrder(order: Order): ReceiptView | null {
       pickup: order.fulfillmentMode === "pickup",
       serviceFeeMinor,
       serviceFeeRateBps,
+      ...discountField(order),
       totalMinor: order.totalMinor,
     },
     paymentReference: paymentReferenceOf(order.payments),

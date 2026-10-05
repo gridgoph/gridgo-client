@@ -17,6 +17,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DeliveryZonesHelp } from "@/components/DeliveryZonesHelp";
 import { EmptyState } from "@/components/EmptyState";
 import { HubPickupPanel } from "@/components/HubPickupPanel";
+import { OrganizationDiscountRow, OrganizationSavingsNote } from "@/components/OrganizationDiscount";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { paymentQrFromSettings, QrPaySheet } from "@/components/QrPaySheet";
@@ -1001,6 +1002,9 @@ export default function CheckoutScreen() {
               />
             ) : null}
 
+            {/* Already out of the total GRIDGO sends (#166): drawn, never subtracted. */}
+            <OrganizationDiscountRow source={cart?.clientQuote} />
+
             <View className="gg-divider my-2" />
 
             <View className="flex-row items-baseline justify-between gap-3">
@@ -1031,6 +1035,7 @@ export default function CheckoutScreen() {
           <Text className="text-caption text-text-muted">
             {invoiceNote(serviceFeeVisibleToClient(settings))}
           </Text>
+          <OrganizationSavingsNote source={cart?.clientQuote} />
         </Section>
 
       </View>

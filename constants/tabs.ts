@@ -11,7 +11,13 @@
  * here without both maps being updated.
  */
 
-export type TabName = "home" | "orders" | "new-request" | "notifications" | "account";
+export type TabName =
+  | "home"
+  | "orders"
+  | "organizations"
+  | "new-request"
+  | "notifications"
+  | "account";
 
 export type TabDefinition = {
   /** Route file in `app/(tabs)`, without the extension. */
@@ -23,6 +29,7 @@ export type TabDefinition = {
 export const TABS: readonly TabDefinition[] = [
   { name: "home", label: "Home" },
   { name: "orders", label: "Orders" },
+  { name: "organizations", label: "Organizations" },
   { name: "notifications", label: "Notifications" },
   { name: "account", label: "Account" },
   { name: "new-request", label: "New request" },
@@ -37,3 +44,4 @@ export const TABS: readonly TabDefinition[] = [
  * collapses that Exclude to `never` and fails `npx tsc` on the bar.
  */
 export const ACTION_TAB = "new-request" satisfies TabName;
+

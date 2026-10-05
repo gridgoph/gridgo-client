@@ -1,11 +1,12 @@
 import type { BottomTabBarProps } from "expo-router/js-tabs";
-import { Bell, FileText, House, User, type LucideIcon } from "lucide-react-native";
+import { Bell, Building2, FileText, House, User, type LucideIcon } from "lucide-react-native";
 import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ACTION_TAB, TABS, type TabName } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useUnreadCount } from "@/store/notifications";
+import { useIsApprovedOrganization } from "@/store/organization";
 
 /* ---------------------------------------------------------------------------
    Bar geometry
@@ -236,6 +237,7 @@ export function tabScreenContentPadding(_insetBottom: number): number {
 const ICONS: Record<Exclude<TabName, typeof ACTION_TAB>, LucideIcon> = {
   home: House,
   orders: FileText,
+  organizations: Building2,
   notifications: Bell,
   account: User,
 };
@@ -268,6 +270,7 @@ const ICONS: Record<Exclude<TabName, typeof ACTION_TAB>, LucideIcon> = {
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const unreadCount = useUnreadCount();
+  const approvedOrganization = useIsApprovedOrganization();
 
   return (
     <View
@@ -289,6 +292,8 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
         {state.routes.map((route, index) => {
           const tab = TABS.find((entry) => entry.name === route.name);
           if (!tab || tab.name === ACTION_TAB) return null;
+          // Only an approved organization account is offered Organizations.
+          if (tab.name === "organizations" && !approvedOrganization) return null;
 
           const focused = state.index === index;
 

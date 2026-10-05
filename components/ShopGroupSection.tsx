@@ -6,6 +6,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
 import { addMoreFromLabel, type ShopGroupView } from "@/lib/basketGroups";
 import { listingZoneLine } from "@/lib/distanceZone";
+import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
 
 /**
  * The letter a shop group goes by, set as a plate.
@@ -124,6 +125,17 @@ export function ShopGroupSection({
                 : formatPhp(group.deliveryFeeMinor)}
         </Text>
       </View>
+
+      {group.organizationDiscountMinor > 0 ? (
+        <View
+          className="flex-row items-baseline justify-between gap-3 px-4"
+          accessible
+          accessibilityLabel={`${ORGANIZATION_DISCOUNT_LABEL} on ${group.label}, minus ${formatPhp(group.organizationDiscountMinor)}`}
+        >
+          <Text className="text-body text-text-secondary">{ORGANIZATION_DISCOUNT_LABEL}</Text>
+          <Text className="text-body font-medium text-success">{discountAmount(group.organizationDiscountMinor)}</Text>
+        </View>
+      ) : null}
 
       <Pressable
         onPress={onAddMore}

@@ -5,6 +5,7 @@ import { usePreventRemove } from "expo-router/react-navigation";
 import { CircleCheck, ChevronLeft } from "lucide-react-native";
 
 import { ErrorState } from "@/components/ErrorState";
+import { OrganizationDiscountRow } from "@/components/OrganizationDiscount";
 import { OrderReference } from "@/components/OrderReference";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PrintedReceipt } from "@/components/PrintedReceipt";
@@ -242,6 +243,7 @@ export default function OrderReceiptScreen() {
                   label="Delivery"
                   value={group.deliveryFeeMinor === 0 ? "None" : formatPhp(group.deliveryFeeMinor)}
                 />
+                <OrganizationDiscountRow source={group} />
               </View>
             ))}
           </View>
@@ -264,6 +266,7 @@ export default function OrderReceiptScreen() {
           <Text className="text-overline text-text-muted">PAYMENT DETAILS</Text>
           <View className="gg-card">
             <SpecRow label="Printing" value={formatPhp(view.money.printingMinor)} />
+            <OrganizationDiscountRow source={view.money} />
             <SpecRow {...receiptFulfilmentRow(view.money, view.groups?.length ?? 0)} />
             {serviceFeeVisibleToClient(settings) ? (
               <ServiceFeeRow

@@ -29,6 +29,7 @@ import type {
   Order,
 } from "@/lib/api";
 import { getOrderStateMeta, type OrderStateMeta } from "@/lib/orderState";
+import { organizationDiscountOf } from "@/lib/organization";
 
 /** What a basket line is grouped by: its group on a multi-shop basket, else its shop. */
 export function lineGroupKey(line: Pick<CartLineRecord, "id" | "groupId" | "supplierId">): string {
@@ -56,6 +57,8 @@ export type ShopGroupView = {
   /** This group's own delivery fee. Null until GRIDGO can price it. */
   deliveryFeeMinor: number | null;
   totalMinor: number | null;
+  /** The organization discount on this group alone; 0 when there is none (#166). */
+  organizationDiscountMinor: number;
   /** The zone word GRIDGO priced the group's delivery in, when it has one. */
   zone: DistanceZone | null;
   /** Only for an Out of Zone leg — the one place a client reads kilometres. */
@@ -87,6 +90,8 @@ export function shopGroups(cart: Cart | null | undefined): ShopGroupView[] {
       itemsMinor: safeMinor(group.clientItemSubtotalMinor),
       deliveryFeeMinor: safeMinor(group.deliveryFeeMinor),
       totalMinor: safeMinor(group.totalMinor),
+      // Each shop group is discounted on its own, as GRIDGO prices it.
+      organizationDiscountMinor: organizationDiscountOf(group),
       zone: leg?.distanceZone ?? null,
       distanceKm: typeof leg?.distanceKm === "number" ? leg.distanceKm : null,
     };
