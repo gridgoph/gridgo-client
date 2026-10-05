@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 
 import { ApplicationFlow } from "@/components/application/ApplicationFlow";
-import { useOrganization } from "@/store/organization";
+import { useOwnOrganization } from "@/store/organization";
 
 /**
  * Handing an organization to a new officer (gridgo-client#164).
@@ -13,6 +13,6 @@ import { useOrganization } from "@/store/organization";
  * until Operations approves (5 Oct decision).
  */
 export default function OfficerHandoverScreen() {
-  const organization = useOrganization((s) => s.organization);
+  const organization = useOwnOrganization();
   return <ApplicationFlow mode="handover" organization={organization} onDone={() => router.back()} />;
 }

@@ -49,6 +49,24 @@ const EMPTY = {
 
 let readSequence = 0;
 
+/**
+ * The statement, only when it was read for whoever is signed in now. A
+ * spend statement is the organization's private record; another account on
+ * the same phone never sees it, even for the moment before a re-read.
+ */
+export function useOwnStatement(): OrganizationStatement | null {
+  const userId = useSession((s) => s.user?.id ?? null);
+  return useStatements((s) => (userId && s.ownerId === userId ? s.statement : null));
+}
+
+// A different account, or nobody, signed in: drop the statement and its period.
+useSession.subscribe((state, previous) => {
+  if (state.user?.id !== previous.user?.id) {
+    readSequence++;
+    useStatements.getState().reset();
+  }
+});
+
 /** The period to ask for, or null while a custom range is incomplete. */
 export function requestedPeriod(
   state: Pick<StatementsState, "kind" | "customFrom" | "customTo">,
@@ -93,10 +111,10 @@ export const useStatements = create<StatementsState>((set, get) => ({
     set({ status: "loading", error: null });
     try {
       const statement = await api.getOrganizationStatement(period);
-      if (sequence !== readSequence) return;
+      if (sequence !== readSequence || useSession.getState().user?.id !== ownerId) return;
       set({ statement, status: "ready", error: null });
     } catch (error) {
-      if (sequence !== readSequence) return;
+      if (sequence !== readSequence || useSession.getState().user?.id !== ownerId) return;
       set({
         status: "failed",
         statement: null,

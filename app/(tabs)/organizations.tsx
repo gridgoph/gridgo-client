@@ -27,9 +27,9 @@ import {
   periodRange,
 } from "@/lib/organization";
 import { useNotifications } from "@/store/notifications";
-import { useOrganization } from "@/store/organization";
+import { useOrganization, useOwnOrganization } from "@/store/organization";
 import { useSession } from "@/store/session";
-import { requestedPeriod, useStatements } from "@/store/statements";
+import { requestedPeriod, useOwnStatement, useStatements } from "@/store/statements";
 
 /**
  * The Organizations tab (gridgo-client#160): everything that belongs to an
@@ -42,13 +42,14 @@ import { requestedPeriod, useStatements } from "@/store/statements";
  */
 export default function OrganizationsScreen() {
   const user = useSession((s) => s.user);
-  const organization = useOrganization((s) => s.organization);
+  const organization = useOwnOrganization();
   const orgStatus = useOrganization((s) => s.status);
   const orgError = useOrganization((s) => s.error);
   const confirming = useOrganization((s) => s.confirming);
   const confirmError = useOrganization((s) => s.confirmError);
   const justConfirmed = useOrganization((s) => s.justConfirmed);
   const statements = useStatements();
+  const ownStatement = useOwnStatement();
   const notices = useNotifications((s) => s.items).filter((item) => item.type === ORGANIZATION_NOTICE_TYPE);
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const approved = isApprovedOrganization(user, organization);
@@ -83,7 +84,7 @@ export default function OrganizationsScreen() {
   }
 
   const state = officerState(organization);
-  const statement = statements.statement;
+  const statement = ownStatement;
   const customLabel =
     statements.kind === "custom" && requestedPeriod(statements)
       ? periodRange(statements.customFrom, statements.customTo)

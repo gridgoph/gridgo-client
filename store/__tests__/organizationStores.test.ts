@@ -113,3 +113,29 @@ describe("the statement", () => {
     expect(useStatements.getState().error).toContain("approved");
   });
 });
+
+describe("a different account on the same phone", () => {
+  it("drops the previous account's organization and statement the moment it signs in", async () => {
+    api.getOrganization.mockResolvedValue(ORGANIZATION);
+    api.getOrganizationStatement.mockResolvedValue({ ...STATEMENT, orderCount: 3, totalSpendMinor: 900000 });
+    await useOrganization.getState().load();
+    await useStatements.getState().load();
+    expect(useOrganization.getState().organization).not.toBeNull();
+    expect(useStatements.getState().statement).not.toBeNull();
+
+    useSession.setState({ user: { id: "u2", email: "b@x.ph", name: "B", role: "client" } });
+
+    expect(useOrganization.getState()).toMatchObject({ organization: null, ownerId: null });
+    expect(useStatements.getState()).toMatchObject({ statement: null, ownerId: null });
+  });
+
+  it("never lands a read that started for the previous account", async () => {
+    let answer: (value: OrganizationStatement) => void = () => undefined;
+    api.getOrganizationStatement.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const pending = useStatements.getState().load();
+    useSession.setState({ user: null });
+    answer(STATEMENT);
+    await pending;
+    expect(useStatements.getState().statement).toBeNull();
+  });
+});

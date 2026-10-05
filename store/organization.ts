@@ -112,12 +112,30 @@ export const useOrganization = create<OrganizationState>((set, get) => ({
 }));
 
 /**
+ * The organization record, only when it belongs to whoever is signed in now.
+ * Every screen reads it through this, so a phone handed to another account
+ * never shows the previous account's officer or case.
+ */
+export function useOwnOrganization(): ClientOrganization | null {
+  const userId = useSession((s) => s.user?.id ?? null);
+  return useOrganization((s) => (userId && s.ownerId === userId ? s.organization : null));
+}
+
+// A different account, or nobody, signed in: drop the record outright.
+useSession.subscribe((state, previous) => {
+  if (state.user?.id !== previous.user?.id) {
+    readSequence++;
+    useOrganization.getState().reset();
+  }
+});
+
+/**
  * Whether the signed-in client is an approved organization — the gate for the
  * Organizations tab. The organization record only matters during an officer
  * handover, when the case is pending again but the account is still approved.
  */
 export function useIsApprovedOrganization(): boolean {
   const user = useSession((s) => s.user);
-  const organization = useOrganization((s) => (s.ownerId === user?.id ? s.organization : null));
+  const organization = useOwnOrganization();
   return isApprovedOrganization(user, organization);
 }

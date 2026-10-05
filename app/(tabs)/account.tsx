@@ -19,10 +19,11 @@ import {
   businessApplicationPending,
   canApplyAsBusiness,
 } from "@/lib/accountProfile";
+import type { ClientOrganization } from "@/lib/api";
 import { officerState } from "@/lib/organization";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
 import { accountTypeOption } from "@/lib/signup";
-import { useIsApprovedOrganization, useOrganization } from "@/store/organization";
+import { useIsApprovedOrganization, useOwnOrganization } from "@/store/organization";
 import { usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
 import { useTour } from "@/store/tour";
@@ -56,7 +57,7 @@ export default function AccountScreen() {
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const approvedOrganization = useIsApprovedOrganization();
-  const organization = useOrganization((s) => s.organization);
+  const organization = useOwnOrganization();
 
   /*
    * Read the account again every time this screen comes back into view.
@@ -278,7 +279,7 @@ export default function AccountScreen() {
 }
 
 /** The officer row's line: the name, and anything open about it. */
-function officerRowDetail(organization: ReturnType<typeof useOrganization.getState>["organization"]): string {
+function officerRowDetail(organization: ClientOrganization | null): string {
   const name = organization?.currentOfficer?.fullName;
   switch (officerState(organization)) {
     case "no_officer":

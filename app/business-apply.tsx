@@ -8,7 +8,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { businessApplication } from "@/lib/accountProfile";
-import { useOrganization } from "@/store/organization";
+import { useOwnOrganization } from "@/store/organization";
 import { useSession } from "@/store/session";
 
 /**
@@ -23,7 +23,7 @@ import { useSession } from "@/store/session";
 export default function BusinessApplyScreen() {
   const params = useLocalSearchParams<{ mode?: string }>();
   const user = useSession((s) => s.user);
-  const organization = useOrganization((s) => s.organization);
+  const organization = useOwnOrganization();
   const application = businessApplication(user);
   // Opening the form again from the pending card is a deliberate choice, so it
   // is held for this visit only.
