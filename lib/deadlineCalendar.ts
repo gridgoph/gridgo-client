@@ -12,8 +12,24 @@
 
 import type { DeadlineDay } from "@/lib/api";
 import { MAX_LEAD_DAYS, parseDeadline } from "@/lib/deadline";
+import { busiestLevel, seasonsOn, type DemandLevel, type SeasonWindow } from "@/lib/seasonWindows";
 
 export type DayChoice = "cannot" | "tight" | "open" | "past";
+
+/**
+ * A day inside one or more season windows.
+ *
+ * Drawn as a track behind the discs, so a run of season days reads as one
+ * stroke across the week. `joinsPrevious` / `joinsNext` say whether the track
+ * carries on into the cell beside it in the same row — a track breaks at the
+ * end of a week row, and at a change of level.
+ */
+export type SeasonMark = {
+  level: DemandLevel;
+  windows: SeasonWindow[];
+  joinsPrevious: boolean;
+  joinsNext: boolean;
+};
 
 export type CalendarDay = {
   dayKey: string;
@@ -21,8 +37,10 @@ export type CalendarDay = {
   inMonth: boolean;
   isToday: boolean;
   choice: DayChoice;
-  /** Whether a client may pick this day at all. */
+  /** Whether a client may pick this day at all. Never decided by a season. */
   selectable: boolean;
+  /** The season windows over this day, or null outside every season. */
+  season: SeasonMark | null;
 };
 
 function dayKeyOf(date: Date): string {
@@ -48,10 +66,13 @@ export function monthGrid({
   month,
   availability,
   now = new Date(),
+  seasons = [],
 }: {
   month: Date;
   availability: DeadlineDay[];
   now?: Date;
+  /** Season windows to shade. Awareness only: they never touch `selectable`. */
+  seasons?: SeasonWindow[];
 }): CalendarDay[] {
   const states = new Map(availability.map((entry) => [entry.day, entry.state]));
   const todayKey = dayKeyOf(now);
@@ -81,9 +102,32 @@ export function monthGrid({
       isToday: dayKey === todayKey,
       choice,
       selectable: inMonth && (choice === "open" || choice === "tight"),
+      season: null,
     });
   }
-  return cells;
+  return seasons.length ? withSeasons(cells, seasons) : cells;
+}
+
+/** The grid with each cell's season mark, joined along the week row. */
+function withSeasons(cells: CalendarDay[], seasons: SeasonWindow[]): CalendarDay[] {
+  const levels = cells.map((cell) => {
+    const windows = seasonsOn(cell.dayKey, seasons);
+    return { windows, level: busiestLevel(windows) };
+  });
+  return cells.map((cell, index) => {
+    const { windows, level } = levels[index];
+    if (!level) return cell;
+    const column = index % 7;
+    return {
+      ...cell,
+      season: {
+        level,
+        windows,
+        joinsPrevious: column > 0 && levels[index - 1].level === level,
+        joinsNext: column < 6 && levels[index + 1].level === level,
+      },
+    };
+  });
 }
 
 /**

@@ -1,17 +1,43 @@
 import { Image } from "expo-image";
 import * as WebBrowser from "expo-web-browser";
-import { ExternalLink, FileImage, FileText } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
+import { ExternalLink, FileImage, FileText, Trash2 } from "lucide-react-native";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { ArtworkDeletion } from "@/components/ArtworkDeletion";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
-import { getFile, getFileDownloadUrl as getDownloadUrl, type Order, type StoredFile } from "@/lib/api";
-import { describeArtwork, isArtworkImage, readOrderArtwork, orderArtwork, type ArtworkReference } from "@/lib/orderArtwork";
+import { getFile, getFileDownloadUrl as getDownloadUrl, type Order, type Refund, type StoredFile } from "@/lib/api";
+import { removedFileDetail } from "@/lib/artworkDeletion";
+import { describeArtwork, isArtworkImage, isArtworkRemoved, readOrderArtwork, orderArtwork, type ArtworkReference } from "@/lib/orderArtwork";
+import { IDLE_DELETION, useArtworkDeletion } from "@/store/artworkDeletion";
 
-/** All production files, each with independent loading and recovery. */
-export function ArtworkPanel({ order }: { order: Order }) {
+type Props = {
+  order: Order;
+  refunds?: Refund[] | null;
+  /** Rows drawn after the files and before the delete action (design links). */
+  children?: ReactNode;
+};
+
+/**
+ * All production files, each with independent loading and recovery, then the
+ * client's own way to delete them once the job is done.
+ *
+ * Every deletion attempt remounts the rows (`version`), so each reads itself
+ * again from GRIDGO and a deleted file shows as deleted, not as it was.
+ */
+export function ArtworkPanel({ order, refunds, children }: Props) {
+  const version = useArtworkDeletion((state) => (state.byOrder[order.id] ?? IDLE_DELETION).version);
+  return <ArtworkFiles key={version} order={order} refunds={refunds}>{children}</ArtworkFiles>;
+}
+
+function ArtworkFiles({ order, refunds, children }: Props) {
   const files = orderArtwork(order);
+  /** What each row read: the file, or null when it could not load. */
+  const [read, setRead] = useState<Record<string, StoredFile | null>>({});
+  const onRead = useCallback((fileId: string, file: StoredFile | null) => {
+    setRead((current) => ({ ...current, [fileId]: file }));
+  }, []);
   if (!files.length) {
     return <Text className="text-body text-text-secondary">{order.artworkName
       ? `“${order.artworkName}” is recorded, but no stored file is available. Ask Operations for the production file.`
@@ -19,9 +45,31 @@ export function ArtworkPanel({ order }: { order: Order }) {
   }
   // Which item a file belongs to only says something on a job with several.
   const named = new Set(files.map((file) => file.itemName).filter(Boolean)).size > 1;
-  return <View>{files.map((file) => (
-    <ArtworkFile key={`${order.id}:${file.fileId}`} orderId={order.id} reference={named ? file : { ...file, itemName: undefined }} />
-  ))}</View>;
+  const loaded = files.map((file) => read[file.fileId]).filter((file): file is StoredFile => Boolean(file));
+  // Only the client's own uploads: a file GRIDGO added is refused as forbidden.
+  const deletableIds = loaded
+    .filter((file) => file.state === "ready" && file.ownerId === order.clientId)
+    .map((file) => file.fileId);
+  return (
+    <View>
+      {files.map((file) => (
+        <ArtworkFile
+          key={`${order.id}:${file.fileId}`}
+          orderId={order.id}
+          reference={named ? file : { ...file, itemName: undefined }}
+          onRead={onRead}
+        />
+      ))}
+      {children}
+      <ArtworkDeletion
+        order={order}
+        refunds={refunds}
+        deletableIds={deletableIds}
+        settled={files.every((file) => file.fileId in read)}
+        anyRemoved={loaded.some(isArtworkRemoved)}
+      />
+    </View>
+  );
 }
 
 type FileState =
@@ -29,7 +77,11 @@ type FileState =
   | { kind: "error"; message: string }
   | { kind: "ready"; file: StoredFile; previewUrl: string | null };
 
-function ArtworkFile({ orderId, reference }: { orderId: string; reference: ArtworkReference }) {
+function ArtworkFile({ orderId, reference, onRead }: {
+  orderId: string;
+  reference: ArtworkReference;
+  onRead: (fileId: string, file: StoredFile | null) => void;
+}) {
   const colors = useThemeColors();
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<FileState>({ kind: "loading" });
@@ -50,14 +102,20 @@ function ArtworkFile({ orderId, reference }: { orderId: string; reference: Artwo
     async function load() {
       try {
         const loaded = await readOrderArtwork({ fileId, kind }, orderId, { getFile, getDownloadUrl });
-        if (current) setState({ kind: "ready", ...loaded });
+        if (current) {
+          setState({ kind: "ready", ...loaded });
+          onRead(fileId, loaded.file);
+        }
       } catch {
-        if (current) setState({ kind: "error", message: "This attachment could not load. Retry, or ask Operations to check file access." });
+        if (current) {
+          setState({ kind: "error", message: "This attachment could not load. Retry, or ask Operations to check file access." });
+          onRead(fileId, null);
+        }
       }
     }
     void load();
     return () => { current = false; };
-  }, [fileId, orderId, kind, attempt]);
+  }, [fileId, orderId, kind, attempt, onRead]);
 
   function retry() {
     setState({ kind: "loading" });
@@ -84,6 +142,7 @@ function ArtworkFile({ orderId, reference }: { orderId: string; reference: Artwo
   }
 
   const file = state.kind === "ready" ? state.file : null;
+  if (file && isArtworkRemoved(file)) return <RemovedFile file={file} itemName={reference.itemName} kind={kind} />;
   const image = Boolean(file && isArtworkImage(file));
   const kindLabel = kind === "mockup" ? "Reference mockup" : "Artwork";
   const failed = state.kind === "error" || previewFailed;
@@ -140,6 +199,26 @@ function ArtworkFile({ orderId, reference }: { orderId: string; reference: Artwo
           <Text className="text-button text-text-primary">Retry attachment</Text>
         </Pressable>
       ) : null}
+    </View>
+  );
+}
+
+/** A file whose bytes are gone: its name and when, with nothing to open. */
+function RemovedFile({ file, itemName, kind }: { file: StoredFile; itemName?: string; kind: ArtworkReference["kind"] }) {
+  const colors = useThemeColors();
+  const detail = `${kind === "mockup" ? "Reference mockup" : "Artwork"} · ${removedFileDetail(file)}`;
+  return (
+    <View className="gap-2 border-b border-outline-subtle py-3">
+      {itemName ? <Text className="text-caption text-text-muted">{itemName}</Text> : null}
+      <View accessible accessibilityLabel={`${file.originalFilename}, ${detail}`} className="min-h-11 flex-row items-center gap-3">
+        <View className="h-14 w-14 items-center justify-center rounded-field border border-dashed border-outline">
+          <Trash2 size={20} color={colors.textMuted} aria-hidden />
+        </View>
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text className="text-body text-text-secondary" numberOfLines={1} ellipsizeMode="middle">{file.originalFilename}</Text>
+          <Text className="text-caption text-text-muted" numberOfLines={1}>{detail}</Text>
+        </View>
+      </View>
     </View>
   );
 }

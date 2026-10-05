@@ -7,6 +7,7 @@ import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
 import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
 import type { DevicePlatform } from "@/lib/push";
+import { parseSeasonWindows, type SeasonWindows } from "@/lib/seasonWindows";
 
 /**
  * GRIDGO demo API client.
@@ -382,7 +383,14 @@ export type StoredFile = {
   state: string;
   createdAt: string;
   readyAt: string | null;
-  references: { type: string; id: string; field: string }[];
+  /** Set once deletion was asked for, and once the bytes were removed. */
+  deleteRequestedAt?: string | null;
+  deletedAt?: string | null;
+  /**
+   * Where the file is attached. A client is sent `{type, id}` only: `field`
+   * says which slot, and that is ops' working detail.
+   */
+  references: { type: string; id: string; field?: string }[];
   /** Present only when the bytes carried something worth reading. */
   detected?: DetectedArtwork;
 };
@@ -2129,6 +2137,16 @@ export async function deadlineDays(
   return request<{ days: DeadlineDay[]; earliest: string | null }>(`/me/deadline-days${query}`);
 }
 
+/**
+ * Season windows: when shops fill up early (`docs/SEASON_WINDOWS_API.md`).
+ *
+ * Public and awareness only. Read through `parseSeasonWindows`, which drops a
+ * malformed row rather than failing the read.
+ */
+export async function getSeasonWindows(): Promise<SeasonWindows> {
+  return parseSeasonWindows(await request<unknown>("/season-windows"));
+}
+
 export async function rateOrder(
   orderId: string,
   input: { qualityStars: number; speedStars: number; valueStars: number; comment?: string },
@@ -2366,6 +2384,20 @@ export async function getFileDownloadUrl(
 
 export async function getFile(fileId: string): Promise<StoredFile> {
   const result = await request<{ file: StoredFile }>(`/files/${fileId}`);
+  return result.file;
+}
+
+/**
+ * Delete the client's own artwork early (gridgo-api `docs/STORAGE_API.md`,
+ * `DELETE /files/:fileId`). Allowed only once every order using the file is
+ * completed and nothing is open on it; refused with `409 file_retention_hold`
+ * or `409 file_in_use` otherwise. The answer's `state` is `deleted`, or
+ * `delete_pending` when a case opened while storage was being cleared.
+ */
+export async function deleteFile(fileId: string): Promise<StoredFile> {
+  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}`, {
+    method: "DELETE",
+  });
   return result.file;
 }
 

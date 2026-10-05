@@ -14,6 +14,7 @@ import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
+import { useSeasonWindows } from "@/store/seasonWindows";
 import { withJobRanking } from "@/store/orderRanking";
 import {
   canStep,
@@ -56,6 +57,13 @@ export default function WhenScreen() {
   const dropoff = cart?.defaultDropoff ?? null;
 
   const [chosen, setChosen] = useState<string | null>(null);
+  // Season windows shade the month as a heads-up. They never decide which
+  // days can be picked — that is `availability` alone.
+  const seasons = useSeasonWindows((state) => state.seasons.windows);
+  const loadSeasons = useSeasonWindows((state) => state.load);
+  useEffect(() => {
+    void loadSeasons();
+  }, [loadSeasons]);
   useTourScreen("when");
   const [availability, setAvailability] = useState<api.DeadlineDay[] | null>(null);
   const [earliest, setEarliest] = useState<string | null>(null);
@@ -109,8 +117,9 @@ export default function WhenScreen() {
         // an empty month reads as "GRIDGO cannot print this at all".
         availability: availability ?? openMonth(which),
         now: new Date(),
+        seasons,
       }),
-    [availability],
+    [availability, seasons],
   );
 
   // Stable, so the calendar's day cells can skip re-rendering. An arrow made
@@ -197,6 +206,7 @@ export default function WhenScreen() {
             onStepMonth={stepMonth}
             canStepBack={canStep(month, -1, availability ?? [], new Date())}
             canStepForward={canStep(month, 1, availability ?? [], new Date())}
+            seasons={seasons}
           />
           ) : (
             <DeadlineCalendarSkeleton />

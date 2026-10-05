@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react-native";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -12,14 +12,23 @@ import Animated, {
 
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 
+import { SeasonLevelTag, useSeasonTrackColour } from "@/components/SeasonLevelTag";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
   choiceLabel,
+  monthKeyOf,
   shiftMonth,
   shopClock,
   type CalendarDay,
   type DayChoice,
 } from "@/lib/deadlineCalendar";
+import {
+  SEASON_AWARENESS_NOTE,
+  seasonAccessibilityText,
+  seasonRange,
+  seasonsInMonth,
+  type SeasonWindow,
+} from "@/lib/seasonWindows";
 
 /**
  * The month a client picks their date from.
@@ -124,6 +133,7 @@ export function DeadlineCalendar({
   onStepMonth,
   canStepBack,
   canStepForward,
+  seasons = [],
 }: {
   /** Builds a month's cells. Called for the month either side as well. */
   daysFor: (month: Date) => CalendarDay[];
@@ -133,6 +143,11 @@ export function DeadlineCalendar({
   onStepMonth: (step: number) => void;
   canStepBack: boolean;
   canStepForward: boolean;
+  /**
+   * Season windows, for the list under the month. The cells carry their own
+   * marks from `daysFor`; this is only what the list names.
+   */
+  seasons?: SeasonWindow[];
 }) {
   const colors = useThemeColors();
   const light = useThemeName() !== "dark";
@@ -141,7 +156,8 @@ export function DeadlineCalendar({
   // Seven across the page with a hairline between, so the month reads as one
   // block of days rather than forty-two separate marks.
   const cell = Math.floor((width - 32) / 7);
-  const disc = cell - 3;
+  // Four points of air round each disc, which is where a season's track shows.
+  const disc = cell - DISC_INSET * 2;
 
   /*
     Cells cached by month, and the cache thrown away only when availability
@@ -180,6 +196,47 @@ export function DeadlineCalendar({
   }, [days, selectedDayKey]);
 
   const headlineDate = headline ? new Date(`${headline.dayKey}T12:00:00`) : month;
+
+  /*
+    Which season messages are open. A chosen day opens the seasons it sits in,
+    and a tap on a day nobody can make still opens its season — the message is
+    worth reading whether or not that date is a choice. A row's own tap
+    toggles it. Reset whenever the day changes, during render rather than in
+    an effect, so the message lands in the same paint as the ring.
+  */
+  const [openSeasons, setOpenSeasons] = useState<{ day: string | null; ids: string[] }>({
+    day: null,
+    ids: [],
+  });
+  const [seasonDay, setSeasonDay] = useState<CalendarDay | null>(null);
+  const seasonSource =
+    seasonDay ?? days.find((day) => day.dayKey === selectedDayKey) ?? null;
+  const seasonSourceKey = seasonSource?.dayKey ?? null;
+  if (openSeasons.day !== seasonSourceKey) {
+    setOpenSeasons({
+      day: seasonSourceKey,
+      ids: seasonSource?.season?.windows.map((window) => window.id) ?? [],
+    });
+  }
+  const toggleSeason = useCallback((id: string) => {
+    setOpenSeasons((current) => ({
+      ...current,
+      ids: current.ids.includes(id)
+        ? current.ids.filter((entry) => entry !== id)
+        : [...current.ids, id],
+    }));
+  }, []);
+  const tapDay = useCallback(
+    (day: CalendarDay) => {
+      setSeasonDay(day.season ? day : null);
+      if (day.selectable) onSelectDay(day);
+    },
+    [onSelectDay],
+  );
+  const monthSeasons = useMemo(
+    () => seasonsInMonth(monthKeyOf(month), seasons),
+    [month, seasons],
+  );
 
   /*
     A carousel, anchored on the middle of a three-month strip.
@@ -390,7 +447,7 @@ export function DeadlineCalendar({
               cell={cell}
               disc={disc}
               selectedDayKey={selectedDayKey}
-              onSelectDay={onSelectDay}
+              onSelectDay={tapDay}
               interactive={entry.current}
             />
           ))}
@@ -419,6 +476,80 @@ export function DeadlineCalendar({
           </View>
         ))}
       </View>
+
+      {monthSeasons.length ? (
+        <SeasonList
+          seasons={monthSeasons}
+          openIds={openSeasons.ids}
+          onToggle={toggleSeason}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/** Space round each disc; the season track fills it. */
+const DISC_INSET = 4;
+
+/**
+ * The seasons that touch the month on screen, each with its level in words.
+ *
+ * The track behind the discs says "something is happening on these days";
+ * this says what. A row opens to the message Super Admin wrote for it, and a
+ * chosen day inside a season opens that season's row by itself — the moment
+ * a client picks graduation week is the moment the heads-up is worth reading.
+ */
+function SeasonList({
+  seasons,
+  openIds,
+  onToggle,
+}: {
+  seasons: SeasonWindow[];
+  openIds: string[];
+  onToggle: (id: string) => void;
+}) {
+  const colors = useThemeColors();
+
+  return (
+    <View className="mt-5">
+      <View className="gg-card-flush">
+        {seasons.map((window, index) => {
+          const open = openIds.includes(window.id);
+          return (
+            <View key={window.id}>
+              {index > 0 ? <View className="gg-divider" /> : null}
+              <Pressable
+                onPress={() => onToggle(window.id)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: open }}
+                accessibilityLabel={`${window.demandLevel} season, ${window.name}, ${seasonRange(window)}`}
+                className="gg-touch px-4 py-3"
+                style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+              >
+                <View className="flex-row items-center gap-3">
+                  <SeasonLevelTag level={window.demandLevel} />
+                  <Text
+                    className="min-w-0 flex-1 text-body font-medium text-text-primary"
+                    numberOfLines={1}
+                  >
+                    {window.name}
+                  </Text>
+                  <Text className="text-caption text-text-muted">{seasonRange(window)}</Text>
+                  {open ? (
+                    <ChevronUp size={16} color={colors.textMuted} strokeWidth={2} />
+                  ) : (
+                    <ChevronDown size={16} color={colors.textMuted} strokeWidth={2} />
+                  )}
+                </View>
+                {open && window.message ? (
+                  <Text className="mt-2 text-body text-text-secondary">{window.message}</Text>
+                ) : null}
+              </Pressable>
+            </View>
+          );
+        })}
+      </View>
+      <Text className="mt-2 text-caption text-text-muted">{SEASON_AWARENESS_NOTE}</Text>
     </View>
   );
 }
@@ -539,8 +670,13 @@ const DayCell = memo(function DayCell({
   const colors = useThemeColors();
   const light = useThemeName() !== "dark";
 
+  const track = useSeasonTrackColour();
   const fill = discColour(day.choice, light);
   const ink = numeralColour(day.choice, light);
+  const seasonText = day.season ? seasonAccessibilityText(day.season.windows) : null;
+  // A season day nobody can make still answers a tap — with its season's
+  // message, never with a selection.
+  const pressable = day.selectable || (day.inMonth && day.season !== null);
   // A white disc on a white page is not a disc. It becomes an outlined circle
   // there instead, which is what vacant looks like anyway.
   const needsEdge = day.choice === "open" && light;
@@ -548,11 +684,11 @@ const DayCell = memo(function DayCell({
   return (
     <Pressable
       onPress={() => onSelect(day)}
-      disabled={!day.selectable}
+      disabled={!pressable}
       accessibilityRole="button"
       accessibilityState={{ selected, disabled: !day.selectable }}
       // The whole answer: a screen reader gets no colour and no shape.
-      accessibilityLabel={`${day.day}: ${choiceLabel(day.choice)}`}
+      accessibilityLabel={`${day.day}: ${choiceLabel(day.choice)}${seasonText ? `. ${seasonText}` : ""}`}
       style={({ pressed }) => ({
         width: cell,
         height: cell,
@@ -561,6 +697,29 @@ const DayCell = memo(function DayCell({
         opacity: day.inMonth ? (pressed && day.selectable ? 0.7 : 1) : 0.12,
       })}
     >
+      {/*
+        The season track, behind the disc. It runs edge to edge into a
+        neighbour of the same level, so a season reads as one stroke across
+        the week, and rounds off where the season (or the row) ends. A pixel
+        short of the cell top and bottom keeps two weeks' tracks apart.
+      */}
+      {day.season ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 1,
+            bottom: 1,
+            left: day.season.joinsPrevious ? 0 : 1,
+            right: day.season.joinsNext ? 0 : 1,
+            backgroundColor: track(day.season.level),
+            borderTopLeftRadius: day.season.joinsPrevious ? 0 : 999,
+            borderBottomLeftRadius: day.season.joinsPrevious ? 0 : 999,
+            borderTopRightRadius: day.season.joinsNext ? 0 : 999,
+            borderBottomRightRadius: day.season.joinsNext ? 0 : 999,
+          }}
+        />
+      ) : null}
       <View
         style={{
           width: disc,
@@ -642,7 +801,7 @@ export function DeadlineCalendarSkeleton() {
   const colors = useThemeColors();
   const { width } = useWindowDimensions();
   const cell = Math.floor((width - 32) / 7);
-  const disc = cell - 4;
+  const disc = cell - DISC_INSET * 2;
 
   return (
     <View accessibilityLabel="Loading which dates are possible">
