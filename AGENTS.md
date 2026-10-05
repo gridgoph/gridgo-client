@@ -181,6 +181,7 @@ The third delivery leg, beside `GET /notifications` and the SSE stream: the serv
 `docs/STORAGE_API.md` in **gridgo-api** is the authoritative contract for uploads — read it before touching `POST /files`, `attach`, or `download-url`. Client-side consequences that are easy to get wrong:
 
 - Upload with `XMLHttpRequest` (`lib/api.ts` `uploadFile`), never by reading the URI into memory. A 200 MB artwork must stream, or mid-range Android runs out of memory. iOS reports unreliable MIME types — send what the picker gave and let the server decide from magic bytes.
+- When a picked file's bytes are needed on the phone (receipt OCR), read them through React Native networking (`XMLHttpRequest` blob + `FileReader`), never `expo-file-system`: Expo Go's file system refuses the document picker's cache copy (`Location '…' isn't readable.`), so it fails only in Expo Go while the upload still succeeds (#180, [docs/RECEIPT_OCR_VALIDATION.md](docs/RECEIPT_OCR_VALIDATION.md)).
 - New request order: create the order as a **draft** → attach the file → transition to `submitted`. Operations must never open a job whose artwork has not landed.
 - The client sees **two** proof decisions at different points: `proof_approval` (Operations' artwork proof, before matching) and `supplier_proof_review` (the supplier's print proof, before payment). Both are `isAnyProofDecisionState`.
 - A QA rejection is `client_correction` → replace the file on the **same order** → `submitted`. Never create a second order; the quote, history and payment survive.
