@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.209 (New feature)
+
+- Busy and peak seasons are shaded on the date picker, and Home gives you a heads-up weeks before one starts.
+- Delete your own artwork from a completed job. GRIDGO also deletes artwork 30 days after a job is completed.
+
 ## 1.0.201 (Improvement)
 
 - New accounts now see what GRIDGO does before being asked for anything, and set their matching priorities at the end.
