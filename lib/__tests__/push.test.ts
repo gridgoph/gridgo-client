@@ -106,6 +106,15 @@ describe("pushTargetRoute", () => {
     },
   );
 
+  // Hub reminders and the handover open the order, where the QR, the code
+  // and the redelivery choice live (gridgo-api#124/#125).
+  it.each(["hub_ready", "hub_unclaimed_reminder", "hub_unclaimed_warning", "order_ready_for_pickup"])(
+    "opens the order with its claim code for %s",
+    (type) => {
+      expect(pushTargetRoute(parsePushData({ type, orderId: "ord_demo_1" }))).toBe("/order/ord_demo_1");
+    },
+  );
+
   it("opens the list when there is no job behind the update", () => {
     expect(pushTargetRoute(parsePushData({ type: "account_update" }))).toBe(
       "/(tabs)/notifications",

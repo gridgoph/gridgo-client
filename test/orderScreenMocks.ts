@@ -22,5 +22,9 @@ export function orderScreenApiMock() {
     answerReschedule: jest.fn(),
     rematchReschedule: jest.fn(),
     refundReschedule: jest.fn(),
+    // No handover credential unless a test gives one (gridgo-api#124/#125).
+    getOrderHandover: jest.fn(async () => null),
+    requestHubRedelivery: jest.fn(),
+    escalateHandover: jest.fn(),
   };
 }

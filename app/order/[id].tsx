@@ -11,6 +11,8 @@ import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
+import { DeliveryHandoverCard } from "@/components/DeliveryHandoverCard";
+import { HubClaimCard } from "@/components/HubClaimCard";
 import { FormScreen } from "@/components/FormScreen";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { JobCompleteCard } from "@/components/JobCompleteCard";
@@ -52,6 +54,7 @@ import {
   orderWaitingOn,
 } from "@/lib/orderState";
 import { isJobComplete } from "@/lib/jobComplete";
+import { handoverKind, isHubHandover } from "@/lib/handover";
 import {
   installmentLabel,
   installmentUnderReview,
@@ -96,6 +99,12 @@ export default function OrderDetailScreen() {
   const [refunds, setRefunds] = useState<api.Refund[] | null>(null);
   /** The multi-shop basket this order is one group of, when it is one. */
   const [basket, setBasket] = useState<api.Basket | null>(null);
+  /**
+   * The handover credential (gridgo-api#124/#125): null when this order has
+   * none right now, `"error"` when the read failed — a claim code is not
+   * something to guess at, so a failure says so and offers a retry.
+   */
+  const [handover, setHandover] = useState<api.OrderHandover | null | "error">(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadSequence = useRef(0);
@@ -123,6 +132,13 @@ export default function OrderDetailScreen() {
         ? await api.getBasket(current.basketId).catch(() => null)
         : null;
       if (sequence !== loadSequence.current) return;
+      // Read with the order, so the claim code lands with the screen rather
+      // than popping in under it. Only asked for when it can exist.
+      const credential = handoverKind(current)
+        ? await api.getOrderHandover(current.id).catch(() => "error" as const)
+        : null;
+      if (sequence !== loadSequence.current) return;
+      setHandover(credential);
       setBasket(group);
       setOrder(current);
       setProduct(catalog.find((entry) => entry.id === current.productId) ?? null);
@@ -411,10 +427,39 @@ export default function OrderDetailScreen() {
           GRIDGO's own places, and what the client needs is not a route but an
           address and the word that it has arrived.
         */}
+        {/*
+          With the handover switch on, both endings carry a credential: the
+          hub's QR and code, or the code the rider also sees. An order made
+          ready before the switch has none and keeps the old counter card.
+        */}
+        {handover === "error" && handoverKind(order) ? (
+          <View className="gg-card gap-3">
+            <Text className="text-body-lg font-medium text-text-primary">
+              {handoverKind(order) === "hub" ? "Your claim code did not load" : "Your handover code did not load"}
+            </Text>
+            <Text className="text-body text-text-secondary">
+              {handoverKind(order) === "hub"
+                ? "You need it to collect this order. Check your connection and try again."
+                : "You need it to check the rider's code before you accept the order. Check your connection and try again."}
+            </Text>
+            <SecondaryButton label="Try again" onPress={() => void load()} />
+          </View>
+        ) : null}
         {collectsAtOffice(order) ? (
-          isAwaitingCollectionState(order.state) ? <PickupCounterCard order={order} /> : null
+          isAwaitingCollectionState(order.state) ? (
+            handover !== "error" && isHubHandover(handover) ? (
+              <HubClaimCard order={order} handover={handover} onChanged={() => void load()} />
+            ) : handover === "error" ? null : (
+              <PickupCounterCard order={order} />
+            )
+          ) : null
         ) : isTrackingState(order.state) ? (
-          <DeliveryTrackingCard order={order} />
+          <>
+            {handover && handover !== "error" ? (
+              <DeliveryHandoverCard orderId={order.id} handover={handover} />
+            ) : null}
+            <DeliveryTrackingCard order={order} />
+          </>
         ) : null}
 
         {/*

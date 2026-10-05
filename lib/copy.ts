@@ -124,6 +124,13 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "This order was paid in full up front, so there is no balance to pay. Pull it down to refresh.";
       case "payment_method_not_allowed":
         return "GRIDGO takes payment by QR only — GCash, Maya or a bank e-wallet. There is no cash on delivery.";
+      // ---- handover: hub claim and delivery codes (gridgo-api#124/#125) ----
+      case "handover_not_ready":
+        return "This order is not waiting for a handover right now. Pull it down to see where it got to.";
+      case "redelivery_not_available":
+        return "Redelivery opens after three missed hub days, while your order is still at the hub. Pull it down to refresh.";
+      case "redelivery_cost_acceptance_required":
+        return "Redelivery is at your own cost. Confirm that to send the request.";
       // ---- artwork: design links ----
       case "artwork_link_rate_limited":
         return "That is a lot of link checks in one minute. Wait a moment, then check again.";

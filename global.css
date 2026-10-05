@@ -77,6 +77,13 @@
   /* The tour's dim and the edge of its cut-out (components/TourOverlay.tsx) */
   --color-tour-scrim: rgb(0 0 0 / 0.55);
   --color-tour-ring: #ffffff;
+  /* The handover claim slip (components/ClaimSlip.tsx). Deliberately the same
+     in both themes, so there is no dark override: a QR scans as dark on
+     light, and a code read in daylight wants the most contrast there is. */
+  --color-slip-paper: #ffffff;
+  --color-slip-ink: #000000;
+  --color-slip-ink-muted: #4a4a4a;
+  --color-slip-rule: #dcdcdc;
 
   /* -- Type ---------------------------------------------------------------
      Satoshi carries all UI type. It ships as one file per cut, and React
@@ -254,6 +261,17 @@
   font-family: var(--font-sans);
   font-size: 10px;
   line-height: 16px;
+}
+
+/**
+ * 48/56. The handover code on the claim slip, and nothing else: six digits a
+ * rider or hub staff read off a phone at arm's length, often in sun.
+ */
+@utility text-handover-code {
+  font-family: var(--font-bold);
+  font-size: 48px;
+  line-height: 56px;
+  letter-spacing: 4px;
 }
 
 /** Button labels. Always a clear verb. */

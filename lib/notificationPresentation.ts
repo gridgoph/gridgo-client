@@ -71,6 +71,34 @@ export type PresentedNotification = {
   callout: NotificationCallout | null;
 };
 
+/**
+ * The hub's own reminders (gridgo-api#124): ready, then one per missed hub
+ * day. The server's body already counts the days and says the order is not
+ * forfeited, so it is kept; the title says which moment this is.
+ */
+const HUB_TYPES = ["hub_ready", "hub_unclaimed_reminder", "hub_unclaimed_warning"] as const;
+
+function isHubType(type: string | null | undefined): boolean {
+  return (HUB_TYPES as readonly string[]).includes(type ?? "");
+}
+
+/** A third missed day: Operations follows up, and redelivery can be asked for. */
+function hubRedeliveryOpen(notification: Pick<Notification, "type" | "body">): boolean {
+  return notification.type === "hub_unclaimed_warning" && /redeliver/i.test(notification.body);
+}
+
+function hubCopy(notification: Notification): { title: string; body: string; hint: string } {
+  const title =
+    notification.type === "hub_ready"
+      ? "Ready at the hub"
+      : notification.type === "hub_unclaimed_reminder"
+        ? "Still waiting at the hub"
+        : hubRedeliveryOpen(notification)
+          ? "Operations will follow up"
+          : "Collect your order soon";
+  return { title, body: notification.body, hint: "Open for your claim code" };
+}
+
 const NEED_YOU_TYPES = new Set([
   "order_client_correction",
   "order_proof_approval",
@@ -318,12 +346,22 @@ function calloutFor(
       detail: "The counter releases it once Operations confirms payment.",
     };
   }
+  if (collectReady && hubRedeliveryOpen(notification)) {
+    return {
+      tone: "warning",
+      icon: "package-check",
+      title: "Collect it, or ask for redelivery",
+      detail: "Redelivery is at your own cost. Open the order to choose.",
+    };
+  }
   if (collectReady) {
     return {
       tone: "success",
       icon: "package-check",
       title: `Collect at ${GRIDGO_OFFICE_LABEL}`,
-      detail: "Give the name you ordered under.",
+      detail: isHubType(notification.type)
+        ? "Show the QR and code from the order."
+        : "Open the order for what to bring.",
     };
   }
   if (shopRecoveryNotificationNeedsYou(notification)) {
@@ -358,6 +396,8 @@ export function presentNotification(
       ? rateReminderCopy()
       : notification.type === "order_receipt_ready"
         ? receiptReadyCopy(showServiceFee)
+        : isHubType(notification.type) && notification.orderState === "awaiting_collection" && !hold
+          ? hubCopy(notification)
         : isJobComplete(eventState)
           ? completeCopy(collect)
           : collect

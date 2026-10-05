@@ -225,7 +225,7 @@ const STATE_ACTIONS: Record<string, OrderNextAction> = {
 const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
   awaiting_collection: {
     title: "Collect at GRIDGO Office",
-    body: "Your order is on the counter, paid for and ready. Bring the name you ordered under.",
+    body: "Your order is on the counter, paid for and ready. Open it for what to show the hub staff.",
     tone: "success",
     icon: "package-check",
   },
