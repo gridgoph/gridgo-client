@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react-native";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -12,6 +12,7 @@ import { basketTotals, printRuns } from "@/lib/basket";
 import { CategorySampleCard } from "@/components/CategorySample";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCart } from "@/store/cart";
+import { useListingQuote } from "@/store/listingQuote";
 import { clearMatchPrefetch } from "@/lib/matchPrefetch";
 
 const mockPush = jest.fn();
@@ -37,6 +38,7 @@ jest.mock("@/lib/api", () => {
     getCatalogShop: jest.fn(),
     listAddresses: jest.fn(),
     matchShop: jest.fn(),
+    catalogQuote: jest.fn(),
   };
 });
 
@@ -122,6 +124,8 @@ beforeEach(() => {
   clearListingCache();
   useCart.getState().reset();
   api.getCatalogItem.mockReset();
+  api.catalogQuote.mockReset();
+  useListingQuote.getState().reset();
   api.getSettings.mockReset();
   api.getSettings.mockResolvedValue({
     serviceFeeRateBps: 4_500,
@@ -175,7 +179,11 @@ it.each(["match cache", "catalog read"])("keeps the unconfigured Flyers pack at 
   await screen.findAllByText("1 pack · 100 pieces");
   await act(async () => {});
   expect(screen.getAllByRole("radio").every((radio) => !radio.props.accessibilityState.checked)).toBe(true);
+  // No paper picked yet, so there is nothing GRIDGO could quote: the header
+  // and the bar both read one pack at the listing's own rate, as they always
+  // have, and no quote is asked for.
   expect(screen.getAllByText("₱440.00")).toHaveLength(2);
+  expect(api.catalogQuote).not.toHaveBeenCalled();
   expect(screen.getByText("per pack of 100")).toBeTruthy();
   for (const delta of ["16.50", "8.80", "13.20", "22.00"]) {
     expect(screen.getByText(`+₱${delta} per pack of 100`)).toBeTruthy();
@@ -185,7 +193,7 @@ it.each(["match cache", "catalog read"])("keeps the unconfigured Flyers pack at 
   expect(api.getCatalogItem).toHaveBeenCalledTimes(source === "catalog read" ? 1 : 0);
   await cleanup();
 
-  const totals = basketTotals({ cart, settings, shopPoints: {} });
+  const totals = basketTotals({ cart, settings });
   expect(printRuns(cart.lines, settings.serviceFeeRateBps)[0].clientSubtotalMinor).toBe(44000);
   expect(totals.clientItemSubtotalMinor).toBe(44000);
   expect(totals.totalMinor).toBe(44000);
@@ -204,6 +212,15 @@ it.each(["match cache", "catalog read"])("keeps the unconfigured Flyers pack at 
 
 
 jest.mock("@/hooks/useLiveRefresh", () => ({ useLiveRefresh: jest.fn() }));
+
+/** GRIDGO's answer for a configured line: the client figure, nothing to mark up. */
+function quoted(clientLineSubtotalMinor: number) {
+  return {
+    catalogItemId: "sci", version: 1, serviceVersion: 1, quantity: 1,
+    clientUnitRateMinor: clientLineSubtotalMinor, clientLineSubtotalMinor,
+    billableMilliUnits: 1000, minimumMeasurementApplied: false,
+  };
+}
 
 function configuredCart(item: CatalogItem, measurement: CartLineRecord["measurement"], quantity: number, subtotal: number): Cart {
   return {
@@ -248,12 +265,18 @@ it.each([
   const cart = configuredCart(item, measurement, quantity, subtotal);
   useCart.setState({ cartId: cart.id, cart });
   rememberListing(item);
+  api.catalogQuote.mockResolvedValue(quoted(total));
   await renderInSafeArea(<ListingScreen />);
   // Let the settings refresh settle before comparing the rendered configuration.
   await act(async () => {});
-  const printing = basketTotals({ cart, settings, shopPoints: {} }).clientItemSubtotalMinor;
+  const printing = basketTotals({ cart, settings }).clientItemSubtotalMinor;
   expect(printing).toBe(total);
-  expect(within(screen.getByTestId("listing-printing")).getByText(api.formatPhp(printing))).toBeTruthy();
+  await waitFor(() =>
+    expect(within(screen.getByTestId("listing-printing")).getByText(api.formatPhp(total))).toBeTruthy(),
+  );
+  expect(api.catalogQuote).toHaveBeenCalledWith(
+    expect.objectContaining({ catalogItemId: item.id, quantity, optionIds: ["opt_gloss"], measurement }),
+  );
   if (!modifier) expect(screen.getAllByText("₱17.40").length).toBeGreaterThan(0);
   if (modifier) expect(screen.getByText("+₱4.35 each")).toBeTruthy();
   if (area) expect(screen.getByText("per sq ft")).toBeTruthy();
@@ -268,6 +291,7 @@ it("waits for settings without showing a raw or stale configured price", async (
   const item = { ...ITEM, clientFromPriceMinor: 3190, clientEffectivePriceMinor: 3190 };
   rememberListing(item);
   useCart.setState({ cartId: "cart_price", cart: configuredCart(item, null, 1, 2200) });
+  api.catalogQuote.mockResolvedValue(quoted(3190));
   let finish!: (settings: { serviceFeeRateBps: number; issueWindowHours: number; deliveryFeeBands: [] }) => void;
   api.getSettings.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
   await renderInSafeArea(<ListingScreen />);
@@ -275,6 +299,6 @@ it("waits for settings without showing a raw or stale configured price", async (
   expect(screen.queryByText("₱22.00")).toBeNull();
   expect(screen.queryByText("₱31.90")).toBeNull();
   await act(async () => { finish({ serviceFeeRateBps: 4500, issueWindowHours: 24, deliveryFeeBands: [] }); });
-  expect(screen.getAllByText("₱31.90")).toHaveLength(2);
+  await waitFor(() => expect(screen.getAllByText("₱31.90")).toHaveLength(2));
   expect(screen.queryByText("₱46.26")).toBeNull();
 });

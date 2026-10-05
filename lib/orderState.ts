@@ -11,6 +11,7 @@
  * Tone/icon strings match `StatusChip` props without importing UI from lib.
  */
 
+import { FILE_CHECK_AFTER_PAYMENT } from "@/lib/checkout";
 import type { Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import {
@@ -21,6 +22,9 @@ import {
   paymentInstallment,
   paysInFull,
 } from "@/lib/payment";
+import { rescheduleNextAction, rescheduleView, rescheduleWaitingOn } from "@/lib/reschedule";
+import { shopRecoveryNextAction, shopRecoveryView, shopRecoveryWaitingOn } from "@/lib/shopRecovery";
+import { orderPrintingMinor } from "@/lib/serviceFee";
 
 export type OrderStatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type OrderStatusIcon =
@@ -98,6 +102,9 @@ const PAID_IN_FULL_META: Record<string, OrderStateMeta> = {
   payment_authorized: { label: "Payment confirmed", tone: "success", icon: "circle-check" },
 };
 
+/** Work held while the client or Operations settles a shop change. */
+const PAUSED_META: OrderStateMeta = { label: "Paused", tone: "warning", icon: "clock" };
+
 const FALLBACK: OrderStateMeta = {
   label: "In progress",
   tone: "neutral",
@@ -118,8 +125,11 @@ export function getOrderStateMeta(
 /** An order's own chip: its state, its route, and its payment plan. */
 export function orderStateMeta(
   order: Pick<Order, "state" | "fulfillmentMode" | "payments"> &
-    Partial<Pick<Order, "balanceMinor" | "downpaymentPercent">>,
+    Partial<Pick<Order, "balanceMinor" | "downpaymentPercent" | "shopRecovery" | "rescheduleRequest">>,
 ): OrderStateMeta {
+  // The state is still "In production" on the server while the shop question
+  // is open, but nothing is being printed; the chip must not say otherwise.
+  if (shopChangeStopsJob(order)) return PAUSED_META;
   return getOrderStateMeta(order.state, order.fulfillmentMode, paysInFull(order));
 }
 
@@ -165,7 +175,8 @@ export type OrderActionIcon =
   | "upload"
   | "square-pen"
   | "package-check"
-  | "triangle-alert";
+  | "triangle-alert"
+  | "clock";
 
 export type OrderNextAction = {
   /** Sentence-case verb phrase for the action itself. */
@@ -214,7 +225,7 @@ const STATE_ACTIONS: Record<string, OrderNextAction> = {
 const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
   awaiting_collection: {
     title: "Collect at GRIDGO Office",
-    body: "Your order is on the counter, paid for and ready. Bring the name you ordered under.",
+    body: "Your order is on the counter, paid for and ready. Open it for what to show the hub staff.",
     tone: "success",
     icon: "package-check",
   },
@@ -226,11 +237,32 @@ const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
   },
 };
 
+/**
+ * The shop could not take the job, or asked for more time and the client (or
+ * Operations) has not settled it: work is held until they do. A request still
+ * waiting on an answer, or one that expired, holds nothing — the shop carries
+ * on toward the original date.
+ */
+function shopChangeStopsJob(
+  order: Pick<Order, "state"> & Partial<Pick<Order, "shopRecovery" | "rescheduleRequest">>,
+): boolean {
+  const reschedule = rescheduleView(order);
+  return shopRecoveryView(order) != null || (reschedule != null && !["answer", "expired"].includes(reschedule.kind));
+}
+
 export function orderNextAction(order: Order): OrderNextAction | null {
   // An open refund pauses the job: proofs, corrections, payments and the
   // issue window all wait on Operations' decision, so nothing is asked of
   // the client until it is made.
   if (order.refundHold) return null;
+  // The shop could not take the job, or asked for more time: the order is
+  // stopped on the client's decision, so that decision comes before anything
+  // the order's state would otherwise ask for.
+  // While either one stops the job, nothing else is asked for, the same as a
+  // refund: a balance asked of an order with no shop on it is a payment for
+  // work nobody is doing.
+  const shopChange = shopRecoveryNextAction(order) ?? rescheduleNextAction(order);
+  if (shopChange || shopChangeStopsJob(order)) return shopChange;
   if (downpaymentDue(order)) {
     const amount = paymentInstallment(order, "downpayment")?.amountMinor;
     const inFull = paysInFull(order);
@@ -336,6 +368,16 @@ export function orderWaitingOn(order: Order): string | null {
   if (order.refundHold) {
     return "This job is paused while Operations reviews your refund request.";
   }
+  // Ahead of the payment check: a multi-shop basket shares one payment, so a
+  // cancelled group would otherwise read as waiting on the review its
+  // siblings are still in.
+  if (order.state === "cancelled") {
+    return order.groupLabel
+      ? "This part of your order was cancelled. Its share is refunded on its own; the rest of the order carries on."
+      : WAITING_ON.cancelled;
+  }
+  const shopChange = shopRecoveryWaitingOn(order) ?? rescheduleWaitingOn(order);
+  if (shopChange) return shopChange;
   const underReview = installmentUnderReview(order);
   const inFull = paysInFull(order);
   if (underReview === "downpayment" && inFull) {
@@ -346,6 +388,10 @@ export function orderWaitingOn(order: Order): string | null {
   }
   if (underReview === "balance") {
     return "We are checking your balance payment. Final handover is allowed once Operations confirms it; do not pay again.";
+  }
+  // Paid, and the file is with GRIDGO before the shop hears of the job (#122).
+  if (order.state === "needs_qa" && order.fileCheck?.status === "pending") {
+    return FILE_CHECK_AFTER_PAYMENT;
   }
   if (collectsAtOffice(order) && COLLECT_WAITING_ON[order.state]) return COLLECT_WAITING_ON[order.state];
   if (inFull && PAID_IN_FULL_WAITING_ON[order.state]) return PAID_IN_FULL_WAITING_ON[order.state];
@@ -371,15 +417,14 @@ export function latestNoteForState(
 }
 
 /**
- * What the client is charged for the items: the shops' figure plus GRIDGO's
- * charge, exactly as the order was written. The shops' figure on its own is
- * what they are paid, and it never reaches the client as a price.
+ * What the client is charged for the items, exactly as the order was written:
+ * the saved total less delivery (`orderPrintingMinor`). The shops' figure on
+ * its own is what they are paid, and it never reaches the client as a price.
  */
 export function orderItemsMinor(
-  order: Pick<Order, "subtotalMinor" | "serviceFeeMinor">,
+  order: Pick<Order, "subtotalMinor" | "serviceFeeMinor" | "totalMinor" | "deliveryFeeMinor">,
 ): number | null {
-  if (order.subtotalMinor == null) return null;
-  return order.subtotalMinor + (order.serviceFeeMinor ?? 0);
+  return orderPrintingMinor(order);
 }
 
 /**

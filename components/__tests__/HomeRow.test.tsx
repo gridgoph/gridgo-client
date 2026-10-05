@@ -146,6 +146,21 @@ describe("HomeJobRow's next step", () => {
   });
 });
 
+describe("A cancelled HomeJobRow", () => {
+  it("says it was cancelled and carries no ready date", async () => {
+    await render(
+      <HomeJobRow
+        order={order({ state: "cancelled", groupLabel: "Group B", promiseBy: "2026-10-20T10:00:00.000Z" })}
+        onPress={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText(/This part of your order was cancelled/)).toBeTruthy();
+    expect(screen.queryByText(/checking your payment/i)).toBeNull();
+    expect(screen.queryByText(/Ready by/)).toBeNull();
+  });
+});
+
 describe("HomeJobRow without a client promise", () => {
   it.each([null, "not-a-date"])("never substitutes a supplier date for %s", async (promiseBy) => {
     await render(

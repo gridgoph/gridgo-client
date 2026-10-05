@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import { useCallback, useEffect, type ReactNode } from "react";
+import { Modal, Platform, Pressable, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -37,7 +37,9 @@ type Props = {
  *
  * The scrim dismisses a routine confirmation but **not** a destructive one: an
  * accidental tap beside the dialog must not be how work gets discarded. Android
- * back still cancels either, because the platform owns that gesture.
+ * back still cancels either, because the platform owns that gesture. For the
+ * same reason a destructive dialog opens with keyboard focus on the safe answer
+ * on web, as the dashboard's dialogs do: Enter must not be how work is lost.
  */
 export function ConfirmDialog({
   visible,
@@ -74,6 +76,15 @@ export function ConfirmDialog({
   }));
 
   const dismissable = tone !== "destructive" && !busy;
+
+  // A ref callback runs once the button is in the modal, before
+  // react-native-web's focus trap would put focus on the first button.
+  const focusSafeAnswer = useCallback(
+    (node: View | null) => {
+      if (node && tone === "destructive" && Platform.OS === "web") node.focus();
+    },
+    [tone],
+  );
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
@@ -129,6 +140,7 @@ export function ConfirmDialog({
               </Pressable>
             )}
             <Pressable
+              ref={focusSafeAnswer}
               accessibilityRole="button"
               disabled={busy}
               onPress={onCancel}

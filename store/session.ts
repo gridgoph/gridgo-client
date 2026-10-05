@@ -1,5 +1,6 @@
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
+import { useHandoverActions } from "@/store/handoverActions";
 import { useNotifications } from "@/store/notifications";
 import { useOrderRanking } from "@/store/orderRanking";
 import { setLiveOwner } from "@/lib/live";
@@ -349,6 +350,7 @@ useSession.subscribe((state, previous) => {
   if (id) useCart.getState().claim(id);
   useCheckoutPayment.getState().reset();
   useOrderPayment.getState().reset();
+  useHandoverActions.getState().reset();
   clearBoardCache();
   clearListingCache();
   // A match and its pick tokens are bound to the client who asked; another

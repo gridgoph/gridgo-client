@@ -287,6 +287,14 @@ function AppNavigation() {
           options={pushedScreenOptions("When you need it")}
         />
                 {/*
+                  Delivery or pick-up, straight after the date and before the
+                  match, because the match is measured from that point (#158).
+                */}
+                <Stack.Screen
+                  name="request/fulfilment"
+                  options={pushedScreenOptions("Delivery or pick-up")}
+                />
+                {/*
                   Confirm or re-rank what this one job matches on — after the
                   date, and again from "Change" on the match.
                 */}
@@ -405,13 +413,22 @@ function AppNavigation() {
                   options={pushedScreenOptions("Password")}
                 />
                 {/*
-                  Becoming a business client. Each step carries its own
+                  Becoming an organization or business client, and handing an
+                  organization to a new officer. Each step carries its own
                   question as the heading, so the band names the flow they are
                   in and never repeats what is under it.
                 */}
                 <Stack.Screen
                   name="business-apply"
-                  options={pushedScreenOptions("Apply as a business")}
+                  options={pushedScreenOptions("Account application")}
+                />
+                <Stack.Screen
+                  name="officer-handover"
+                  options={pushedScreenOptions("Change of officer")}
+                />
+                <Stack.Screen
+                  name="statement-period"
+                  options={pushedScreenOptions("Statement period")}
                 />
                 {/*
                   A bug report, sent to Operations as a chat message. The band

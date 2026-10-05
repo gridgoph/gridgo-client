@@ -199,6 +199,66 @@ describe("useClerkApiSession", () => {
     expect(mockGetToken).toHaveBeenCalledTimes(2);
   });
 
+  it("asks /auth/me once per session however often Clerk hands over a new getToken", async () => {
+    mockMe.mockResolvedValue({
+      id: "u1",
+      email: "ana@company.com",
+      name: "Ana",
+      role: "client",
+      accountType: "individual",
+    });
+
+    const { rerender } = await renderHook(() => useClerkApiSession());
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u1"));
+    expect(mockMe).toHaveBeenCalledTimes(1);
+
+    // An idle web session: Clerk recreates `getToken` about once a second.
+    // Each of these used to re-run the sync, one `/auth/me` per tick (#173).
+    for (let tick = 0; tick < 30; tick += 1) {
+      mockAuthGetToken = jest.fn(async () => "clerk-jwt");
+      await rerender({});
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      });
+    }
+
+    expect(mockMe).toHaveBeenCalledTimes(1);
+    expect(useSession.getState().user?.id).toBe("u1");
+
+    // The bearer still reads the newest getToken, so a refreshed token is used.
+    const latest = mockAuthGetToken;
+    const provider = mockSetTokenProvider.mock.calls.at(-1)?.[0] as () => Promise<string | null>;
+    await provider();
+    expect(latest).toHaveBeenCalled();
+  });
+
+  it("joins again when the Clerk session id changes", async () => {
+    mockMe.mockResolvedValue({
+      id: "u1",
+      email: "ana@company.com",
+      name: "Ana",
+      role: "client",
+      accountType: "individual",
+    });
+
+    const { rerender } = await renderHook(() => useClerkApiSession());
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u1"));
+    expect(mockMe).toHaveBeenCalledTimes(1);
+
+    mockMe.mockResolvedValue({
+      id: "u2",
+      email: "ben@company.com",
+      name: "Ben",
+      role: "client",
+      accountType: "individual",
+    });
+    mockSessionId = "sess_2";
+    await rerender({});
+
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u2"));
+    expect(mockMe).toHaveBeenCalledTimes(2);
+  });
+
   it("does not join a leftover identity while login is collecting a code", async () => {
     mockMe.mockResolvedValue(supplier);
     useLoginFlow.getState().enterVerification("email_code");

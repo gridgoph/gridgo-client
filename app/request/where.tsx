@@ -14,8 +14,10 @@ import * as api from "@/lib/api";
 import type { ClientAddress, OrderPoint } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { prefetchMatch } from "@/lib/matchPrefetch";
+import { deliveryChoice } from "@/lib/requestFulfilment";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
+import { useJobFulfilment } from "@/store/jobFulfilment";
 import { withJobRanking } from "@/store/orderRanking";
 
 /**
@@ -40,6 +42,7 @@ export default function WhereScreen() {
   }>();
 
   const setDefaultDropoff = useCart((state) => state.setDefaultDropoff);
+  const setJobFulfilment = useJobFulfilment((state) => state.set);
   const editor = useDropoffEditor();
 
   const [saved, setSaved] = useState<ClientAddress[] | null>(null);
@@ -69,6 +72,13 @@ export default function WhereScreen() {
   /** Put the drop-off on the basket, then carry on where this came from. */
   const applyDropoff = useCallback(
     async (dropoff: OrderPoint) => {
+      // From the delivery-or-pick-up step: the address belongs to this job's
+      // match, not to the basket, which may be locked to another or not exist.
+      if (next === "fulfilment") {
+        setJobFulfilment(deliveryChoice(dropoff));
+        router.back();
+        return;
+      }
       await setDefaultDropoff(dropoff);
       const target = next === "checkout" ? "/checkout" : "/request/match";
       if (target === "/request/match" && subcategory) {
@@ -85,7 +95,7 @@ export default function WhereScreen() {
         params: subcategory ? { subcategory, category: category ?? "" } : {},
       });
     },
-    [setDefaultDropoff, router, next, subcategory, category],
+    [setDefaultDropoff, setJobFulfilment, router, next, subcategory, category],
   );
 
   const chooseSaved = async (address: ClientAddress) => {
@@ -134,7 +144,9 @@ export default function WhereScreen() {
           <Text className="text-body-lg text-text-secondary">
             {next === "checkout"
               ? "GRIDGO charges delivery by the distance from where it is printed to this pin."
-              : "You put distance first, so GRIDGO needs the drop-off before it can find your nearest printer."}
+              : next === "fulfilment"
+                ? "GRIDGO finds a printer for this pin and charges delivery by the distance to it."
+                : "You put distance first, so GRIDGO needs the drop-off before it can find your nearest printer."}
           </Text>
         </View>
 
@@ -167,7 +179,7 @@ export default function WhereScreen() {
         <View className="gap-3">
           <PrimaryButton
             label={
-              busy ? "Saving…" : next === "checkout" ? "Save this address" : "Find my printer"
+              busy ? "Saving…" : next === "checkout" || next === "fulfilment" ? "Save this address" : "Find my printer"
             }
             onPress={() => void saveAndGo()}
             disabled={busy}

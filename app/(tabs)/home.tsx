@@ -34,6 +34,7 @@ import { boardListings } from "@/lib/photoLinks";
 import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
 import { type ProductCategory } from "@/lib/productCategories";
 import { HOME_BOARDS, loadCategoryBoards } from "@/lib/shopBoards";
+import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useNotifications } from "@/store/notifications";
 import { useSeasonWindows } from "@/store/seasonWindows";
@@ -165,6 +166,9 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      // Back on Home, any "add more from Shop A" errand is over: the next
+      // product started from here searches every shop.
+      useBasketGroupTarget.getState().clear();
       return () => { loadSequence.current++; };
     }, [load]),
   );

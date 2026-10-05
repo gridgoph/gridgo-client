@@ -5,15 +5,18 @@ import { usePreventRemove } from "expo-router/react-navigation";
 import { CircleCheck, ChevronLeft } from "lucide-react-native";
 
 import { ErrorState } from "@/components/ErrorState";
+import { OrganizationDiscountRow } from "@/components/OrganizationDiscount";
 import { OrderReference } from "@/components/OrderReference";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PrintedReceipt } from "@/components/PrintedReceipt";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
+import { GroupPlate } from "@/components/ShopGroupSection";
 import { SkeletonLine, SkeletonList } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
 import { useThemeColors } from "@/hooks/useTheme";
+import { FILE_CHECK_AFTER_PAYMENT } from "@/lib/checkout";
 import * as api from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -28,6 +31,8 @@ import {
   RECEIPT_HEADLINE,
   receiptFromInvoice,
   receiptFromOrder,
+  receiptFulfilmentRow,
+  withGroupStanding,
   type ReceiptView,
 } from "@/lib/receipt";
 import { formatTimelineStamp } from "@/lib/relativeTime";
@@ -81,9 +86,16 @@ export default function OrderReceiptScreen() {
         api.getOrder(orderId),
       ]);
       if (sequence !== loadSequence.current) return;
-      const next = invoiceResult
+      // A multi-shop receipt marks any group that stopped since it was paid.
+      // A failed basket read costs only that mark, never the receipt.
+      const basket = invoiceResult?.groups && current.basketId
+        ? await api.getBasket(current.basketId).catch(() => null)
+        : null;
+      if (sequence !== loadSequence.current) return;
+      const built = invoiceResult
         ? receiptFromInvoice(invoiceResult, current)
         : receiptFromOrder(current);
+      const next = built && basket ? withGroupStanding(built, basket.groups) : built;
       if (!next) {
         setView(null);
         setOrder(current);
@@ -152,7 +164,7 @@ export default function OrderReceiptScreen() {
       <Screen edges={["bottom"]}>
         {headerEscape}
         <PrintedReceipt
-          view={view}
+          view={withFeeRate(view, order?.serviceFeeRateBps ?? settings?.serviceFeeRateBps)}
           showServiceFee={serviceFeeVisibleToClient(settings)}
           thanks={<OrderPlacedThanks />}
           actions={
@@ -203,7 +215,39 @@ export default function OrderReceiptScreen() {
           )}
         </View>
 
-        {view.lines.length ? (
+        {view.groups ? (
+          <View className="gap-3">
+            <Text className="text-overline text-text-muted">WHAT WAS ORDERED</Text>
+            {view.groups.map((group) => (
+              <View key={group.orderId} className="gg-card" testID={`receipt-group-${group.letter}`}>
+                <View className="flex-row items-center gap-3 pb-2">
+                  <GroupPlate letter={group.letter} size="sm" />
+                  <Text className="min-w-0 flex-1 text-body-lg font-medium text-text-primary">
+                    {group.label}
+                  </Text>
+                  <Text className="text-body font-medium text-text-primary">
+                    {formatPhp(group.totalMinor)}
+                  </Text>
+                </View>
+                {group.stopped ? (
+                  <Text className="pb-2 text-caption text-text-secondary">{group.stopped}</Text>
+                ) : null}
+                {group.lines.map((line) => (
+                  <SpecRow
+                    key={line.id}
+                    label={line.quantity > 1 ? `${line.name} · ${line.quantity}` : line.name}
+                    value={line.amountLabel}
+                  />
+                ))}
+                <SpecRow
+                  label="Delivery"
+                  value={group.deliveryFeeMinor === 0 ? "None" : formatPhp(group.deliveryFeeMinor)}
+                />
+                <OrganizationDiscountRow source={group} />
+              </View>
+            ))}
+          </View>
+        ) : view.lines.length ? (
           <View className="gap-3">
             <Text className="text-overline text-text-muted">WHAT WAS ORDERED</Text>
             <View className="gg-card">
@@ -222,16 +266,18 @@ export default function OrderReceiptScreen() {
           <Text className="text-overline text-text-muted">PAYMENT DETAILS</Text>
           <View className="gg-card">
             <SpecRow label="Printing" value={formatPhp(view.money.printingMinor)} />
-            <SpecRow
-              label="Delivery"
-              value={
-                view.money.deliveryFeeMinor === 0
-                  ? "None — you collect"
-                  : formatPhp(view.money.deliveryFeeMinor)
-              }
-            />
+            <OrganizationDiscountRow source={view.money} />
+            <SpecRow {...receiptFulfilmentRow(view.money, view.groups?.length ?? 0)} />
             {serviceFeeVisibleToClient(settings) ? (
-              <ServiceFeeRow explainOnly rateBps={view.money.serviceFeeRateBps} />
+              <ServiceFeeRow
+                explainOnly
+                rateBps={
+                  view.money.serviceFeeRateBps ??
+                  order?.serviceFeeRateBps ??
+                  settings?.serviceFeeRateBps ??
+                  null
+                }
+              />
             ) : null}
             <View className="flex-row items-baseline justify-between gap-4 pt-3">
               <Text className="text-body-lg text-text-secondary">Total</Text>
@@ -273,6 +319,16 @@ export default function OrderReceiptScreen() {
 }
 
 /**
+ * A multi-shop receipt withholds the fee rate from a client (the figures carry
+ * the fee inside them), so the row naming it borrows the order's snapshotted
+ * rate — or, on the moment of checkout, the live one it was priced at.
+ */
+function withFeeRate(view: ReceiptView | null, rateBps: number | null | undefined): ReceiptView | null {
+  if (!view || view.money.serviceFeeRateBps != null || rateBps == null) return view;
+  return { ...view, money: { ...view.money, serviceFeeRateBps: rateBps } };
+}
+
+/**
  * The calm close to the print: the order is in, and what happens next.
  * Placed, not paid — the slip says where the payment stands.
  */
@@ -286,8 +342,10 @@ function OrderPlacedThanks() {
       <View className="min-w-0 flex-1 gap-0.5" accessible accessibilityRole="header">
         <Text className="text-h3 text-text-primary">Thank you for ordering</Text>
         <Text className="text-body text-text-secondary">
-          Your order is placed. GRIDGO checks your payment and artwork next.
+          Your order is placed. GRIDGO checks your payment next.
         </Text>
+        {/* The shop hears of the job only once the file passes (#122). */}
+        <Text className="text-body text-text-secondary">{FILE_CHECK_AFTER_PAYMENT}</Text>
       </View>
     </View>
   );

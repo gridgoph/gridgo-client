@@ -14,6 +14,7 @@ import { NotificationCard } from "@/components/NotificationCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { SkeletonList } from "@/components/Skeleton";
 import { userFacingError } from "@/lib/copy";
+import { isOrganizationNotification, ORGANIZATIONS_ROUTE } from "@/lib/organization";
 import {
   isGroupUnread,
   partitionInbox,
@@ -65,7 +66,13 @@ export default function NotificationsScreen() {
         group={group}
         read={!isGroupUnread(group, (item) => isNotificationRead(item, readIds))}
         onOpen={
-          notification.orderId
+          isOrganizationNotification(notification.type)
+            ? () => {
+                // The officer check is answered on the Organizations tab (#165).
+                markGroupRead();
+                router.navigate(ORGANIZATIONS_ROUTE);
+              }
+            : notification.orderId
             ? () => {
                 markGroupRead();
                 if (notification.type === "order_receipt_ready") {

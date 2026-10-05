@@ -74,8 +74,20 @@ describe("homeJobs", () => {
     expect(jobs.finished).toHaveLength(0);
   });
 
+  it("files cancelled jobs with finished work, so they cannot hide a live one", () => {
+    const jobs = homeJobs([
+      order("c1", "cancelled"),
+      order("c2", "cancelled"),
+      order("c3", "cancelled"),
+      order("live", "production"),
+    ]);
+    expect(ids(jobs.inProgress)).toEqual(["live"]);
+    expect(jobs.inProgressTotal).toBe(1);
+    expect(ids(jobs.finished)).toEqual(["c1", "c2", "c3"]);
+  });
+
   it("names only the end states as finished", () => {
-    expect(["delivered", "completed", "payout_released"].every(isFinishedOrderState)).toBe(true);
+    expect(["delivered", "completed", "payout_released", "cancelled"].every(isFinishedOrderState)).toBe(true);
     expect(isFinishedOrderState("out_for_delivery")).toBe(false);
     expect(isFinishedOrderState("issue_window_open")).toBe(false);
   });

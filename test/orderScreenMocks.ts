@@ -17,5 +17,14 @@ export function orderScreenApiMock() {
     getFileDownloadUrl: jest.fn(),
     getFile: jest.fn(async () => { throw new Error("not in this test"); }),
     submitPayment: jest.fn(),
+    acceptShopRecovery: jest.fn(async () => null),
+    refundShopRecovery: jest.fn(async () => null),
+    answerReschedule: jest.fn(),
+    rematchReschedule: jest.fn(),
+    refundReschedule: jest.fn(),
+    // No handover credential unless a test gives one (gridgo-api#124/#125).
+    getOrderHandover: jest.fn(async () => null),
+    requestHubRedelivery: jest.fn(),
+    escalateHandover: jest.fn(),
   };
 }

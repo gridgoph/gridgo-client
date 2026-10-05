@@ -191,6 +191,10 @@ export type Order = {
   totalMinor: number | null;
   /** The invoice number GRIDGO issued with this order, when one exists. */
   invoiceNumber?: string | null;
+  /** An approved organization's discount, already inside `totalMinor`. */
+  organizationDiscountMinor?: number;
+  /** The officer of record when the order was placed. Never today's officer. */
+  organizationOfficer?: OrganizationOfficerSnapshot | null;
   /** A printed-invoice request this client filed, when there is one. */
   physicalInvoiceRequest?: PhysicalInvoiceRequest | null;
   downpaymentMinor: number | null;
@@ -241,12 +245,45 @@ export type Order = {
   pickup?: OrderPoint | null;
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
+  /** The choice made before matching, snapshotted at checkout (gridgo-api#148). */
+  requestFulfillment?: RequestFulfilment | null;
+  /** A pick-up order's hub hours and fee as they stood at checkout. */
+  hubPickup?: HubPickup | null;
+  /** The hub fee on a pick-up order, already inside `deliveryFeeMinor`. */
+  pickupFeeMinor?: number | null;
+  /**
+   * GRIDGO's check of the artwork before the shop hears of the job
+   * (gridgo-api#122). `pending` from checkout until Operations passes it.
+   */
+  fileCheck?: OrderFileCheck | null;
   /** True while a refund request is open: work and new payments are paused. */
   refundHold?: boolean;
   /** `cancelled | fulfilled_with_refund` once a refund was settled. */
   refundDisposition?: string | null;
   /** A settled refund turned the unpaid installment into history, not a debt. */
   unpaidBalanceCancelled?: boolean;
+  /**
+   * The assigned shop timed out, declined or cancelled, and the client chooses
+   * a replacement or a full refund (gridgo-api `docs/SHOP_RECOVERY_API.md`).
+   * Read through `lib/shopRecovery.ts`.
+   */
+  shopRecovery?: ShopRecovery | null;
+  /**
+   * The shop asked for a later deadline (gridgo-api
+   * `docs/ORDER_RESCHEDULE_API.md`). Read through `lib/reschedule.ts`.
+   */
+  rescheduleRequest?: RescheduleRequest | null;
+  /**
+   * Set when this order is one shop group of a multi-shop basket
+   * (gridgo-api `docs/MULTI_SHOP_CHECKOUT_API.md`). The group is an ordinary
+   * order with its own job, rider and refunds; the basket holds the one
+   * payment and the one receipt. Read through `lib/basketGroups.ts`.
+   */
+  basketId?: string | null;
+  /** "Shop A", "Shop B" — never the shop's identity. */
+  groupLabel?: string | null;
+  /** The basket's one deadline, shared by every group. */
+  basketDeadline?: string | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -264,6 +301,14 @@ export type Order = {
     /** Only on an older payload: a shop payout stage. Never drawn. */
     milestoneCode?: string;
   }[];
+};
+
+/** The client's view of the artwork check: no reviewer, a reason only on a failure. */
+export type OrderFileCheck = {
+  status: "pending" | "passed" | "failed" | "cancelled" | (string & {});
+  requestedAt?: string | null;
+  reviewedAt?: string | null;
+  reason?: string | null;
 };
 
 /** The four fixed zones. Labels come from the API; never re-spell them. */
@@ -317,6 +362,35 @@ export type PlatformSettings = {
    * orders — read it through `settingsDownpaymentPercent`.
    */
   downpaymentPercent?: number;
+  /**
+   * GRIDGO Office as a pick-up hub (gridgo-api#148): its fixed point, the
+   * hours Super Admin set, and the flat pick-up fee. `schedule: null` means
+   * nobody has set hours yet — say so, never invent opening days. Absent on
+   * an API from before the hub settings.
+   */
+  hubPickup?: HubPickup;
+  /** The approved-organization discount on printing. Absent on an older API. */
+  organizationDiscountRateBps?: number;
+};
+
+/** One opening window in the hub's week. Weekday 0 is Sunday. */
+export type HubOpeningWindow = { weekday: number; opensMinute: number; closesMinute: number };
+
+/** A run of days the hub is shut, inclusive, as `YYYY-MM-DD`. */
+export type HubClosure = { startDay: string; endDay: string; reason?: string | null };
+
+export type HubSchedule = {
+  /** The hub's offset from UTC; Davao is +480. Minutes in `week` are local to it. */
+  utcOffsetMinutes: number;
+  week: HubOpeningWindow[];
+  closures?: HubClosure[];
+};
+
+export type HubPickup = {
+  point?: OrderPoint;
+  schedule: HubSchedule | null;
+  /** Once per order, already inside any delivery total it is quoted in. */
+  feeMinor: number;
 };
 
 /** Platform-defined categories, materials and finishes. */
@@ -393,6 +467,20 @@ export type StoredFile = {
   references: { type: string; id: string; field?: string }[];
   /** Present only when the bytes carried something worth reading. */
   detected?: DetectedArtwork;
+  /**
+   * GRIDGO's structural check of uploaded artwork (gridgo-api#122). `ready`
+   * means uploaded, not approved: a `failed` file is refused at checkout and
+   * has to be replaced. Absent on an older API and on non-artwork files.
+   */
+  artworkCheck?: ArtworkFileCheck | null;
+};
+
+export type ArtworkFileCheck = {
+  status: "passed" | "failed" | (string & {});
+  checkedAt?: string | null;
+  reason?: string | null;
+  /** Plain words for the client; never branch on them. */
+  message?: string | null;
 };
 
 /** Newest rider position for an order, or null when none has been shared. */
@@ -446,6 +534,10 @@ export type Notification = {
   imageUrl?: string | null;
   read: boolean;
   at: string;
+  /** Organization reminders and notices (gridgo-client#165). */
+  organizationUserId?: string;
+  officerId?: string | null;
+  actions?: string[];
 };
 
 export type NotificationList = {
@@ -1160,7 +1252,15 @@ export type CatalogPhoto = {
 export type CatalogOption = {
   id: string;
   label: string;
+  /** Shop / ops amount. A client reads `clientPriceModifierMinor`. */
   priceModifierMinor: number;
+  /**
+   * GRIDGO's amount for this option, fee inside, sign kept (gridgo-api#132).
+   * Display only: never sum these into an amount due — quote the line.
+   */
+  clientPriceModifierMinor?: number | null;
+  /** A multiplier option scales the rate instead of adding to it. */
+  priceMultiplierBps?: number | null;
   specBinding: { fieldCode: string; value?: string; valueCode?: string } | null;
   sortOrder: number;
 };
@@ -1209,7 +1309,13 @@ export type LineMeasurement = {
 };
 
 /** A cheaper rate from a quantity up. */
-export type CatalogPriceTier = { minQuantity: number; unitPriceMinor: number };
+export type CatalogPriceTier = {
+  minQuantity: number;
+  /** Shop / ops amount. */
+  unitPriceMinor: number;
+  /** GRIDGO's rate from this quantity up, fee inside. */
+  clientUnitPriceMinor?: number | null;
+};
 
 /**
  * A speed the shop sells. `priceMinor` replaces the rate outright; the other
@@ -1221,6 +1327,9 @@ export type CatalogSpeedTier = {
   turnaroundHours: number;
   priceMinor: number | null;
   surchargeMinor: number | null;
+  /** GRIDGO's amounts for the two above; null where the shop's is. */
+  clientPriceMinor?: number | null;
+  clientSurchargeMinor?: number | null;
 };
 
 /** One listing on a shop's board. */
@@ -1232,7 +1341,10 @@ export type CatalogItem = {
   subcategoryCode: string;
   name: string;
   description: string | null;
+  /** Shop / ops amount. A client reads `clientBasePriceMinor`. */
   basePriceMinor: number;
+  /** GRIDGO amount for `basePriceMinor`, fee inside (gridgo-api#132). */
+  clientBasePriceMinor?: number | null;
   /** Base plus the cheapest option of every required group. Shop / ops amount. */
   fromPriceMinor: number;
   /** Only present when option ids were sent; null otherwise. Shop / ops amount. */
@@ -1270,7 +1382,7 @@ export type CatalogItem = {
   pricingBasis: string;
   turnaroundMode: "inherit" | "override";
   turnaroundHours: number | null;
-  rush: { turnaroundHours: number; priceMinor: number } | null;
+  rush: { turnaroundHours: number; priceMinor: number; clientPriceMinor?: number | null } | null;
   acceptedFormats: AcceptedFormat[];
   photos: CatalogPhoto[];
   prepSteps: CatalogPrepStep[];
@@ -1339,6 +1451,52 @@ export type ShopBoard = {
 };
 
 const CATALOG_SHOP_PAGE_CAP = 25;
+
+/** What `POST /me/catalog-quotes` prices: one configured listing, nothing saved. */
+export type CatalogQuoteInput = {
+  catalogItemId: string;
+  quantity: number;
+  optionIds?: string[];
+  measurement?: LineMeasurement | null;
+  structuredSpec?: Record<string, unknown>;
+};
+
+/**
+ * GRIDGO's price for a configured listing, fee inside (gridgo-api#132).
+ *
+ * The amount due is `clientLineSubtotalMinor`; `clientUnitRateMinor` is the
+ * rate it was worked from and must not be multiplied back up — tiers,
+ * minimum sizes and rounding happen before the fee.
+ */
+export type CatalogQuote = {
+  catalogItemId: string;
+  version: number;
+  serviceVersion: number;
+  quantity: number;
+  clientUnitRateMinor: number;
+  clientLineSubtotalMinor: number;
+  billableMilliUnits: number;
+  minimumMeasurementApplied: boolean;
+};
+
+/**
+ * Price one configured listing. Read-only: no cart, no reservation, no lock.
+ * Selection, quantity, size and printer-width refusals use the cart's codes.
+ */
+export async function catalogQuote(input: CatalogQuoteInput): Promise<CatalogQuote> {
+  const body: Record<string, unknown> = {
+    catalogItemId: input.catalogItemId,
+    quantity: input.quantity,
+    optionIds: input.optionIds ?? [],
+  };
+  if (input.measurement) body.measurement = input.measurement;
+  if (input.structuredSpec) body.structuredSpec = input.structuredSpec;
+  const result = await request<{ quote: CatalogQuote }>("/me/catalog-quotes", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.quote;
+}
 
 /** Approved shops with at least one complete listing. Follows catalog pages. */
 export async function listCatalogShops(
@@ -1477,6 +1635,68 @@ export async function listOrders(): Promise<Order[]> {
 export async function getOrder(orderId: string): Promise<Order> {
   const result = await request<{ order: Order }>(`/orders/${orderId}`);
   return result.order;
+}
+
+/**
+ * A client's paid redelivery of an unclaimed pick-up (gridgo-api#124). The API
+ * records the choice for Operations, who arrange the delivery and its cost;
+ * nothing is charged or rescheduled by the request itself.
+ */
+export type HubRedeliveryRequest = {
+  status: string;
+  costAccepted: boolean;
+  at: string;
+};
+
+/**
+ * The handover credential for one order (gridgo-api#125,
+ * `docs/HUB_HANDOVER_API.md`). Delivery orders carry only the six-digit
+ * `otp` the rider also sees. A hub pick-up adds the opaque `qrToken` — the
+ * only thing ever drawn inside the QR — and the hub snapshot and unclaimed
+ * count the reminders are counted from.
+ */
+export type OrderHandover = {
+  otp: string;
+  qrToken?: string;
+  hub?: { id: string; point?: OrderPoint; schedule: HubSchedule | null };
+  readyAt?: string | null;
+  missedDays?: number;
+  operationsRequired?: boolean;
+  redeliveryRequest?: HubRedeliveryRequest | null;
+};
+
+/**
+ * `GET /orders/:id/handover`. Null until the order is physically ready, after
+ * the handover is used, for orders from before the handover switch, and on an
+ * API that does not have the route yet (`404 not_found`).
+ */
+export async function getOrderHandover(orderId: string): Promise<OrderHandover | null> {
+  try {
+    const result = await request<{ handover: OrderHandover | null }>(
+      `/orders/${encodeURIComponent(orderId)}/handover`,
+    );
+    return result.handover ?? null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404 && error.message === "not_found") return null;
+    throw error;
+  }
+}
+
+/** `POST /orders/:id/hub-redelivery` — only after three missed hub days. */
+export async function requestHubRedelivery(orderId: string): Promise<HubRedeliveryRequest> {
+  const result = await request<{ request: HubRedeliveryRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/hub-redelivery`,
+    { method: "POST", body: JSON.stringify({ costAccepted: true }) },
+  );
+  return result.request;
+}
+
+/** `POST /orders/:id/handover/escalate` — tells Operations the codes did not match. */
+export async function escalateHandover(orderId: string, reason: string): Promise<void> {
+  await request<{ escalated: boolean }>(
+    `/orders/${encodeURIComponent(orderId)}/handover/escalate`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
 }
 
 export async function createOrder(input: CreateOrderInput): Promise<Order> {
@@ -1628,6 +1848,13 @@ export type MatchedListingFields = {
   placeInLine?: number | null;
   /** Opaque, 15-minute token that picks this listing on add-line. */
   selectToken?: string;
+  /**
+   * The delivery (or pick-up) charge this listing would carry, when the match
+   * was asked with a fulfilment choice. Already GRIDGO's figure.
+   */
+  deliveryFeeMinor?: number | null;
+  /** On a pick-up match: the hub fee, the same amount as `deliveryFeeMinor`. */
+  pickupFeeMinor?: number | null;
 };
 
 /** A listing on the Top Pick's own board, as the match returns it. */
@@ -1653,6 +1880,7 @@ export type OtherListing = Pick<
   | "categoryCode"
   | "subcategoryCode"
   | "basePriceMinor"
+  | "clientBasePriceMinor"
   | "effectivePriceMinor"
   | "clientEffectivePriceMinor"
   | "measurementKind"
@@ -1690,9 +1918,10 @@ export type MatchResult = {
   rating?: ShopRating;
   /**
    * Compatibility only (gridgo-api#126 keeps it for this rollout): the
-   * matching screen must never draw a field of it.
+   * matching screen must never draw a field of it. Against a multi-shop
+   * basket it is only `{label}` — no `supplierId` either.
    */
-  shop: ShopBoard;
+  shop: ShopBoard | { label: string; supplierId?: undefined };
   queue: MatchQueue;
   /** Absolute client promise; older deployments may only send queue.estimatedHours. */
   promiseBy?: string | null;
@@ -1700,6 +1929,10 @@ export type MatchResult = {
   reasons: MatchReason[];
   /** The Top Pick's eligible listings, best first: index 0 is the pick. */
   listings: MatchListing[];
+  /** Echoed when the match was asked with a fulfilment choice (gridgo-api#148). */
+  requestFulfillment?: RequestFulfilment | null;
+  /** On a pick-up match: the hub's point, hours and fee as they stand now. */
+  hubPickup?: HubPickup | null;
   /** How many other shops could have printed it. */
   alternativesCount: number;
   score: {
@@ -1712,11 +1945,72 @@ export type MatchResult = {
 export type FulfilmentMode = "delivery" | "pickup";
 export type ServiceLevel = "standard" | "scheduled";
 
+/**
+ * Delivery or pick-up, chosen before matching (gridgo-api#148), and the point
+ * it was matched against: the client's address, or GRIDGO Office for pick-up.
+ * Once a basket holds one it is locked — changing it means a new match and a
+ * new basket.
+ */
+export type RequestFulfilment = { fulfillmentMode: FulfilmentMode; dropoff: OrderPoint | null };
+
+/** Why a basket quote has no total yet. Codes are open: an unknown one is still "not yet". */
+export type CartQuoteReason = {
+  code:
+    | "cart_empty"
+    | "catalog_item_stale"
+    | "line_unpriced"
+    | "shop_unavailable"
+    | "dropoff_required"
+    | (string & {});
+  lineId?: string;
+  lineIds?: string[];
+};
+
+/** One delivery leg: a print run's lines and the zone its farthest drop falls in. */
+export type CartQuoteDeliveryLine = {
+  lineIds: string[];
+  distanceZone: DistanceZone | null;
+  deliveryFeeMinor: number | null;
+  /** Out of Zone only, one decimal. For display; never price from it. */
+  distanceKm?: number;
+};
+
+/**
+ * GRIDGO's own figures for a draft basket (gridgo-api#146): every amount is
+ * already the client's, fee inside. Read these rather than adding anything up
+ * on the phone.
+ */
+export type CartQuote = {
+  status: "priced" | "incomplete" | (string & {});
+  reasons: CartQuoteReason[];
+  clientItemSubtotalMinor: number | null;
+  deliveryLines: CartQuoteDeliveryLine[];
+  /** Every leg plus any pick-up fee. Null while a leg is unknown. */
+  deliveryFeeMinor: number | null;
+  /** On a pick-up basket chosen before matching: the hub fee, already inside `deliveryFeeMinor`. */
+  pickupFeeMinor?: number;
+  totalMinor: number | null;
+  downpaymentPercent: number;
+  downpaymentMinor: number | null;
+  balanceMinor: number | null;
+  /**
+   * An approved organization's discount, already taken out of `totalMinor`
+   * (gridgo-api#155). Drawn as its own line, never subtracted again.
+   */
+  organizationDiscountMinor?: number;
+};
+
 export type CartLineRecord = {
   id: string;
   /** Queue-and-calendar projection for this configured line; absent on older APIs. */
   promiseBy?: string | null;
-  supplierId: string;
+  /**
+   * The shop's id on a single-shop basket. A multi-shop basket withholds it
+   * and sends `groupId` instead, so group lines by `lineGroupKey`.
+   */
+  supplierId?: string;
+  /** Which shop group this line is in, on a multi-shop basket only. */
+  groupId?: string;
   catalogItemId: string;
   quantity: number;
   optionIds: string[];
@@ -1737,18 +2031,81 @@ export type CartLineRecord = {
   clientLineSubtotalMinor?: number | null;
 };
 
+/**
+ * One shop's share of a basket, as GRIDGO prices it (gridgo-api#117).
+ *
+ * Every figure is GRIDGO's: items carry the service fee inside them, and
+ * delivery is that group's own fee to its farthest drop-off. A figure GRIDGO
+ * cannot price yet is null, never zero.
+ */
+export type CartGroup = {
+  /** Opaque, and it moves: it is the group's first line id. Re-read it. */
+  id: string;
+  /** "Shop A", "Shop B" — never the shop's identity. */
+  label: string;
+  lineIds: string[];
+  clientItemSubtotalMinor: number | null;
+  deliveryFeeMinor: number | null;
+  totalMinor: number | null;
+  /** This group's share of a hub pick-up fee charged once per basket. */
+  pickupFeeMinor?: number;
+  /** This group's own organization discount, already out of `totalMinor` (#166). */
+  organizationDiscountMinor?: number;
+};
+
 export type Cart = {
   id: string;
   state: "draft" | "checked_out";
   version: number;
   serviceLevel: ServiceLevel;
   scheduledFor: string | null;
+  /** The one deadline every item in the basket is matched against. */
+  deadline?: string | null;
   fulfillmentMode: FulfilmentMode;
   defaultDropoff: OrderPoint | null;
+  /** Set when the basket was filled through the choose-before-matching flow; then read-only. */
+  requestFulfillment?: RequestFulfilment | null;
+  /** On a pick-up basket chosen before matching: the hub as it stands now. */
+  hubPickup?: HubPickup | null;
+  /** GRIDGO's figures for this draft. Null once checked out; absent on an older API. */
+  clientQuote?: CartQuote | null;
   lines: CartLineRecord[];
+  /** One per shop, in the order they were first added. Absent on older APIs. */
+  groups?: CartGroup[];
+  /** Set once a multi-shop basket has been checked out. */
+  basketId?: string;
   checkedOutOrderId: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** One shop group of a placed multi-shop basket, with its live state. */
+export type BasketGroup = {
+  orderId: string;
+  label: string;
+  state: string;
+  clientItemSubtotalMinor: number;
+  deliveryFeeMinor: number;
+  totalMinor: number;
+  pickupFeeMinor?: number;
+  organizationDiscountMinor?: number;
+};
+
+/**
+ * A placed multi-shop basket: one payment and one receipt over several
+ * ordinary orders, one per shop group (gridgo-api#117).
+ */
+export type Basket = {
+  id: string;
+  receiptOrderId: string;
+  deadline: string | null;
+  fulfillmentMode: FulfilmentMode;
+  totalMinor: number;
+  /** The full hub pick-up fee, charged once for the whole basket. */
+  pickupFeeMinor?: number;
+  payment: PaymentInstallment & { amountMinor: number };
+  groups: BasketGroup[];
+  createdAt?: string;
 };
 
 /** One shop's share of a placed order: its own pickup, drop-off and delivery. */
@@ -1788,30 +2145,69 @@ export type MatchedOrder = {
   createdAt: string;
 };
 
+export type InvoiceLine = {
+  id: string;
+  jobId: string;
+  itemName: string;
+  quantity: number;
+  /** The shop's figures. Withheld from a client on a multi-shop receipt. */
+  unitPriceMinor?: number;
+  amountMinor?: number;
+  /** GRIDGO's figures, fee inside (gridgo-api#132). */
+  clientUnitPriceMinor?: number | null;
+  clientAmountMinor?: number | null;
+  artworkFileId: string | null;
+  mockupFileId: string | null;
+  artworkLinks?: ArtworkLink[];
+  dropoff: OrderPoint | null;
+};
+
+/** One shop group's section of a combined multi-shop receipt. */
+export type InvoiceGroup = {
+  orderId: string;
+  label: string;
+  lines: InvoiceLine[];
+  clientItemSubtotalMinor: number;
+  deliveryFeeMinor: number;
+  totalMinor: number;
+  pickupFeeMinor?: number;
+  /** This group's own organization discount, already out of `totalMinor` (#166). */
+  organizationDiscountMinor?: number;
+};
+
 export type Invoice = {
   invoiceNumber: string;
   orderId: string;
+  /** Set on the one combined receipt of a multi-shop basket. */
+  basketId?: string;
   issuedAt: string;
   currency: string;
-  lines: {
-    id: string;
-    jobId: string;
-    itemName: string;
-    quantity: number;
-    unitPriceMinor: number;
-    amountMinor: number;
-    artworkFileId: string | null;
-    mockupFileId: string | null;
-    artworkLinks?: ArtworkLink[];
-    dropoff: OrderPoint | null;
-  }[];
-  itemSubtotalMinor: number;
-  serviceFeeRateBps: number;
-  serviceFeeMinor: number;
-  deliveryLines: { jobId: string; shopName: string; amountMinor: number }[];
+  lines: InvoiceLine[];
+  /** One section per shop group, on a multi-shop receipt only. */
+  groups?: InvoiceGroup[];
+  /** Shop items before the fee. Deprecated on client reads — use `clientItemSubtotalMinor`. */
+  itemSubtotalMinor?: number;
+  /** GRIDGO's printing figure for the whole invoice, fee rounded once on the aggregate. */
+  clientItemSubtotalMinor?: number | null;
+  serviceFeeRateBps?: number;
+  serviceFeeMinor?: number;
+  /** One leg per job. `shopName` is withheld from clients in phase 3 — never draw it. */
+  deliveryLines: { jobId: string; shopName?: string; amountMinor: number }[];
+  /** Every fulfilment charge; a pick-up's hub fee is already inside it. */
   deliveryFeeMinor: number;
+  /** Present on a pick-up chosen before matching: the hub fee inside `deliveryFeeMinor`. */
+  pickupFeeMinor?: number;
   totalMinor: number;
-  paymentPlan: { method: "qr_manual"; downpaymentMinor: number; balanceMinor: number };
+  paymentPlan: {
+    method: "qr_manual";
+    downpaymentMinor: number;
+    balanceMinor: number;
+    downpaymentPercent?: number;
+  };
+  /** An approved organization's discount, already inside `totalMinor`. */
+  organizationDiscountMinor?: number;
+  /** The officer of record when the order was placed (gridgo-client#164). */
+  organizationOfficer?: OrganizationOfficerSnapshot | null;
 };
 
 /**
@@ -1877,13 +2273,6 @@ export type AccountPatch = {
   orgName?: string;
 };
 
-/** What a personal client sends to ask Operations for a business account. */
-export type BusinessApplyInput = {
-  businessName: string;
-  businessNature: string;
-  accountType?: Extract<AccountType, "business" | "organization">;
-};
-
 /** The account, re-read. Carries the `version` every correction must quote. */
 export async function getAccount(): Promise<User> {
   const result = await request<{ user: User; approvalCase?: ApprovalCaseSummary | null }>("/me");
@@ -1907,55 +2296,6 @@ export function newIdempotencyKey(): string {
   return `apply-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-/**
- * Submit a pending business/organization application.
- *
- * Posts `POST /me/business-application`. The account stays personal until
- * Operations approves the case. A replay of the same idempotency key, or a
- * 409 for an already-pending case, is treated as the current account.
- */
-export async function applyAsBusiness(
-  input: BusinessApplyInput,
-  idempotencyKey: string,
-): Promise<User> {
-  try {
-    await request("/me/business-application", {
-      method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify({
-        businessName: input.businessName,
-        businessNature: input.businessNature,
-        ...(input.accountType ? { accountType: input.accountType } : {}),
-      }),
-    });
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 409) {
-      const existing = approvalCaseFromError(error);
-      if (existing?.status === "pending") return getAccount();
-      if (existing?.status === "rejected") {
-        await request("/me/approval-cases/business-client/reapply", {
-          method: "POST",
-          headers: { "Idempotency-Key": idempotencyKey },
-          body: JSON.stringify({
-            expectedVersion: existing.version,
-            correctionSummary: `${input.accountType ?? "business"}: ${input.businessName}. ${input.businessNature}`,
-          }),
-        });
-        return getAccount();
-      }
-    }
-    throw error;
-  }
-  return getAccount();
-}
-
-function approvalCaseFromError(error: ApiError): ApprovalCaseSummary | null {
-  if (typeof error.body !== "object" || error.body == null) return null;
-  const caseBody = (error.body as { approvalCase?: ApprovalCaseSummary }).approvalCase;
-  if (!caseBody || typeof caseBody !== "object") return null;
-  return caseBody;
-}
-
 export type MatchInput = {
   subcategoryCode: string;
   /**
@@ -1966,18 +2306,30 @@ export type MatchInput = {
   addressId?: string;
   dropoff?: OrderPoint | null;
   /**
-   * Validates the basket and binds every pick token to it. The matching flow
-   * leaves it out: a token bound to one basket is refused by the fresh basket
-   * "start a new order" makes, and the API no longer keeps a basket's shop
-   * ahead of the others (gridgo-api#126).
+   * The basket this product joins. GRIDGO holds it to the basket's one
+   * deadline, rechecks a shop's queue with what the basket already has there,
+   * and keeps shop identities out of a multi-shop answer (gridgo-api#117).
+   * Sent only once the basket has a line — see `basketMatchContext`.
    */
   cartId?: string;
+  /**
+   * Add more from one shop group of the basket: matching is held to that
+   * group's shop without the client ever naming it. Needs `cartId`.
+   */
+  groupId?: string;
   /**
    * When the client needs it. A filter, not a preference: a shop that cannot
    * finish by this is not offered rather than ranked lower, because "can you
    * make Friday" is not something to weigh against a price.
    */
   deadline?: string | null;
+  /**
+   * Delivery or pick-up, chosen before matching (gridgo-api#148). Delivery
+   * needs `dropoff` or `addressId`; pick-up is matched against GRIDGO Office.
+   * Omitted on a basket that started before the choice moved here, which
+   * keeps its checkout-time choice.
+   */
+  fulfillmentMode?: FulfilmentMode;
 };
 
 /**
@@ -2009,6 +2361,8 @@ export type CartFulfilment = {
   serviceLevel?: ServiceLevel;
   scheduledFor?: string | null;
   defaultDropoff?: OrderPoint | null;
+  /** The basket's one deadline, ISO. Checkout rechecks every group against it. */
+  deadline?: string;
 };
 
 export async function createCart(input: CartFulfilment = {}): Promise<Cart> {
@@ -2188,11 +2542,38 @@ export async function setCartLineMockup(
 export async function checkoutCart(
   cartId: string,
   payment: { reference: string; proofFileId: string },
-): Promise<{ order: MatchedOrder; invoice: Invoice }> {
+): Promise<{ order: MatchedOrder; invoice: Invoice; basket?: Basket }> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
     method: "POST",
     body: JSON.stringify({ payment: { method: "qr_manual", ...payment } }),
   });
+}
+
+/** A placed multi-shop basket with every group's live state. */
+export async function getBasket(basketId: string): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(`/baskets/${encodeURIComponent(basketId)}`);
+  return result.basket;
+}
+
+/**
+ * Send the basket's one payment again after Operations turned it back.
+ *
+ * A multi-shop group's own payment routes answer `409 basket_payment_required`:
+ * one transfer covers every group, so it is submitted once, here.
+ */
+export async function submitBasketPayment(
+  basketId: string,
+  reference: string,
+  proofFileId: string,
+): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}/payment/submit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ method: "qr_manual", reference, proofFileId }),
+    },
+  );
+  return result.basket;
 }
 
 export async function getInvoice(orderId: string): Promise<Invoice> {
@@ -2551,6 +2932,129 @@ export async function withdrawRefund(
 }
 
 // ---------------------------------------------------------------------------
+// When the shop cannot carry on: a replacement, a new date, or a refund
+// ---------------------------------------------------------------------------
+
+/**
+ * The client's view of a shop that could not take or finish an order. The
+ * shop, its address and the internal dates are never sent to a client.
+ * `status` is an open string: `awaiting_client | ops_review |
+ * refund_requested | refunded | accepted` today.
+ */
+export type ShopRecovery = {
+  id: string;
+  status: string;
+  createdAt: string;
+  refundRequestId: string | null;
+  /** The replacement's client-ready date. Null when no shop can take it. */
+  replacement: { promiseBy: string } | null;
+  canAccept: boolean;
+  canRefund: boolean;
+};
+
+/**
+ * A shop's request for a later deadline, as the client sees it. Open strings:
+ * `status` is `pending | accepted | declined | expired | operations_required`,
+ * `resolution` is null or `rematch_offered | no_match | operations_required |
+ * rematched | refund_requested | resolved`.
+ */
+export type RescheduleRequest = {
+  id: string;
+  orderId: string;
+  reason: string;
+  status: string;
+  requestedAt: string;
+  /** The 24-hour answer window closes here. */
+  expiresAt: string;
+  answeredAt: string | null;
+  resolution: string | null;
+  refundRequestId: string | null;
+  workHeld: boolean;
+  originalPromiseBy: string | null;
+  proposedPromiseBy: string | null;
+  canRequestRefund?: boolean;
+  /** Another shop for the same item, specs and price; held for 15 minutes. */
+  rematch?: {
+    id: string;
+    promiseBy: string;
+    expiresAt: string;
+    sameProductAndSpecs: boolean;
+    priceUnchanged: boolean;
+  } | null;
+};
+
+/**
+ * Take the replacement shop. A `409 shop_recovery_offer_changed` carries a
+ * refreshed offer in its body and is never accepted for the client.
+ */
+export async function acceptShopRecovery(orderId: string, recoveryId: string): Promise<ShopRecovery | null> {
+  const result = await request<{ recovery: ShopRecovery | null }>(
+    `/orders/${encodeURIComponent(orderId)}/shop-recovery/accept`,
+    { method: "POST", body: JSON.stringify({ recoveryId }) },
+  );
+  return result.recovery;
+}
+
+/** Choose a full refund instead. Opens a refund request; it moves no money. */
+export async function refundShopRecovery(
+  orderId: string,
+  recoveryId: string,
+  idempotencyKey: string,
+): Promise<ShopRecovery | null> {
+  const result = await request<{ recovery: ShopRecovery | null }>(
+    `/orders/${encodeURIComponent(orderId)}/shop-recovery/refund`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ recoveryId }),
+    },
+  );
+  return result.recovery;
+}
+
+/** Accept or decline the shop's proposed date. */
+export async function answerReschedule(
+  orderId: string,
+  requestId: string,
+  answer: "accept" | "decline",
+): Promise<RescheduleRequest> {
+  const result = await request<{ request: RescheduleRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/reschedule-request/answer`,
+    { method: "POST", body: JSON.stringify({ requestId, answer }) },
+  );
+  return result.request;
+}
+
+/** Look for another shop again, or take the one on offer. */
+export async function rematchReschedule(
+  orderId: string,
+  input: { requestId: string; action: "refresh" } | { requestId: string; action: "accept"; offerId: string },
+): Promise<RescheduleRequest> {
+  const result = await request<{ request: RescheduleRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/reschedule-request/rematch`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.request;
+}
+
+/** After declining the date: a full refund instead of another shop. */
+export async function refundReschedule(
+  orderId: string,
+  requestId: string,
+  idempotencyKey: string,
+): Promise<RescheduleRequest> {
+  const result = await request<{ request: RescheduleRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/reschedule-request/refund`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ requestId }),
+    },
+  );
+  return result.request;
+}
+
+// ---------------------------------------------------------------------------
 // Tracking and issues
 // ---------------------------------------------------------------------------
 
@@ -2682,4 +3186,238 @@ export async function markSupportChatRead(threadId?: string): Promise<{
     });
   }
   return request("/support-chat/me/read", { method: "PATCH", body: JSON.stringify({}) });
+}
+
+/* --------------------------------------------------------------------------
+   Organization and business accounts (gridgo-client#160, #163–#166)
+
+   Contracts: gridgo-api `docs/ORGANIZATION_ACCOUNTS_API.md` (applications,
+   officer of record, reminders) and `docs/ORGANIZATION_MONEY_API.md`
+   (discount and statements).
+   -------------------------------------------------------------------------- */
+
+/** The officer stamped on an order or invoice when it was placed. */
+export type OrganizationOfficerSnapshot = {
+  id: string;
+  fullName: string;
+  verifiedAt: string | null;
+};
+
+/** The verified officer currently responsible for the organization. */
+export type OrganizationOfficer = OrganizationOfficerSnapshot & {
+  startedAt?: string | null;
+  endedAt?: string | null;
+};
+
+export type ClientOrganization = {
+  userId: string;
+  name: string | null;
+  school: string | null;
+  email: string | null;
+  /** Null while the first officer is still being verified. */
+  currentOfficer: OrganizationOfficer | null;
+  confirmedAt: string | null;
+  nextConfirmationAt: string | null;
+  /** Set while the quarterly "is this still the officer?" question is open. */
+  confirmationRequestedAt: string | null;
+  approvalCase: Pick<ApprovalCaseSummary, "id" | "status" | "version" | "applicationRevision"> | null;
+  actions: string[];
+};
+
+/** Which checklist a business applicant follows. */
+export type BusinessType = "sole_proprietor" | "partnership" | "corporation";
+
+export type GovernmentIdType = "philid" | "ephilid" | "passport" | "drivers_license" | "umid";
+
+/** The person behind an application: an organization's officer, a business's signatory. */
+export type ApplicantPerson = {
+  fullName: string;
+  dateOfBirth: string;
+  address: string;
+  phone: string;
+  governmentIdType: GovernmentIdType;
+  governmentIdExpiresOn?: string;
+  governmentIdHasNoExpiry?: boolean;
+  originalId: true;
+  detailsMatchId: true;
+  /** Organizations only. */
+  studentIdExpiresOn?: string;
+};
+
+export type ClientApplicationInput =
+  | {
+      accountType: "organization";
+      businessName: string;
+      businessNature: string;
+      school: string;
+      organizationEmail: string;
+      officer: ApplicantPerson;
+      documents: Record<string, string>;
+      facultyAdviserContact?: string;
+      expectedVersion?: number;
+    }
+  | {
+      accountType: "business";
+      businessType: BusinessType;
+      businessName: string;
+      businessNature: string;
+      signatory: ApplicantPerson;
+      documents: Record<string, string>;
+      expectedVersion?: number;
+    };
+
+export type ApplicationChecklist = {
+  requiredDocuments: Record<string, string[]>;
+  optionalDocuments: Record<string, string[]>;
+  optionalFields: string[];
+  filePurpose: string;
+  /** Operations asked a business applicant for the otherwise optional permit. */
+  businessPermitRequired: boolean;
+};
+
+export async function getApplicationChecklist(): Promise<ApplicationChecklist> {
+  return request("/me/client-application/checklist");
+}
+
+/** Sends a six-digit code to the organization's shared sign-in email. */
+export async function requestOrganizationEmailCode(
+  email: string,
+): Promise<{ expiresAt: string; resendAfter: string }> {
+  return request("/me/organization/email-code", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function verifyOrganizationEmailCode(
+  code: string,
+): Promise<{ verified: true; expiresAt: string }> {
+  return request("/me/organization/email-code/verify", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+/**
+ * Send (or correct) an organization or business application with its whole
+ * checklist. `expectedVersion` is set when a case already exists — a pending
+ * or turned-down one being corrected, or an approved organization verifying
+ * its first officer. The account stays as it is until Operations approves.
+ */
+export async function submitClientApplication(
+  input: ClientApplicationInput,
+  idempotencyKey: string,
+): Promise<User> {
+  await request("/me/business-application", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return getAccount();
+}
+
+/** Null when this account has no organization record. */
+export async function getOrganization(): Promise<ClientOrganization | null> {
+  const result = await request<{ organization: ClientOrganization | null }>("/me/organization");
+  return result.organization ?? null;
+}
+
+/**
+ * Hand the account to a new officer. Needs a fresh email code first; the
+ * current officer stays responsible until Operations approves the new one.
+ */
+export async function handoverOrganizationOfficer(
+  input: { expectedVersion: number; officer: ApplicantPerson; documents: Record<string, string> },
+  idempotencyKey: string,
+): Promise<ClientOrganization | null> {
+  const result = await request<{ organization: ClientOrganization | null }>(
+    "/me/organization/officer/handover",
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input),
+    },
+  );
+  return result.organization ?? null;
+}
+
+/** "Yes, they are still the officer." */
+export async function confirmOrganizationOfficer(
+  officerId: string,
+): Promise<ClientOrganization | null> {
+  const result = await request<{ organization: ClientOrganization | null }>(
+    "/me/organization/officer/confirm",
+    { method: "POST", body: JSON.stringify({ officerId }) },
+  );
+  return result.organization ?? null;
+}
+
+export type StatementPeriod =
+  | { kind: "this_month" }
+  | { kind: "this_quarter" }
+  | { kind: "custom"; from: string; to: string };
+
+export type StatementRow = {
+  date: string;
+  closedAt: string;
+  orderId: string;
+  product: string;
+  amountMinor: number;
+  organizationDiscountMinor: number;
+  invoiceNumber: string;
+  /** The officer at the time of the order; a string, `{ name }` or blank. */
+  officerOfRecord: string | { name?: string; fullName?: string } | null;
+};
+
+export type OrganizationStatement = {
+  notice: string;
+  currency: string;
+  period: { from: string; to: string; timezone: string };
+  orderCount: number;
+  totalSpendMinor: number;
+  discountEarnedMinor: number;
+  orders: StatementRow[];
+};
+
+export function statementQuery(
+  period: StatementPeriod,
+  format: "json" | "pdf" | "csv" = "json",
+): string {
+  const params = new URLSearchParams();
+  if (period.kind === "custom") {
+    params.set("period", "custom");
+    params.set("from", period.from);
+    params.set("to", period.to);
+  } else {
+    params.set("period", period.kind);
+  }
+  if (format !== "json") params.set("format", format);
+  return `/me/organization/statements?${params.toString()}`;
+}
+
+export async function getOrganizationStatement(
+  period: StatementPeriod,
+): Promise<OrganizationStatement> {
+  const result = await request<{ statement: OrganizationStatement }>(statementQuery(period));
+  return result.statement;
+}
+
+/**
+ * What an export download needs: the absolute URL and the headers a signed-in
+ * request carries. The bytes are fetched by `lib/statementExport.ts`, which
+ * knows how each platform keeps a file.
+ */
+export async function statementExportRequest(
+  period: StatementPeriod,
+  format: "pdf" | "csv",
+): Promise<{ url: string; headers: Record<string, string> }> {
+  const token = await getAuthToken();
+  const headers: Record<string, string> = {
+    Accept: format === "pdf" ? "application/pdf" : "text/csv",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+    headers["X-GRIDGO-Role"] = "client";
+  }
+  return { url: `${getApiBase()}${statementQuery(period, format)}`, headers };
 }

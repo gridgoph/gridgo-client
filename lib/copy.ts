@@ -124,6 +124,13 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "This order was paid in full up front, so there is no balance to pay. Pull it down to refresh.";
       case "payment_method_not_allowed":
         return "GRIDGO takes payment by QR only — GCash, Maya or a bank e-wallet. There is no cash on delivery.";
+      // ---- handover: hub claim and delivery codes (gridgo-api#124/#125) ----
+      case "handover_not_ready":
+        return "This order is not waiting for a handover right now. Pull it down to see where it got to.";
+      case "redelivery_not_available":
+        return "Redelivery opens after three missed hub days, while your order is still at the hub. Pull it down to refresh.";
+      case "redelivery_cost_acceptance_required":
+        return "Redelivery is at your own cost. Confirm that to send the request.";
       // ---- artwork: design links ----
       case "artwork_link_rate_limited":
         return "That is a lot of link checks in one minute. Wait a moment, then check again.";
@@ -146,9 +153,17 @@ export function userFacingError(error: unknown, fallback: string): string {
           ? `This shop takes orders of ${minimum} and up. Change the quantity and try again.`
           : "This shop takes a minimum quantity. Change the quantity and try again.";
       }
-      // ---- basket: one order goes to one shop (`lib/otherShop.ts`) ----
-      case "cart_belongs_to_another_shop":
-        return "Your order is already with a different shop. Check it out first, or start a new order with this.";
+      // ---- basket: several shops, one date, one payment (gridgo-api#117) ----
+      case "basket_deadline_required":
+        return "Your order is printed by more than one shop, so it needs one date for all of them. Choose a date and try again.";
+      case "basket_deadline_mismatch":
+        return "Everything in one order shares one date. GRIDGO looked again with your order's date — pick from the new answer.";
+      case "deadline_not_met":
+        return "A shop in your order can no longer make your date. Choose a later date for the whole order, or remove that item.";
+      case "cart_group_not_found":
+        return "That shop group is no longer in your order. Add this as a new product instead.";
+      case "basket_payment_required":
+        return "This order is paid as one payment for every shop in it. Open the order and send the payment from there.";
       // ---- basket: the press's widest print ----
       case "printer_cap_exceeded": {
         const cap =
@@ -224,6 +239,34 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "Check the reason and the name on the account, then send it again.";
       case "refund_fulfillment_stopped":
         return "This job is paused for your refund request, so nothing else can happen on it until Operations decides.";
+
+      // ---- the shop could not take the order (docs/SHOP_RECOVERY_API.md) ----
+      case "shop_recovery_offer_changed":
+        return "GRIDGO checked the offer again while you were deciding. Look at the date shown now, then choose again.";
+      case "shop_recovery_stale":
+      case "shop_recovery_not_available":
+        return "This choice has moved on since the screen loaded. The order below shows where it stands now.";
+      case "shop_recovery_requires_operations":
+        return "Operations has to settle this one. They will contact you about what happens next.";
+      case "shop_recovery_full_refund_required":
+        return "You chose a full refund. Operations settles everything you paid before anything else happens.";
+
+      // ---- the shop asked for more time (docs/ORDER_RESCHEDULE_API.md) ----
+      case "reschedule_expired":
+        return "The 24 hours to answer have passed. Your original date stays, and Operations will contact you.";
+      case "reschedule_already_answered":
+      case "reschedule_stale":
+      case "reschedule_not_available":
+        return "This request has moved on since the screen loaded. The order below shows where it stands now.";
+      case "reschedule_offer_expired":
+      case "reschedule_offer_stale":
+        return "That shop's offer changed or ran out. Check again for the current one.";
+      case "reschedule_rematch_unavailable":
+        return "There is no other shop to choose on this order right now. The order below shows what you can do.";
+      case "reschedule_operations_required":
+        return "Operations has to settle this one. They will contact you about what happens next.";
+      case "reschedule_refund_unavailable":
+        return "A refund cannot be requested from here right now. The order below shows where it stands.";
 
       // ---- creating an account ----
       case "email_already_registered":

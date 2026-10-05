@@ -4,6 +4,12 @@ import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
 import { refundNotificationCopy } from "@/lib/refunds";
 import { formatTimelineStamp } from "@/lib/relativeTime";
+import { rescheduleNotificationCopy, rescheduleNotificationNeedsYou } from "@/lib/reschedule";
+import {
+  SHOP_RECOVERY_NOTIFICATION_TYPE,
+  shopRecoveryNotificationCopy,
+  shopRecoveryNotificationNeedsYou,
+} from "@/lib/shopRecovery";
 import type { OrderStatusTone } from "@/lib/orderState";
 import {
   fulfilmentRailKind,
@@ -64,6 +70,34 @@ export type PresentedNotification = {
   hint: string | null;
   callout: NotificationCallout | null;
 };
+
+/**
+ * The hub's own reminders (gridgo-api#124): ready, then one per missed hub
+ * day. The server's body already counts the days and says the order is not
+ * forfeited, so it is kept; the title says which moment this is.
+ */
+const HUB_TYPES = ["hub_ready", "hub_unclaimed_reminder", "hub_unclaimed_warning"] as const;
+
+function isHubType(type: string | null | undefined): boolean {
+  return (HUB_TYPES as readonly string[]).includes(type ?? "");
+}
+
+/** A third missed day: Operations follows up, and redelivery can be asked for. */
+function hubRedeliveryOpen(notification: Pick<Notification, "type" | "body">): boolean {
+  return notification.type === "hub_unclaimed_warning" && /redeliver/i.test(notification.body);
+}
+
+function hubCopy(notification: Notification): { title: string; body: string; hint: string } {
+  const title =
+    notification.type === "hub_ready"
+      ? "Ready at the hub"
+      : notification.type === "hub_unclaimed_reminder"
+        ? "Still waiting at the hub"
+        : hubRedeliveryOpen(notification)
+          ? "Operations will follow up"
+          : "Collect your order soon";
+  return { title, body: notification.body, hint: "Open for your claim code" };
+}
 
 const NEED_YOU_TYPES = new Set([
   "order_client_correction",
@@ -208,6 +242,13 @@ function receiptReadyCopy(showServiceFee: boolean): { title: string; body: strin
  * the price notice is still the newest row while the job is on the press, and
  * telling that client to pay would be a callout nobody can act on.
  */
+const SHOP_CHOICE_CALLOUT: NotificationCallout = {
+  tone: "info",
+  icon: "square-pen",
+  title: "Choose the new shop or a refund",
+  detail: "Open the order to decide.",
+};
+
 const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCallout }> = {
   order_client_correction: {
     states: ["client_correction"],
@@ -236,6 +277,25 @@ const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCal
       detail: "Production starts once Operations confirms your payment.",
     },
   },
+  // The shop's request leaves the order in production; answering it writes a
+  // newer row, so the ask only stands while this row leads the job.
+  order_reschedule_requested: {
+    states: ["production", "supplier_self_qc"],
+    callout: {
+      tone: "warning",
+      icon: "clock",
+      title: "Answer within 24 hours",
+      detail: "Accept the new date or decline it from the order.",
+    },
+  },
+  order_reschedule_declined: {
+    states: ["production", "supplier_self_qc"],
+    callout: SHOP_CHOICE_CALLOUT,
+  },
+  order_reschedule_rematch_refreshed: {
+    states: ["production", "supplier_self_qc"],
+    callout: SHOP_CHOICE_CALLOUT,
+  },
   order_rate_reminder: {
     states: ["delivered", "issue_window_open", "completed", "payout_released"],
     callout: {
@@ -247,12 +307,21 @@ const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCal
   },
 };
 
+function isShopChangeRow(notification: Pick<Notification, "type">): boolean {
+  return (
+    notification.type === SHOP_RECOVERY_NOTIFICATION_TYPE ||
+    Boolean(notification.type?.startsWith("order_reschedule_"))
+  );
+}
+
 function calloutFor(
   notification: Notification,
   hold: boolean,
   collectReady: boolean,
 ): NotificationCallout | null {
-  const payment = notification.paymentAction;
+  // A shop that dropped the job, or asked for more time, holds it: the row
+  // says what to decide, never "pay" for work that is not being done.
+  const payment = isShopChangeRow(notification) ? undefined : notification.paymentAction;
   if (payment && payment.amountMinor > 0) {
     const amount = formatPhp(payment.amountMinor);
     return payment.status === "due"
@@ -277,13 +346,28 @@ function calloutFor(
       detail: "The counter releases it once Operations confirms payment.",
     };
   }
+  if (collectReady && hubRedeliveryOpen(notification)) {
+    return {
+      tone: "warning",
+      icon: "package-check",
+      title: "Collect it, or ask for redelivery",
+      detail: "Redelivery is at your own cost. Open the order to choose.",
+    };
+  }
   if (collectReady) {
     return {
       tone: "success",
       icon: "package-check",
       title: `Collect at ${GRIDGO_OFFICE_LABEL}`,
-      detail: "Give the name you ordered under.",
+      detail: isHubType(notification.type)
+        ? "Show the QR and code from the order."
+        : "Open the order for what to bring.",
     };
+  }
+  if (shopRecoveryNotificationNeedsYou(notification)) {
+    return /no replacement/i.test(notification.body)
+      ? { ...SHOP_CHOICE_CALLOUT, title: "Choose a full refund" }
+      : SHOP_CHOICE_CALLOUT;
   }
   const asked = notification.type ? TYPE_CALLOUTS[notification.type] : undefined;
   if (!asked) return null;
@@ -298,17 +382,22 @@ export function presentNotification(
 ): PresentedNotification {
   const eventState = notification.eventState ?? notification.orderState;
   const event = notification.eventState ? { ...notification, orderState: eventState } : notification;
-  const payment = notification.paymentAction;
+  const payment = isShopChangeRow(notification) ? undefined : notification.paymentAction;
   const paymentPending = payment != null && payment.amountMinor > 0;
   const collect = isCollect(notification);
   const hold = collectionHeld(notification);
-  const refund = refundNotificationCopy(notification.type);
+  const refund =
+    refundNotificationCopy(notification.type) ??
+    shopRecoveryNotificationCopy(notification) ??
+    rescheduleNotificationCopy(notification.type);
   const overlay = refund
     ? { ...refund, hint: notification.orderId ? "Opens this job" : null }
     : notification.type === "order_rate_reminder"
       ? rateReminderCopy()
       : notification.type === "order_receipt_ready"
         ? receiptReadyCopy(showServiceFee)
+        : isHubType(notification.type) && notification.orderState === "awaiting_collection" && !hold
+          ? hubCopy(notification)
         : isJobComplete(eventState)
           ? completeCopy(collect)
           : collect
@@ -324,7 +413,9 @@ export function presentNotification(
     payment?.status === "due" ||
     hold ||
     collectReady ||
-    (notification.type != null && NEED_YOU_TYPES.has(notification.type));
+    (notification.type != null && NEED_YOU_TYPES.has(notification.type)) ||
+    shopRecoveryNotificationNeedsYou(notification) ||
+    rescheduleNotificationNeedsYou(notification.type);
 
   const railKind = eventState
     ? fulfilmentRailKind(collect ? "pickup" : notification.fulfillmentMode)

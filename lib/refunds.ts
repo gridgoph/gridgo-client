@@ -28,7 +28,7 @@ import type {
 import { formatPhp } from "@/lib/api";
 import { formatDeadline } from "@/lib/deadline";
 import type { OrderStateMeta } from "@/lib/orderState";
-import { printingMinor } from "@/lib/serviceFee";
+import { orderPrintingMinor } from "@/lib/serviceFee";
 
 /** Statuses during which the order is paused for the refund. */
 export const ACTIVE_REFUND_STATUSES = [
@@ -331,17 +331,20 @@ export type RefundBreakdown = {
  */
 export function refundBreakdown(
   settlement: RefundSettlement,
-  order: Pick<Order, "payments" | "subtotalMinor" | "serviceFeeMinor" | "deliveryFeeMinor" | "fulfillmentMode">,
+  order: Pick<
+    Order,
+    "payments" | "subtotalMinor" | "serviceFeeMinor" | "deliveryFeeMinor" | "totalMinor" | "fulfillmentMode"
+  >,
 ): RefundBreakdown {
   const paidMinor = confirmedPaidMinor(order);
   const printing = settlement.principalMinor + settlement.feeMinor;
   const full = paidMinor > 0 && settlement.totalMinor >= paidMinor;
-  const chargedPrinting =
-    order.subtotalMinor != null ? printingMinor(order.subtotalMinor, order.serviceFeeMinor) : null;
+  const chargedPrinting = orderPrintingMinor(order);
   const keptParts: string[] = [];
   if (!full) {
     if (chargedPrinting == null || printing < chargedPrinting) keptParts.push("printing work the shop had already done");
-    const deliveryFee = order.fulfillmentMode === "pickup" ? 0 : order.deliveryFeeMinor ?? 0;
+    // A new pick-up order's hub fee rides in the same slot; a legacy one is 0.
+    const deliveryFee = order.deliveryFeeMinor ?? 0;
     if (deliveryFee > 0 && settlement.deliveryMinor < deliveryFee) keptParts.push("the delivery trip that was made");
   }
   return {

@@ -1,5 +1,8 @@
 import {
+  FILE_CHECK_AFTER_PAYMENT,
+  artworkRefusalOf,
   fulfilmentModeFor,
+  lineArtworkStatus,
   invoiceNote,
   blockerLine,
   isTimingAvailable,
@@ -206,5 +209,71 @@ describe("invoiceNote", () => {
     expect(invoiceNote(true)).toMatch(/the service fee/);
     expect(invoiceNote(false)).not.toMatch(/fee|\d+(\.\d+)?\s*%/i);
     expect(invoiceNote(false)).toMatch(/printing, delivery, the total/);
+  });
+});
+
+describe("artwork GRIDGO cannot use (gridgo-api#122)", () => {
+  const LINK = { formatCode: "canva_link", url: "https://www.canva.com/design/DAF1/view" };
+  const line = { id: "cline_1", artworkFileId: null, artworkLinks: [LINK] };
+
+  it("stops the order while a link is still being checked, and when one fails", () => {
+    expect(placeOrderBlockers({ ...READY, linesCheckingArtwork: 1 })).toEqual(["artwork_checking"]);
+    expect(placeOrderBlockers({ ...READY, linesArtworkProblem: 1 })).toEqual(["artwork_problem"]);
+    expect(blockerLine("artwork_problem", "Flyers")).toBe(
+      "GRIDGO cannot use the artwork on Flyers. Open its Artwork to fix it.",
+    );
+  });
+
+  it("reads checkout's refusal, in GRIDGO's own words, with the line it is about", () => {
+    expect(
+      artworkRefusalOf({
+        error: "artwork_link_check_failed",
+        lineId: "cline_1",
+        field: "artwork",
+        message: "Make the design viewable by anyone with the link.",
+      }),
+    ).toEqual({
+      code: "artwork_link_check_failed",
+      lineId: "cline_1",
+      message: "Make the design viewable by anyone with the link.",
+    });
+  });
+
+  it("words a refusal that came without a message, and ignores other answers", () => {
+    expect(artworkRefusalOf({ error: "artwork_file_check_failed", lineId: "cline_1" })?.message).toMatch(
+      /Export it again/,
+    );
+    expect(artworkRefusalOf({ error: "cart_empty" })).toBeNull();
+    expect(artworkRefusalOf(null)).toBeNull();
+  });
+
+  it("says a line's link is being checked, then why it cannot be used", () => {
+    const key = `${LINK.formatCode} ${LINK.url}`;
+    expect(lineArtworkStatus(line, { [key]: { phase: "checking" } }, {})).toEqual({
+      kind: "checking",
+      text: "Checking the design link…",
+    });
+    const check = {
+      ok: false, reachable: true, httpStatus: 200, provider: "canva" as const,
+      access: "sign_in_required" as const, message: "Sign in",
+    };
+    expect(lineArtworkStatus(line, { [key]: { phase: "checked", check } }, {})).toEqual({
+      kind: "problem",
+      text: "This link is private. Open Artwork to fix it.",
+    });
+    expect(
+      lineArtworkStatus(line, { [key]: { phase: "checked", check: { ...check, ok: true, access: "public_view" } } }, {}),
+    ).toBeNull();
+  });
+
+  it("puts checkout's refusal ahead of a passing check, until the artwork changes", () => {
+    const signature = `|${LINK.formatCode} ${LINK.url}`;
+    const problems = { cline_1: { code: "artwork_link_check_failed", message: "Make it public.", signature } };
+    expect(lineArtworkStatus(line, {}, problems)).toEqual({ kind: "problem", text: "Make it public." });
+    expect(lineArtworkStatus({ ...line, artworkFileId: "file_2", artworkLinks: [] }, {}, problems)).toBeNull();
+  });
+
+  it("tells the client after payment that the file is checked before the shop starts", () => {
+    expect(FILE_CHECK_AFTER_PAYMENT).toMatch(/quick check before the shop starts/);
   });
 });

@@ -16,6 +16,8 @@ import {
 } from "@/components/GridgoTabBar";
 import { ACTION_TAB, TABS } from "@/constants/tabs";
 import { useNotifications } from "@/store/notifications";
+import { useOrganization } from "@/store/organization";
+import { useSession } from "@/store/session";
 
 /** Style props arrive as an object or an array of them. */
 function flatten(style: unknown): Record<string, number | undefined> {
@@ -229,12 +231,14 @@ describe("GridgoTabBar", () => {
     navigate.mockClear();
     emit.mockClear();
     useNotifications.setState({ items: [], readIds: [] });
+    useSession.setState({ user: null });
+    useOrganization.getState().reset();
   });
 
   it("labels every destination, so none is an icon alone", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    for (const tab of TABS.filter((entry) => entry.name !== ACTION_TAB)) {
+    for (const tab of TABS.filter((entry) => entry.name !== ACTION_TAB && entry.name !== "organizations")) {
       expect(screen.getByText(tab.label)).toBeTruthy();
     }
   });
@@ -245,6 +249,33 @@ describe("GridgoTabBar", () => {
     expect(screen.queryByText("New request")).toBeNull();
     expect(screen.queryByRole("tab", { name: "New request" })).toBeNull();
     expect(screen.getAllByRole("tab")).toHaveLength(4);
+  });
+
+  it("never offers Organizations to a personal account or an unapproved organization", async () => {
+    useSession.setState({
+      user: { id: "u1", email: "a@b.ph", name: "Ana", role: "client", accountType: "organization", approvalCase: null },
+    });
+    await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+
+    expect(screen.queryByText("Organizations")).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+  });
+
+  it("adds Organizations, beside Orders, for an approved organization", async () => {
+    useSession.setState({
+      user: {
+        id: "u1",
+        email: "pta@school.edu.ph",
+        name: "Ana",
+        role: "client",
+        accountType: "organization",
+        approvalCase: { id: "apc_1", kind: "business_client", status: "approved", version: 3 },
+      },
+    });
+    await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+
+    const tabs = screen.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel);
+    expect(tabs).toEqual(["Home", "Orders", "Organizations", "Notifications", "Account"]);
   });
 
   it("marks only the open tab as selected", async () => {

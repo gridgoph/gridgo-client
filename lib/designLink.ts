@@ -10,9 +10,12 @@ import type { AcceptedFormat, ArtworkLink, ArtworkLinkCheck, CartLineRecord } fr
  * - GRIDGO stores only an HTTPS link, filed under the provider's own format
  *   code where the listing takes it (`canva_link` only for Canva, and so on),
  *   so the field refuses anything else before a round trip rather than after.
- * - `POST /artwork/link-check` is advice, never a grant. It can prove a link is
- *   public (or plainly is not), and sometimes it honestly cannot tell. That
- *   answer is a warning the client may continue past, never a tick.
+ * - A link must pass its check before checkout (gridgo-api#122). Checkout
+ *   probes every link again and refuses anything it cannot prove is public —
+ *   private, missing, unreachable, or simply inconclusive. So the artwork step
+ *   holds a link to the same bar: only a proven-public link goes onto the
+ *   line, and anything else is said plainly with the fix, and the upload as
+ *   the other way on.
  */
 
 export type LinkProvider = ArtworkLinkCheck["provider"];
@@ -217,7 +220,26 @@ export type LinkVerdict = {
 };
 
 const SHARING_FIX = "In the Share menu, set access to Anyone with the link, then paste it again.";
-const CONTINUE_NOTE = "You can still continue. Operations opens every design before it is printed.";
+
+/** The other way on, said only where the listing takes a file. */
+function orUpload(canUpload: boolean): string {
+  return canUpload ? " Or upload the file instead." : "";
+}
+
+/**
+ * The API's own reason, without its upload advice.
+ *
+ * The client says "Or upload the file instead." itself, and only where the
+ * listing takes a file; an API that also says it read the advice twice. Only
+ * a trailing "or upload" clause and the API's appended retry sentence go —
+ * the reason itself (a timeout, a bad redirect) stays.
+ */
+export function withoutUploadAdvice(message: string): string {
+  return message
+    .replace(/\s*Make the link viewable by anyone with the link, then retry; or upload the file instead\.?/gi, "")
+    .replace(/,?\s+or (?:export and )?upload the (?:artwork|file)\./gi, ".")
+    .trim();
+}
 
 /**
  * What a check result says to the client.
@@ -225,11 +247,23 @@ const CONTINUE_NOTE = "You can still continue. Operations opens every design bef
  * Decided from `access` and `reachable`, never from `message` — the API says
  * its wording may change. Its message is shown only when the link could not be
  * reached, where it is the one thing that says why (a timeout, a bad redirect).
+ *
+ * Everything short of proven public blocks: checkout refuses an `unknown`
+ * link exactly as it refuses a private one, so a warning here would only move
+ * the refusal to the moment the client is paying.
  */
-export function linkVerdict(state: LinkCheckState | null | undefined): LinkVerdict | null {
+export function linkVerdict(
+  state: LinkCheckState | null | undefined,
+  { canUpload = true }: { canUpload?: boolean } = {},
+): LinkVerdict | null {
   if (!state || state.phase === "checking" || state.phase === "unavailable") return null;
   if (state.phase === "failed") {
-    return { tone: state.blocks ? "error" : "warning", title: state.message, body: null, blocks: state.blocks };
+    return {
+      tone: "error",
+      title: state.message,
+      body: state.blocks ? orUpload(canUpload).trim() || null : `Check it again in a minute.${orUpload(canUpload)}`,
+      blocks: true,
+    };
   }
   const { check } = state;
   switch (check.access) {
@@ -240,32 +274,32 @@ export function linkVerdict(state: LinkCheckState | null | undefined): LinkVerdi
     case "sign_in_required":
       return {
         tone: "error",
-        title: "This link asks people to sign in",
-        body: SHARING_FIX,
+        title: "This link is private",
+        body: `${SHARING_FIX}${orUpload(canUpload)}`,
         blocks: true,
       };
     case "not_found":
       return {
         tone: "error",
         title: "We couldn't open this link",
-        body: "Nothing is at that address. Check you copied the whole link, and that the design was not deleted.",
+        body: `Nothing is at that address. Check you copied the whole link, and that the design was not deleted.${orUpload(canUpload)}`,
         blocks: true,
       };
     default:
       return check.reachable
         ? {
-            tone: "warning",
-            title: "We couldn't confirm who can open it",
+            tone: "error",
+            title: "We couldn't confirm anyone can open it",
             // The page answered, so there is no reason worth relaying — only
             // the one setting that makes it work.
-            body: `Make sure sharing is set to Anyone with the link. ${CONTINUE_NOTE}`,
-            blocks: false,
+            body: `Set sharing to Anyone with the link, then check it again.${orUpload(canUpload)}`,
+            blocks: true,
           }
         : {
-            tone: "warning",
+            tone: "error",
             title: "We couldn't open this link",
-            body: `${check.message} ${CONTINUE_NOTE}`.trim(),
-            blocks: false,
+            body: `${withoutUploadAdvice(check.message)}${orUpload(canUpload)}`.trim() || null,
+            blocks: true,
           };
   }
 }
@@ -310,3 +344,34 @@ export function lineArtworkSummary(line: Pick<CartLineRecord, "artworkFileId" | 
   if (links.length) return `${linkLabel(links[0])} attached`;
   return "No artwork yet";
 }
+
+// ---------------------------------------------------------------------------
+// Checkout's answer about a line's artwork
+// ---------------------------------------------------------------------------
+
+/** What checkout said about a line's artwork, stamped with the artwork it was about. */
+export type ArtworkProblem = {
+  code: string;
+  message: string;
+  /** `artworkSignature` of the line when checkout refused it. */
+  signature: string;
+};
+
+export function checkKey(link: ArtworkLink): string {
+  return `${link.formatCode} ${link.url}`;
+}
+
+/** The artwork a line carries, as one comparable string. */
+export function artworkSignature(line: Pick<CartLineRecord, "artworkFileId" | "artworkLinks">): string {
+  return [line.artworkFileId ?? "", ...lineArtworkLinks(line).map(checkKey)].join("|");
+}
+
+/** A checkout refusal still about the artwork the line holds now, or null. */
+export function currentProblem(
+  problems: Record<string, ArtworkProblem>,
+  line: Pick<CartLineRecord, "id" | "artworkFileId" | "artworkLinks">,
+): ArtworkProblem | null {
+  const problem = problems[line.id];
+  return problem && problem.signature === artworkSignature(line) ? problem : null;
+}
+

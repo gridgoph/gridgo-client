@@ -4,14 +4,19 @@ import { CircleCheck, Clock } from "lucide-react-native";
 import Svg, { Line, Path } from "react-native-svg";
 
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
+import { GroupPlate } from "@/components/ShopGroupSection";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
+import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
 import { orderReference } from "@/lib/orderReference";
 import {
   RECEIPT_BLURB,
   receiptDateLabel,
+  receiptFulfilmentRow,
   receiptPaymentLine,
   receiptQuantityLabel,
+  type ReceiptGroup,
+  type ReceiptLine,
   type ReceiptView,
 } from "@/lib/receipt";
 
@@ -68,22 +73,24 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
           {view.invoiceNumber ? <SlipRow label="Invoice" value={view.invoiceNumber} /> : null}
         </View>
 
-        {view.lines.length ? (
+        {view.groups ? (
+          /*
+            One receipt, a section per shop group (gridgo-api#117): what each
+            shop printed and its own delivery, under the same plate letter the
+            client saw at checkout. The figures below add them up.
+          */
+          view.groups.map((group) => (
+            <View key={group.orderId} className="gap-4">
+              <Perforation />
+              <SlipGroup group={group} />
+            </View>
+          ))
+        ) : view.lines.length ? (
           <>
             <Perforation />
             <View className="gap-3">
               {view.lines.map((line) => (
-                <View key={line.id} className="flex-row items-start justify-between gap-4">
-                  <View className="min-w-0 flex-1 gap-0.5">
-                    <Text className="text-body font-medium text-text-primary">{line.name}</Text>
-                    <Text className="text-caption text-text-muted" style={FIGURES}>
-                      {receiptQuantityLabel(line.quantity)}
-                    </Text>
-                  </View>
-                  <Text className="text-body text-text-primary" style={FIGURES}>
-                    {line.amountLabel}
-                  </Text>
-                </View>
+                <SlipLine key={line.id} line={line} />
               ))}
             </View>
           </>
@@ -93,14 +100,13 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
 
         <View className="gap-1.5">
           <SlipRow label="Printing" value={formatPhp(view.money.printingMinor)} />
-          <SlipRow
-            label="Delivery"
-            value={
-              view.money.deliveryFeeMinor === 0
-                ? "None — you collect"
-                : formatPhp(view.money.deliveryFeeMinor)
-            }
-          />
+          {view.money.organizationDiscountMinor ? (
+            <SlipRow
+              label={ORGANIZATION_DISCOUNT_LABEL}
+              value={discountAmount(view.money.organizationDiscountMinor)}
+            />
+          ) : null}
+          <SlipRow {...receiptFulfilmentRow(view.money, view.groups?.length ?? 0)} />
           {showServiceFee ? (
             <ServiceFeeRow explainOnly divider={false} rateBps={view.money.serviceFeeRateBps} />
           ) : null}
@@ -137,6 +143,57 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
         <Text className="text-center text-caption text-text-muted">{RECEIPT_BLURB}</Text>
       </View>
       <TornEdge />
+    </View>
+  );
+}
+
+function SlipLine({ line }: { line: ReceiptLine }) {
+  return (
+    <View className="flex-row items-start justify-between gap-4">
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text className="text-body font-medium text-text-primary">{line.name}</Text>
+        <Text className="text-caption text-text-muted" style={FIGURES}>
+          {receiptQuantityLabel(line.quantity)}
+        </Text>
+      </View>
+      <Text className="text-body text-text-primary" style={FIGURES}>
+        {line.amountLabel}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * One shop group's section: its plate and label, its lines, its own delivery
+ * and what the group came to. A group stopped since is marked here, beside
+ * figures that stay as they were paid.
+ */
+function SlipGroup({ group }: { group: ReceiptGroup }) {
+  return (
+    <View className="gap-3" testID={`receipt-group-${group.letter}`}>
+      <View className="flex-row items-center gap-2">
+        <GroupPlate letter={group.letter} size="sm" />
+        <Text className="min-w-0 flex-1 text-body font-bold text-text-primary">{group.label}</Text>
+        <Text className="text-body font-medium text-text-primary" style={FIGURES}>
+          {formatPhp(group.totalMinor)}
+        </Text>
+      </View>
+      {group.stopped ? (
+        <Text className="text-caption text-text-secondary">{group.stopped}</Text>
+      ) : null}
+      {group.lines.map((line) => (
+        <SlipLine key={line.id} line={line} />
+      ))}
+      <SlipRow
+        label="Delivery"
+        value={group.deliveryFeeMinor === 0 ? "None" : formatPhp(group.deliveryFeeMinor)}
+      />
+      {group.organizationDiscountMinor ? (
+        <SlipRow
+          label={ORGANIZATION_DISCOUNT_LABEL}
+          value={discountAmount(group.organizationDiscountMinor)}
+        />
+      ) : null}
     </View>
   );
 }

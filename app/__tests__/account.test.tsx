@@ -104,7 +104,7 @@ describe("the identity card", () => {
     expect(screen.getByLabelText("Your order, empty")).toBeTruthy();
     expect(screen.getByLabelText("Chat")).toBeTruthy();
     expect(screen.getByLabelText("Your details")).toBeTruthy();
-    expect(screen.getByLabelText("Apply as a business")).toBeTruthy();
+    expect(screen.getByLabelText("Register an organization or business")).toBeTruthy();
     expect(screen.getByLabelText("What GRIDGO matches on")).toBeTruthy();
     expect(screen.getByLabelText("Settings")).toBeTruthy();
 
@@ -135,12 +135,17 @@ describe("the identity card", () => {
 
     expect(screen.getByText("Personal client")).toBeTruthy();
     expect(screen.getByText("Application pending")).toBeTruthy();
-    expect(screen.getByLabelText("Business application")).toBeTruthy();
-    expect(screen.queryByLabelText("Apply as a business")).toBeNull();
+    expect(screen.getByLabelText("Account application")).toBeTruthy();
+    expect(screen.queryByLabelText("Register an organization or business")).toBeNull();
   });
 
   it("names a business by its business name, and stops offering the upgrade", async () => {
-    signedIn({ ...CLIENT, accountType: "business", orgName: "Bautista Trading" });
+    signedIn({
+      ...CLIENT,
+      accountType: "business",
+      orgName: "Bautista Trading",
+      approvalCase: { id: "apc_1", kind: "business_client", status: "approved", version: 2 },
+    });
 
     await renderAccount();
 
@@ -148,7 +153,8 @@ describe("the identity card", () => {
     // The person is still there, under the name that goes on the jobs.
     expect(screen.getByText("Ana Bautista")).toBeTruthy();
     expect(screen.getByText("Business client")).toBeTruthy();
-    expect(screen.queryByLabelText("Apply as a business")).toBeNull();
+    expect(screen.queryByLabelText("Register an organization or business")).toBeNull();
+    expect(screen.queryByLabelText("Verify your business")).toBeNull();
   });
 
   it("writes the saved ranking on its row, so it reads without opening", async () => {

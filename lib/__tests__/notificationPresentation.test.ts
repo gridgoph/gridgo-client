@@ -18,6 +18,67 @@ function note(partial: Partial<Notification> & Pick<Notification, "title" | "bod
 }
 
 describe("presentNotification", () => {
+  describe("hub pick-up reminders (gridgo-api#124)", () => {
+    const hub = (type: string, body: string) =>
+      presentNotification(
+        note({
+          title: "Pickup at GRIDGO",
+          body,
+          type,
+          orderId: "ord_1",
+          orderState: "awaiting_collection",
+          fulfillmentMode: "pickup",
+        }),
+      );
+
+    it("says the order is ready and points at the claim code", () => {
+      const view = hub("hub_ready", "Your order is ready. Bring its QR and matching code during hub hours.");
+      expect(view.title).toBe("Ready at the hub");
+      expect(view.body).toMatch(/QR and matching code/);
+      expect(view.hint).toBe("Open for your claim code");
+      expect(view.lane).toBe("need_you");
+      expect(view.callout).toMatchObject({ tone: "success", detail: "Show the QR and code from the order." });
+    });
+
+    it("keeps the server's count of missed days", () => {
+      const view = hub("hub_unclaimed_reminder", "Your order is still waiting at the hub. Bring its QR and matching code.");
+      expect(view.title).toBe("Still waiting at the hub");
+      expect(view.body).toMatch(/still waiting at the hub/);
+      expect(view.lane).toBe("need_you");
+    });
+
+    it("warns on the second missed day", () => {
+      const view = hub("hub_unclaimed_warning", "Two hub days missed. Please collect your order on the next hub day.");
+      expect(view.title).toBe("Collect your order soon");
+      expect(view.callout?.title).toBe("Collect at GRIDGO Office");
+    });
+
+    it("offers the choice once Operations follows up, never forfeiture", () => {
+      const view = hub(
+        "hub_unclaimed_warning",
+        "Three hub days missed. Contact Operations or request redelivery at your own cost. Your order is not forfeited.",
+      );
+      expect(view.title).toBe("Operations will follow up");
+      expect(view.body).toMatch(/not forfeited/);
+      expect(view.callout).toMatchObject({ tone: "warning", title: "Collect it, or ask for redelivery" });
+    });
+
+    it("does not keep asking once the order has been collected", () => {
+      const view = presentNotification(
+        note({
+          title: "Pickup at GRIDGO",
+          body: "Your order is ready. Bring its QR and matching code during hub hours.",
+          type: "hub_ready",
+          orderId: "ord_1",
+          orderState: "issue_window_open",
+          fulfillmentMode: "pickup",
+        }),
+      );
+      expect(view.title).toBe("Collected");
+      expect(view.callout).toBeNull();
+    });
+  });
+
   it("turns a pickup that is still travelling into a counter docket, not a door delivery", () => {
     const view = presentNotification(
       note({
@@ -479,4 +540,69 @@ describe("timelineRows", () => {
     expect(rows[0]).toMatchObject({ kind: "day", label: "Date unknown" });
     expect(rows[1]).toMatchObject({ kind: "entry", time: null });
   });
+});
+
+describe("when the shop cannot carry on", () => {
+  it("draws a shop that could not take the order as a choice the client owes", () => {
+    const view = presentNotification(
+      note({
+        title: "Order fulfilment update",
+        body: "The original shop could not fulfil your order. A vetted replacement is available. Accept the revised date or choose a full refund.",
+        type: "shop_recovery",
+        orderId: "ord_1",
+        orderState: "production",
+      }),
+    );
+    expect(view.title).toBe("Your shop could not take this order");
+    expect(view.lane).toBe("need_you");
+    expect(view.callout?.title).toBe("Choose the new shop or a refund");
+    expect(view.hint).toBe("Opens this job");
+  });
+
+  it("asks for an answer to the shop's new date within the window", () => {
+    const view = presentNotification(
+      note({
+        title: "Order deadline request",
+        body: "A new production deadline needs the client’s answer within 24 hours.",
+        type: "order_reschedule_requested",
+        orderId: "ord_1",
+        orderState: "production",
+      }),
+    );
+    expect(view.title).toBe("Your shop asked for more time");
+    expect(view.body).not.toMatch(/the client/i);
+    expect(view.lane).toBe("need_you");
+    expect(view.callout).toEqual(expect.objectContaining({ icon: "clock", title: "Answer within 24 hours" }));
+  });
+
+  it("files an expired request as an update that says Operations will call", () => {
+    const view = presentNotification(
+      note({
+        title: "Order deadline request",
+        body: "The client did not answer within 24 hours. The original deadline still applies; Operations must follow up.",
+        type: "order_reschedule_expired",
+        orderId: "ord_1",
+        orderState: "production",
+      }),
+    );
+    expect(view.lane).toBe("update");
+    expect(view.body).toMatch(/Operations will contact you/);
+    expect(view.callout).toBeNull();
+  });
+});
+
+it("never asks for a payment on a row about a shop that dropped the job", () => {
+  const view = presentNotification(
+    note({
+      title: "Order fulfilment update",
+      body: "The shop cannot fulfil this order. Operations is reviewing the next step.",
+      type: "shop_recovery",
+      orderId: "ord_1",
+      orderState: "production",
+      paymentAction: { installment: "final_online", status: "due", amountMinor: 111250 },
+    }),
+  );
+  expect(view.callout).toBeNull();
+  expect(view.lane).toBe("update");
+  expect(view.hint).toBe("Opens this job");
 });

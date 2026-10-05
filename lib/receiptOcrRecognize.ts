@@ -12,8 +12,6 @@
 
 import { Platform } from "react-native";
 
-import { getFileSystemLegacyNative } from "@/lib/nativeModules";
-
 export type ReceiptOcrRaw = { text: string; confidence: number };
 
 export type ReceiptOcrRequest = { id: number; dataUrl: string };
@@ -95,12 +93,27 @@ export async function imageUriToDataUrl(uri: string): Promise<string> {
     const blob = await response.blob();
     return blobToDataUrl(blob);
   }
-  const FileSystem = getFileSystemLegacyNative();
-  if (!FileSystem) {
-    throw new Error("Reading the screenshot needs the file system on this phone.");
-  }
-  const base64 = await FileSystem.readAsStringAsync(uri, { encoding: "base64" });
-  return `data:${mimeFromUri(uri)};base64,${base64}`;
+  // The picker's copy sits in the app's cache. Expo's file system refuses it
+  // in Expo Go, which reads only inside the project's own folders, so every
+  // picked receipt came back unreadable there (#180). React Native's own
+  // networking reads any file the app can open, as the upload already does.
+  const dataUrl = await blobToDataUrl(await localFileBlob(uri));
+  if (dataUrl.startsWith("data:image/")) return dataUrl;
+  return `data:${mimeFromUri(uri)};base64,${dataUrl.slice(dataUrl.indexOf(",") + 1)}`;
+}
+
+function localFileBlob(uri: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = () => {
+      if (xhr.response) resolve(xhr.response as Blob);
+      else reject(new Error("That screenshot could not be read."));
+    };
+    xhr.onerror = () => reject(new Error("That screenshot could not be read."));
+    xhr.responseType = "blob";
+    xhr.open("GET", uri);
+    xhr.send();
+  });
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {

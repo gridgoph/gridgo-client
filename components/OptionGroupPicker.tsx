@@ -99,11 +99,11 @@ function OptionRow({
   first: boolean;
   onPress: () => void;
 }) {
-  // What this option adds is said at GRIDGO's price, the same figure the
-  // header climbs by when it is ticked. Null until the rate is read; the
-  // row then shows no amount rather than the shop's own.
+  // What this option adds is said at GRIDGO's price — the API's own client
+  // figure (gridgo-api#132). An older payload is marked up here instead, and
+  // until the rate is read the row shows no amount rather than the shop's own.
   const rate = useServiceFeeRateBps();
-  const delta = rate == null ? null : clientModifierMinor(option.priceModifierMinor, rate);
+  const delta = optionClientDeltaMinor(option, rate);
   return (
     <Pressable
       onPress={onPress}
@@ -168,6 +168,23 @@ function Marker({ required, selected }: { required: boolean; selected: boolean }
       <Check size={12} color={colors.accentOn} strokeWidth={3} />
     </View>
   );
+}
+
+/**
+ * What a client reads beside an option: the API's `clientPriceModifierMinor`
+ * (already GRIDGO's, sign kept), else the shop's modifier marked up once.
+ * Display only — the amount due is quoted, never summed from these.
+ */
+export function optionClientDeltaMinor(
+  option: Pick<CatalogOption, "priceModifierMinor" | "clientPriceModifierMinor">,
+  serviceFeeRateBps: number | null,
+): number | null {
+  if (Number.isSafeInteger(option.clientPriceModifierMinor)) {
+    return option.clientPriceModifierMinor as number;
+  }
+  return serviceFeeRateBps == null
+    ? null
+    : clientModifierMinor(option.priceModifierMinor, serviceFeeRateBps);
 }
 
 /**

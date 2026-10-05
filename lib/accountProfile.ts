@@ -1,6 +1,6 @@
 /**
- * The client's own account: the details behind the identity card, and the
- * stepped application that turns a personal account into a business one.
+ * The client's own account: the details behind the identity card. The
+ * organization and business application itself is `lib/clientApplication.ts`.
  *
  * Two of the outcomes here are not failures, and both exist because of
  * something the client cannot see from their phone.
@@ -18,7 +18,7 @@
  */
 
 import * as api from "@/lib/api";
-import type { AccountType, ClientAddress, User } from "@/lib/api";
+import type { AccountType, User } from "@/lib/api";
 import { withTimeout } from "@/lib/clerkSignIn";
 import { userFacingError } from "@/lib/copy";
 import { checkSignupField, EMPTY_SIGNUP, needsOrgName } from "@/lib/signup";
@@ -49,9 +49,6 @@ export type AccountOutcome<T> =
  */
 export const ACCOUNT_NOT_OPEN_YET =
   "GRIDGO has not opened account changes on this app yet. Nothing here is lost — check again shortly, and ask Operations to correct anything that cannot wait.";
-
-export const BUSINESS_APPLY_NOT_OPEN_YET =
-  "GRIDGO has not opened business applications on this app yet. Your answers stay on this screen — check again shortly, or ask Operations to review the account.";
 
 /** The record moved under the client. Says so, and what to do about it. */
 export const ACCOUNT_STALE =
@@ -296,159 +293,6 @@ export async function saveAccount(
 }
 
 /* --------------------------------------------------------------------------
-   Apply as a business
-   -------------------------------------------------------------------------- */
-
-export type ApplyStepId = "name" | "contact" | "where" | "review";
-
-export type ApplyStep = { id: ApplyStepId; label: string };
-
-export type BusinessApplyDraft = {
-  orgName: string;
-  nature: string;
-  accountType: Extract<AccountType, "business" | "organization">;
-  contactName: string;
-  phone: string;
-  /** A saved address, or null where the client has none yet. */
-  addressId: string | null;
-};
-
-export function emptyApplyDraft(user: User | null): BusinessApplyDraft {
-  return {
-    orgName: user?.orgName?.trim() ?? "",
-    nature: "",
-    accountType: "business",
-    contactName: user?.name?.trim() ?? "",
-    phone: user?.phone?.trim() ?? "",
-    addressId: null,
-  };
-}
-
-const ALL_STEPS: Record<ApplyStepId, ApplyStep> = {
-  name: { id: "name", label: "Business" },
-  contact: { id: "contact", label: "Contact" },
-  where: { id: "where", label: "Delivery" },
-  review: { id: "review", label: "Review" },
-};
-
-/**
- * The steps this particular client walks.
- *
- * Contact is dropped when GRIDGO already holds a name and a number: asking a
- * client to retype what is already on their account teaches them that the
- * account does not remember anything, and it is a step of pure friction on the
- * way to an upgrade they have already decided on. It is still shown back on
- * Review, so nothing is submitted unseen.
- */
-export function applySteps(user: User | null): ApplyStep[] {
-  const known = Boolean(user?.name?.trim()) && Boolean(user?.phone?.trim());
-  const ids: ApplyStepId[] = known
-    ? ["name", "where", "review"]
-    : ["name", "contact", "where", "review"];
-  return ids.map((id) => ALL_STEPS[id]);
-}
-
-/**
- * What still stops this step, or null. Where is deliberately never a problem:
- * a client with no saved address has nothing to choose, and GRIDGO asks for
- * the drop-off again at checkout anyway.
- */
-export function applyStepProblem(
-  step: ApplyStepId,
-  draft: BusinessApplyDraft,
-): string | null {
-  switch (step) {
-    case "name": {
-      const name = checkSignupField("orgName", {
-        ...EMPTY_SIGNUP,
-        accountType: draft.accountType,
-        orgName: draft.orgName,
-      }).reason;
-      if (name) return name;
-      if (!draft.nature.trim()) {
-        return draft.accountType === "organization"
-          ? "Say what this organization does."
-          : "Say what this business does.";
-      }
-      return null;
-    }
-    case "contact":
-      return (
-        applyContactProblems(draft).contactName ?? applyContactProblems(draft).phone ?? null
-      );
-    case "where":
-    case "review":
-      return null;
-  }
-}
-
-/**
- * The contact step's two answers, checked apart.
- *
- * One combined message would land under whichever field the screen happened to
- * put it under — a number rejected for its format, explained beneath the name.
- */
-export function applyContactProblems(draft: BusinessApplyDraft): {
-  contactName: string | null;
-  phone: string | null;
-} {
-  const name = checkSignupField("name", { ...EMPTY_SIGNUP, name: draft.contactName });
-  return {
-    contactName: name.ok ? null : name.reason,
-    phone: mobileNumberProblem(draft.phone),
-  };
-}
-
-/**
- * Draft → exactly the body `POST /me/business-application` wants.
- *
- * Address and contact stay on the account; they do not convert the type.
- * Operations reads the name, nature, and requested account type from the case.
- */
-export function businessApplyInput(draft: BusinessApplyDraft): api.BusinessApplyInput {
-  return {
-    businessName: draft.orgName.trim(),
-    businessNature: draft.nature.trim(),
-    accountType: draft.accountType,
-  };
-}
-
-export async function submitBusinessApply(
-  input: api.BusinessApplyInput,
-  idempotencyKey: string,
-): Promise<AccountOutcome<User>> {
-  try {
-    return { status: "ok", value: await api.applyAsBusiness(input, idempotencyKey) };
-  } catch (error) {
-    if (isRouteAbsent(error)) return { status: "not_open_yet" };
-    return {
-      status: "failed",
-      field: refusedField(error),
-      message: userFacingError(
-        error,
-        "GRIDGO could not send that application. Try again in a moment.",
-      ),
-    };
-  }
-}
-
-/** Saved addresses for the delivery step. A failure is not fatal to the flow. */
-export async function loadApplyAddresses(): Promise<ReadOutcome<ClientAddress[]>> {
-  try {
-    return { status: "ok", value: await api.listAddresses() };
-  } catch (error) {
-    if (isRouteAbsent(error)) return { status: "not_open_yet" };
-    return {
-      status: "failed",
-      message: userFacingError(
-        error,
-        "GRIDGO could not read your saved addresses. You can still finish and set one at checkout.",
-      ),
-    };
-  }
-}
-
-/* --------------------------------------------------------------------------
    The identity card
    -------------------------------------------------------------------------- */
 
@@ -503,10 +347,16 @@ export function businessApplicationPending(user: User | null): boolean {
   return businessApplication(user)?.status === "pending";
 }
 
-/** True while this account may still send a new application from this app. */
+/**
+ * True while this account may still send an application from this app.
+ *
+ * Not keyed to the account type alone: sign-up lets a client *declare* a
+ * business or organization, and only an approved application makes it one
+ * (the organization discount and the Organizations tab both wait on that).
+ * So a declared account with no approved case is still offered the checklist.
+ */
 export function canApplyAsBusiness(user: User | null): boolean {
   if (!user) return false;
-  if ((user.accountType ?? "individual") !== "individual") return false;
   const status = businessApplication(user)?.status;
-  return status !== "pending" && status !== "approved";
+  return status !== "pending" && status !== "approved" && status !== "suspended";
 }

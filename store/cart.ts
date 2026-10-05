@@ -69,8 +69,8 @@ export type CartState = {
   /**
    * Replace the basket with a new one holding only what `work` puts in it.
    *
-   * For a product GRIDGO matched to a different shop (`lib/otherShop.ts`),
-   * once the client has confirmed. The new basket is filled *before* the phone
+   * For a job matched to travel another way than an emptied basket still
+   * remembers (`needsFreshBasket` in `lib/requestFulfilment.ts`). The new basket is filled *before* the phone
    * lets go of the old one, so a refusal of the new line loses nothing. Only
    * then are the old basket's lines removed, so it is really empty rather than
    * a draft nobody can reach — best effort, since no screen can reach it now.

@@ -6,14 +6,18 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-rou
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Screen } from "@/components/Screen";
 
+import { BasketGroupsCard } from "@/components/BasketGroupsCard";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
+import { DeliveryHandoverCard } from "@/components/DeliveryHandoverCard";
+import { HubClaimCard } from "@/components/HubClaimCard";
 import { FormScreen } from "@/components/FormScreen";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { JobCompleteCard } from "@/components/JobCompleteCard";
 import { OrderReference } from "@/components/OrderReference";
+import { OrganizationDiscountRow } from "@/components/OrganizationDiscount";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
@@ -23,6 +27,8 @@ import { LatestProgressCard } from "@/components/LatestProgressCard";
 import { ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
 import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
+import { RescheduleCard } from "@/components/RescheduleCard";
+import { ShopRecoveryCard } from "@/components/ShopRecoveryCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ReadyTime } from "@/components/ReadyTime";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -48,6 +54,7 @@ import {
   orderWaitingOn,
 } from "@/lib/orderState";
 import { isJobComplete } from "@/lib/jobComplete";
+import { handoverKind, isHubHandover } from "@/lib/handover";
 import {
   installmentLabel,
   installmentUnderReview,
@@ -61,7 +68,9 @@ import { orderReference } from "@/lib/orderReference";
 import { artworkSummary, paymentSummary, specificationsSummary } from "@/lib/orderSections";
 import { canRate } from "@/lib/rating";
 import { currentRefund, refundEntry } from "@/lib/refunds";
-import { printingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
+import { rescheduleView } from "@/lib/reschedule";
+import { shopRecoveryView } from "@/lib/shopRecovery";
+import { orderPrintingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
@@ -88,6 +97,14 @@ export default function OrderDetailScreen() {
   const [taxonomy, setTaxonomy] = useState<Taxonomy>(EMPTY_TAXONOMY);
   /** Null until read, and after a failed read: no entry is offered blind. */
   const [refunds, setRefunds] = useState<api.Refund[] | null>(null);
+  /** The multi-shop basket this order is one group of, when it is one. */
+  const [basket, setBasket] = useState<api.Basket | null>(null);
+  /**
+   * The handover credential (gridgo-api#124/#125): null when this order has
+   * none right now, `"error"` when the read failed — a claim code is not
+   * something to guess at, so a failure says so and offers a retry.
+   */
+  const [handover, setHandover] = useState<api.OrderHandover | null | "error">(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadSequence = useRef(0);
@@ -110,6 +127,19 @@ export default function OrderDetailScreen() {
         api.listOrderRefunds(id).catch(() => null),
       ]);
       if (sequence !== loadSequence.current) return;
+      // A failed basket read costs the other groups' states, never the order.
+      const group = current.basketId
+        ? await api.getBasket(current.basketId).catch(() => null)
+        : null;
+      if (sequence !== loadSequence.current) return;
+      // Read with the order, so the claim code lands with the screen rather
+      // than popping in under it. Only asked for when it can exist.
+      const credential = handoverKind(current)
+        ? await api.getOrderHandover(current.id).catch(() => "error" as const)
+        : null;
+      if (sequence !== loadSequence.current) return;
+      setHandover(credential);
+      setBasket(group);
       setOrder(current);
       setProduct(catalog.find((entry) => entry.id === current.productId) ?? null);
       setZones(zoneList);
@@ -206,8 +236,14 @@ export default function OrderDetailScreen() {
   const family = product?.family ?? null;
   const materialLabel = taxonomyLabel(taxonomy, order.material);
   const finishLabel = order.finish ? taxonomyLabel(taxonomy, order.finish) : null;
-  const payable = payableInstallment(order);
-  const underReview = installmentUnderReview(order);
+  /*
+    A cancelled shop group of a multi-shop order is out of the basket's one
+    payment: the other groups carry it, so this group asks nothing about it
+    and its share is settled on its own.
+  */
+  const groupStopped = Boolean(order.basketId) && order.state === "cancelled";
+  const payable = groupStopped ? null : payableInstallment(order);
+  const underReview = groupStopped ? null : installmentUnderReview(order);
   const showsOwnPreview = isProofApprovalState(order.state);
   /*
     A closed job tells its own story in the card below the title: how it
@@ -231,11 +267,22 @@ export default function OrderDetailScreen() {
     issue window all wait on Operations' decision, so the refund is the whole
     action zone — and the one thing on screen that says why nothing moves.
   */
+  /*
+    A shop that could not take the job, or asked for more time, stops it on
+    the client's decision (gridgo-supplier#101/#102). That decision is the
+    action zone until it is made; once a refund is chosen, the refund is.
+  */
+  const recovery = shopRecoveryView(order);
+  const reschedule = recovery ? null : rescheduleView(order);
   const actionZone = order.refundHold && existingRefund
     ? "refund"
     : order.refundHold
       ? null
-      : isProofApprovalState(order.state)
+      : recovery
+        ? "recovery"
+        : reschedule
+          ? "reschedule"
+          : isProofApprovalState(order.state)
     ? "proof"
     : isClientCorrectionState(order.state)
       ? "correction"
@@ -261,6 +308,8 @@ export default function OrderDetailScreen() {
     <DesignLinkRow key={`${itemName}:${link.formatCode}:${link.url}`} link={link} />
   ));
   const openChat = () => router.push("/chat");
+  /** These zones say their own wait, and offer their own refund. */
+  const shopDecision = actionZone === "refund" || actionZone === "recovery" || actionZone === "reschedule";
 
   return (
     /*
@@ -276,6 +325,19 @@ export default function OrderDetailScreen() {
         </View>
 
         {/*
+          One of several shops in a multi-shop order: every card below is this
+          group's own — its progress, rider, action and money — and this is
+          the way to the others (gridgo-api#117).
+        */}
+        {order.basketId ? (
+          <BasketGroupsCard
+            order={order}
+            basket={basket}
+            onSelect={(groupOrderId) => router.setParams({ id: groupOrderId })}
+          />
+        ) : null}
+
+        {/*
           The latest thing that happened leads, and opens onto the whole story
           with the shop's photos (gridgo-client#129). The one-line wait is said
           here only when nothing below is already saying it: an action zone
@@ -285,7 +347,7 @@ export default function OrderDetailScreen() {
         <LatestProgressCard
           order={order}
           note={
-            !nextAction && !underReview && !finished && actionZone !== "refund"
+            !nextAction && !underReview && !finished && !shopDecision && !groupStopped
               ? (waitingOn ?? "This job is in progress.")
               : null
           }
@@ -301,11 +363,15 @@ export default function OrderDetailScreen() {
         {/* One action zone at a time — the single yellow control lives here. */}
         {actionZone ? (
           <Animated.View
-            key={`${order.state}:${actionZone}`}
+            key={`${order.state}:${actionZone}:${recovery?.kind ?? reschedule?.kind ?? ""}`}
             entering={reducedMotion ? undefined : FadeIn.duration(200)}
           >
             {actionZone === "refund" && existingRefund ? (
               <RefundOrderCard refund={existingRefund} onOpen={openRefund} />
+            ) : actionZone === "recovery" && recovery ? (
+              <ShopRecoveryCard order={order} view={recovery} onChanged={() => void load()} />
+            ) : actionZone === "reschedule" && reschedule ? (
+              <RescheduleCard order={order} view={reschedule} onChanged={() => void load()} />
             ) : actionZone === "proof" ? (
               <ProofDecision
                 order={order}
@@ -318,9 +384,14 @@ export default function OrderDetailScreen() {
             ) : actionZone === "correction" ? (
               <CorrectionCard order={order} onUpdated={applyOrderUpdate} />
             ) : actionZone === "pay" && payable ? (
-              <PaymentPanel order={order} installment={payable} onSubmitted={applyOrderUpdate} />
+              <PaymentPanel
+                order={order}
+                installment={payable}
+                basket={basket}
+                onSubmitted={applyOrderUpdate}
+              />
             ) : actionZone === "review" && underReview ? (
-              <PaymentUnderReviewCard order={order} installment={underReview} />
+              <PaymentUnderReviewCard order={order} installment={underReview} basket={basket} />
             ) : actionZone === "rate" ? (
               /*
                 The last thing asked, and only once. It sits in the same one
@@ -356,10 +427,39 @@ export default function OrderDetailScreen() {
           GRIDGO's own places, and what the client needs is not a route but an
           address and the word that it has arrived.
         */}
+        {/*
+          With the handover switch on, both endings carry a credential: the
+          hub's QR and code, or the code the rider also sees. An order made
+          ready before the switch has none and keeps the old counter card.
+        */}
+        {handover === "error" && handoverKind(order) ? (
+          <View className="gg-card gap-3">
+            <Text className="text-body-lg font-medium text-text-primary">
+              {handoverKind(order) === "hub" ? "Your claim code did not load" : "Your handover code did not load"}
+            </Text>
+            <Text className="text-body text-text-secondary">
+              {handoverKind(order) === "hub"
+                ? "You need it to collect this order. Check your connection and try again."
+                : "You need it to check the rider's code before you accept the order. Check your connection and try again."}
+            </Text>
+            <SecondaryButton label="Try again" onPress={() => void load()} />
+          </View>
+        ) : null}
         {collectsAtOffice(order) ? (
-          isAwaitingCollectionState(order.state) ? <PickupCounterCard order={order} /> : null
+          isAwaitingCollectionState(order.state) ? (
+            handover !== "error" && isHubHandover(handover) ? (
+              <HubClaimCard order={order} handover={handover} onChanged={() => void load()} />
+            ) : handover === "error" ? null : (
+              <PickupCounterCard order={order} />
+            )
+          ) : null
         ) : isTrackingState(order.state) ? (
-          <DeliveryTrackingCard order={order} />
+          <>
+            {handover && handover !== "error" ? (
+              <DeliveryHandoverCard orderId={order.id} handover={handover} />
+            ) : null}
+            <DeliveryTrackingCard order={order} />
+          </>
         ) : null}
 
         {/*
@@ -457,7 +557,7 @@ export default function OrderDetailScreen() {
           way to Operations without hunting for it.
         */}
         <View className="gap-3">
-          {refund?.kind === "eligible" ? (
+          {refund?.kind === "eligible" && !shopDecision ? (
             <RefundEntryRow
               entry={refund}
               onRequest={() =>
@@ -537,26 +637,30 @@ function MoneyDetails({
   const balance = paysInFull(order) ? undefined : paymentInstallment(order, "balance");
   const showFee = showsServiceFee(order) && serviceFeeVisibleToClient(settings);
   const physicalInvoice = physicalInvoiceEntry(order);
+  // The saved total less the saved fulfilment charge: both GRIDGO's figures.
+  const printing = orderPrintingMinor(order);
+  // A pick-up order chosen before matching carries the hub's fee in the
+  // delivery slot. Zero (today's setting) still reads as nothing to pay.
+  const pickupFee =
+    order.fulfillmentMode === "pickup" && (order.deliveryFeeMinor ?? 0) > 0
+      ? (order.deliveryFeeMinor as number)
+      : null;
 
   return (
     <View className="gap-3">
       <View>
+        <SpecRow label="Printing" value={printing != null ? formatPhp(printing) : "—"} />
+        <OrganizationDiscountRow source={order} />
         <SpecRow
-          label="Printing"
+          label={pickupFee ? "Pick-up fee" : "Delivery"}
           value={
-            order.subtotalMinor != null
-              ? formatPhp(printingMinor(order.subtotalMinor, order.serviceFeeMinor))
-              : "—"
-          }
-        />
-        <SpecRow
-          label="Delivery"
-          value={
-            order.fulfillmentMode === "pickup"
-              ? "None — you collect"
-              : order.deliveryFeeMinor != null
-                ? formatPhp(order.deliveryFeeMinor)
-                : "—"
+            pickupFee
+              ? formatPhp(pickupFee)
+              : order.fulfillmentMode === "pickup"
+                ? "None — you collect"
+                : order.deliveryFeeMinor != null
+                  ? formatPhp(order.deliveryFeeMinor)
+                  : "—"
           }
         />
         {showFee ? (

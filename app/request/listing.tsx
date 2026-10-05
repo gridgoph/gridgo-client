@@ -7,11 +7,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { GridgoPrice } from "@/components/GridgoPrice";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
-import { OtherShopNotice } from "@/components/OtherShopNotice";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
@@ -46,7 +44,9 @@ import {
   formatSentence,
   isSelectionComplete,
   linkFormats,
+  clientUnitDisplayMinor,
   quantityLine,
+  clientLineEstimateMinor,
   printTimeLine,
   samplePhotoUri,
   selectedOptionIds,
@@ -65,11 +65,6 @@ import {
 } from "@/lib/matchSelection";
 import { orderFlowNow } from "@/lib/orderFlow";
 import {
-  isOtherShopRefusal,
-  otherShopExplanation,
-  startOverConfirmation,
-} from "@/lib/otherShop";
-import {
   printerCapFeet,
   printerCapLine,
   printerWidthProblem,
@@ -78,7 +73,11 @@ import {
 } from "@/lib/printerWidth";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { designLinkPhrase } from "@/lib/designLink";
+import { FULFILMENT_LOCK_MESSAGE, isFulfilmentLockRefusal, needsFreshBasket } from "@/lib/requestFulfilment";
+import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
+import { useJobFulfilment } from "@/store/jobFulfilment";
+import { useListingQuote } from "@/store/listingQuote";
 import { usePlatformSettings } from "@/store/platformSettings";
 
 const MAX_QUANTITY = 500;
@@ -120,6 +119,7 @@ export default function ListingScreen() {
   const warmCart = useCart((state) => state.warm);
   const startOver = useCart((state) => state.startOver);
   const reloadCart = useCart((state) => state.load);
+  const jobFulfilment = useJobFulfilment((state) => state.choice);
   const editing = lineId ? cart?.lines.find((line) => line.id === lineId) ?? null : null;
 
   const [item, setItem] = useState<CatalogItem | null>(
@@ -134,10 +134,6 @@ export default function ListingScreen() {
   const [showMissing, setShowMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  // The basket GRIDGO said is with another shop. Kept by id so the notice goes
-  // away by itself once that basket is checked out or emptied.
-  const [otherShopCart, setOtherShopCart] = useState<string | null>(null);
-  const [confirmingStartOver, setConfirmingStartOver] = useState(false);
   const loadSettings = usePlatformSettings((state) => state.load);
   useTourScreen("listing", item != null && !error);
 
@@ -247,6 +243,46 @@ export default function ListingScreen() {
     });
   };
 
+  /*
+    GRIDGO prices the line as it is configured (`POST /me/catalog-quotes`,
+    gridgo-api#132): tiers, size minimums and the fee all happen on the server,
+    in its order. Asked again a beat after each change, once every required
+    step is answered — GRIDGO quotes only a configuration it could print.
+    Before that the bar shows the estimate it always did, at GRIDGO's client
+    rates (`clientLineEstimateMinor`). A size not yet typed has no price.
+  */
+  const requestQuote = useListingQuote((state) => state.request);
+  const resetQuote = useListingQuote((state) => state.reset);
+  useEffect(() => resetQuote, [resetQuote]);
+  const quoteAsk = useMemo(() => {
+    if (!item) return null;
+    const measuredNow = toMeasurement(measurementKind(item), measured);
+    const input: api.CatalogQuoteInput | null =
+      isSelectionComplete(item, selection) && isMeasurementComplete(item, measured)
+      ? {
+          catalogItemId: item.id,
+          quantity,
+          optionIds: selectedOptionIds(item, selection),
+          measurement: measuredNow,
+          structuredSpec: {
+            size: boundValue(item, selection, "size"),
+            material: boundValue(item, selection, "material"),
+            finish: boundValue(item, selection, "finish"),
+          },
+        }
+      : null;
+    return { key: JSON.stringify([item.id, item.version, input]), input };
+  }, [item, selection, quantity, measured]);
+  useEffect(() => {
+    if (quoteAsk) requestQuote(quoteAsk.key, quoteAsk.input);
+  }, [quoteAsk, requestQuote]);
+  const quoteStatus = useListingQuote((state) =>
+    quoteAsk && state.key === quoteAsk.key ? state.status : "pending",
+  );
+  const quoted = useListingQuote((state) =>
+    quoteAsk && state.key === quoteAsk.key ? state.quote : null,
+  );
+
   if (error) {
     return (
       <Screen edges={["bottom"]}>
@@ -282,12 +318,18 @@ export default function ListingScreen() {
   const complete = isSelectionComplete(item, selection);
   const missing = firstMissingGroup(item, selection);
   const shopUnit = unitPriceMinor(item, selection);
+  // The header's price of one, at GRIDGO's figures when the listing carries
+  // them; an older payload is marked up from the shop's.
+  const clientUnit = clientUnitDisplayMinor(item, selection);
   const kind = measurementKind(item);
   const measurement = toMeasurement(kind, measured);
-  // Shop first, then GRIDGO's fee — the same order checkout uses. Null while a
-  // measured listing has no measurement yet. Drawn as "—" rather than as zero,
+  // Only an API without the quote route falls back to working the line out
+  // here (shop first, then GRIDGO's fee). Null — a measured listing with no
+  // measurement, a refused configuration — is drawn as "—", never as zero,
   // because a zero in the price line reads as free.
-  const shopTotal = lineTotalMinor(item, quantity, measurement, shopUnit);
+  const shopTotal =
+    quoteStatus === "unsupported" ? lineTotalMinor(item, quantity, measurement, shopUnit) : null;
+  const estimate = complete ? null : clientLineEstimateMinor(item, quantity, measurement, selection);
   const sized = isMeasurementComplete(item, measured);
   const atMinimum = minimumApplies(item, measurement);
   const runMinimum = belowMinimumOrder(item, quantity);
@@ -309,11 +351,6 @@ export default function ListingScreen() {
     requestedWidthFeet(item, typedSize, selection, sizeValue),
     typedSize,
   );
-
-  // A product matched to a different shop from the basket's. Only while that
-  // basket still has something in it: checked out or emptied, adding works.
-  const otherShop =
-    otherShopCart != null && !editing && (cart == null || (cart.id === otherShopCart && cart.lines.length > 0));
 
   // A listing picked on the match goes in by its pick token, so GRIDGO keeps
   // the job's date on the line through checkout. A basket row reopened to
@@ -374,15 +411,31 @@ export default function ListingScreen() {
         router.back();
         return;
       }
-      const updated = await run((cartId) => api.addCartLine(cartId, lineInput()));
+      // An emptied basket still carries the way its old lines were travelling.
+      // A job chosen another way goes into a fresh basket rather than being
+      // refused (#158).
+      const fresh = picked && needsFreshBasket(useCart.getState().cart, useJobFulfilment.getState().choice);
+      const updated = fresh
+        ? await startOver((cartId) => api.addCartLine(cartId, lineInput()))
+        : await run((cartId) => api.addCartLine(cartId, lineInput()));
       leaveForArtwork(updated);
     } catch (e) {
-      // One order goes to one shop. That is a rule with two ways on, not a
-      // failure — and never a connection problem (issue report B057A39C).
-      if (!editing && isOtherShopRefusal(e)) {
-        setOtherShopCart(useCart.getState().cartId);
-        // Re-read the basket so the notice can name what is in it.
-        void reloadCart();
+      // The basket travels another way than this job was matched for. Empty,
+      // it simply gives way to a new one; with something in it, everything in
+      // one order travels together, so the client is told how to go on.
+      if (!editing && isFulfilmentLockRefusal(e)) {
+        await reloadCart();
+        if (!(useCart.getState().cart?.lines.length ?? 0)) {
+          try {
+            leaveForArtwork(await startOver((cartId) => api.addCartLine(cartId, lineInput())));
+          } catch (retry) {
+            if (!staleMatch(retry)) {
+              setSaveError(userFacingError(retry, "GRIDGO could not add this to your order. Try again."));
+            }
+          }
+          return;
+        }
+        setSaveError(FULFILMENT_LOCK_MESSAGE);
         return;
       }
       if (staleMatch(e)) return;
@@ -404,32 +457,13 @@ export default function ListingScreen() {
     }
     setBusy(false);
     adopt(updated);
+    // Added: an "add more from Shop A" errand is done.
+    useBasketGroupTarget.getState().clear();
     router.replace({ pathname: "/request/artwork", params: { lineId: added.id } });
   };
 
-  // Confirmed: replace the basket with one holding only this. The new basket
-  // is filled before the old one is let go, so a refusal here loses nothing.
-  const startNewOrder = async () => {
-    if (busy) return;
-    setBusy(true);
-    setSaveError(null);
-    try {
-      const updated = await startOver((cartId) => api.addCartLine(cartId, lineInput()));
-      setConfirmingStartOver(false);
-      setOtherShopCart(null);
-      leaveForArtwork(updated);
-    } catch (e) {
-      setConfirmingStartOver(false);
-      if (staleMatch(e)) return;
-      setSaveError(
-        userFacingError(e, "GRIDGO could not start a new order with this. Your order is unchanged. Try again."),
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const startOverQuestion = startOverConfirmation(cart?.lines ?? []);
+  // A job matched for pick-up is not delivered; the footer says what it is.
+  const pickingUp = !editing && jobFulfilment?.fulfillmentMode === "pickup";
 
   return (
     <Screen edges={["bottom"]}>
@@ -487,6 +521,7 @@ export default function ListingScreen() {
               plus GRIDGO's charge, never the shop's figure on its own. */}
           <View className="mt-3 flex-row items-baseline gap-2">
             <GridgoPrice
+              clientMinor={clientUnit}
               supplierMinor={shopUnit}
               className="text-h1 text-text-primary"
               waitingWidth="w-28"
@@ -688,50 +723,43 @@ export default function ListingScreen() {
             </Text>
           </View>
           <GridgoPrice
-            supplierMinor={shopTotal}
+            clientMinor={!complete ? estimate : quoteStatus === "priced" ? quoted?.clientLineSubtotalMinor : null}
+            supplierMinor={!complete && estimate == null ? lineTotalMinor(item, quantity, measurement, shopUnit) : shopTotal}
+            pending={complete && (quoteStatus === "pending" || quoteStatus === "idle")}
             className="text-h3 text-text-primary"
             waitingWidth="w-24"
           />
         </View>
 
-        {otherShop ? (
-          <OtherShopNotice
-            explanation={otherShopExplanation(cart?.lines ?? [])}
-            busy={busy}
-            onCheckout={() => router.push("/checkout")}
-            onStartOver={() => setConfirmingStartOver(true)}
-          />
-        ) : (
-          <Pressable
-            onPress={() => void add()}
-            disabled={busy}
-            accessibilityRole="button"
-            accessibilityLabel={editing ? "Save this change" : "Add to my order"}
-            accessibilityState={{ disabled: busy }}
-            className={busy ? "gg-btn-primary gg-disabled mt-3" : "gg-btn-primary mt-3"}
-            style={({ pressed }) => (pressed && !busy ? { opacity: 0.9 } : undefined)}
-          >
-            <Text className="text-button text-action-yellow-on">
-              {busy ? "Saving…" : editing ? "Save this change" : "Add to my order"}
-            </Text>
-          </Pressable>
-        )}
-
-        {otherShop && !saveError ? null : (
-          <Text
-            className={
-              saveError
-                ? "mt-2 text-center text-caption text-error"
-                : "mt-2 text-center text-caption text-text-muted"
-            }
-          >
-            {saveError
-              ? saveError
-              : showMissing && missing
-                ? `Pick a ${missing.name.toLowerCase()} first.`
-                : "Delivery is added at checkout."}
+        <Pressable
+          onPress={() => void add()}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={editing ? "Save this change" : "Add to my order"}
+          accessibilityState={{ disabled: busy }}
+          className={busy ? "gg-btn-primary gg-disabled mt-3" : "gg-btn-primary mt-3"}
+          style={({ pressed }) => (pressed && !busy ? { opacity: 0.9 } : undefined)}
+        >
+          <Text className="text-button text-action-yellow-on">
+            {busy ? "Saving…" : editing ? "Save this change" : "Add to my order"}
           </Text>
-        )}
+        </Pressable>
+
+        <Text
+          className={
+            saveError
+              ? "mt-2 text-center text-caption text-error"
+              : "mt-2 text-center text-caption text-text-muted"
+          }
+        >
+          {saveError
+            ? saveError
+            : showMissing && missing
+              ? `Pick a ${missing.name.toLowerCase()} first.`
+              : pickingUp
+                ? "You collect at GRIDGO Office. Checkout shows any pick-up fee."
+                : "Delivery is added at checkout."}
+        </Text>
         {saveError === STALE_MATCH_MESSAGE ? (
           <View className="mt-2">
             <SecondaryButton label="Back to the match" onPress={() => router.back()} />
@@ -739,17 +767,6 @@ export default function ListingScreen() {
         ) : null}
       </TourTarget>
 
-      <ConfirmDialog
-        visible={confirmingStartOver}
-        question={startOverQuestion.question}
-        body={startOverQuestion.body}
-        confirmLabel="Remove and start new"
-        cancelLabel="Keep my order"
-        tone="destructive"
-        busy={busy}
-        onConfirm={() => void startNewOrder()}
-        onCancel={() => setConfirmingStartOver(false)}
-      />
     </Screen>
   );
 }
