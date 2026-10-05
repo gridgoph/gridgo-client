@@ -247,6 +247,17 @@ export type Order = {
   refundDisposition?: string | null;
   /** A settled refund turned the unpaid installment into history, not a debt. */
   unpaidBalanceCancelled?: boolean;
+  /**
+   * The assigned shop timed out, declined or cancelled, and the client chooses
+   * a replacement or a full refund (gridgo-api `docs/SHOP_RECOVERY_API.md`).
+   * Read through `lib/shopRecovery.ts`.
+   */
+  shopRecovery?: ShopRecovery | null;
+  /**
+   * The shop asked for a later deadline (gridgo-api
+   * `docs/ORDER_RESCHEDULE_API.md`). Read through `lib/reschedule.ts`.
+   */
+  rescheduleRequest?: RescheduleRequest | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -2548,6 +2559,129 @@ export async function withdrawRefund(
     },
   );
   return result.refund;
+}
+
+// ---------------------------------------------------------------------------
+// When the shop cannot carry on: a replacement, a new date, or a refund
+// ---------------------------------------------------------------------------
+
+/**
+ * The client's view of a shop that could not take or finish an order. The
+ * shop, its address and the internal dates are never sent to a client.
+ * `status` is an open string: `awaiting_client | ops_review |
+ * refund_requested | refunded | accepted` today.
+ */
+export type ShopRecovery = {
+  id: string;
+  status: string;
+  createdAt: string;
+  refundRequestId: string | null;
+  /** The replacement's client-ready date. Null when no shop can take it. */
+  replacement: { promiseBy: string } | null;
+  canAccept: boolean;
+  canRefund: boolean;
+};
+
+/**
+ * A shop's request for a later deadline, as the client sees it. Open strings:
+ * `status` is `pending | accepted | declined | expired | operations_required`,
+ * `resolution` is null or `rematch_offered | no_match | operations_required |
+ * rematched | refund_requested | resolved`.
+ */
+export type RescheduleRequest = {
+  id: string;
+  orderId: string;
+  reason: string;
+  status: string;
+  requestedAt: string;
+  /** The 24-hour answer window closes here. */
+  expiresAt: string;
+  answeredAt: string | null;
+  resolution: string | null;
+  refundRequestId: string | null;
+  workHeld: boolean;
+  originalPromiseBy: string | null;
+  proposedPromiseBy: string | null;
+  canRequestRefund?: boolean;
+  /** Another shop for the same item, specs and price; held for 15 minutes. */
+  rematch?: {
+    id: string;
+    promiseBy: string;
+    expiresAt: string;
+    sameProductAndSpecs: boolean;
+    priceUnchanged: boolean;
+  } | null;
+};
+
+/**
+ * Take the replacement shop. A `409 shop_recovery_offer_changed` carries a
+ * refreshed offer in its body and is never accepted for the client.
+ */
+export async function acceptShopRecovery(orderId: string, recoveryId: string): Promise<ShopRecovery | null> {
+  const result = await request<{ recovery: ShopRecovery | null }>(
+    `/orders/${encodeURIComponent(orderId)}/shop-recovery/accept`,
+    { method: "POST", body: JSON.stringify({ recoveryId }) },
+  );
+  return result.recovery;
+}
+
+/** Choose a full refund instead. Opens a refund request; it moves no money. */
+export async function refundShopRecovery(
+  orderId: string,
+  recoveryId: string,
+  idempotencyKey: string,
+): Promise<ShopRecovery | null> {
+  const result = await request<{ recovery: ShopRecovery | null }>(
+    `/orders/${encodeURIComponent(orderId)}/shop-recovery/refund`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ recoveryId }),
+    },
+  );
+  return result.recovery;
+}
+
+/** Accept or decline the shop's proposed date. */
+export async function answerReschedule(
+  orderId: string,
+  requestId: string,
+  answer: "accept" | "decline",
+): Promise<RescheduleRequest> {
+  const result = await request<{ request: RescheduleRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/reschedule-request/answer`,
+    { method: "POST", body: JSON.stringify({ requestId, answer }) },
+  );
+  return result.request;
+}
+
+/** Look for another shop again, or take the one on offer. */
+export async function rematchReschedule(
+  orderId: string,
+  input: { requestId: string; action: "refresh" } | { requestId: string; action: "accept"; offerId: string },
+): Promise<RescheduleRequest> {
+  const result = await request<{ request: RescheduleRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/reschedule-request/rematch`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.request;
+}
+
+/** After declining the date: a full refund instead of another shop. */
+export async function refundReschedule(
+  orderId: string,
+  requestId: string,
+  idempotencyKey: string,
+): Promise<RescheduleRequest> {
+  const result = await request<{ request: RescheduleRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/reschedule-request/refund`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ requestId }),
+    },
+  );
+  return result.request;
 }
 
 // ---------------------------------------------------------------------------

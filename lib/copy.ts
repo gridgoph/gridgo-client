@@ -225,6 +225,34 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "refund_fulfillment_stopped":
         return "This job is paused for your refund request, so nothing else can happen on it until Operations decides.";
 
+      // ---- the shop could not take the order (docs/SHOP_RECOVERY_API.md) ----
+      case "shop_recovery_offer_changed":
+        return "GRIDGO checked the offer again while you were deciding. Look at the date shown now, then choose again.";
+      case "shop_recovery_stale":
+      case "shop_recovery_not_available":
+        return "This choice has moved on since the screen loaded. The order below shows where it stands now.";
+      case "shop_recovery_requires_operations":
+        return "Operations has to settle this one. They will contact you about what happens next.";
+      case "shop_recovery_full_refund_required":
+        return "You chose a full refund. Operations settles everything you paid before anything else happens.";
+
+      // ---- the shop asked for more time (docs/ORDER_RESCHEDULE_API.md) ----
+      case "reschedule_expired":
+        return "The 24 hours to answer have passed. Your original date stays, and Operations will contact you.";
+      case "reschedule_already_answered":
+      case "reschedule_stale":
+      case "reschedule_not_available":
+        return "This request has moved on since the screen loaded. The order below shows where it stands now.";
+      case "reschedule_offer_expired":
+      case "reschedule_offer_stale":
+        return "That shop's offer changed or ran out. Check again for the current one.";
+      case "reschedule_rematch_unavailable":
+        return "There is no other shop to choose on this order right now. The order below shows what you can do.";
+      case "reschedule_operations_required":
+        return "Operations has to settle this one. They will contact you about what happens next.";
+      case "reschedule_refund_unavailable":
+        return "A refund cannot be requested from here right now. The order below shows where it stands.";
+
       // ---- creating an account ----
       case "email_already_registered":
         return "This email already has a GRIDGO account. Sign in with it instead, or use another address.";

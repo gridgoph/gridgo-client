@@ -17,5 +17,10 @@ export function orderScreenApiMock() {
     getFileDownloadUrl: jest.fn(),
     getFile: jest.fn(async () => { throw new Error("not in this test"); }),
     submitPayment: jest.fn(),
+    acceptShopRecovery: jest.fn(async () => null),
+    refundShopRecovery: jest.fn(async () => null),
+    answerReschedule: jest.fn(),
+    rematchReschedule: jest.fn(),
+    refundReschedule: jest.fn(),
   };
 }

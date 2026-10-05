@@ -21,6 +21,8 @@ import {
   paymentInstallment,
   paysInFull,
 } from "@/lib/payment";
+import { rescheduleNextAction, rescheduleView, rescheduleWaitingOn } from "@/lib/reschedule";
+import { shopRecoveryNextAction, shopRecoveryView, shopRecoveryWaitingOn } from "@/lib/shopRecovery";
 
 export type OrderStatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type OrderStatusIcon =
@@ -98,6 +100,9 @@ const PAID_IN_FULL_META: Record<string, OrderStateMeta> = {
   payment_authorized: { label: "Payment confirmed", tone: "success", icon: "circle-check" },
 };
 
+/** Work held while the client or Operations settles a shop change. */
+const PAUSED_META: OrderStateMeta = { label: "Paused", tone: "warning", icon: "clock" };
+
 const FALLBACK: OrderStateMeta = {
   label: "In progress",
   tone: "neutral",
@@ -118,8 +123,11 @@ export function getOrderStateMeta(
 /** An order's own chip: its state, its route, and its payment plan. */
 export function orderStateMeta(
   order: Pick<Order, "state" | "fulfillmentMode" | "payments"> &
-    Partial<Pick<Order, "balanceMinor" | "downpaymentPercent">>,
+    Partial<Pick<Order, "balanceMinor" | "downpaymentPercent" | "shopRecovery" | "rescheduleRequest">>,
 ): OrderStateMeta {
+  // The state is still "In production" on the server while the shop question
+  // is open, but nothing is being printed; the chip must not say otherwise.
+  if (shopChangeStopsJob(order)) return PAUSED_META;
   return getOrderStateMeta(order.state, order.fulfillmentMode, paysInFull(order));
 }
 
@@ -165,7 +173,8 @@ export type OrderActionIcon =
   | "upload"
   | "square-pen"
   | "package-check"
-  | "triangle-alert";
+  | "triangle-alert"
+  | "clock";
 
 export type OrderNextAction = {
   /** Sentence-case verb phrase for the action itself. */
@@ -226,11 +235,32 @@ const COLLECT_STATE_ACTIONS: Record<string, OrderNextAction> = {
   },
 };
 
+/**
+ * The shop could not take the job, or asked for more time and the client (or
+ * Operations) has not settled it: work is held until they do. A request still
+ * waiting on an answer, or one that expired, holds nothing — the shop carries
+ * on toward the original date.
+ */
+function shopChangeStopsJob(
+  order: Pick<Order, "state"> & Partial<Pick<Order, "shopRecovery" | "rescheduleRequest">>,
+): boolean {
+  const reschedule = rescheduleView(order);
+  return shopRecoveryView(order) != null || (reschedule != null && !["answer", "expired"].includes(reschedule.kind));
+}
+
 export function orderNextAction(order: Order): OrderNextAction | null {
   // An open refund pauses the job: proofs, corrections, payments and the
   // issue window all wait on Operations' decision, so nothing is asked of
   // the client until it is made.
   if (order.refundHold) return null;
+  // The shop could not take the job, or asked for more time: the order is
+  // stopped on the client's decision, so that decision comes before anything
+  // the order's state would otherwise ask for.
+  // While either one stops the job, nothing else is asked for, the same as a
+  // refund: a balance asked of an order with no shop on it is a payment for
+  // work nobody is doing.
+  const shopChange = shopRecoveryNextAction(order) ?? rescheduleNextAction(order);
+  if (shopChange || shopChangeStopsJob(order)) return shopChange;
   if (downpaymentDue(order)) {
     const amount = paymentInstallment(order, "downpayment")?.amountMinor;
     const inFull = paysInFull(order);
@@ -336,6 +366,8 @@ export function orderWaitingOn(order: Order): string | null {
   if (order.refundHold) {
     return "This job is paused while Operations reviews your refund request.";
   }
+  const shopChange = shopRecoveryWaitingOn(order) ?? rescheduleWaitingOn(order);
+  if (shopChange) return shopChange;
   const underReview = installmentUnderReview(order);
   const inFull = paysInFull(order);
   if (underReview === "downpayment" && inFull) {
