@@ -122,6 +122,55 @@ export function unitPriceMinor(item: CatalogItem, selection: ListingSelection): 
 }
 
 /**
+ * GRIDGO's unit price for the header, from the API's own client figures
+ * (gridgo-api#132): `clientBasePriceMinor` plus each picked option's
+ * `clientPriceModifierMinor`, floored at zero like the shop formula.
+ *
+ * Display metadata — the price of one, before tiers or sizes — never an
+ * amount due; the commit bar's figure is quoted. Null when the payload is
+ * older and lacks a client field, so the caller falls back to marking up.
+ */
+export function clientUnitDisplayMinor(item: CatalogItem, selection: ListingSelection): number | null {
+  if (!Number.isSafeInteger(item.clientBasePriceMinor)) return null;
+  let total = item.clientBasePriceMinor as number;
+  for (const id of selectedOptionIds(item, selection)) {
+    const modifier = findOption(item, id)?.option.clientPriceModifierMinor;
+    if (!Number.isSafeInteger(modifier)) return null;
+    total += modifier as number;
+  }
+  return Math.max(0, total);
+}
+
+/**
+ * The commit bar's figure before every required step is answered.
+ *
+ * GRIDGO will not quote a configuration that is missing a required choice, but
+ * the bar has always shown what this quantity comes to at the listing's own
+ * rate while the client is still choosing. This is that figure at GRIDGO's
+ * client rates — base, picked options, quantity tiers and size minimums, the
+ * same arithmetic the bar always used — so the sheet reads as it did. Once the
+ * selection is complete the quote replaces it. Null on a payload without the
+ * client figures, or while a measured listing has no size.
+ */
+export function clientLineEstimateMinor(
+  item: CatalogItem,
+  quantity: number,
+  measurement: LineMeasurement | null,
+  selection: ListingSelection,
+): number | null {
+  const unit = clientUnitDisplayMinor(item, selection);
+  if (unit == null) return null;
+  const tiers = item.priceTiers ?? [];
+  if (tiers.some((tier) => !Number.isSafeInteger(tier.clientUnitPriceMinor))) return null;
+  const atClientRates: CatalogItem = {
+    ...item,
+    basePriceMinor: item.clientBasePriceMinor as number,
+    priceTiers: tiers.map((tier) => ({ ...tier, unitPriceMinor: tier.clientUnitPriceMinor as number })),
+  };
+  return lineTotalMinor(atClientRates, quantity, measurement, unit);
+}
+
+/**
  * The unit price the client is shown: the shop figure plus GRIDGO's fee.
  *
  * Shop arithmetic stays in `unitPriceMinor` so the sheet and the server's
@@ -182,10 +231,13 @@ export function unitLine(
  * GRIDGO's price. Takes the rate rather than reading it, so it stays pure.
  */
 export function startingPriceLine(
-  item: Pick<CatalogItem, "fromPriceMinor" | "pricingUnit" | "packageQty" | "measureUnit">,
+  item: Pick<
+    CatalogItem,
+    "fromPriceMinor" | "clientFromPriceMinor" | "pricingUnit" | "packageQty" | "measureUnit"
+  >,
   serviceFeeRateBps: number,
 ): string {
-  return `From ${formatPhp(clientAmountMinor(item.fromPriceMinor, serviceFeeRateBps))} ${unitLine(item)}`;
+  return `From ${formatPhp(clientFromPriceMinorOf(item, serviceFeeRateBps) as number)} ${unitLine(item)}`;
 }
 
 /**

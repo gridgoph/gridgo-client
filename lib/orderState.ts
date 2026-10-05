@@ -11,6 +11,7 @@
  * Tone/icon strings match `StatusChip` props without importing UI from lib.
  */
 
+import { FILE_CHECK_AFTER_PAYMENT } from "@/lib/checkout";
 import type { Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import {
@@ -23,6 +24,7 @@ import {
 } from "@/lib/payment";
 import { rescheduleNextAction, rescheduleView, rescheduleWaitingOn } from "@/lib/reschedule";
 import { shopRecoveryNextAction, shopRecoveryView, shopRecoveryWaitingOn } from "@/lib/shopRecovery";
+import { orderPrintingMinor } from "@/lib/serviceFee";
 
 export type OrderStatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type OrderStatusIcon =
@@ -379,6 +381,10 @@ export function orderWaitingOn(order: Order): string | null {
   if (underReview === "balance") {
     return "We are checking your balance payment. Final handover is allowed once Operations confirms it; do not pay again.";
   }
+  // Paid, and the file is with GRIDGO before the shop hears of the job (#122).
+  if (order.state === "needs_qa" && order.fileCheck?.status === "pending") {
+    return FILE_CHECK_AFTER_PAYMENT;
+  }
   if (collectsAtOffice(order) && COLLECT_WAITING_ON[order.state]) return COLLECT_WAITING_ON[order.state];
   if (inFull && PAID_IN_FULL_WAITING_ON[order.state]) return PAID_IN_FULL_WAITING_ON[order.state];
   return WAITING_ON[order.state] ?? null;
@@ -403,15 +409,14 @@ export function latestNoteForState(
 }
 
 /**
- * What the client is charged for the items: the shops' figure plus GRIDGO's
- * charge, exactly as the order was written. The shops' figure on its own is
- * what they are paid, and it never reaches the client as a price.
+ * What the client is charged for the items, exactly as the order was written:
+ * the saved total less delivery (`orderPrintingMinor`). The shops' figure on
+ * its own is what they are paid, and it never reaches the client as a price.
  */
 export function orderItemsMinor(
-  order: Pick<Order, "subtotalMinor" | "serviceFeeMinor">,
+  order: Pick<Order, "subtotalMinor" | "serviceFeeMinor" | "totalMinor" | "deliveryFeeMinor">,
 ): number | null {
-  if (order.subtotalMinor == null) return null;
-  return order.subtotalMinor + (order.serviceFeeMinor ?? 0);
+  return orderPrintingMinor(order);
 }
 
 /**

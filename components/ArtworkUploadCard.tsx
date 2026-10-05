@@ -185,6 +185,9 @@ export function ArtworkUploadCard({
         <View className="gap-3">
           {busy ? (
             <SecondaryButton label="Cancel upload" onPress={onCancel} />
+          ) : state.phase === "failed" && state.fileCheck?.status === "failed" ? (
+            // The same bytes would fail the same check: only a new export helps.
+            <SecondaryButton label="Choose a different file" onPress={onPick} />
           ) : state.phase === "failed" ? (
             <>
               <SecondaryButton label="Try that file again" onPress={onRetry} />

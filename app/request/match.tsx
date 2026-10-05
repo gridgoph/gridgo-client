@@ -36,11 +36,13 @@ import { clearMatchPrefetch, takeMatch } from "@/lib/matchPrefetch";
 import { holdMatchSelection, matchAgedOut, matchIsSpent } from "@/lib/matchSelection";
 import { REMATCH_MINIMUM_MS, withMinimumWait } from "@/lib/minimumWait";
 import { rememberOrderFlow } from "@/lib/orderFlow";
-import { boardListings, withFreshPhotos } from "@/lib/photoLinks";
+import { withFreshPhotos } from "@/lib/photoLinks";
 import { findCategory } from "@/lib/productCategories";
+import { fulfilmentSummary, pickupMatchView } from "@/lib/requestFulfilment";
 import { HOME_TAB } from "@/lib/receipt";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
+import { useJobFulfilment, withJobFulfilment } from "@/store/jobFulfilment";
 import { useJobRanking, withJobRanking } from "@/store/orderRanking";
 import { usePlatformSettings } from "@/store/platformSettings";
 
@@ -81,7 +83,11 @@ export default function MatchScreen() {
   const rankingKey = asked?.join(",") ?? "";
   const cart = useCart((state) => state.cart);
   const dropoff = cart?.defaultDropoff ?? null;
-  const dropoffKey = dropoff == null ? "" : `${dropoff.lat},${dropoff.lng}`;
+  // Delivery or pick-up, when this job chose before matching (#158). Its point
+  // is what the match is measured from, so a different one is a new question.
+  const fulfilment = useJobFulfilment((state) => state.choice);
+  const point = fulfilment ? fulfilment.dropoff : dropoff;
+  const dropoffKey = `${fulfilment?.fulfillmentMode ?? ""}:${point == null ? "" : `${point.lat},${point.lng}`}`;
   const deadline = useJobDeadline((state) => state.by);
 
   const [match, setMatch] = useState<MatchResult | null>(null);
@@ -118,15 +124,18 @@ export default function MatchScreen() {
     setLoading(true);
     try {
       const request = takeMatch(
-        withJobRanking({
-          subcategoryCode: subcategory,
-          dropoff: liveCart?.defaultDropoff ?? null,
-          deadline,
-        }),
+        withJobRanking(
+          withJobFulfilment(
+            { subcategoryCode: subcategory, deadline },
+            liveCart?.defaultDropoff ?? null,
+          ),
+        ),
       );
       const result = paced ? await withMinimumWait(request, REMATCH_MINIMUM_MS) : await request;
       if (sequence !== loadSequence.current) return;
-      setMatch(result);
+      setMatch(
+        useJobFulfilment.getState().choice?.fulfillmentMode === "pickup" ? pickupMatchView(result) : result,
+      );
       setReceivedAt(Date.now());
       setError(null);
     } catch (e) {
@@ -206,16 +215,15 @@ export default function MatchScreen() {
   const rereadPhotos = useCallback(async () => {
     const held = match;
     if (!held) return null;
-    const [board, ...others] = await Promise.all([
-      api.getCatalogShop(held.shop.supplierId),
-      ...(held.otherListings ?? []).map((listing) =>
+    // Listing by listing, never the Top Pick's whole board: that read is
+    // keyed by the shop, and the match must not need to know whose it is.
+    const reads = await Promise.all(
+      [...held.listings, ...(held.otherListings ?? [])].map((listing) =>
         api.getCatalogItem(listing.id).catch(() => null),
       ),
-    ]);
-    const fresh = [
-      ...boardListings([board]),
-      ...others.filter((listing): listing is api.CatalogItem => listing != null),
-    ];
+    );
+    const fresh = reads.filter((listing): listing is api.CatalogItem => listing != null);
+    if (!fresh.length) throw new Error("GRIDGO could not renew these photos.");
     const renewed: MatchResult = {
       ...held,
       listings: withFreshPhotos(held.listings, fresh),
@@ -290,7 +298,9 @@ export default function MatchScreen() {
   */
   const chooseListing = useCallback(
     (item: PickableListing) => {
-      if (isOutOfZone(item.distanceZone)) {
+      // A pick-up is collected at GRIDGO Office for a flat fee, so how far the
+      // press is from the hub costs the client nothing.
+      if (useJobFulfilment.getState().choice?.fulfillmentMode !== "pickup" && isOutOfZone(item.distanceZone)) {
         setFarListing(item);
         return;
       }
@@ -447,7 +457,14 @@ export default function MatchScreen() {
           </View>
         ) : null}
 
-        {!dropoff ? (
+        {fulfilment ? (
+          <Text className="mt-6 text-caption text-text-muted">
+            {fulfilmentSummary(fulfilment)}.{" "}
+            {fulfilment.fulfillmentMode === "pickup"
+              ? "Collection hours are on your order."
+              : "Delivery is charged by zone at checkout."}
+          </Text>
+        ) : !dropoff ? (
           <Text className="mt-6 text-caption text-text-muted">
             GRIDGO works out delivery once you set the address at checkout.
           </Text>

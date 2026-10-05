@@ -10,6 +10,7 @@ import { orderReference } from "@/lib/orderReference";
 import {
   RECEIPT_BLURB,
   receiptDateLabel,
+  receiptFulfilmentRow,
   receiptPaymentLine,
   receiptQuantityLabel,
   type ReceiptView,
@@ -93,14 +94,7 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
 
         <View className="gap-1.5">
           <SlipRow label="Printing" value={formatPhp(view.money.printingMinor)} />
-          <SlipRow
-            label="Delivery"
-            value={
-              view.money.deliveryFeeMinor === 0
-                ? "None — you collect"
-                : formatPhp(view.money.deliveryFeeMinor)
-            }
-          />
+          <SlipRow {...receiptFulfilmentRow(view.money)} />
           {showServiceFee ? (
             <ServiceFeeRow explainOnly divider={false} rateBps={view.money.serviceFeeRateBps} />
           ) : null}

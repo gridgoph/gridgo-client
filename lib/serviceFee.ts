@@ -80,3 +80,25 @@ export function printingMinor(
 ): number {
   return itemSubtotalMinor + (serviceFeeMinor ?? 0);
 }
+
+/**
+ * Printing on a placed order, as the client was charged it.
+ *
+ * The saved total less the saved fulfilment charge (gridgo-api#132): both
+ * figures are already GRIDGO's, so nothing here touches the shops' own
+ * subtotal. A new pick-up order's `deliveryFeeMinor` already carries its hub
+ * fee, so the subtraction stays right there too. An order with no total yet —
+ * a legacy one still waiting on a quote — falls back to items plus fee.
+ */
+export function orderPrintingMinor(order: {
+  totalMinor?: number | null;
+  deliveryFeeMinor?: number | null;
+  subtotalMinor?: number | null;
+  serviceFeeMinor?: number | null;
+}): number | null {
+  if (order.totalMinor != null && order.deliveryFeeMinor != null) {
+    return order.totalMinor - order.deliveryFeeMinor;
+  }
+  if (order.subtotalMinor == null) return null;
+  return printingMinor(order.subtotalMinor, order.serviceFeeMinor);
+}

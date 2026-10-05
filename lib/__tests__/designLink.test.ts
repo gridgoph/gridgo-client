@@ -158,10 +158,16 @@ describe("link check verdicts", () => {
   it("blocks a link that asks people to sign in, and says how to fix it", () => {
     expect(linkVerdict({ phase: "checked", check: check({ access: "sign_in_required" }) })).toEqual({
       tone: "error",
-      title: "This link asks people to sign in",
-      body: "In the Share menu, set access to Anyone with the link, then paste it again.",
+      title: "This link is private",
+      body: "In the Share menu, set access to Anyone with the link, then paste it again. Or upload the file instead.",
       blocks: true,
     });
+  });
+
+  it("offers the upload only where the listing takes a file", () => {
+    expect(
+      linkVerdict({ phase: "checked", check: check({ access: "sign_in_required" }) }, { canUpload: false })?.body,
+    ).toBe("In the Share menu, set access to Anyone with the link, then paste it again.");
   });
 
   it("blocks a link with nothing behind it", () => {
@@ -170,19 +176,30 @@ describe("link check verdicts", () => {
     ).toMatchObject({ tone: "error", title: "We couldn't open this link", blocks: true });
   });
 
-  it("lets an inconclusive check through with a warning, never a tick", () => {
+  it("blocks an inconclusive check, with the sharing fix and the upload (gridgo-api#122)", () => {
     const verdict = linkVerdict({ phase: "checked", check: check({ access: "unknown" }) });
-    expect(verdict).toMatchObject({ tone: "warning", title: "We couldn't confirm who can open it", blocks: false });
-    expect(verdict?.body).toContain("You can still continue");
+    expect(verdict).toMatchObject({ tone: "error", title: "We couldn't confirm anyone can open it", blocks: true });
+    expect(verdict?.body).toBe("Set sharing to Anyone with the link, then check it again. Or upload the file instead.");
   });
 
-  it("calls an unreachable link unopened, but still passable", () => {
+  it("blocks an unreachable link, saying why in GRIDGO's words", () => {
     expect(
       linkVerdict({
         phase: "checked",
         check: check({ reachable: false, httpStatus: null, message: "The link check timed out." }),
       }),
-    ).toMatchObject({ tone: "warning", title: "We couldn't open this link", blocks: false });
+    ).toEqual({
+      tone: "error",
+      title: "We couldn't open this link",
+      body: "The link check timed out. Or upload the file instead.",
+      blocks: true,
+    });
+  });
+
+  it("blocks a link it could not check yet, and says to try again", () => {
+    expect(
+      linkVerdict({ phase: "failed", message: "GRIDGO has checked a lot of links in the last minute.", blocks: false }),
+    ).toMatchObject({ tone: "error", blocks: true, body: "Check it again in a minute. Or upload the file instead." });
   });
 
   it("has nothing to say while checking, or on an API with no check", () => {

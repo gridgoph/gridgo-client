@@ -32,6 +32,21 @@ export function isOtherShopRefusal(error: unknown): boolean {
 }
 
 /**
+ * GRIDGO refused this line because the basket was matched for delivery or
+ * pick-up another way (gridgo-api#148). Same kind of answer as another shop's:
+ * a rule with a way on, never a connection problem.
+ */
+export function isFulfilmentLockRefusal(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  const code = (error.body as { error?: unknown } | null)?.error;
+  return code === "request_fulfillment_locked" || code === "request_fulfillment_requires_empty_cart";
+}
+
+export const FULFILMENT_LOCK_MESSAGE =
+  "Your order is already set to travel another way, and everything in one order travels together. " +
+  "Check out your order first, then start this one.";
+
+/**
  * The basket's contents as a phrase: "Flyers", "Flyers and Stickers",
  * "Flyers, Stickers and 2 more". Named from the listings, never from the shop.
  */

@@ -6,7 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import ArtworkScreen from "@/app/request/artwork";
 import type { ArtworkLinkCheck, Cart, CartLineRecord, CatalogItem } from "@/lib/api";
 import { useCart } from "@/store/cart";
-import { checkKey, useDesignLink } from "@/store/designLink";
+import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
 
 const mockPick = jest.fn(async () => undefined);
 
@@ -238,9 +238,11 @@ describe("ArtworkScreen design link", () => {
     withCheck(check({ access: "sign_in_required", httpStatus: 401 }), false);
     await renderInSafeArea(<ArtworkScreen />);
 
-    expect(screen.getByText("This link asks people to sign in")).toBeTruthy();
+    expect(screen.getByText("This link is private")).toBeTruthy();
     expect(
-      screen.getByText("In the Share menu, set access to Anyone with the link, then paste it again."),
+      screen.getByText(
+        "In the Share menu, set access to Anyone with the link, then paste it again. Or upload the file instead.",
+      ),
     ).toBeTruthy();
     // The steps open themselves: this is the answer that needs them.
     expect(screen.getByText("Tap Copy link, then paste it here.")).toBeTruthy();
@@ -255,12 +257,45 @@ describe("ArtworkScreen design link", () => {
     expect(screen.queryByLabelText("Go to checkout")).toBeNull();
   });
 
-  it("lets an inconclusive link through with a warning", async () => {
+  it("holds an inconclusive link back from checkout, with the fix and the upload (gridgo-api#122)", async () => {
     withCheck(check({ access: "unknown" }), true);
     await renderInSafeArea(<ArtworkScreen />);
 
-    expect(screen.getByText("We couldn't confirm who can open it")).toBeTruthy();
-    expect(screen.getByLabelText("Go to checkout")).toBeTruthy();
+    expect(screen.getByText("We couldn't confirm anyone can open it")).toBeTruthy();
+    expect(
+      screen.getByText("Set sharing to Anyone with the link, then check it again. Or upload the file instead."),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("Go to checkout").props.accessibilityState).toMatchObject({ disabled: true });
+    expect(screen.getByText(/Fix the link's sharing, or clear it/)).toBeTruthy();
+  });
+
+  it("says the link is being checked, and holds checkout until it answers", async () => {
+    useCart.setState({ cart: cart({ lines: [line({ artworkLinks: [LINK] })] }) });
+    useDesignLink.setState({ committed: { cline_1: URL }, checks: { [checkKey(LINK)]: { phase: "checking" } } });
+    await renderInSafeArea(<ArtworkScreen />);
+
+    expect(screen.getByText("Checking your link…")).toBeTruthy();
+    expect(screen.getByLabelText("Go to checkout").props.accessibilityState).toMatchObject({ disabled: true });
+  });
+
+  it("shows why checkout sent the client back, until the artwork changes", async () => {
+    const refused = line({ artworkLinks: [LINK] });
+    useCart.setState({ cart: cart({ lines: [refused] }) });
+    useDesignLink.setState({
+      committed: { cline_1: URL },
+      checks: { [checkKey(LINK)]: { phase: "checked", check: check({ ok: true, access: "public_view" }) } },
+      problems: {
+        cline_1: {
+          code: "artwork_link_check_failed",
+          message: "Make the design viewable by anyone with the link.",
+          signature: artworkSignature(refused),
+        },
+      },
+    });
+    await renderInSafeArea(<ArtworkScreen />);
+
+    expect(screen.getByText("Checkout could not use this artwork")).toBeTruthy();
+    expect(screen.getByText("Make the design viewable by anyone with the link.")).toBeTruthy();
   });
 
   it("shows no check at all on an API without one, and still moves on", async () => {

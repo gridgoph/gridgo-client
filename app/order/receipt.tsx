@@ -14,6 +14,7 @@ import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SkeletonLine, SkeletonList } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
 import { useThemeColors } from "@/hooks/useTheme";
+import { FILE_CHECK_AFTER_PAYMENT } from "@/lib/checkout";
 import * as api from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -28,6 +29,7 @@ import {
   RECEIPT_HEADLINE,
   receiptFromInvoice,
   receiptFromOrder,
+  receiptFulfilmentRow,
   type ReceiptView,
 } from "@/lib/receipt";
 import { formatTimelineStamp } from "@/lib/relativeTime";
@@ -222,14 +224,7 @@ export default function OrderReceiptScreen() {
           <Text className="text-overline text-text-muted">PAYMENT DETAILS</Text>
           <View className="gg-card">
             <SpecRow label="Printing" value={formatPhp(view.money.printingMinor)} />
-            <SpecRow
-              label="Delivery"
-              value={
-                view.money.deliveryFeeMinor === 0
-                  ? "None — you collect"
-                  : formatPhp(view.money.deliveryFeeMinor)
-              }
-            />
+            <SpecRow {...receiptFulfilmentRow(view.money)} />
             {serviceFeeVisibleToClient(settings) ? (
               <ServiceFeeRow explainOnly rateBps={view.money.serviceFeeRateBps} />
             ) : null}
@@ -286,8 +281,10 @@ function OrderPlacedThanks() {
       <View className="min-w-0 flex-1 gap-0.5" accessible accessibilityRole="header">
         <Text className="text-h3 text-text-primary">Thank you for ordering</Text>
         <Text className="text-body text-text-secondary">
-          Your order is placed. GRIDGO checks your payment and artwork next.
+          Your order is placed. GRIDGO checks your payment next.
         </Text>
+        {/* The shop hears of the job only once the file passes (#122). */}
+        <Text className="text-body text-text-secondary">{FILE_CHECK_AFTER_PAYMENT}</Text>
       </View>
     </View>
   );

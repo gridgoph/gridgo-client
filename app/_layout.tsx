@@ -287,6 +287,14 @@ function AppNavigation() {
           options={pushedScreenOptions("When you need it")}
         />
                 {/*
+                  Delivery or pick-up, straight after the date and before the
+                  match, because the match is measured from that point (#158).
+                */}
+                <Stack.Screen
+                  name="request/fulfilment"
+                  options={pushedScreenOptions("Delivery or pick-up")}
+                />
+                {/*
                   Confirm or re-rank what this one job matches on — after the
                   date, and again from "Change" on the match.
                 */}

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -13,6 +13,7 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     getCatalogItem: jest.fn(),
+    catalogQuote: jest.fn(),
   };
 });
 
@@ -131,14 +132,22 @@ jest.mock("expo-router", () => ({
 describe("a listing with a minimum run", () => {
   it("opens at the shop's minimum and will not step under it", async () => {
     rememberListing(LANYARD);
+    api.catalogQuote.mockResolvedValue({
+      catalogItemId: LANYARD.id, version: 1, serviceVersion: 1, quantity: 10,
+      clientUnitRateMinor: 5500, clientLineSubtotalMinor: 55000,
+      billableMilliUnits: 10000, minimumMeasurementApplied: false,
+    });
     await renderInSafeArea(<ListingScreen />);
     await screen.findByText("Add to my order");
 
     expect(screen.getByText("10")).toBeTruthy();
     expect(screen.getByLabelText("One fewer").props.accessibilityState.disabled).toBe(true);
     expect(screen.getByText("This shop takes orders of 10 and up.")).toBeTruthy();
-    // Ten at GRIDGO's PHP 55.00.
-    expect(screen.getByText("₱550.00")).toBeTruthy();
+    // Ten at GRIDGO's PHP 55.00, as GRIDGO quoted the line — asked at the minimum.
+    expect(await screen.findByText("₱550.00")).toBeTruthy();
+    expect(api.catalogQuote).toHaveBeenCalledWith(
+      expect.objectContaining({ catalogItemId: "sci_lanyard", quantity: 10 }),
+    );
     expect(screen.getAllByText("10 pieces").length).toBeGreaterThan(0);
   });
 });

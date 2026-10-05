@@ -5,8 +5,10 @@
  * fee, the total, and the invoice number. The order adds the payment
  * reference the client typed and the job reference they already know.
  *
- * Client surfaces show GRIDGO printing (shop items + the snapshotted fee),
- * then delivery, then total. The fee is not a third charge on top of print.
+ * Client surfaces show GRIDGO printing, then delivery, then total. Printing is
+ * the invoice's own `clientItemSubtotalMinor` (gridgo-api#132) — already
+ * GRIDGO's figure, never marked up here; an invoice from before that field is
+ * read as shop items + the snapshotted fee. The fee is not a third charge.
  */
 
 import type { Invoice, MatchedOrder, Order, OrderPayments } from "@/lib/api";
@@ -14,7 +16,7 @@ import { formatPhp } from "@/lib/api";
 import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { orderReference } from "@/lib/orderReference";
 import { FULL_PAYMENT_PERCENT, isInstallmentConfirmed, paysInFull } from "@/lib/payment";
-import { printingMinor, showsServiceFee } from "@/lib/serviceFee";
+import { orderPrintingMinor, printingMinor, showsServiceFee } from "@/lib/serviceFee";
 
 export const RECEIPT_HEADLINE = "Order receipt";
 export const RECEIPT_BLURB =
@@ -55,6 +57,11 @@ export function isCheckoutReceipt(from: string | string[] | undefined): boolean 
 export type ReceiptMoney = {
   printingMinor: number;
   deliveryFeeMinor: number;
+  /**
+   * A pick-up chosen before matching: `deliveryFeeMinor` is then the hub's
+   * pick-up fee (already inside it — never add the two).
+   */
+  pickup?: boolean;
   serviceFeeMinor: number;
   serviceFeeRateBps: number;
   totalMinor: number;
@@ -104,9 +111,28 @@ function invoicePaidInFull(invoice: Invoice): boolean {
   return invoice.paymentPlan?.balanceMinor === 0;
 }
 
+/** Printing as the invoice states it: GRIDGO's figure, or items + fee on an older one. */
+export function invoicePrintingMinor(
+  invoice: Pick<Invoice, "clientItemSubtotalMinor" | "itemSubtotalMinor" | "serviceFeeMinor">,
+): number {
+  if (Number.isSafeInteger(invoice.clientItemSubtotalMinor)) {
+    return invoice.clientItemSubtotalMinor as number;
+  }
+  return printingMinor(invoice.itemSubtotalMinor ?? 0, invoice.serviceFeeMinor);
+}
+
+/** One invoice line at GRIDGO's price: the snapshot's own client amount first. */
+function invoiceLineMinor(
+  line: Invoice["lines"][number],
+  serviceFeeRateBps: number | null | undefined,
+): number {
+  if (Number.isSafeInteger(line.clientAmountMinor)) return line.clientAmountMinor as number;
+  return gridgoAmountMinor(line.amountMinor, serviceFeeRateBps) ?? line.amountMinor ?? 0;
+}
+
 /** The invoice's own figures: printing, delivery and total, plus its lines. */
 function invoiceParts(invoice: Invoice) {
-  const printing = printingMinor(invoice.itemSubtotalMinor, invoice.serviceFeeMinor);
+  const printing = invoicePrintingMinor(invoice);
   return {
     invoiceNumber: invoice.invoiceNumber,
     orderId: invoice.orderId,
@@ -116,15 +142,14 @@ function invoiceParts(invoice: Invoice) {
       id: line.id,
       name: line.itemName,
       quantity: line.quantity,
-      amountLabel: formatPhp(
-        gridgoAmountMinor(line.amountMinor, invoice.serviceFeeRateBps) ?? line.amountMinor,
-      ),
+      amountLabel: formatPhp(invoiceLineMinor(line, invoice.serviceFeeRateBps)),
     })),
     money: {
       printingMinor: printing,
       deliveryFeeMinor: invoice.deliveryFeeMinor,
-      serviceFeeMinor: invoice.serviceFeeMinor,
-      serviceFeeRateBps: invoice.serviceFeeRateBps,
+      pickup: invoice.pickupFeeMinor != null,
+      serviceFeeMinor: invoice.serviceFeeMinor ?? 0,
+      serviceFeeRateBps: invoice.serviceFeeRateBps ?? 0,
       totalMinor: invoice.totalMinor,
     },
   };
@@ -232,10 +257,11 @@ export function receiptQuantityLabel(quantity: number): string {
  * the order, so the screen can show them rather than a dead end.
  */
 export function receiptFromOrder(order: Order): ReceiptView | null {
-  if (order.subtotalMinor == null || order.totalMinor == null) return null;
+  if (order.totalMinor == null) return null;
   const serviceFeeMinor = order.serviceFeeMinor ?? 0;
   const serviceFeeRateBps = order.serviceFeeRateBps ?? 0;
-  const printing = printingMinor(order.subtotalMinor, serviceFeeMinor);
+  const printing = orderPrintingMinor(order);
+  if (printing == null) return null;
   return {
     invoiceNumber: order.invoiceNumber ?? "",
     orderId: order.id,
@@ -247,6 +273,7 @@ export function receiptFromOrder(order: Order): ReceiptView | null {
     money: {
       printingMinor: printing,
       deliveryFeeMinor: order.deliveryFeeMinor ?? 0,
+      pickup: order.fulfillmentMode === "pickup",
       serviceFeeMinor,
       serviceFeeRateBps,
       totalMinor: order.totalMinor,
@@ -254,6 +281,20 @@ export function receiptFromOrder(order: Order): ReceiptView | null {
     paymentReference: paymentReferenceOf(order.payments),
     paidInFull: paysInFull(order),
     paymentStatus: paymentStatusOf(order.payments),
+  };
+}
+
+/**
+ * The fulfilment row: Delivery, or the hub's pick-up fee on a pick-up order
+ * that carries one. Nothing charged reads as collecting, never ₱0.00.
+ */
+export function receiptFulfilmentRow(
+  money: Pick<ReceiptMoney, "deliveryFeeMinor" | "pickup">,
+): { label: string; value: string } {
+  const label = money.pickup && money.deliveryFeeMinor > 0 ? "Pick-up fee" : "Delivery";
+  return {
+    label,
+    value: money.deliveryFeeMinor === 0 ? "None — you collect" : formatPhp(money.deliveryFeeMinor),
   };
 }
 

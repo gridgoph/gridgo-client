@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
+import { withQuote, type QuoteOptions } from "@/test/cartQuote";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -134,8 +135,8 @@ function line(overrides: Partial<CartLineRecord> = {}): CartLineRecord {
   };
 }
 
-function cart(overrides: Partial<Cart> = {}): Cart {
-  return {
+function cart(overrides: Partial<Cart> = {}, quote: QuoteOptions = {}): Cart {
+  return withQuote({
     id: "cart_1",
     state: "draft",
     version: 1,
@@ -148,7 +149,7 @@ function cart(overrides: Partial<Cart> = {}): Cart {
     createdAt: "2026-08-24T00:00:00.000Z",
     updatedAt: "2026-08-24T00:00:00.000Z",
     ...overrides,
-  };
+  }, quote);
 }
 
 function renderInSafeArea(ui: ReactElement) {
@@ -211,8 +212,9 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText("Flyers")).toBeTruthy();
     expect(screen.getByText("A4")).toBeTruthy();
 
-    // The board is still read for its pin, so delivery can be measured. Its
-    // name never reaches the sheet.
+    // Delivery comes from GRIDGO's quote: no shop board is read for its pin,
+    // and no shop name reaches the sheet.
+    expect(api.getCatalogShop).not.toHaveBeenCalled();
     expect(screen.queryByText(/Lovis/i)).toBeNull();
     expect(screen.queryByLabelText(/Lovis/i)).toBeNull();
     expect(screen.queryByText(/Bajada/i)).toBeNull();
@@ -247,6 +249,10 @@ describe("CheckoutScreen", () => {
       downpaymentPercent: 100,
       serviceFeeVisibleToClient: false,
     });
+    // The basket's own quote carries the plan, as GRIDGO answers it.
+    const inFull = cart({}, { downpaymentPercent: 100 });
+    api.getCart.mockResolvedValue(inFull);
+    useCart.setState({ cart: inFull });
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
     expect((await screen.findAllByText("₱44.00")).length).toBeGreaterThan(0);
@@ -375,7 +381,7 @@ describe("CheckoutScreen", () => {
   });
 
   it("withholds the total until GRIDGO knows where the job is going", async () => {
-    const noAddress = cart({ defaultDropoff: null });
+    const noAddress = cart({ defaultDropoff: null }, { legs: [null] });
     api.getCart.mockResolvedValue(noAddress);
     useCart.setState({ cart: noAddress });
     await renderInSafeArea(<CheckoutScreen />);
@@ -387,7 +393,7 @@ describe("CheckoutScreen", () => {
   });
 
   it("still shows the GCash plate when the 75% cannot be totalled yet", async () => {
-    const noAddress = cart({ defaultDropoff: null });
+    const noAddress = cart({ defaultDropoff: null }, { legs: [null] });
     api.getCart.mockResolvedValue(noAddress);
     useCart.setState({ cart: noAddress });
     await renderInSafeArea(<CheckoutScreen />);
@@ -562,7 +568,7 @@ describe("CheckoutScreen", () => {
   });
 
   it("fills delivery from the saved Home address when the basket has none", async () => {
-    const noAddress = cart({ defaultDropoff: null });
+    const noAddress = cart({ defaultDropoff: null }, { legs: [null] });
     const withHome = cart({
       defaultDropoff: { lat: 7.07, lng: 125.61, label: "Home" },
     });

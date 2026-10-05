@@ -10,10 +10,12 @@ import { TourTarget } from "@/components/TourTarget";
 import { findCategory } from "@/lib/productCategories";
 import * as api from "@/lib/api";
 import { prefetchMatch } from "@/lib/matchPrefetch";
+import { fulfilmentStepFor } from "@/lib/requestFulfilment";
 import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
+import { useJobFulfilment, withJobFulfilment } from "@/store/jobFulfilment";
 import { useSeasonWindows } from "@/store/seasonWindows";
 import { withJobRanking } from "@/store/orderRanking";
 import {
@@ -53,6 +55,7 @@ export default function WhenScreen() {
   }>();
 
   const setDeadline = useJobDeadline((state) => state.set);
+  const setFulfilment = useJobFulfilment((state) => state.set);
   const cart = useCart((state) => state.cart);
   const dropoff = cart?.defaultDropoff ?? null;
 
@@ -150,16 +153,24 @@ export default function WhenScreen() {
 
   const go = (by: string | null) => {
     setDeadline(by);
+    const params = { subcategory: subcategory ?? "", category: category ?? "" };
+    // Delivery or pick-up comes next (#158), unless the basket has already
+    // settled it: a job joining a basket travels the way that basket does.
+    const step = fulfilmentStepFor(useCart.getState().cart);
+    if (step === "ask") {
+      router.push({ pathname: "/request/fulfilment", params });
+      return;
+    }
+    setFulfilment(step === "locked" ? (useCart.getState().cart?.requestFulfillment ?? null) : null);
     // The match on the usual order starts now, while the client confirms or
     // re-ranks it on the next step: confirming or skipping — the common case —
     // then finds the answer already waiting. A re-rank asks again.
     if (!needsDropoffFirst(dropoff) && subcategory) {
-      prefetchMatch(withJobRanking({ subcategoryCode: subcategory, dropoff, deadline: by }));
+      prefetchMatch(
+        withJobRanking(withJobFulfilment({ subcategoryCode: subcategory, deadline: by }, dropoff)),
+      );
     }
-    router.push({
-      pathname: "/request/rank",
-      params: { subcategory: subcategory ?? "", category: category ?? "" },
-    });
+    router.push({ pathname: "/request/rank", params });
   };
 
   return (

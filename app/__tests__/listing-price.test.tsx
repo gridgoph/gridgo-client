@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
+import { render, screen, waitFor, within } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -6,6 +6,7 @@ import ListingScreen from "@/app/request/listing";
 import type { CatalogItem, CatalogOptionGroup } from "@/lib/api";
 import { clearListingCache, rememberListing } from "@/lib/listingCache";
 import { useCart } from "@/store/cart";
+import { useListingQuote } from "@/store/listingQuote";
 import { usePlatformSettings } from "@/store/platformSettings";
 
 jest.mock("expo-router", () => ({
@@ -23,6 +24,7 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     getCatalogItem: jest.fn(),
+    catalogQuote: jest.fn(),
   };
 });
 
@@ -82,6 +84,14 @@ const ITEM: CatalogItem = {
   serviceVersion: 1,
 };
 
+function quote(clientLineSubtotalMinor: number) {
+  return {
+    catalogItemId: "sci_flyers", version: 1, serviceVersion: 1, quantity: 1,
+    clientUnitRateMinor: clientLineSubtotalMinor, clientLineSubtotalMinor,
+    billableMilliUnits: 1000, minimumMeasurementApplied: false,
+  };
+}
+
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
     wrapper: ({ children }) => (
@@ -102,6 +112,9 @@ beforeEach(() => {
   useCart.getState().reset();
   api.getCatalogItem.mockReset();
   api.getCatalogItem.mockReturnValue(new Promise(() => {}));
+  api.catalogQuote.mockReset();
+  api.catalogQuote.mockResolvedValue(quote(2420));
+  useListingQuote.getState().reset();
   usePlatformSettings.getState().reset();
   usePlatformSettings.getState().adopt({
     issueWindowHours: 24,
@@ -122,19 +135,100 @@ describe("the sheet's price is GRIDGO's", () => {
     await renderInSafeArea(<ListingScreen />);
     await screen.findByText("Add to my order");
 
-    // PHP 22.00 + 10% = PHP 24.20, per pack; one pack in the bar.
-    expect(screen.getAllByText("₱24.20").length).toBeGreaterThanOrEqual(2);
+    // PHP 22.00 + 10% = PHP 24.20, per pack; one pack in the bar. The paper
+    // is not picked yet, so GRIDGO has nothing it could quote: the bar shows
+    // the listing's own estimate, as it always has, and asks for no quote.
+    await waitFor(() =>
+      expect(within(screen.getByTestId("listing-printing")).getByText("₱24.20")).toBeTruthy(),
+    );
+    expect(screen.getAllByText("₱24.20")).toHaveLength(2);
+    expect(api.catalogQuote).not.toHaveBeenCalled();
     expect(screen.queryByText(/₱22\.00/)).toBeNull();
     expect(screen.getByText("Delivery is added at checkout.")).toBeTruthy();
     expect(screen.queryByText(/GRIDGO’s charge/)).toBeNull();
   });
 
-  it("draws no price at all while GRIDGO's rate is unread", async () => {
+  it("draws no price at all while GRIDGO's rate is unread and the quote is out", async () => {
     usePlatformSettings.getState().reset();
+    api.catalogQuote.mockReturnValue(new Promise(() => {}));
     rememberListing(ITEM);
     await renderInSafeArea(<ListingScreen />);
     await screen.findByText("Add to my order");
 
     expect(screen.queryByText(/₱/)).toBeNull();
+  });
+});
+
+/*
+  gridgo-api#132: the listing carries GRIDGO's own figures and the line is
+  quoted by GRIDGO. Neither is marked up again on the phone.
+*/
+describe("the sheet reads GRIDGO's own figures", () => {
+  const CLIENT_ITEM: CatalogItem = {
+    ...ITEM,
+    clientBasePriceMinor: 2420,
+    clientFromPriceMinor: 2420,
+    optionGroups: ITEM.optionGroups.map((group) => ({
+      ...group,
+      options: group.options.map((option) => ({ ...option, clientPriceModifierMinor: 0 })),
+    })),
+  };
+
+  it("draws the header from the client figures before the rate is read", async () => {
+    usePlatformSettings.getState().reset();
+    api.catalogQuote.mockResolvedValue(quote(2420));
+    rememberListing(CLIENT_ITEM);
+    await renderInSafeArea(<ListingScreen />);
+
+    // Header and quoted bar, with no rate on the phone at all.
+    await waitFor(() =>
+      expect(within(screen.getByTestId("listing-printing")).getByText("₱24.20")).toBeTruthy(),
+    );
+    expect(screen.getAllByText("₱24.20")).toHaveLength(2);
+    expect(screen.queryByText("₱26.62")).toBeNull();
+  });
+
+  // Nothing left to answer, so the sheet is quotable the moment it opens.
+  const READY_ITEM: CatalogItem = {
+    ...CLIENT_ITEM,
+    optionGroups: CLIENT_ITEM.optionGroups.map((group) => ({ ...group, required: false })),
+  };
+
+  it("draws GRIDGO's quote for a finished selection, as sent", async () => {
+    api.catalogQuote.mockResolvedValue(quote(2662));
+    rememberListing(READY_ITEM);
+    await renderInSafeArea(<ListingScreen />);
+    await screen.findByText("Add to my order");
+
+    await waitFor(() =>
+      expect(within(screen.getByTestId("listing-printing")).getByText("₱26.62")).toBeTruthy(),
+    );
+    expect(api.catalogQuote).toHaveBeenCalledWith(
+      expect.objectContaining({ catalogItemId: "sci_flyers", quantity: 1, optionIds: [] }),
+    );
+  });
+
+  it("draws no figure when GRIDGO refuses to price the line", async () => {
+    api.catalogQuote.mockRejectedValue(
+      new api.ApiError(409, { error: "printer_cap_exceeded" }),
+    );
+    rememberListing(READY_ITEM);
+    await renderInSafeArea(<ListingScreen />);
+    await screen.findByText("Add to my order");
+
+    await waitFor(() =>
+      expect(within(screen.getByTestId("listing-printing")).getByText("—")).toBeTruthy(),
+    );
+    expect(within(screen.getByTestId("listing-printing")).queryByText(/₱/)).toBeNull();
+  });
+
+  it("works the line out itself only on an API without the quote route", async () => {
+    api.catalogQuote.mockRejectedValue(new api.ApiError(404, { error: "not_found" }));
+    rememberListing(ITEM);
+    await renderInSafeArea(<ListingScreen />);
+
+    await waitFor(() =>
+      expect(within(screen.getByTestId("listing-printing")).getByText("₱24.20")).toBeTruthy(),
+    );
   });
 });

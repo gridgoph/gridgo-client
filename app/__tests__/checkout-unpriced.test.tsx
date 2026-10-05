@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
+import { withQuote, type QuoteOptions } from "@/test/cartQuote";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -132,8 +133,8 @@ function line(overrides: Partial<CartLineRecord> = {}): CartLineRecord {
   };
 }
 
-function cart(overrides: Partial<Cart> = {}): Cart {
-  return {
+function cart(overrides: Partial<Cart> = {}, quote: QuoteOptions = {}): Cart {
+  return withQuote({
     id: "cart_1",
     state: "draft",
     version: 1,
@@ -146,7 +147,7 @@ function cart(overrides: Partial<Cart> = {}): Cart {
     createdAt: "2026-08-24T00:00:00.000Z",
     updatedAt: "2026-08-24T00:00:00.000Z",
     ...overrides,
-  };
+  }, quote);
 }
 
 function renderInSafeArea(ui: ReactElement) {

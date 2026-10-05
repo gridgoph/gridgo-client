@@ -8,7 +8,7 @@
  * gridgo-api for the contract these states mirror.
  */
 
-import { ApiError, type DetectedArtwork, type StoredFile } from "@/lib/api";
+import { ApiError, type ArtworkFileCheck, type DetectedArtwork, type StoredFile } from "@/lib/api";
 
 export type ArtworkPhase =
   | "empty"
@@ -45,7 +45,24 @@ export type ArtworkUploadState = {
   detected: DetectedArtwork | null;
   /** What went wrong and what to do about it. */
   error: string | null;
+  /**
+   * GRIDGO's structural check of the bytes (gridgo-api#122). A `failed` file
+   * is refused at checkout, so it never goes onto a line from here; one
+   * already on a line from before is flagged to be replaced.
+   */
+  fileCheck?: ArtworkFileCheck | null;
 };
+
+/**
+ * Why GRIDGO cannot use this file, or null when it can (or never said).
+ * Ready means uploaded, not usable: a file can store fine and still be a PDF
+ * with its end cut off.
+ */
+export function artworkCheckFailure(check: ArtworkFileCheck | null | undefined): string | null {
+  if (check?.status !== "failed") return null;
+  const reason = check.message?.trim();
+  return `GRIDGO could not read this file properly.${reason ? ` ${reason}` : ""} Export it again and upload the new file.`;
+}
 
 /**
  * Fill in what the storage record already knows about a file on the line.
@@ -65,6 +82,7 @@ export function artworkStateFromStoredFile(
     size: file.size ?? prev.size,
     contentType: file.detectedContentType || prev.contentType,
     detected: file.detected ?? prev.detected,
+    fileCheck: file.artworkCheck ?? prev.fileCheck ?? null,
   };
 }
 
