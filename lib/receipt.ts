@@ -11,7 +11,8 @@
  * read as shop items + the snapshotted fee. The fee is not a third charge.
  */
 
-import type { Invoice, MatchedOrder, Order, OrderPayments } from "@/lib/api";
+import type { BasketGroup, Invoice, InvoiceLine, MatchedOrder, Order, OrderPayments } from "@/lib/api";
+import { groupLetter, receiptGroupStanding } from "@/lib/basketGroups";
 import { formatPhp } from "@/lib/api";
 import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { orderReference } from "@/lib/orderReference";
@@ -62,9 +63,28 @@ export type ReceiptMoney = {
    * pick-up fee (already inside it — never add the two).
    */
   pickup?: boolean;
-  serviceFeeMinor: number;
-  serviceFeeRateBps: number;
+  /** Withheld on a multi-shop receipt; the fee is inside printing either way. */
+  serviceFeeMinor: number | null;
+  serviceFeeRateBps: number | null;
   totalMinor: number;
+};
+
+export type ReceiptLine = { id: string; name: string; quantity: number; amountLabel: string };
+
+/**
+ * One shop group's section of a combined receipt. The figures are the
+ * receipt's own and never change; `stopped` is the group's live standing,
+ * added by the screen when a group was later cancelled or refunded.
+ */
+export type ReceiptGroup = {
+  orderId: string;
+  label: string;
+  letter: string;
+  lines: ReceiptLine[];
+  printingMinor: number;
+  deliveryFeeMinor: number;
+  totalMinor: number;
+  stopped?: string | null;
 };
 
 /**
@@ -78,7 +98,9 @@ export type ReceiptView = {
   orderId: string;
   orderReference: string | null;
   issuedAt: string | null;
-  lines: { id: string; name: string; quantity: number; amountLabel: string }[];
+  lines: ReceiptLine[];
+  /** A section per shop group, on a multi-shop basket's one receipt only. */
+  groups?: ReceiptGroup[];
   money: ReceiptMoney;
   paymentReference: string | null;
   /** One transfer covers the whole total; no balance step follows. */
@@ -122,36 +144,69 @@ export function invoicePrintingMinor(
 }
 
 /** One invoice line at GRIDGO's price: the snapshot's own client amount first. */
-function invoiceLineMinor(
-  line: Invoice["lines"][number],
-  serviceFeeRateBps: number | null | undefined,
-): number {
+function invoiceLineMinor(line: InvoiceLine, serviceFeeRateBps: number | null | undefined): number {
   if (Number.isSafeInteger(line.clientAmountMinor)) return line.clientAmountMinor as number;
   return gridgoAmountMinor(line.amountMinor, serviceFeeRateBps) ?? line.amountMinor ?? 0;
 }
 
+function receiptLine(line: InvoiceLine, serviceFeeRateBps: number | null | undefined): ReceiptLine {
+  return {
+    id: line.id,
+    name: line.itemName,
+    quantity: line.quantity,
+    amountLabel: formatPhp(invoiceLineMinor(line, serviceFeeRateBps)),
+  };
+}
+
 /** The invoice's own figures: printing, delivery and total, plus its lines. */
 function invoiceParts(invoice: Invoice) {
-  const printing = invoicePrintingMinor(invoice);
+  const groups = invoice.groups && invoice.groups.length > 1
+    ? invoice.groups.map((group): ReceiptGroup => ({
+        orderId: group.orderId,
+        label: group.label,
+        letter: groupLetter(group.label),
+        lines: group.lines.map((line) => receiptLine(line, invoice.serviceFeeRateBps)),
+        printingMinor: group.clientItemSubtotalMinor,
+        deliveryFeeMinor: group.deliveryFeeMinor,
+        totalMinor: group.totalMinor,
+      }))
+    : undefined;
   return {
     invoiceNumber: invoice.invoiceNumber,
     orderId: invoice.orderId,
     orderReference: orderReference(invoice.orderId),
     issuedAt: invoice.issuedAt || null,
-    lines: invoice.lines.map((line) => ({
-      id: line.id,
-      name: line.itemName,
-      quantity: line.quantity,
-      amountLabel: formatPhp(invoiceLineMinor(line, invoice.serviceFeeRateBps)),
-    })),
+    lines: invoice.lines.map((line) => receiptLine(line, invoice.serviceFeeRateBps)),
+    ...(groups ? { groups } : {}),
     money: {
-      printingMinor: printing,
+      printingMinor: invoicePrintingMinor(invoice),
       deliveryFeeMinor: invoice.deliveryFeeMinor,
       pickup: invoice.pickupFeeMinor != null,
-      serviceFeeMinor: invoice.serviceFeeMinor ?? 0,
-      serviceFeeRateBps: invoice.serviceFeeRateBps ?? 0,
+      serviceFeeMinor: invoice.serviceFeeMinor ?? null,
+      serviceFeeRateBps: invoice.serviceFeeRateBps ?? null,
       totalMinor: invoice.totalMinor,
     },
+  };
+}
+
+/**
+ * A combined receipt with each group's live standing beside its section.
+ *
+ * The receipt is immutable, so its figures stay as they were paid; a group
+ * Operations later cancelled or refunded is marked on its own section rather
+ * than taken out of the total the client transferred.
+ */
+export function withGroupStanding(
+  view: ReceiptView,
+  groups: Pick<BasketGroup, "orderId" | "state">[],
+): ReceiptView {
+  if (!view.groups) return view;
+  return {
+    ...view,
+    groups: view.groups.map((section) => {
+      const live = groups.find((group) => group.orderId === section.orderId);
+      return live ? { ...section, stopped: receiptGroupStanding(live) } : section;
+    }),
   };
 }
 
@@ -290,8 +345,12 @@ export function receiptFromOrder(order: Order): ReceiptView | null {
  */
 export function receiptFulfilmentRow(
   money: Pick<ReceiptMoney, "deliveryFeeMinor" | "pickup">,
+  /** Shop groups on a multi-shop receipt: a pick-up fee is still charged once. */
+  groupCount = 0,
 ): { label: string; value: string } {
-  const label = money.pickup && money.deliveryFeeMinor > 0 ? "Pick-up fee" : "Delivery";
+  const label = money.pickup && money.deliveryFeeMinor > 0
+    ? groupCount > 1 ? "Pick-up fee, once per order" : "Pick-up fee"
+    : groupCount > 1 ? `Delivery · ${groupCount} shops` : "Delivery";
   return {
     label,
     value: money.deliveryFeeMinor === 0 ? "None — you collect" : formatPhp(money.deliveryFeeMinor),

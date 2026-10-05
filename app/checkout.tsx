@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
-import { ChevronRight, Home, MapPin, Minus, Plus, QrCode, Truck } from "lucide-react-native";
+import { CalendarDays, ChevronRight, Home, Info, MapPin, Minus, Plus, QrCode, Truck } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -24,6 +24,7 @@ import { PaymentProofRow } from "@/components/PaymentProofRow";
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ShopGroupSection } from "@/components/ShopGroupSection";
 import { ReadyTime } from "@/components/ReadyTime";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
@@ -45,7 +46,19 @@ import {
   linesUnpriced,
   printRuns,
 } from "@/lib/basket";
+import {
+  BASKET_DATE_MISSING,
+  basketDeadlineOf,
+  groupDeliveryNote,
+  groupsHeading,
+  isMultiShop,
+  MULTI_SHOP_PAYMENT_TITLE,
+  multiShopPaymentNote,
+  ONE_DATE_NOTE,
+  shopGroups,
+} from "@/lib/basketGroups";
 import { unpricedLineReason } from "@/lib/clientPrice";
+import { formatDeadline } from "@/lib/deadline";
 import { lineArtworkLinks, lineArtworkSummary, lineHasArtwork } from "@/lib/designLink";
 import { holdPlacedReceipt, openReceiptAfterCheckout, receiptFromCheckout } from "@/lib/receipt";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
@@ -88,6 +101,7 @@ import {
 import { zoneLine } from "@/lib/distanceZone";
 import { hubFeeLabel } from "@/lib/hubPickup";
 import { fulfilmentSummary } from "@/lib/requestFulfilment";
+import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
@@ -205,8 +219,13 @@ export default function CheckoutScreen() {
   const runs = useMemo(() => printRuns(lines, feeRateBps), [lines, feeRateBps]);
   // GRIDGO's own quote for the basket (`cart.clientQuote`): printing, each
   // run's delivery leg and zone, any pick-up fee, the total and the up-front
-  // share. The sheet adds nothing up itself.
+  // share. The sheet adds nothing up itself. A basket printed by several
+  // shops (gridgo-api#117) is quoted paid in full, and is drawn by GRIDGO's
+  // own shop groups, each with its own delivery fee.
   const totals = useMemo(() => basketTotals({ cart, settings }), [cart, settings]);
+  const multi = isMultiShop(cart);
+  const groups = useMemo(() => shopGroups(cart), [cart]);
+  const basketDate = basketDeadlineOf(cart);
 
   const travel = travelChoiceOf(cart);
   // Chosen before the match (#158): read back here, never asked again.
@@ -236,6 +255,7 @@ export default function CheckoutScreen() {
     linesCheckingArtwork: checkingArtwork.length,
     linesArtworkProblem: artworkProblem.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
+    missingBasketDate: multi && !basketDate,
     referenceOk: ocrReading || referenceCheck.ok,
     hasProof: Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
@@ -288,6 +308,16 @@ export default function CheckoutScreen() {
    */
   const lastLine = lines.at(-1) ?? null;
 
+  /** "Add more from Shop A": the next product is matched to that group's shop. */
+  const addToGroup = (groupId: string, label: string) => {
+    useBasketGroupTarget.getState().set(groupId, label);
+    router.push({ pathname: "/request/category", params: { forGroup: "1" } });
+  };
+
+  /** The one date every shop in the order is held to. */
+  const changeBasketDate = () =>
+    router.push({ pathname: "/request/when", params: { mode: "basket" } });
+
   const goStep = (step: OrderStepId) => {
     if (step === "shop") {
       const flow = orderFlowNow();
@@ -324,7 +354,7 @@ export default function CheckoutScreen() {
 
   const scrollToBlocker = (blocker: (typeof blockers)[number]) => {
     const key =
-      blocker === "artwork" || blocker === "price" || blocker === "artwork_problem"
+      blocker === "artwork" || blocker === "price" || blocker === "artwork_problem" || blocker === "date"
         ? "artwork"
         : blocker === "address"
           ? "address"
@@ -366,8 +396,11 @@ export default function CheckoutScreen() {
         reference: reference.trim(),
         proofFileId: proof.state.fileId,
       });
+      // A multi-shop basket answers with one combined receipt; its order is
+      // the first shop group, which the receipt and its "View order" open.
       holdPlacedReceipt(receiptFromCheckout(invoice, order, reference));
       resetPayment();
+      useBasketGroupTarget.getState().clear();
       clearCart();
       clearOrderFlow();
       openReceiptAfterCheckout(router, order.id);
@@ -432,6 +465,33 @@ export default function CheckoutScreen() {
   }
 
   const placeLocked = ocrReading || placing || busy;
+
+  const lineRow = (line: CartLineRecord) => (
+    <LineRow
+      key={line.id}
+      line={line}
+      artwork={artworkStatus(line)}
+      serviceFeeRateBps={settings?.serviceFeeRateBps ?? null}
+      busy={busy}
+      onStalePhoto={onStalePhoto}
+      onEdit={() =>
+        router.push({
+          pathname: "/request/listing",
+          params: { itemId: line.catalogItemId, lineId: line.id },
+        })
+      }
+      onArtwork={() =>
+        router.push({ pathname: "/request/artwork", params: { lineId: line.id } })
+      }
+      onQuantity={(quantity) =>
+        // Copies only. Pages live on measurement, and sending them
+        // here would replace a 30-page document with whatever the
+        // stepper last showed.
+        void change((id) => api.updateCartLine(id, line.id, { quantity }))
+      }
+      onRemove={() => setRemoving(line)}
+    />
+  );
   const missingShown = attempted || referenceTouched;
 
   return (
@@ -572,7 +632,36 @@ export default function CheckoutScreen() {
 
         {/* ---- What is being printed ------------------------------------- */}
         <View className="mt-6 gap-6" collapsable={false} ref={(node) => { fields.current.artwork = node; }}>
-          {runs.map((run, index) => (
+          {multi ? (
+            <>
+              {/*
+                Several shops, one order (gridgo-api#117). Each group is a shop
+                GRIDGO matched — named by letter, never by who it is — with
+                its own delivery fee and its own way to add more. The one date
+                they are all held to sits above them, because it is the one
+                thing they share.
+              */}
+              <Text className="text-overline text-text-muted">{groupsHeading(groups.length)}</Text>
+              <BasketDateRow
+                deadline={basketDate}
+                error={attempted && blockers.includes("date")}
+                onChange={changeBasketDate}
+              />
+              {groups.map((group, index) => (
+                <ShopGroupSection
+                  key={group.id}
+                  divided={index > 0}
+                  group={group}
+                  pickup={travel === "pickup"}
+                  sharedPickupFee={totals.pickupFeeMinor != null && totals.pickupFeeMinor > 0}
+                  busy={busy}
+                  onAddMore={() => addToGroup(group.id, group.label)}
+                >
+                  {group.lines.map(lineRow)}
+                </ShopGroupSection>
+              ))}
+            </>
+          ) : runs.map((run, index) => (
             <View key={run.supplierId} className="gap-3">
               <View className="flex-row items-center justify-between gap-3">
                 {/*
@@ -594,32 +683,7 @@ export default function CheckoutScreen() {
                 </Text>
               </View>
 
-              {run.lines.map((line) => (
-                <LineRow
-                  key={line.id}
-                  line={line}
-                  artwork={artworkStatus(line)}
-                  serviceFeeRateBps={settings?.serviceFeeRateBps ?? null}
-                  busy={busy}
-                  onStalePhoto={onStalePhoto}
-                  onEdit={() =>
-                    router.push({
-                      pathname: "/request/listing",
-                      params: { itemId: line.catalogItemId, lineId: line.id },
-                    })
-                  }
-                  onArtwork={() =>
-                    router.push({ pathname: "/request/artwork", params: { lineId: line.id } })
-                  }
-                  onQuantity={(quantity) =>
-                    // Copies only. Pages live on measurement, and sending them
-                    // here would replace a 30-page document with whatever the
-                    // stepper last showed.
-                    void change((id) => api.updateCartLine(id, line.id, { quantity }))
-                  }
-                  onRemove={() => setRemoving(line)}
-                />
-              ))}
+              {run.lines.map(lineRow)}
 
               {/*
                 Same run first. Two items on one run is one print run, one drop
@@ -651,12 +715,12 @@ export default function CheckoutScreen() {
           <Pressable
             onPress={() => router.push("/request/category")}
             accessibilityRole="button"
-            accessibilityLabel="Add something else to print"
+            accessibilityLabel={multi ? "Add products from any shop" : "Add something else to print"}
             className="gg-touch items-center justify-center"
             style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
           >
             <Text className="text-body text-text-secondary underline">
-              Add something else to print
+              {multi ? "Add products" : "Add something else to print"}
             </Text>
           </Pressable>
         </View>
@@ -709,9 +773,11 @@ export default function CheckoutScreen() {
           ) : (
             <>
               <Text className="text-caption text-text-muted">
-                {runs.length > 1
-                  ? "Delivery is charged on each run, by the distance from where it is printed to your address."
-                  : "Delivery is charged by the distance from where it is printed to your address."}
+                {multi
+                  ? groupDeliveryNote(false)
+                  : runs.length > 1
+                    ? "Delivery is charged on each run, by the distance from where it is printed to your address."
+                    : "Delivery is charged by the distance from where it is printed to your address."}
               </Text>
               <DeliveryZonesHelp settings={settings} />
               <View collapsable={false} ref={(node) => { fields.current.address = node; }}>
@@ -779,9 +845,13 @@ export default function CheckoutScreen() {
             </View>
           </Pressable>
           <Text className="text-caption text-text-muted">{DIGITAL_ONLY_NOTICE}</Text>
-          <Text className="text-caption text-text-muted">
-            {paymentPlanNote(totals.downpaymentPercent)}
-          </Text>
+          {multi ? (
+            <MultiShopPaymentNote groupCount={groups.length} />
+          ) : (
+            <Text className="text-caption text-text-muted">
+              {paymentPlanNote(totals.downpaymentPercent)}
+            </Text>
+          )}
 
           {totals.downpaymentMinor != null ? (
             totals.downpaymentPercent >= FULL_PAYMENT_PERCENT ? (
@@ -877,8 +947,20 @@ export default function CheckoutScreen() {
 
             {travel === "pickup" && totals.pickupFeeMinor != null ? (
               // Collected at the hub: its flat fee, "Free" at zero. Already
-              // inside the total — GRIDGO counts it in the delivery slot.
-              <SpecRow label="Pick-up" value={hubFeeLabel(totals.pickupFeeMinor) ?? "Not yet"} />
+              // inside the total — GRIDGO counts it in the delivery slot. A
+              // basket from several shops is still charged it once.
+              <SpecRow
+                label={multi ? "Pick-up · once per order" : "Pick-up"}
+                value={hubFeeLabel(totals.pickupFeeMinor) ?? "Not yet"}
+              />
+            ) : multi && travel !== "pickup" ? (
+              groups.map((group) => (
+                <SpecRow
+                  key={group.id}
+                  label={`Delivery · ${group.label}`}
+                  value={group.deliveryFeeMinor == null ? "Set with your address" : formatPhp(group.deliveryFeeMinor)}
+                />
+              ))
             ) : travel === "pickup" ? (
               <SpecRow label="Delivery" value="None — you collect" />
             ) : totals.legs.length > 1 ? (
@@ -964,6 +1046,73 @@ export default function CheckoutScreen() {
 /** "₱25.00 · Nearby" — the fee, then the zone it was priced in. */
 function withZone(fee: string, zone: string | null): string {
   return zone ? `${fee} · ${zone}` : fee;
+}
+
+/**
+ * The one date a multi-shop order is held to (gridgo-api#117). Every shop in
+ * it must make it, so it is shown once, above the groups, with the way to
+ * move it for all of them. A basket that reached several shops without a
+ * date — its first product was "no rush" — is asked for one here.
+ */
+function BasketDateRow({
+  deadline,
+  error,
+  onChange,
+}: {
+  deadline: string | null;
+  error: boolean;
+  onChange: () => void;
+}) {
+  const colors = useThemeColors();
+  return (
+    <Pressable
+      onPress={onChange}
+      accessibilityRole="button"
+      accessibilityLabel={
+        deadline
+          ? `Your order's date: ${formatDeadline(deadline)}. ${ONE_DATE_NOTE} Change it.`
+          : BASKET_DATE_MISSING
+      }
+      className={error ? "gg-card-flush gg-touch border border-error" : "gg-card-flush gg-touch"}
+    >
+      {({ pressed }) => (
+        <View className="flex-row items-center gap-3 p-4">
+          <CalendarDays size={20} color={error ? colors.error : colors.textPrimary} strokeWidth={2} aria-hidden />
+          <View className="min-w-0 flex-1 gap-0.5">
+            <Text className="text-body-lg font-medium text-text-primary">
+              {deadline ? formatDeadline(deadline) : "No date yet"}
+            </Text>
+            <Text className={error ? "text-caption text-error" : "text-caption text-text-muted"}>
+              {deadline ? ONE_DATE_NOTE : BASKET_DATE_MISSING}
+            </Text>
+          </View>
+          <Text className="text-button text-text-primary">{deadline ? "Change" : "Choose"}</Text>
+          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+/**
+ * Why a multi-shop order is paid in full, said where the client pays rather
+ * than discovered on the QR. Info, not warning: nothing is wrong.
+ */
+function MultiShopPaymentNote({ groupCount }: { groupCount: number }) {
+  const colors = useThemeColors();
+  return (
+    <View
+      className="gg-panel flex-row gap-3"
+      accessible
+      accessibilityLabel={`${MULTI_SHOP_PAYMENT_TITLE}. ${multiShopPaymentNote(groupCount)}`}
+    >
+      <Info size={18} color={colors.info} strokeWidth={2} aria-hidden />
+      <View className="min-w-0 flex-1 gap-1">
+        <Text className="text-body font-medium text-text-primary">{MULTI_SHOP_PAYMENT_TITLE}</Text>
+        <Text className="text-caption text-text-secondary">{multiShopPaymentNote(groupCount)}</Text>
+      </View>
+    </View>
+  );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

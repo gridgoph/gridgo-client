@@ -9,6 +9,9 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { TourTarget } from "@/components/TourTarget";
 import { findCategory } from "@/lib/productCategories";
 import * as api from "@/lib/api";
+import { basketDeadlineOf, basketMatchContext, ONE_DATE_NOTE } from "@/lib/basketGroups";
+import { userFacingError } from "@/lib/copy";
+import { formatDeadline } from "@/lib/deadline";
 import { prefetchMatch } from "@/lib/matchPrefetch";
 import { fulfilmentStepFor } from "@/lib/requestFulfilment";
 import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
@@ -49,15 +52,28 @@ import {
  */
 export default function WhenScreen() {
   const router = useRouter();
-  const { subcategory, category } = useLocalSearchParams<{
+  const { subcategory, category, mode } = useLocalSearchParams<{
     subcategory?: string;
     category?: string;
+    /** `basket`: checkout is setting the one date for the whole order. */
+    mode?: string;
   }>();
 
   const setDeadline = useJobDeadline((state) => state.set);
   const setFulfilment = useJobFulfilment((state) => state.set);
   const cart = useCart((state) => state.cart);
   const dropoff = cart?.defaultDropoff ?? null;
+  /*
+    One date for the whole order (gridgo-api#117). Once the basket has one,
+    every product after the first is held to it, so the date is shown rather
+    than asked — with a way to move it for everything at once.
+  */
+  const basketMode = mode === "basket";
+  const basketDeadline = basketDeadlineOf(cart);
+  const [unlocked, setUnlocked] = useState(false);
+  const locked = !basketMode && basketDeadline != null && !unlocked;
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [chosen, setChosen] = useState<string | null>(null);
   // Season windows shade the month as a heads-up. They never decide which
@@ -87,7 +103,7 @@ export default function WhenScreen() {
     client picks a date GRIDGO then cannot make than cannot pick at all.
   */
   useEffect(() => {
-    if (!subcategory) return;
+    if (!subcategory || locked) return;
     let alive = true;
     api
       .deadlineDays(subcategory)
@@ -107,7 +123,7 @@ export default function WhenScreen() {
     // answer, not whether to ask for one, and including it would re-fetch
     // availability every time the client turned a page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subcategory]);
+  }, [subcategory, locked]);
 
   // Built per month rather than once, because the calendar draws the month
   // either side of this one as well: a drag has to reveal a real neighbour,
@@ -151,6 +167,38 @@ export default function WhenScreen() {
     return (found?.name ?? "this").toLowerCase();
   }, [category, subcategory]);
 
+  /** Move the basket's one date. Checkout rechecks every shop against it. */
+  const writeBasketDeadline = async (by: string): Promise<boolean> => {
+    const { run, adopt } = useCart.getState();
+    setSaving(true);
+    setSaveError(null);
+    const saved = await run((cartId) => api.setCartFulfilment(cartId, { deadline: by })).then(
+      (cart) => {
+        adopt(cart);
+        return true;
+      },
+      (e: unknown) => {
+        setSaveError(userFacingError(e, "GRIDGO could not change your order's date. Try again."));
+        return false;
+      },
+    );
+    setSaving(false);
+    return saved;
+  };
+
+  const confirm = async () => {
+    if (!chosen || saving) return;
+    const by = deadlineFor(chosen);
+    if (basketMode) {
+      if (await writeBasketDeadline(by)) router.back();
+      return;
+    }
+    if (unlocked && basketDeadline != null) {
+      if (!(await writeBasketDeadline(by))) return;
+    }
+    go(by);
+  };
+
   const go = (by: string | null) => {
     setDeadline(by);
     const params = { subcategory: subcategory ?? "", category: category ?? "" };
@@ -167,11 +215,27 @@ export default function WhenScreen() {
     // then finds the answer already waiting. A re-rank asks again.
     if (!needsDropoffFirst(dropoff) && subcategory) {
       prefetchMatch(
-        withJobRanking(withJobFulfilment({ subcategoryCode: subcategory, deadline: by }, dropoff)),
+        withJobRanking(
+          withJobFulfilment(
+            { subcategoryCode: subcategory, ...basketMatchContext(useCart.getState().cart, by) },
+            dropoff,
+          ),
+        ),
       );
     }
     router.push({ pathname: "/request/rank", params });
   };
+
+  if (locked && basketDeadline) {
+    return (
+      <LockedBasketDate
+        thing={thing}
+        deadline={basketDeadline}
+        onContinue={() => go(basketDeadline)}
+        onChange={() => setUnlocked(true)}
+      />
+    );
+  }
 
   return (
     <Screen edges={["bottom"]}>
@@ -186,7 +250,14 @@ export default function WhenScreen() {
         contentContainerClassName="gg-page pb-4 pt-2"
         showsVerticalScrollIndicator={false}
       >
-        <Text className="text-h2 text-text-primary">When do you need your {thing}?</Text>
+        <Text className="text-h2 text-text-primary">
+          {basketMode ? "When do you need your order?" : `When do you need your ${thing}?`}
+        </Text>
+        {basketMode || unlocked ? (
+          <Text className="mt-1 text-body text-text-secondary">
+            This date is for your whole order. Every shop in it is held to it.
+          </Text>
+        ) : null}
         {/*
           One line, not three. The old paragraph explained the rule this
           calendar now simply shows — a day nobody can make sits quiet, like
@@ -208,7 +279,7 @@ export default function WhenScreen() {
             repainting most of it unavailable a moment later is a flicker on
             open, and again on every swipe past what has been answered for.
           */}
-          {availability || availabilityFailed ? (
+          {availability || availabilityFailed || !subcategory ? (
           <DeadlineCalendar
             daysFor={daysFor}
             month={month}
@@ -262,16 +333,63 @@ export default function WhenScreen() {
             // The date is already the largest thing on the screen. Repeating it
             // here wrapped the control onto two lines to say what the masthead
             // had just said.
-            label={chosen ? "Continue" : "Pick a date"}
-            onPress={() => go(chosen ? deadlineFor(chosen) : null)}
-            disabled={!chosen}
+            label={saving ? "Saving the date…" : chosen ? (basketMode ? "Use this date" : "Continue") : "Pick a date"}
+            onPress={() => void confirm()}
+            disabled={!chosen || saving}
           />
+          {saveError ? (
+            <Text className="text-center text-caption text-error">{saveError}</Text>
+          ) : null}
           {/*
             A second, quieter way through. A client with no deadline should not
             have to invent one, and inventing one would filter out shops that
-            could have done the job.
+            could have done the job. An order that already has a date, or is
+            being given one, has no "no rush" to offer.
           */}
-        <SecondaryButton label="No rush — show me anyone" onPress={() => go(null)} />
+          {basketMode || unlocked ? null : (
+            <SecondaryButton label="No rush — show me anyone" onPress={() => go(null)} />
+          )}
+      </View>
+    </Screen>
+  );
+}
+
+/**
+ * A product joining a basket that already has its date. The date is shown,
+ * not asked: every shop in one order is held to the same one. Moving it moves
+ * it for the whole order, which is what the second button says.
+ */
+function LockedBasketDate({
+  thing,
+  deadline,
+  onContinue,
+  onChange,
+}: {
+  thing: string;
+  deadline: string;
+  onContinue: () => void;
+  onChange: () => void;
+}) {
+  return (
+    <Screen edges={["bottom"]}>
+      <View className="gg-screen gg-page flex-1 pt-2">
+        <Text className="text-h2 text-text-primary">When do you need your {thing}?</Text>
+        <Text className="mt-1 text-body text-text-secondary">
+          It joins your order, so it shares your order&apos;s date.
+        </Text>
+        <View
+          className="gg-card mt-6 gap-1"
+          accessible
+          accessibilityLabel={`Your order's date: ${formatDeadline(deadline)}. ${ONE_DATE_NOTE}`}
+        >
+          <Text className="text-overline text-text-muted">YOUR ORDER&apos;S DATE</Text>
+          <Text className="text-h3 text-text-primary">{formatDeadline(deadline)}</Text>
+          <Text className="text-caption text-text-muted">{ONE_DATE_NOTE}</Text>
+        </View>
+      </View>
+      <View className="gg-page gap-3 pb-2 pt-2">
+        <PrimaryButton label="Continue" onPress={onContinue} />
+        <SecondaryButton label="Change the date for the whole order" onPress={onChange} />
       </View>
     </Screen>
   );

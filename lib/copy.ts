@@ -146,9 +146,17 @@ export function userFacingError(error: unknown, fallback: string): string {
           ? `This shop takes orders of ${minimum} and up. Change the quantity and try again.`
           : "This shop takes a minimum quantity. Change the quantity and try again.";
       }
-      // ---- basket: one order goes to one shop (`lib/otherShop.ts`) ----
-      case "cart_belongs_to_another_shop":
-        return "Your order is already with a different shop. Check it out first, or start a new order with this.";
+      // ---- basket: several shops, one date, one payment (gridgo-api#117) ----
+      case "basket_deadline_required":
+        return "Your order is printed by more than one shop, so it needs one date for all of them. Choose a date and try again.";
+      case "basket_deadline_mismatch":
+        return "Everything in one order shares one date. GRIDGO looked again with your order's date — pick from the new answer.";
+      case "deadline_not_met":
+        return "A shop in your order can no longer make your date. Choose a later date for the whole order, or remove that item.";
+      case "cart_group_not_found":
+        return "That shop group is no longer in your order. Add this as a new product instead.";
+      case "basket_payment_required":
+        return "This order is paid as one payment for every shop in it. Open the order and send the payment from there.";
       // ---- basket: the press's widest print ----
       case "printer_cap_exceeded": {
         const cap =

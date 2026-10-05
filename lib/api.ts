@@ -269,6 +269,17 @@ export type Order = {
    * `docs/ORDER_RESCHEDULE_API.md`). Read through `lib/reschedule.ts`.
    */
   rescheduleRequest?: RescheduleRequest | null;
+  /**
+   * Set when this order is one shop group of a multi-shop basket
+   * (gridgo-api `docs/MULTI_SHOP_CHECKOUT_API.md`). The group is an ordinary
+   * order with its own job, rider and refunds; the basket holds the one
+   * payment and the one receipt. Read through `lib/basketGroups.ts`.
+   */
+  basketId?: string | null;
+  /** "Shop A", "Shop B" — never the shop's identity. */
+  groupLabel?: string | null;
+  /** The basket's one deadline, shared by every group. */
+  basketDeadline?: string | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -1835,9 +1846,10 @@ export type MatchResult = {
   rating?: ShopRating;
   /**
    * Compatibility only (gridgo-api#126 keeps it for this rollout): the
-   * matching screen must never draw a field of it.
+   * matching screen must never draw a field of it. Against a multi-shop
+   * basket it is only `{label}` — no `supplierId` either.
    */
-  shop: ShopBoard;
+  shop: ShopBoard | { label: string; supplierId?: undefined };
   queue: MatchQueue;
   /** Absolute client promise; older deployments may only send queue.estimatedHours. */
   promiseBy?: string | null;
@@ -1915,7 +1927,13 @@ export type CartLineRecord = {
   id: string;
   /** Queue-and-calendar projection for this configured line; absent on older APIs. */
   promiseBy?: string | null;
-  supplierId: string;
+  /**
+   * The shop's id on a single-shop basket. A multi-shop basket withholds it
+   * and sends `groupId` instead, so group lines by `lineGroupKey`.
+   */
+  supplierId?: string;
+  /** Which shop group this line is in, on a multi-shop basket only. */
+  groupId?: string;
   catalogItemId: string;
   quantity: number;
   optionIds: string[];
@@ -1936,12 +1954,34 @@ export type CartLineRecord = {
   clientLineSubtotalMinor?: number | null;
 };
 
+/**
+ * One shop's share of a basket, as GRIDGO prices it (gridgo-api#117).
+ *
+ * Every figure is GRIDGO's: items carry the service fee inside them, and
+ * delivery is that group's own fee to its farthest drop-off. A figure GRIDGO
+ * cannot price yet is null, never zero.
+ */
+export type CartGroup = {
+  /** Opaque, and it moves: it is the group's first line id. Re-read it. */
+  id: string;
+  /** "Shop A", "Shop B" — never the shop's identity. */
+  label: string;
+  lineIds: string[];
+  clientItemSubtotalMinor: number | null;
+  deliveryFeeMinor: number | null;
+  totalMinor: number | null;
+  /** This group's share of a hub pick-up fee charged once per basket. */
+  pickupFeeMinor?: number;
+};
+
 export type Cart = {
   id: string;
   state: "draft" | "checked_out";
   version: number;
   serviceLevel: ServiceLevel;
   scheduledFor: string | null;
+  /** The one deadline every item in the basket is matched against. */
+  deadline?: string | null;
   fulfillmentMode: FulfilmentMode;
   defaultDropoff: OrderPoint | null;
   /** Set when the basket was filled through the choose-before-matching flow; then read-only. */
@@ -1951,9 +1991,41 @@ export type Cart = {
   /** GRIDGO's figures for this draft. Null once checked out; absent on an older API. */
   clientQuote?: CartQuote | null;
   lines: CartLineRecord[];
+  /** One per shop, in the order they were first added. Absent on older APIs. */
+  groups?: CartGroup[];
+  /** Set once a multi-shop basket has been checked out. */
+  basketId?: string;
   checkedOutOrderId: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** One shop group of a placed multi-shop basket, with its live state. */
+export type BasketGroup = {
+  orderId: string;
+  label: string;
+  state: string;
+  clientItemSubtotalMinor: number;
+  deliveryFeeMinor: number;
+  totalMinor: number;
+  pickupFeeMinor?: number;
+};
+
+/**
+ * A placed multi-shop basket: one payment and one receipt over several
+ * ordinary orders, one per shop group (gridgo-api#117).
+ */
+export type Basket = {
+  id: string;
+  receiptOrderId: string;
+  deadline: string | null;
+  fulfillmentMode: FulfilmentMode;
+  totalMinor: number;
+  /** The full hub pick-up fee, charged once for the whole basket. */
+  pickupFeeMinor?: number;
+  payment: PaymentInstallment & { amountMinor: number };
+  groups: BasketGroup[];
+  createdAt?: string;
 };
 
 /** One shop's share of a placed order: its own pickup, drop-off and delivery. */
@@ -1993,27 +2065,44 @@ export type MatchedOrder = {
   createdAt: string;
 };
 
+export type InvoiceLine = {
+  id: string;
+  jobId: string;
+  itemName: string;
+  quantity: number;
+  /** The shop's figures. Withheld from a client on a multi-shop receipt. */
+  unitPriceMinor?: number;
+  amountMinor?: number;
+  /** GRIDGO's figures, fee inside (gridgo-api#132). */
+  clientUnitPriceMinor?: number | null;
+  clientAmountMinor?: number | null;
+  artworkFileId: string | null;
+  mockupFileId: string | null;
+  artworkLinks?: ArtworkLink[];
+  dropoff: OrderPoint | null;
+};
+
+/** One shop group's section of a combined multi-shop receipt. */
+export type InvoiceGroup = {
+  orderId: string;
+  label: string;
+  lines: InvoiceLine[];
+  clientItemSubtotalMinor: number;
+  deliveryFeeMinor: number;
+  totalMinor: number;
+  pickupFeeMinor?: number;
+};
+
 export type Invoice = {
   invoiceNumber: string;
   orderId: string;
+  /** Set on the one combined receipt of a multi-shop basket. */
+  basketId?: string;
   issuedAt: string;
   currency: string;
-  lines: {
-    id: string;
-    jobId: string;
-    itemName: string;
-    quantity: number;
-    /** Shop figures, deprecated on client reads (gridgo-api#132 phase 3). */
-    unitPriceMinor?: number;
-    amountMinor?: number;
-    /** GRIDGO's figures for the line, fee inside, from the stored invoice. */
-    clientUnitPriceMinor?: number | null;
-    clientAmountMinor?: number | null;
-    artworkFileId: string | null;
-    mockupFileId: string | null;
-    artworkLinks?: ArtworkLink[];
-    dropoff: OrderPoint | null;
-  }[];
+  lines: InvoiceLine[];
+  /** One section per shop group, on a multi-shop receipt only. */
+  groups?: InvoiceGroup[];
   /** Shop items before the fee. Deprecated on client reads — use `clientItemSubtotalMinor`. */
   itemSubtotalMinor?: number;
   /** GRIDGO's printing figure for the whole invoice, fee rounded once on the aggregate. */
@@ -2027,7 +2116,12 @@ export type Invoice = {
   /** Present on a pick-up chosen before matching: the hub fee inside `deliveryFeeMinor`. */
   pickupFeeMinor?: number;
   totalMinor: number;
-  paymentPlan: { method: "qr_manual"; downpaymentMinor: number; balanceMinor: number };
+  paymentPlan: {
+    method: "qr_manual";
+    downpaymentMinor: number;
+    balanceMinor: number;
+    downpaymentPercent?: number;
+  };
 };
 
 /**
@@ -2182,12 +2276,17 @@ export type MatchInput = {
   addressId?: string;
   dropoff?: OrderPoint | null;
   /**
-   * Validates the basket and binds every pick token to it. The matching flow
-   * leaves it out: a token bound to one basket is refused by the fresh basket
-   * "start a new order" makes, and the API no longer keeps a basket's shop
-   * ahead of the others (gridgo-api#126).
+   * The basket this product joins. GRIDGO holds it to the basket's one
+   * deadline, rechecks a shop's queue with what the basket already has there,
+   * and keeps shop identities out of a multi-shop answer (gridgo-api#117).
+   * Sent only once the basket has a line — see `basketMatchContext`.
    */
   cartId?: string;
+  /**
+   * Add more from one shop group of the basket: matching is held to that
+   * group's shop without the client ever naming it. Needs `cartId`.
+   */
+  groupId?: string;
   /**
    * When the client needs it. A filter, not a preference: a shop that cannot
    * finish by this is not offered rather than ranked lower, because "can you
@@ -2232,6 +2331,8 @@ export type CartFulfilment = {
   serviceLevel?: ServiceLevel;
   scheduledFor?: string | null;
   defaultDropoff?: OrderPoint | null;
+  /** The basket's one deadline, ISO. Checkout rechecks every group against it. */
+  deadline?: string;
 };
 
 export async function createCart(input: CartFulfilment = {}): Promise<Cart> {
@@ -2411,11 +2512,38 @@ export async function setCartLineMockup(
 export async function checkoutCart(
   cartId: string,
   payment: { reference: string; proofFileId: string },
-): Promise<{ order: MatchedOrder; invoice: Invoice }> {
+): Promise<{ order: MatchedOrder; invoice: Invoice; basket?: Basket }> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
     method: "POST",
     body: JSON.stringify({ payment: { method: "qr_manual", ...payment } }),
   });
+}
+
+/** A placed multi-shop basket with every group's live state. */
+export async function getBasket(basketId: string): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(`/baskets/${encodeURIComponent(basketId)}`);
+  return result.basket;
+}
+
+/**
+ * Send the basket's one payment again after Operations turned it back.
+ *
+ * A multi-shop group's own payment routes answer `409 basket_payment_required`:
+ * one transfer covers every group, so it is submitted once, here.
+ */
+export async function submitBasketPayment(
+  basketId: string,
+  reference: string,
+  proofFileId: string,
+): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}/payment/submit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ method: "qr_manual", reference, proofFileId }),
+    },
+  );
+  return result.basket;
 }
 
 export async function getInvoice(orderId: string): Promise<Invoice> {
