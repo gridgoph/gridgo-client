@@ -47,7 +47,29 @@ describe("GridgoPrice", () => {
   });
 });
 
+describe("GridgoPrice with GRIDGO's own figure (gridgo-api#132)", () => {
+  it("draws the client figure as sent, before the rate is read and never marked up", async () => {
+    await render(<GridgoPrice clientMinor={5500} supplierMinor={5000} />);
+
+    expect(screen.getByText("₱55.00")).toBeTruthy();
+    expect(screen.queryByText("₱60.50")).toBeNull();
+  });
+
+  it("waits on a skeleton while the figure is on its way", async () => {
+    usePlatformSettings.getState().adopt(SETTINGS);
+
+    await render(<GridgoPrice clientMinor={null} supplierMinor={null} pending />);
+
+    expect(screen.queryByText(/₱|—/)).toBeNull();
+    expect(screen.getByLabelText("Price loading")).toBeTruthy();
+  });
+});
+
 describe("gridgoPriceLabel", () => {
+  it("spells the client figure as sent", () => {
+    expect(gridgoPriceLabel(5000, null, 5500)).toBe("₱55.00");
+  });
+
   it("spells the same figure for a screen reader", () => {
     expect(gridgoPriceLabel(5000, 1000)).toBe("₱55.00");
     expect(gridgoPriceLabel(5000, null)).toBe("price loading");

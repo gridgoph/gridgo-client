@@ -75,6 +75,7 @@ describe("receiptFromCheckout", () => {
     expect(view?.money).toEqual({
       printingMinor: 110000,
       deliveryFeeMinor: 12000,
+      pickup: false,
       serviceFeeMinor: 10000,
       serviceFeeRateBps: 1000,
       totalMinor: 122000,

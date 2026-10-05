@@ -6,6 +6,7 @@ import { SamplePhoto } from "@/components/SamplePhoto";
 import { ZoneRatingLine } from "@/components/ZoneRatingLine";
 import { useThemeColors } from "@/hooks/useTheme";
 import { ratingLabel, zoneLine } from "@/lib/distanceZone";
+import { startsFromBase } from "@/lib/gridgoPrice";
 import { samplePhotoUri, unitLine } from "@/lib/listing";
 import {
   placeLabel,
@@ -38,14 +39,14 @@ export function OtherListingRow({ listing, onPress, onStalePhoto }: Props) {
   const colors = useThemeColors();
   const rate = useServiceFeeRateBps();
   const photo = listing.photos[0];
-  const from = listing.fromPriceMinor !== listing.basePriceMinor ? "From " : "";
+  const from = startsFromBase(listing) ? "From " : "";
   const place = placeOrdinal(listing.placeInLine);
   const readyIn = readyInLine(listing.readyBy);
   const cap = printerCapLine(listing);
 
   const label = [
     listing.name,
-    `${from.toLowerCase()}${gridgoPriceLabel(listing.fromPriceMinor, rate)} ${unitLine(listing)}`,
+    `${from.toLowerCase()}${gridgoPriceLabel(listing.fromPriceMinor, rate, listing.clientFromPriceMinor)} ${unitLine(listing)}`,
     readyIn,
     placeLabel(listing.placeInLine),
     cap?.toLowerCase(),
@@ -89,6 +90,7 @@ export function OtherListingRow({ listing, onPress, onStalePhoto }: Props) {
             <View className="min-w-0 flex-1 gap-0.5">
               <Text className="text-body-lg font-medium text-text-primary">{listing.name}</Text>
               <GridgoPrice
+                clientMinor={listing.clientFromPriceMinor}
                 supplierMinor={listing.fromPriceMinor}
                 prefix={from}
                 suffix={` ${unitLine(listing)}`}

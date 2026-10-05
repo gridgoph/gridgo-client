@@ -20,7 +20,11 @@ export type CategoryBoards = {
   categoryCode: string;
   shops: api.ShopSummary[];
   boards: api.ShopBoard[];
-  /** Shops listed but whose board could not be read. Named, never dropped. */
+  /**
+   * Boards listed but not read, counted rather than dropped. Each is "Board N"
+   * by its place in the listing — never a shop's name, which client reads stop
+   * carrying (gridgo-api#132).
+   */
   unreadable: string[];
 };
 
@@ -95,7 +99,7 @@ async function read(categoryCode: string, maxBoards: number): Promise<CategoryBo
   const unreadable: string[] = [];
   results.forEach((board, index) => {
     if (board) boards.push(board);
-    else unreadable.push(page[index].shopName);
+    else unreadable.push(`Board ${index + 1}`);
   });
 
   return { categoryCode, shops, boards, unreadable };
@@ -128,7 +132,20 @@ export function listingsFor(
   return board.services
     .flatMap((service) => service.items)
     .filter((item) => item.subcategoryCode === subcategoryCode)
-    .sort((left, right) => left.fromPriceMinor - right.fromPriceMinor);
+    .sort((left, right) => fromPriceKey(left) - fromPriceKey(right));
+}
+
+/**
+ * What "cheapest" is measured on: GRIDGO's starting price where the listing
+ * carries it, else the shop's. One markup for every listing, so the order is
+ * the same either way — but a client surface sorts on the figure it draws.
+ */
+export function fromPriceKey(
+  item: Pick<api.CatalogItem, "fromPriceMinor" | "clientFromPriceMinor">,
+): number {
+  return Number.isSafeInteger(item.clientFromPriceMinor)
+    ? (item.clientFromPriceMinor as number)
+    : item.fromPriceMinor;
 }
 
 /**

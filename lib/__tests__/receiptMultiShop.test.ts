@@ -1,5 +1,5 @@
 import { printRuns } from "@/lib/basket";
-import { receiptFromCheckout, receiptFromInvoice, withGroupStanding } from "@/lib/receipt";
+import { receiptFromCheckout, receiptFromInvoice, receiptFulfilmentRow, withGroupStanding } from "@/lib/receipt";
 import { combinedInvoice, multiCart, placedBasket } from "@/test/multiShopFixtures";
 
 describe("the combined multi-shop receipt", () => {
@@ -27,10 +27,16 @@ describe("the combined multi-shop receipt", () => {
     expect(JSON.stringify(view)).not.toMatch(/NaN/);
   });
 
-  it("names the hub pick-up fee once when one was charged", () => {
-    const invoice = { ...combinedInvoice(), pickupFeeMinor: 2501 };
-    expect(receiptFromInvoice(invoice).money.pickupFeeMinor).toBe(2501);
-    expect(receiptFromInvoice(combinedInvoice()).money).not.toHaveProperty("pickupFeeMinor");
+  it("names the hub pick-up fee once, and delivery across the shops", () => {
+    const pickup = receiptFromInvoice({ ...combinedInvoice(), pickupFeeMinor: 2501, deliveryFeeMinor: 2501 });
+    expect(receiptFulfilmentRow(pickup.money, pickup.groups?.length)).toEqual({
+      label: "Pick-up fee, once per order",
+      value: "₱25.01",
+    });
+    const delivered = receiptFromInvoice(combinedInvoice());
+    expect(receiptFulfilmentRow(delivered.money, delivered.groups?.length).label).toBe("Delivery · 3 shops");
+    // A single-shop receipt keeps its own words.
+    expect(receiptFulfilmentRow(delivered.money).label).toBe("Delivery");
   });
 
   it("prints paid in full straight from checkout's answer", () => {

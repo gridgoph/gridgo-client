@@ -23,6 +23,7 @@ import {
 } from "@/lib/priorities";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
+import { withJobFulfilment } from "@/store/jobFulfilment";
 import { useOrderRanking, withJobRanking } from "@/store/orderRanking";
 import { usePriorities } from "@/store/priorities";
 
@@ -102,11 +103,12 @@ export default function JobRankingScreen() {
     const needsDropoff = needsDropoffFirst(dropoff);
     if (!needsDropoff && subcategory) {
       prefetchMatch(
-        withJobRanking({
-          subcategoryCode: subcategory,
-          dropoff,
-          deadline: useJobDeadline.getState().by,
-        }),
+        withJobRanking(
+          withJobFulfilment(
+            { subcategoryCode: subcategory, deadline: useJobDeadline.getState().by },
+            dropoff,
+          ),
+        ),
       );
     }
     router.push({

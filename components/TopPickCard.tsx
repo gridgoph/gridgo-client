@@ -7,6 +7,7 @@ import { ZoneRatingLine } from "@/components/ZoneRatingLine";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { MatchListing, MatchResult } from "@/lib/api";
 import { ratingLabel, zoneLine } from "@/lib/distanceZone";
+import { startsFromBase } from "@/lib/gridgoPrice";
 import { samplePhotoUri, unitLine } from "@/lib/listing";
 import { matchBadge, placeLabel, placeOrdinal, readyInLine } from "@/lib/match";
 import { printerCapLine } from "@/lib/printerWidth";
@@ -48,7 +49,7 @@ export function TopPickCard({ match, listing, onPress, onStalePhoto }: Props) {
   const rate = useServiceFeeRateBps();
   const badge = matchBadge(match);
   const photo = listing.photos[0];
-  const from = listing.fromPriceMinor !== listing.basePriceMinor ? "From " : "";
+  const from = startsFromBase(listing) ? "From " : "";
   const placeInLine =
     listing.placeInLine ?? (match.queue ? match.queue.jobsAhead + 1 : null);
   const place = placeOrdinal(placeInLine);
@@ -62,7 +63,7 @@ export function TopPickCard({ match, listing, onPress, onStalePhoto }: Props) {
   const label = [
     `Top pick${badge ? `, ${match.matchReason?.label}` : ""}`,
     listing.name,
-    `${from.toLowerCase()}${gridgoPriceLabel(listing.fromPriceMinor, rate)} ${unitLine(listing)}`,
+    `${from.toLowerCase()}${gridgoPriceLabel(listing.fromPriceMinor, rate, listing.clientFromPriceMinor)} ${unitLine(listing)}`,
     placeLabel(placeInLine),
     readyBy ? `ready by ${readyBy}` : null,
     readyIn,
@@ -104,6 +105,7 @@ export function TopPickCard({ match, listing, onPress, onStalePhoto }: Props) {
             <View className="min-w-0 flex-1 gap-0.5">
               <Text className="text-body-lg font-medium text-text-primary">{listing.name}</Text>
               <GridgoPrice
+                clientMinor={listing.clientFromPriceMinor}
                 supplierMinor={listing.fromPriceMinor}
                 prefix={from}
                 suffix={` ${unitLine(listing)}`}

@@ -11,7 +11,15 @@
  * Davao yet" knows where they stand.
  */
 
-import type { Cart, FulfilmentMode, ServiceLevel } from "@/lib/api";
+import type { Cart, CartLineRecord, FulfilmentMode, ServiceLevel } from "@/lib/api";
+import {
+  checkKey,
+  currentProblem,
+  lineArtworkLinks,
+  linkVerdict,
+  type ArtworkProblem,
+  type LinkCheckState,
+} from "@/lib/designLink";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 
 // ---------------------------------------------------------------------------
@@ -170,6 +178,8 @@ export type PlaceOrderBlocker =
   | "empty"
   | "price"
   | "artwork"
+  | "artwork_checking"
+  | "artwork_problem"
   | "address"
   | "date"
   | "schedule"
@@ -194,6 +204,8 @@ export function placeOrderBlockers({
   lineCount,
   linesUnpriced = 0,
   linesMissingArtwork,
+  linesCheckingArtwork = 0,
+  linesArtworkProblem = 0,
   linesMissingDropoff,
   missingBasketDate = false,
   referenceOk,
@@ -204,6 +216,14 @@ export function placeOrderBlockers({
   /** Lines GRIDGO answered with no price — checkout would refuse them too. */
   linesUnpriced?: number;
   linesMissingArtwork: number;
+  /** Lines whose design link GRIDGO is still checking. */
+  linesCheckingArtwork?: number;
+  /**
+   * Lines whose artwork would be refused: a link that is private or could not
+   * be confirmed, or a file or link checkout already turned down
+   * (gridgo-api#122). Never a warning — checkout refuses them.
+   */
+  linesArtworkProblem?: number;
   linesMissingDropoff: number;
   /**
    * A basket printed by several shops has no date yet. GRIDGO holds every shop
@@ -220,6 +240,8 @@ export function placeOrderBlockers({
   if (lineCount === 0) blockers.push("empty");
   if (linesUnpriced > 0) blockers.push("price");
   if (linesMissingArtwork > 0) blockers.push("artwork");
+  if (linesArtworkProblem > 0) blockers.push("artwork_problem");
+  if (linesCheckingArtwork > 0) blockers.push("artwork_checking");
   if (linesMissingDropoff > 0) blockers.push("address");
   if (missingBasketDate) blockers.push("date");
   if (!hasProof) blockers.push("proof");
@@ -240,6 +262,12 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
       return detail
         ? `Attach artwork to ${detail} before you place this.`
         : "Attach artwork to every item before you place this.";
+    case "artwork_problem":
+      return detail
+        ? `GRIDGO cannot use the artwork on ${detail}. Open its Artwork to fix it.`
+        : "GRIDGO cannot use the artwork on some items. Open their Artwork to fix it.";
+    case "artwork_checking":
+      return "Checking your design link…";
     case "address":
       return "Set a delivery address for every item.";
     case "date":
@@ -253,4 +281,81 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
     case "settings":
       return "GRIDGO could not read its current charges. Try again in a moment.";
   }
+}
+
+// ---------------------------------------------------------------------------
+// When checkout turns the artwork down
+// ---------------------------------------------------------------------------
+
+/** The artwork refusals checkout can answer with (gridgo-api#122). */
+export const ARTWORK_CHECKOUT_CODES = [
+  "artwork_link_check_failed",
+  "artwork_file_check_failed",
+  "artwork_required",
+  "artwork_check_required",
+] as const;
+
+export type ArtworkRefusal = {
+  code: (typeof ARTWORK_CHECKOUT_CODES)[number];
+  lineId: string | null;
+  /** GRIDGO's own words when it sent some; it names the fix. */
+  message: string;
+};
+
+/** Our words for each refusal, for an answer that came without a message. */
+function artworkRefusalFallback(code: ArtworkRefusal["code"]): string {
+  switch (code) {
+    case "artwork_link_check_failed":
+      return "GRIDGO could not open your design link. Set sharing to Anyone with the link, or remove the link and upload the file.";
+    case "artwork_file_check_failed":
+      return "GRIDGO could not read your file. Export it again and upload the new file.";
+    case "artwork_required":
+      return "Upload the artwork or add a design link anyone can view.";
+    case "artwork_check_required":
+      return "Your artwork changed while GRIDGO was checking it. Place the order again.";
+  }
+}
+
+/** Reads a checkout refusal about artwork, or null for any other answer. */
+export function artworkRefusalOf(body: unknown): ArtworkRefusal | null {
+  if (!body || typeof body !== "object") return null;
+  const record = body as { error?: unknown; lineId?: unknown; message?: unknown };
+  const code = ARTWORK_CHECKOUT_CODES.find((candidate) => candidate === record.error);
+  if (!code) return null;
+  const message = typeof record.message === "string" && record.message.trim() ? record.message.trim() : null;
+  return {
+    code,
+    lineId: typeof record.lineId === "string" ? record.lineId : null,
+    message: message ?? artworkRefusalFallback(code),
+  };
+}
+
+/**
+ * What the client is told once the order is placed: the file goes to GRIDGO
+ * first, and the shop hears of the job only after it passes.
+ */
+export const FILE_CHECK_AFTER_PAYMENT =
+  "Your file is with GRIDGO for a quick check before the shop starts. We'll tell you if anything needs fixing.";
+
+/** Where one basket line's artwork stands with GRIDGO's check, when it is not simply fine. */
+export type LineArtworkStatus = { kind: "checking" | "problem"; text: string };
+
+/**
+ * A line's artwork, read against this session's link checks and anything
+ * checkout already refused. A refusal outranks a check: it is the newer word.
+ */
+export function lineArtworkStatus(
+  line: Pick<CartLineRecord, "id" | "artworkFileId" | "artworkLinks">,
+  checks: Record<string, LinkCheckState>,
+  problems: Record<string, ArtworkProblem>,
+): LineArtworkStatus | null {
+  const refused = currentProblem(problems, line);
+  if (refused) return { kind: "problem", text: refused.message };
+  for (const link of lineArtworkLinks(line)) {
+    const state = checks[checkKey(link)];
+    if (state?.phase === "checking") return { kind: "checking", text: "Checking the design link…" };
+    const verdict = linkVerdict(state);
+    if (verdict?.blocks) return { kind: "problem", text: `${verdict.title}. Open Artwork to fix it.` };
+  }
+  return null;
 }

@@ -1,7 +1,7 @@
 import * as api from "@/lib/api";
 import type { ArtworkLinkCheck, Cart, CartLineRecord, CatalogItem } from "@/lib/api";
 import { useCart } from "@/store/cart";
-import { checkKey, useDesignLink } from "@/store/designLink";
+import { artworkSignature, checkKey, currentProblem, useDesignLink } from "@/store/designLink";
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
@@ -92,12 +92,13 @@ describe("design link store", () => {
     expect(useCart.getState().cart?.lines[0].artworkLinks).toEqual([LINK]);
   });
 
-  it("keeps an inconclusive link, because the client may continue past it", async () => {
+  it("does not keep an inconclusive link: checkout would refuse it (gridgo-api#122)", async () => {
+    useCart.setState({ cart: cart([line({ artworkLinks: [LINK] })]) });
     checkArtworkLink.mockResolvedValue(checked({ access: "unknown" }));
 
-    await useDesignLink.getState().commit(URL_OK, "cline_1");
+    await useDesignLink.getState().commit(URL_OK, "cline_1", { recheck: true });
 
-    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [LINK] });
+    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [] });
   });
 
   it("does not keep a link that asks people to sign in, and drops the one it replaces", async () => {
@@ -169,15 +170,45 @@ describe("design link store", () => {
     expect(updateCartLine).not.toHaveBeenCalled();
   });
 
-  it("treats a rate limit as a passable warning, not a broken link", async () => {
+  it("holds a link it could not check yet (a rate limit) off the line, to be checked again", async () => {
     checkArtworkLink.mockRejectedValue(
       new api.ApiError(429, { error: "artwork_link_rate_limited", message: "Wait a minute." }),
     );
 
     await useDesignLink.getState().commit(URL_OK, "cline_1");
 
+    // Not a broken link — `blocks` is for a link GRIDGO refuses outright —
+    // but not one checkout would take either.
     expect(useDesignLink.getState().checks[checkKey(LINK)]).toMatchObject({ phase: "failed", blocks: false });
-    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [LINK] });
+    expect(updateCartLine).not.toHaveBeenCalled();
+  });
+
+  it("checks a saved link once, however many screens ask", async () => {
+    let answer!: (value: ArtworkLinkCheck) => void;
+    checkArtworkLink.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+
+    const first = useDesignLink.getState().verify(LINK);
+    const second = useDesignLink.getState().verify(LINK);
+    expect(useDesignLink.getState().checks[checkKey(LINK)]).toEqual({ phase: "checking" });
+    answer(checked({ ok: true, access: "public_view" }));
+    await Promise.all([first, second]);
+    await useDesignLink.getState().verify(LINK);
+
+    expect(checkArtworkLink).toHaveBeenCalledTimes(1);
+    expect(useDesignLink.getState().checks[checkKey(LINK)]).toMatchObject({ phase: "checked" });
+  });
+
+  it("keeps checkout's refusal against the artwork it was about", () => {
+    const refused = line({ artworkLinks: [LINK] });
+    useDesignLink.getState().setProblem("cline_1", {
+      code: "artwork_link_check_failed",
+      message: "Make the design viewable by anyone with the link.",
+      signature: artworkSignature(refused),
+    });
+
+    expect(currentProblem(useDesignLink.getState().problems, refused)?.message).toMatch(/viewable/);
+    // A new link (or a file instead) is new artwork: the old refusal is moot.
+    expect(currentProblem(useDesignLink.getState().problems, line({ artworkFileId: "file_2" }))).toBeNull();
   });
 
   it("clears the line when the field is emptied", async () => {

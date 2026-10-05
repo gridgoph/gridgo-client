@@ -6,6 +6,7 @@ import {
   ARTWORK_MAX_BYTES,
   ARTWORK_MAX_MIB,
   EMPTY_ARTWORK,
+  artworkCheckFailure,
   artworkErrorMessage,
   artworkStateFromStoredFile,
   normalizeFileName,
@@ -136,6 +137,19 @@ export function useArtworkUpload(
     try {
       const file = await handle.done;
       if (!aliveRef.current) return;
+      // Stored, but not something GRIDGO can print from: never offered to a
+      // line, because checkout would refuse it with the client at the till.
+      const unusable = artworkCheckFailure(file.artworkCheck);
+      if (unusable) {
+        setState({
+          ...EMPTY_ARTWORK,
+          phase: "failed",
+          fileName: file.originalFilename || asset.name,
+          error: unusable,
+          fileCheck: file.artworkCheck ?? null,
+        });
+        return;
+      }
       setState({
         phase: "stored",
         fileName: file.originalFilename || asset.name,
@@ -145,6 +159,7 @@ export function useArtworkUpload(
         contentType: file.detectedContentType,
         detected: file.detected ?? null,
         error: null,
+        fileCheck: file.artworkCheck ?? null,
       });
     } catch (error) {
       if (!aliveRef.current) return;

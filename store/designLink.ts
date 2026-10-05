@@ -4,13 +4,17 @@ import * as api from "@/lib/api";
 import type { CartLineRecord } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
+  checkKey,
   checkedLink,
   lineArtworkLinks,
   linkVerdict,
   parseDesignLink,
   sameLinks,
+  type ArtworkProblem,
   type LinkCheckState,
 } from "@/lib/designLink";
+
+export { artworkSignature, checkKey, currentProblem, type ArtworkProblem } from "@/lib/designLink";
 import { useCart } from "@/store/cart";
 
 /**
@@ -38,14 +42,58 @@ type DesignLinkState = {
   commit: (text: string, lineId: string, options?: { recheck?: boolean }) => Promise<void>;
   /** A link already on the line counts as committed, so leaving the field unchanged checks nothing. */
   seed: (lineId: string, url: string) => void;
+  /**
+   * Check a link already on a line, once per session — checkout's way of
+   * holding a link saved on an earlier visit to the bar a new paste meets.
+   */
+  verify: (link: api.ArtworkLink) => Promise<void>;
+  /**
+   * What checkout was told about a line's artwork (gridgo-api#122), keyed by
+   * line and stamped with the artwork it was about, so replacing the file or
+   * the link clears it without anyone having to remember to.
+   */
+  problems: Record<string, ArtworkProblem>;
+  setProblem: (lineId: string, problem: ArtworkProblem | null) => void;
   reset: () => void;
 };
 
-export function checkKey(link: api.ArtworkLink): string {
-  return `${link.formatCode} ${link.url}`;
+const initial = { committed: {}, checks: {}, saving: {}, saveError: {}, problems: {} };
+
+/** In-flight checks by link, so checkout and the field never spend the budget twice. */
+const inflight = new Map<string, Promise<LinkCheckState>>();
+
+async function runCheck(link: api.ArtworkLink): Promise<LinkCheckState> {
+  try {
+    const check = await api.checkArtworkLink(link);
+    return check ? { phase: "checked", check } : { phase: "unavailable" };
+  } catch (error) {
+    const code =
+      error instanceof api.ApiError &&
+      typeof error.body === "object" &&
+      error.body &&
+      "error" in error.body
+        ? String((error.body as { error: unknown }).error)
+        : null;
+    return {
+      phase: "failed",
+      // A link GRIDGO refuses to check is one it also refuses to keep.
+      blocks: code === "invalid_artwork_link" || code === "unsafe_artwork_url",
+      message:
+        code === "artwork_link_rate_limited"
+          ? "GRIDGO has checked a lot of links in the last minute."
+          : userFacingError(error, "We couldn't check this link just now."),
+    };
+  }
 }
 
-const initial = { committed: {}, checks: {}, saving: {}, saveError: {} };
+function sharedCheck(link: api.ArtworkLink): Promise<LinkCheckState> {
+  const key = checkKey(link);
+  const held = inflight.get(key);
+  if (held) return held;
+  const pending = runCheck(link).finally(() => inflight.delete(key));
+  inflight.set(key, pending);
+  return pending;
+}
 
 /** Newest commit per line, so a slow check cannot overwrite a later paste. */
 const generations = new Map<string, number>();
@@ -118,24 +166,7 @@ export const useDesignLink = create<DesignLinkState>((set, get) => {
       const stale = !state || state.phase === "failed" || options.recheck;
       if (stale) {
         patch("checks", key, { phase: "checking" });
-        try {
-          const check = await api.checkArtworkLink(parsed.link);
-          state = check ? { phase: "checked", check } : { phase: "unavailable" };
-        } catch (error) {
-          const code =
-            error instanceof api.ApiError &&
-            typeof error.body === "object" &&
-            error.body &&
-            "error" in error.body
-              ? String((error.body as { error: unknown }).error)
-              : null;
-          state = {
-            phase: "failed",
-            // A link GRIDGO refuses to check is one it also refuses to keep.
-            blocks: code === "invalid_artwork_link" || code === "unsafe_artwork_url",
-            message: userFacingError(error, "We couldn't check this link just now. You can still continue."),
-          };
-        }
+        state = await sharedCheck(parsed.link);
         patch("checks", key, state);
       }
       if (generations.get(line.id) !== generation || !state || state.phase === "checking") return;
@@ -149,8 +180,24 @@ export const useDesignLink = create<DesignLinkState>((set, get) => {
     seed: (lineId, url) => {
       if (get().committed[lineId] === undefined) patch("committed", lineId, url);
     },
+    verify: async (link) => {
+      const key = checkKey(link);
+      const held = get().checks[key];
+      if (held && held.phase !== "failed") return;
+      patch("checks", key, { phase: "checking" });
+      patch("checks", key, await sharedCheck(link));
+    },
+    setProblem: (lineId, problem) => {
+      set((state) => {
+        const problems = { ...state.problems };
+        if (problem) problems[lineId] = problem;
+        else delete problems[lineId];
+        return { problems };
+      });
+    },
     reset: () => {
       generations.clear();
+      inflight.clear();
       set(initial);
     },
   };

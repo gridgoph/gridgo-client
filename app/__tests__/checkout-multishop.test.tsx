@@ -133,6 +133,16 @@ describe("CheckoutScreen, several shops", () => {
   it("keeps a group's missing delivery price as unknown, never zero", async () => {
     const cart = multiCart(2);
     cart.groups![1] = { ...cart.groups![1], deliveryFeeMinor: null, totalMinor: null };
+    // GRIDGO's quote says the same: no delivery figure, so no total.
+    cart.clientQuote = {
+      ...cart.clientQuote!,
+      status: "incomplete",
+      reasons: [{ code: "dropoff_required", lineIds: ["cline_1"] }],
+      deliveryFeeMinor: null,
+      totalMinor: null,
+      downpaymentMinor: null,
+      balanceMinor: null,
+    };
     holding(cart);
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("2 SHOPS, ONE ORDER");

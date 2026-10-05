@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
-import { CalendarDays, ChevronRight, Home, Info, MapPin, Minus, Plus, QrCode } from "lucide-react-native";
+import { CalendarDays, ChevronRight, Home, Info, MapPin, Minus, Plus, QrCode, Truck } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,6 +16,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DeliveryZonesHelp } from "@/components/DeliveryZonesHelp";
 import { EmptyState } from "@/components/EmptyState";
+import { HubPickupPanel } from "@/components/HubPickupPanel";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { paymentQrFromSettings, QrPaySheet } from "@/components/QrPaySheet";
@@ -37,6 +38,7 @@ import * as api from "@/lib/api";
 import { formatPhp, type CartLineRecord } from "@/lib/api";
 import {
   basketTotals,
+  clientLineAmountMinor,
   lineName,
   lineOptionLabels,
   linesMissingArtwork,
@@ -52,19 +54,20 @@ import {
   isMultiShop,
   MULTI_SHOP_PAYMENT_TITLE,
   multiShopPaymentNote,
-  multiShopTotals,
   ONE_DATE_NOTE,
   shopGroups,
 } from "@/lib/basketGroups";
 import { unpricedLineReason } from "@/lib/clientPrice";
 import { formatDeadline } from "@/lib/deadline";
-import { lineArtworkSummary, lineHasArtwork } from "@/lib/designLink";
-import { clientAmountMinor } from "@/lib/gridgoPrice";
+import { lineArtworkLinks, lineArtworkSummary, lineHasArtwork } from "@/lib/designLink";
 import { holdPlacedReceipt, openReceiptAfterCheckout, receiptFromCheckout } from "@/lib/receipt";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
 import { clearOrderFlow } from "@/lib/orderFlow";
 import {
+  artworkRefusalOf,
   blockerLine,
+  lineArtworkStatus,
+  type LineArtworkStatus,
   fulfilmentModeFor,
   invoiceNote,
   PAYMENT_CHOICE_BLURB,
@@ -95,12 +98,14 @@ import {
   OCR_READING,
   OCR_UNREADABLE,
 } from "@/lib/receiptOcr";
-import { type GeoPoint } from "@/lib/tracking";
-import { legZoneLine } from "@/lib/distanceZone";
+import { zoneLine } from "@/lib/distanceZone";
+import { hubFeeLabel } from "@/lib/hubPickup";
+import { fulfilmentSummary } from "@/lib/requestFulfilment";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
+import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
 
 /**
  * The checkout sheet.
@@ -138,7 +143,6 @@ export default function CheckoutScreen() {
   const clearCart = useCart((state) => state.clear);
 
   const [settings, setSettings] = useState<api.PlatformSettings | null>(null);
-  const [shops, setShops] = useState<Record<string, api.ShopBoard>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [referenceTouched, setReferenceTouched] = useState(false);
   const [attempted, setAttempted] = useState(false);
@@ -154,6 +158,7 @@ export default function CheckoutScreen() {
   const fields = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference", View | null>>>({});
 
   const proof = usePaymentProof(cartId);
+  const setArtworkProblem = useDesignLink((state) => state.setProblem);
   const reference = useCheckoutPayment((state) => state.reference);
   const setReference = useCheckoutPayment((state) => state.setReference);
   const applyOcrReference = useCheckoutPayment((state) => state.applyOcrReference);
@@ -208,93 +213,47 @@ export default function CheckoutScreen() {
   }, [loadCart]);
   const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadPhotos);
 
-  // Each run's own pin, so delivery can be measured. The board also carries the
-  // shop's name; it is deliberately never read. GRIDGO is who the client is
-  // buying from, and a run is named by its position in the basket.
-  const supplierIds = useMemo(
-    () =>
-      [...new Set((cart?.lines ?? []).map((line) => line.supplierId))]
-        .filter((supplierId): supplierId is string => Boolean(supplierId))
-        .sort(),
-    [cart],
-  );
-  const supplierKey = supplierIds.join(",");
-
-  useFocusEffect(
-    useCallback(() => {
-      let alive = true;
-      void (async () => {
-        const boards = await Promise.all(
-          supplierIds.map(async (supplierId) => {
-            try {
-              return await api.getCatalogShop(supplierId);
-            } catch {
-              return null;
-            }
-          }),
-        );
-        if (!alive) return;
-        setShops(
-          Object.fromEntries(
-            boards.filter((board): board is api.ShopBoard => board !== null).map((board) => [board.supplierId, board]),
-          ),
-        );
-      })();
-      return () => {
-        alive = false;
-      };
-    }, [supplierKey]), // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  const shopPoints = useMemo<Record<string, GeoPoint | null>>(
-    () =>
-      Object.fromEntries(
-        Object.entries(shops).map(([supplierId, board]) => [
-          supplierId,
-          board.shop ? { lat: board.shop.lat, lng: board.shop.lng } : null,
-        ]),
-      ),
-    [shops],
-  );
-
   const lines = useMemo(() => cart?.lines ?? [], [cart]);
   useTourScreen("checkout", hydrated && lines.length > 0);
-  const feeRateBps = settings?.serviceFeeRateBps ?? 0;
+  const feeRateBps = settings?.serviceFeeRateBps ?? null;
   const runs = useMemo(() => printRuns(lines, feeRateBps), [lines, feeRateBps]);
-  const singleTotals = useMemo(
-    () => basketTotals({ cart, settings, shopPoints }),
-    [cart, settings, shopPoints],
-  );
-  /*
-    Several shops: GRIDGO's own groups price the basket — fee-inclusive items
-    and each group's delivery quote — because a multi-shop basket withholds
-    the shops and their pins. It is paid in full, in one transfer.
-  */
+  // GRIDGO's own quote for the basket (`cart.clientQuote`): printing, each
+  // run's delivery leg and zone, any pick-up fee, the total and the up-front
+  // share. The sheet adds nothing up itself. A basket printed by several
+  // shops (gridgo-api#117) is quoted paid in full, and is drawn by GRIDGO's
+  // own shop groups, each with its own delivery fee.
+  const totals = useMemo(() => basketTotals({ cart, settings }), [cart, settings]);
   const multi = isMultiShop(cart);
   const groups = useMemo(() => shopGroups(cart), [cart]);
-  const groupTotals = useMemo(() => multiShopTotals(cart), [cart]);
-  const totals = multi
-    ? {
-        ...singleTotals,
-        clientItemSubtotalMinor: groupTotals.itemsMinor,
-        deliveryFeeMinor: groupTotals.deliveryFeeMinor,
-        totalMinor: groupTotals.totalMinor,
-        downpaymentMinor: groupTotals.payNowMinor,
-        balanceMinor: groupTotals.totalMinor == null ? null : 0,
-        downpaymentPercent: FULL_PAYMENT_PERCENT,
-      }
-    : singleTotals;
   const basketDate = basketDeadlineOf(cart);
 
   const travel = travelChoiceOf(cart);
+  // Chosen before the match (#158): read back here, never asked again.
+  const locked = cart?.requestFulfillment ?? null;
   const unpriced = linesUnpriced(lines);
   const missingArtwork = linesMissingArtwork(lines);
+  // Every design link meets its check before the order can go (#122): a link
+  // kept on an earlier visit is checked again here, once per session.
+  const linkChecks = useDesignLink((state) => state.checks);
+  const artworkProblems = useDesignLink((state) => state.problems);
+  const verifyLink = useDesignLink((state) => state.verify);
+  const linkKeys = lines.flatMap((line) => lineArtworkLinks(line).map(checkKey)).join("\n");
+  useEffect(() => {
+    for (const line of useCart.getState().cart?.lines ?? []) {
+      for (const link of lineArtworkLinks(line)) void verifyLink(link);
+    }
+  }, [linkKeys, verifyLink]);
+  const artworkStatus = (line: CartLineRecord) => lineArtworkStatus(line, linkChecks, artworkProblems);
+  const checkingArtwork = lines.filter((line) => artworkStatus(line)?.kind === "checking");
+  const artworkProblem = lines.filter((line) => artworkStatus(line)?.kind === "problem");
   const referenceCheck = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
   const blockers = placeOrderBlockers({
     lineCount: lines.length,
     linesUnpriced: unpriced.length,
     linesMissingArtwork: missingArtwork.length,
+    linesCheckingArtwork: checkingArtwork.length,
+    linesArtworkProblem: artworkProblem.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
     missingBasketDate: multi && !basketDate,
     referenceOk: ocrReading || referenceCheck.ok,
@@ -395,7 +354,7 @@ export default function CheckoutScreen() {
 
   const scrollToBlocker = (blocker: (typeof blockers)[number]) => {
     const key =
-      blocker === "artwork" || blocker === "price" || blocker === "date"
+      blocker === "artwork" || blocker === "price" || blocker === "artwork_problem" || blocker === "date"
         ? "artwork"
         : blocker === "address"
           ? "address"
@@ -446,11 +405,28 @@ export default function CheckoutScreen() {
       clearOrderFlow();
       openReceiptAfterCheckout(router, order.id);
     } catch (e) {
+      // The artwork was turned down (#122): the reason belongs on the line
+      // and on its Artwork screen, where the fix is, not only in the footer.
+      const refusal = e instanceof api.ApiError ? artworkRefusalOf(e.body) : null;
+      const refused = refusal?.lineId ? lines.find((line) => line.id === refusal.lineId) : null;
+      if (refusal && refused && refusal.code !== "artwork_check_required") {
+        setArtworkProblem(refused.id, {
+          code: refusal.code,
+          message: refusal.message,
+          signature: artworkSignature(refused),
+        });
+        setAttempted(true);
+        scrollToBlocker("artwork_problem");
+        setPlaceError(blockerLine("artwork_problem", lineName(refused)));
+        return;
+      }
       setPlaceError(
-        userFacingError(
-          e,
-          "GRIDGO could not place your order. Nothing was charged — your order is still here, so try again.",
-        ),
+        refusal
+          ? refusal.message
+          : userFacingError(
+              e,
+              "GRIDGO could not place your order. Nothing was charged — your order is still here, so try again.",
+            ),
       );
     } finally {
       setPlacing(false);
@@ -494,6 +470,7 @@ export default function CheckoutScreen() {
     <LineRow
       key={line.id}
       line={line}
+      artwork={artworkStatus(line)}
       serviceFeeRateBps={settings?.serviceFeeRateBps ?? null}
       busy={busy}
       onStalePhoto={onStalePhoto}
@@ -582,11 +559,15 @@ export default function CheckoutScreen() {
                         ? unpriced.length === 1
                           ? lineName(unpriced[0])
                           : undefined
+                        : blockers[0] === "artwork_problem"
+                          ? artworkProblem.length === 1
+                            ? lineName(artworkProblem[0])
+                            : undefined
                         : missingArtwork.length === 1
                           ? lineName(missingArtwork[0])
                           : undefined,
                     )
-                : "Your order goes to Operations for artwork checking.")}
+                : "GRIDGO checks your file before the shop starts.")}
           </Text>
         </TourTarget>
       }
@@ -672,7 +653,7 @@ export default function CheckoutScreen() {
                   divided={index > 0}
                   group={group}
                   pickup={travel === "pickup"}
-                  sharedPickupFee={groupTotals.pickupFeeMinor != null}
+                  sharedPickupFee={totals.pickupFeeMinor != null && totals.pickupFeeMinor > 0}
                   busy={busy}
                   onAddMore={() => addToGroup(group.id, group.label)}
                 >
@@ -696,12 +677,9 @@ export default function CheckoutScreen() {
                     : `${run.runLabel.toUpperCase()} OF ${runs.length}`}
                 </Text>
                 <Text className="text-caption text-text-secondary">
-                  {(() => {
-                    // GRIDGO's price for the run. Null reads as "Not yet",
-                    // never as ₱0.00: a run with an unpriced line has no figure.
-                    const priced = clientAmountMinor(run.subtotalMinor, settings?.serviceFeeRateBps);
-                    return priced == null ? "Not yet" : formatPhp(priced);
-                  })()}
+                  {/* GRIDGO's price for the run. Null reads as "Not yet",
+                      never as ₱0.00: a run with an unpriced line has no figure. */}
+                  {run.clientSubtotalMinor == null ? "Not yet" : formatPhp(run.clientSubtotalMinor)}
                 </Text>
               </View>
 
@@ -749,6 +727,14 @@ export default function CheckoutScreen() {
 
         {/* ---- How it travels -------------------------------------------- */}
         <Section title="HOW IT GETS TO YOU">
+          {locked ? (
+            <ChosenTravel
+              choice={locked}
+              hub={cart?.hubPickup ?? null}
+              legZone={totals.legs[0] ? zoneLine(totals.legs[0].zone, totals.legs[0].distanceKm) : null}
+            />
+          ) : (
+          <>
           <Segmented
             options={TRAVEL_CHOICES.map((choice) => ({
               value: choice,
@@ -810,6 +796,8 @@ export default function CheckoutScreen() {
                 />
               </View>
             </>
+          )}
+          </>
           )}
         </Section>
 
@@ -957,32 +945,33 @@ export default function CheckoutScreen() {
               }
             />
 
-            {multi ? (
-              travel === "pickup" ? (
+            {travel === "pickup" && totals.pickupFeeMinor != null ? (
+              // Collected at the hub: its flat fee, "Free" at zero. Already
+              // inside the total — GRIDGO counts it in the delivery slot. A
+              // basket from several shops is still charged it once.
+              <SpecRow
+                label={multi ? "Pick-up · once per order" : "Pick-up"}
+                value={hubFeeLabel(totals.pickupFeeMinor) ?? "Not yet"}
+              />
+            ) : multi && travel !== "pickup" ? (
+              groups.map((group) => (
                 <SpecRow
-                  label={groupTotals.pickupFeeMinor ? "Pick-up at GRIDGO Office · once per order" : "Delivery"}
-                  value={groupTotals.pickupFeeMinor ? formatPhp(groupTotals.pickupFeeMinor) : "None — you collect"}
+                  key={group.id}
+                  label={`Delivery · ${group.label}`}
+                  value={group.deliveryFeeMinor == null ? "Set with your address" : formatPhp(group.deliveryFeeMinor)}
                 />
-              ) : (
-                groups.map((group) => (
-                  <SpecRow
-                    key={group.id}
-                    label={`Delivery · ${group.label}`}
-                    value={group.deliveryFeeMinor == null ? "Set with your address" : formatPhp(group.deliveryFeeMinor)}
-                  />
-                ))
-              )
+              ))
             ) : travel === "pickup" ? (
               <SpecRow label="Delivery" value="None — you collect" />
             ) : totals.legs.length > 1 ? (
               totals.legs.map((leg) => (
                 <SpecRow
-                  key={leg.supplierId}
+                  key={leg.lineIds.join(",")}
                   label={`Delivery · ${leg.runLabel}`}
                   value={
                     leg.feeMinor == null
                       ? "Set with your address"
-                      : withZone(formatPhp(leg.feeMinor), legZoneLine(leg.zone, leg.distanceMeters))
+                      : withZone(formatPhp(leg.feeMinor), zoneLine(leg.zone, leg.distanceKm))
                   }
                 />
               ))
@@ -994,9 +983,7 @@ export default function CheckoutScreen() {
                     ? "Set with your address"
                     : withZone(
                         formatPhp(totals.deliveryFeeMinor),
-                        totals.legs[0]
-                          ? legZoneLine(totals.legs[0].zone, totals.legs[0].distanceMeters)
-                          : null,
+                        totals.legs[0] ? zoneLine(totals.legs[0].zone, totals.legs[0].distanceKm) : null,
                       )
                 }
               />
@@ -1029,6 +1016,11 @@ export default function CheckoutScreen() {
               {unpriced.length === 1
                 ? `${lineName(unpriced[0])} has no price at its quantity, so the total lands once you change it.`
                 : "Some items have no price at their quantity, so the total lands once you change them."}
+            </Text>
+          ) : totals.totalMinor == null && totals.reasons.some((reason) => reason.code === "catalog_item_stale" || reason.code === "shop_unavailable") ? (
+            <Text className="text-caption text-text-muted">
+              Something in your order can no longer be printed as you picked it. Open it and pick
+              again, or remove it.
             </Text>
           ) : totals.totalMinor == null ? (
             <Text className="text-caption text-text-muted">
@@ -1150,6 +1142,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  */
 function LineRow({
   line,
+  artwork,
   serviceFeeRateBps,
   busy,
   onStalePhoto,
@@ -1159,6 +1152,8 @@ function LineRow({
   onRemove,
 }: {
   line: CartLineRecord;
+  /** Where this line's artwork stands with GRIDGO's check; null when it is fine. */
+  artwork: LineArtworkStatus | null;
   /** GRIDGO's rate; null while the charges are unread, and then no figure. */
   serviceFeeRateBps: number | null;
   busy: boolean;
@@ -1172,7 +1167,7 @@ function LineRow({
   const options = lineOptionLabels(line).join(" · ");
   const name = lineName(line);
   const readyBy = readyByDate(line.promiseBy);
-  const clientAmount = clientAmountMinor(line.lineSubtotalMinor, serviceFeeRateBps);
+  const clientAmount = clientLineAmountMinor(line, serviceFeeRateBps);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -1203,7 +1198,7 @@ function LineRow({
                   {options}
                 </Text>
               ) : null}
-              {line.lineSubtotalMinor == null ? (
+              {clientAmount == null ? (
                 <Text className="text-caption text-warning">{unpricedLineReason(line)}</Text>
               ) : (
                 <Text className="text-body text-text-secondary">
@@ -1217,6 +1212,14 @@ function LineRow({
               >
                 {lineArtworkSummary(line)}
               </Text>
+              {artwork ? (
+                <Text
+                  className={artwork.kind === "problem" ? "text-caption text-error" : "text-caption text-text-secondary"}
+                  accessibilityLiveRegion="polite"
+                >
+                  {artwork.text}
+                </Text>
+              ) : null}
             </View>
           </View>
         </Pressable>
@@ -1329,6 +1332,48 @@ function CollectAtGridgo({ runCount }: { runCount: number }) {
           aria-hidden
         />
       </Pressable>
+    </View>
+  );
+}
+
+/**
+ * Delivery or pick-up as chosen before the match (#158), read back.
+ *
+ * Not a control: the printer was matched for this point, and GRIDGO refuses a
+ * different one on this basket (`request_fulfillment_locked`). So it is stated,
+ * with the one honest way to change it.
+ */
+function ChosenTravel({
+  choice,
+  hub,
+  legZone,
+}: {
+  choice: api.RequestFulfilment;
+  hub: api.HubPickup | null;
+  legZone: string | null;
+}) {
+  const colors = useThemeColors();
+  const pickup = choice.fulfillmentMode === "pickup";
+  return (
+    <View className="gap-3">
+      {pickup ? (
+        <HubPickupPanel hub={hub} showFee={false} />
+      ) : (
+        <View className="gg-card-flush flex-row items-start gap-3 p-4" accessible>
+          <Truck size={18} color={colors.textPrimary} strokeWidth={2} aria-hidden />
+          <View className="min-w-0 flex-1 gap-0.5">
+            <Text className="text-body-lg font-medium text-text-primary">Delivery</Text>
+            <Text className="text-caption text-text-muted" numberOfLines={2}>
+              {choice.dropoff?.label ?? fulfilmentSummary(choice)}
+            </Text>
+            {legZone ? <Text className="text-caption text-text-secondary">{legZone}</Text> : null}
+          </View>
+        </View>
+      )}
+      <Text className="text-caption text-text-muted">
+        {pickup ? "You chose pick-up" : "You chose delivery"} before GRIDGO matched your printer. To
+        change it, start a new order.
+      </Text>
     </View>
   );
 }

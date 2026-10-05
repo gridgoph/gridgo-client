@@ -71,6 +71,7 @@ export function multiCart(count: 2 | 3, overrides: Partial<Cart> = {}): Cart {
     groups,
     clientQuote: {
       status: "priced",
+      reasons: [],
       clientItemSubtotalMinor: groups.reduce((sum, group) => sum + (group.clientItemSubtotalMinor ?? 0), 0),
       deliveryLines: groups.map((group, index) => ({
         lineIds: group.lineIds,

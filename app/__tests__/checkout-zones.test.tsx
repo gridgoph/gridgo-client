@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react-native";
+import { withQuote, type QuoteOptions } from "@/test/cartQuote";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -140,8 +141,11 @@ function line(overrides: Partial<CartLineRecord> = {}): CartLineRecord {
   };
 }
 
-function cart(overrides: Partial<Cart> = {}): Cart {
-  return {
+function cart(
+  overrides: Partial<Cart> = {},
+  quote: QuoteOptions = { legs: [{ feeMinor: 2500, zone: { key: "nearby", label: "Nearby" } }] },
+): Cart {
+  return withQuote({
     id: "cart_1",
     state: "draft",
     version: 1,
@@ -154,7 +158,7 @@ function cart(overrides: Partial<Cart> = {}): Cart {
     createdAt: "2026-08-24T00:00:00.000Z",
     updatedAt: "2026-08-24T00:00:00.000Z",
     ...overrides,
-  };
+  }, quote);
 }
 
 function renderInSafeArea(ui: ReactElement) {
@@ -206,22 +210,26 @@ describe("CheckoutScreen delivery zones", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    // About 400 m from the shop: Nearby, ₱25.
+    // GRIDGO's quote: Nearby, ₱25 — no kilometres in a flat zone.
     expect(screen.getByText("₱25.00 · Nearby")).toBeTruthy();
     expect(screen.queryByText(/\bkm\b/)).toBeNull();
     expect(screen.getByLabelText("How does delivery distance work?")).toBeTruthy();
   });
 
   it("prices Out of Zone per started kilometre and shows the distance", async () => {
-    // 16,045 m from the shop: shown as 16.0 km, charged as 17 started km.
-    const far = cart({ defaultDropoff: { lat: 7.2174, lng: 125.6128, label: "Far away" } });
+    // GRIDGO measured 16,045 m from the press: it charges 17 started km and
+    // shows 16.0 km. The phone draws that answer; it never measures.
+    const far = cart(
+      { defaultDropoff: { lat: 7.2174, lng: 125.6128, label: "Far away" } },
+      { legs: [{ feeMinor: 24500, zone: { key: "out_of_zone", label: "Out of Zone" }, distanceKm: 16 }] },
+    );
     api.getCart.mockResolvedValue(far);
     useCart.setState({ cart: far });
 
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    // ₱75 base + ₱10 × 17 = ₱245 — never ₱235 from the rounded 16.0 km.
+    // ₱75 base + ₱10 × 17 = ₱245, as quoted — never ₱235 from the rounded 16.0 km.
     expect(screen.getByText("₱245.00 · Out of Zone · 16.0 km")).toBeTruthy();
     // ₱44 printing + ₱245 delivery.
     expect(screen.getAllByText("₱289.00").length).toBeGreaterThan(0);

@@ -1,4 +1,4 @@
-import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
+import type { Cart, CartLineRecord, CartQuote, PlatformSettings } from "@/lib/api";
 import {
   basketTotals,
   clientLineAmountMinor,
@@ -21,9 +21,7 @@ const SETTINGS: PlatformSettings = {
   ],
 };
 
-const SHOP = { lat: 7.0731, lng: 125.6128 };
 const NEARBY = { lat: 7.076, lng: 125.615, label: "Home" };
-const ACROSS_TOWN = { lat: 7.19, lng: 125.455, label: "Site" };
 
 function line(overrides: Partial<CartLineRecord> = {}): CartLineRecord {
   return {
@@ -60,8 +58,6 @@ function cart(overrides: Partial<Cart> = {}): Cart {
     ...overrides,
   };
 }
-
-const POINTS = { user_shop: SHOP, other: ACROSS_TOWN };
 
 describe("roundBps", () => {
   it("is the platform's formula, half up on the centavo", () => {
@@ -106,9 +102,7 @@ describe("printRuns", () => {
     expect(groups.map((group) => group.runLabel)).toEqual(["Print run 1", "Print run 2"]);
     expect(JSON.stringify(groups)).not.toMatch(/Printshop|Lovis/i);
     expect(groups[0].lines.map((entry) => entry.id)).toEqual(["a", "c"]);
-    expect(groups[0].subtotalMinor).toBe(4500);
     expect(groups[0].clientSubtotalMinor).toBe(4950);
-    expect(groups[1].subtotalMinor).toBe(1000);
     expect(groups[1].clientSubtotalMinor).toBe(1100);
   });
 });
@@ -129,6 +123,10 @@ describe("clientLineAmountMinor", () => {
     expect(clientLineAmountMinor({ lineSubtotalMinor: null }, 1000)).toBeNull();
   });
 
+  it("never marks up a shop figure once GRIDGO has answered for the line, even with null", () => {
+    expect(clientLineAmountMinor({ lineSubtotalMinor: 4000, clientLineSubtotalMinor: null }, 1000)).toBeNull();
+  });
+
   it("has no subtotal at all while one of its lines has no price", () => {
     // GRIDGO answers `lineSubtotalMinor: null` for a line its pricer refused
     // (a quantity under the shop's minimum). Adding it up as zero is what put
@@ -137,195 +135,125 @@ describe("clientLineAmountMinor", () => {
       line({ id: "a", lineSubtotalMinor: 4000 }),
       line({ id: "b", lineSubtotalMinor: null }),
     ]);
-    expect(groups[0].subtotalMinor).toBeNull();
+    expect(groups[0].clientSubtotalMinor).toBeNull();
   });
 });
 
-describe("basketTotals", () => {
-  it("adds the platform's fee to the shop's own prices", () => {
-    const totals = basketTotals({
-      cart: cart(),
-      settings: SETTINGS,
-      shopPoints: POINTS,
-    });
+/** GRIDGO's own figures for a basket, as `cart.clientQuote` carries them. */
+function quote(overrides: Partial<CartQuote> = {}): CartQuote {
+  return {
+    status: "priced",
+    reasons: [],
+    clientItemSubtotalMinor: 110000,
+    deliveryLines: [
+      { lineIds: ["cline_1"], distanceZone: { key: "nearby", label: "Nearby" }, deliveryFeeMinor: 2500 },
+    ],
+    deliveryFeeMinor: 2500,
+    totalMinor: 112500,
+    downpaymentPercent: 100,
+    downpaymentMinor: 112500,
+    balanceMinor: 0,
+    ...overrides,
+  };
+}
 
-    expect(totals.itemSubtotalMinor).toBe(100000);
-    expect(totals.serviceFeeMinor).toBe(10000);
+describe("basketTotals", () => {
+  it("reads GRIDGO's quote as sent, adding nothing on the phone", () => {
+    const totals = basketTotals({ cart: cart({ clientQuote: quote() }), settings: SETTINGS });
     expect(totals.clientItemSubtotalMinor).toBe(110000);
     expect(totals.deliveryFeeMinor).toBe(2500);
     expect(totals.totalMinor).toBe(112500);
-    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor! + totals.deliveryFeeMinor!);
-  });
-
-  it("states the items at GRIDGO's price, so Items plus Delivery is the Total", () => {
-    const totals = basketTotals({ cart: cart(), settings: SETTINGS, shopPoints: POINTS });
-
-    // The shop's PHP 1,000.00 plus GRIDGO's 10% is what the client is charged
-    // for the items; there is no separate fee row for them to add up.
-    expect(totals.gridgoItemsMinor).toBe(110000);
-    expect(totals.gridgoItemsMinor! + totals.deliveryFeeMinor!).toBe(totals.totalMinor);
-  });
-
-  it("has no items figure and no total while a line has no price", () => {
-    const totals = basketTotals({
-      cart: cart({ lines: [line({ id: "a" }), line({ id: "b", lineSubtotalMinor: null })] }),
-      settings: SETTINGS,
-      shopPoints: POINTS,
-    });
-
-    expect(totals.itemSubtotalMinor).toBeNull();
-    expect(totals.gridgoItemsMinor).toBeNull();
-    expect(totals.totalMinor).toBeNull();
-    expect(totals.downpaymentMinor).toBeNull();
-    // Delivery is still known: the address is set and the run is one press.
-    expect(totals.deliveryFeeMinor).toBe(2500);
-  });
-
-  it("splits the total 75/25 the way checkout does on an API with no plan setting", () => {
-    const totals = basketTotals({
-      cart: cart(),
-      settings: SETTINGS,
-      shopPoints: POINTS,
-    });
-
-    expect(totals.downpaymentPercent).toBe(75);
-    expect(totals.downpaymentMinor).toBe(roundBps(112500, 7500));
-    expect(totals.balanceMinor).toBe(112500 - roundBps(112500, 7500));
-    expect(totals.downpaymentMinor! + totals.balanceMinor!).toBe(totals.totalMinor);
-  });
-
-  it("takes the whole total up front when GRIDGO asks for 100%", () => {
-    const totals = basketTotals({
-      cart: cart(),
-      settings: { ...SETTINGS, downpaymentPercent: 100 },
-      shopPoints: POINTS,
-    });
-
-    expect(totals.downpaymentPercent).toBe(100);
     expect(totals.downpaymentMinor).toBe(112500);
     expect(totals.balanceMinor).toBe(0);
+    expect(totals.downpaymentPercent).toBe(100);
+    expect(totals.legs).toEqual([
+      {
+        runLabel: "Print run 1",
+        lineIds: ["cline_1"],
+        zone: { key: "nearby", label: "Nearby" },
+        distanceKm: null,
+        feeMinor: 2500,
+      },
+    ]);
   });
 
-  it("follows the setting back to 75/25 without a release", () => {
+  it("names each delivery leg by the run it carries, with kilometres only Out of Zone", () => {
+    const lines = [line({ id: "a" }), line({ id: "b", supplierId: "other" })];
     const totals = basketTotals({
-      cart: cart(),
-      settings: { ...SETTINGS, downpaymentPercent: 75 },
-      shopPoints: POINTS,
+      cart: cart({
+        lines,
+        clientQuote: quote({
+          deliveryLines: [
+            { lineIds: ["b"], distanceZone: { key: "out_of_zone", label: "Out of Zone" }, deliveryFeeMinor: 24500, distanceKm: 16.2 },
+            { lineIds: ["a"], distanceZone: { key: "away", label: "Away" }, deliveryFeeMinor: 5000 },
+          ],
+        }),
+      }),
+      settings: SETTINGS,
     });
-
-    expect(totals.downpaymentMinor).toBe(roundBps(112500, 7500));
-    expect(totals.downpaymentMinor! + totals.balanceMinor!).toBe(112500);
+    expect(totals.legs.map((leg) => [leg.runLabel, leg.distanceKm])).toEqual([
+      ["Print run 2", 16.2],
+      ["Print run 1", null],
+    ]);
+    // The quote is about runs and zones, never a shop or its pin.
+    expect(JSON.stringify(totals)).not.toMatch(/lat|lng|shopName/);
   });
 
-  it("never lets delivery into the fee base", () => {
-    const near = basketTotals({
-      cart: cart(),
-      settings: SETTINGS,
-      shopPoints: POINTS,
-    });
-    const far = basketTotals({
-      cart: cart({ defaultDropoff: ACROSS_TOWN }),
-      settings: SETTINGS,
-      shopPoints: POINTS,
-    });
-
-    expect(far.deliveryFeeMinor).toBeGreaterThan(near.deliveryFeeMinor!);
-    expect(far.serviceFeeMinor).toBe(near.serviceFeeMinor);
-  });
-
-  it("has no total at all until it knows where the job is going", () => {
-    // A partial delivery figure is worse than none: a total that quietly moves
-    // is what a client argues about at the counter.
+  it("keeps a pick-up's hub fee inside delivery, never added twice", () => {
     const totals = basketTotals({
-      cart: cart({ defaultDropoff: null }),
+      cart: cart({
+        fulfillmentMode: "pickup",
+        defaultDropoff: null,
+        clientQuote: quote({ deliveryLines: [], deliveryFeeMinor: 0, pickupFeeMinor: 0, totalMinor: 110000 }),
+      }),
       settings: SETTINGS,
-      shopPoints: POINTS,
     });
-
-    expect(totals.itemSubtotalMinor).toBe(100000);
-    expect(totals.legs[0].feeMinor).toBeNull();
-    expect(totals.deliveryFeeMinor).toBeNull();
-    expect(totals.totalMinor).toBeNull();
-    expect(totals.downpaymentMinor).toBeNull();
-  });
-
-  it("charges no delivery at all when the client is collecting", () => {
-    const totals = basketTotals({
-      cart: cart({ fulfillmentMode: "pickup", defaultDropoff: null }),
-      settings: SETTINGS,
-      shopPoints: POINTS,
-    });
-
     expect(totals.legs).toEqual([]);
+    expect(totals.pickupFeeMinor).toBe(0);
     expect(totals.deliveryFeeMinor).toBe(0);
-    expect(totals.clientItemSubtotalMinor).toBe(110000);
     expect(totals.totalMinor).toBe(110000);
-    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor);
   });
 
-  it("prices one leg per shop, because two shops is two drops", () => {
+  it("has no total while GRIDGO says why not", () => {
     const totals = basketTotals({
       cart: cart({
-        lines: [
-          line({ id: "a", lineSubtotalMinor: 50000 }),
-          line({ id: "b", supplierId: "other", lineSubtotalMinor: 50000 }),
-        ],
+        defaultDropoff: null,
+        clientQuote: quote({
+          status: "incomplete",
+          reasons: [{ code: "dropoff_required", lineIds: ["cline_1"] }],
+          deliveryLines: [{ lineIds: ["cline_1"], distanceZone: null, deliveryFeeMinor: null }],
+          deliveryFeeMinor: null,
+          totalMinor: null,
+          downpaymentMinor: null,
+          balanceMinor: null,
+        }),
       }),
       settings: SETTINGS,
-      shopPoints: POINTS,
     });
+    expect(totals.totalMinor).toBeNull();
+    expect(totals.deliveryFeeMinor).toBeNull();
+    expect(totals.legs[0].feeMinor).toBeNull();
+    expect(totals.reasons.map((reason) => reason.code)).toEqual(["dropoff_required"]);
+  });
 
-    expect(totals.legs.map((leg) => leg.runLabel)).toEqual(["Print run 1", "Print run 2"]);
-    expect(totals.legs[0].feeMinor).toBe(2500);
-    expect(totals.legs[1].feeMinor).toBe(7500);
-    expect(totals.deliveryFeeMinor).toBe(10000);
+  it("on an API without the quote, prices printing from GRIDGO's line figures and leaves delivery unknown", () => {
+    const totals = basketTotals({
+      cart: cart({ lines: [line({ clientLineSubtotalMinor: 110000 })] }),
+      settings: SETTINGS,
+    });
     expect(totals.clientItemSubtotalMinor).toBe(110000);
-    expect(totals.totalMinor).toBe(totals.clientItemSubtotalMinor! + totals.deliveryFeeMinor!);
-  });
-
-  it("charges each shop for the farthest drop it has to reach", () => {
-    // The rule checkout applies: a run split across addresses is priced on the
-    // longest leg per shop, not the nearest.
-    const totals = basketTotals({
-      cart: cart({
-        lines: [
-          line({ id: "a", lineSubtotalMinor: 50000, dropoff: NEARBY }),
-          line({ id: "b", lineSubtotalMinor: 50000, dropoff: ACROSS_TOWN }),
-        ],
-      }),
-      settings: SETTINGS,
-      shopPoints: POINTS,
-    });
-
-    expect(totals.legs).toHaveLength(1);
-    expect(totals.legs[0].feeMinor).toBe(7500);
-  });
-
-  it("withholds the whole delivery figure when one leg cannot be priced", () => {
-    const totals = basketTotals({
-      cart: cart({
-        lines: [line({ id: "a" }), line({ id: "b", supplierId: "unknown" })],
-      }),
-      settings: SETTINGS,
-      shopPoints: POINTS,
-    });
-
-    expect(totals.legs[0].feeMinor).toBe(2500);
-    expect(totals.legs[1].feeMinor).toBeNull();
     expect(totals.deliveryFeeMinor).toBeNull();
     expect(totals.totalMinor).toBeNull();
   });
 
-  it("shows no fee and no total while GRIDGO's charges are unread", () => {
+  it("on an API without the quote, a pick-up costs nothing to collect", () => {
     const totals = basketTotals({
-      cart: cart(),
-      settings: null,
-      shopPoints: POINTS,
+      cart: cart({ fulfillmentMode: "pickup", lines: [line({ clientLineSubtotalMinor: 110000 })] }),
+      settings: { ...SETTINGS, downpaymentPercent: 75 },
     });
-
-    expect(totals.serviceFeeMinor).toBe(0);
-    expect(totals.gridgoItemsMinor).toBeNull();
-    expect(totals.totalMinor).toBeNull();
+    expect(totals.totalMinor).toBe(110000);
+    expect(totals.downpaymentMinor).toBe(82500);
+    expect(totals.balanceMinor).toBe(27500);
   });
 });
 
@@ -333,6 +261,14 @@ describe("what the basket is still missing", () => {
   it("names the lines GRIDGO could not price", () => {
     const lines = [line({ id: "a" }), line({ id: "b", lineSubtotalMinor: null })];
     expect(linesUnpriced(lines).map((entry) => entry.id)).toEqual(["b"]);
+  });
+
+  it("reads GRIDGO's own line figure for that, not the shop's", () => {
+    const lines = [
+      line({ id: "a", lineSubtotalMinor: 4000, clientLineSubtotalMinor: null }),
+      line({ id: "b", lineSubtotalMinor: null, clientLineSubtotalMinor: 4400 }),
+    ];
+    expect(linesUnpriced(lines).map((entry) => entry.id)).toEqual(["a"]);
   });
 
   it("names the lines with no file on them", () => {

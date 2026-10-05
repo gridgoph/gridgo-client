@@ -66,7 +66,7 @@ import { canRate } from "@/lib/rating";
 import { currentRefund, refundEntry } from "@/lib/refunds";
 import { rescheduleView } from "@/lib/reschedule";
 import { shopRecoveryView } from "@/lib/shopRecovery";
-import { printingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
+import { orderPrintingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
@@ -591,26 +591,29 @@ function MoneyDetails({
   const balance = paysInFull(order) ? undefined : paymentInstallment(order, "balance");
   const showFee = showsServiceFee(order) && serviceFeeVisibleToClient(settings);
   const physicalInvoice = physicalInvoiceEntry(order);
+  // The saved total less the saved fulfilment charge: both GRIDGO's figures.
+  const printing = orderPrintingMinor(order);
+  // A pick-up order chosen before matching carries the hub's fee in the
+  // delivery slot. Zero (today's setting) still reads as nothing to pay.
+  const pickupFee =
+    order.fulfillmentMode === "pickup" && (order.deliveryFeeMinor ?? 0) > 0
+      ? (order.deliveryFeeMinor as number)
+      : null;
 
   return (
     <View className="gap-3">
       <View>
+        <SpecRow label="Printing" value={printing != null ? formatPhp(printing) : "—"} />
         <SpecRow
-          label="Printing"
+          label={pickupFee ? "Pick-up fee" : "Delivery"}
           value={
-            order.subtotalMinor != null
-              ? formatPhp(printingMinor(order.subtotalMinor, order.serviceFeeMinor))
-              : "—"
-          }
-        />
-        <SpecRow
-          label="Delivery"
-          value={
-            order.fulfillmentMode === "pickup"
-              ? "None — you collect"
-              : order.deliveryFeeMinor != null
-                ? formatPhp(order.deliveryFeeMinor)
-                : "—"
+            pickupFee
+              ? formatPhp(pickupFee)
+              : order.fulfillmentMode === "pickup"
+                ? "None — you collect"
+                : order.deliveryFeeMinor != null
+                  ? formatPhp(order.deliveryFeeMinor)
+                  : "—"
           }
         />
         {showFee ? (

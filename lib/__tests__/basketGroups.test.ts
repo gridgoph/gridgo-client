@@ -1,15 +1,13 @@
-import type { Cart, Order } from "@/lib/api";
+import type { Order } from "@/lib/api";
 import {
   basketDeadlineOf,
   basketMatchContext,
   groupLetter,
   groupStateMeta,
   groupStoppedNote,
-  isGroupOrder,
   isMultiShop,
   lineGroupKey,
   multiShopPaymentNote,
-  multiShopTotals,
   receiptGroupStanding,
   shopGroups,
 } from "@/lib/basketGroups";
@@ -62,62 +60,6 @@ describe("shopGroups", () => {
     const [, second] = shopGroups(cart);
     expect(second.deliveryFeeMinor).toBeNull();
     expect(second.totalMinor).toBeNull();
-  });
-});
-
-describe("multiShopTotals", () => {
-  it("adds up printing, each group's delivery and the total, all paid now", () => {
-    expect(multiShopTotals(multiCart(2))).toEqual({
-      itemsMinor: 63800,
-      deliveryFeeMinor: 7500,
-      pickupFeeMinor: null,
-      totalMinor: 71300,
-      payNowMinor: 71300,
-    });
-    const three = multiShopTotals(multiCart(3));
-    expect(three.itemsMinor! + three.deliveryFeeMinor!).toBe(three.totalMinor);
-    expect(three.totalMinor).toBe(81720);
-  });
-
-  it("has no total while any group is unpriced", () => {
-    const cart = multiCart(3);
-    cart.groups![2] = { ...cart.groups![2], deliveryFeeMinor: null, totalMinor: null };
-    const totals = multiShopTotals(cart);
-    expect(totals.deliveryFeeMinor).toBeNull();
-    expect(totals.totalMinor).toBeNull();
-    expect(totals.payNowMinor).toBeNull();
-    expect(totals.itemsMinor).toBe(71720);
-  });
-
-  it("charges a hub pick-up fee once for the whole basket", () => {
-    const base = multiCart(3);
-    // 2501 split across three groups as GRIDGO does: [834, 834, 833].
-    const shares = [834, 834, 833];
-    const cart: Cart = {
-      ...base,
-      fulfillmentMode: "pickup",
-      groups: base.groups!.map((group, index) => ({
-        ...group,
-        deliveryFeeMinor: shares[index],
-        pickupFeeMinor: shares[index],
-        totalMinor: (group.clientItemSubtotalMinor ?? 0) + shares[index],
-      })),
-      clientQuote: { ...base.clientQuote!, deliveryLines: [], pickupFeeMinor: 2501 },
-    };
-    const totals = multiShopTotals(cart);
-    expect(totals.pickupFeeMinor).toBe(2501);
-    expect(totals.deliveryFeeMinor).toBe(2501);
-    expect(totals.totalMinor).toBe(71720 + 2501);
-  });
-
-  it("has no pick-up fee on a free collection", () => {
-    const base = multiCart(2);
-    const cart: Cart = {
-      ...base,
-      fulfillmentMode: "pickup",
-      groups: base.groups!.map((group) => ({ ...group, deliveryFeeMinor: 0, totalMinor: group.clientItemSubtotalMinor })),
-    };
-    expect(multiShopTotals(cart).pickupFeeMinor).toBeNull();
   });
 });
 
@@ -193,11 +135,6 @@ describe("words", () => {
 describe("after checkout", () => {
   const order = (patch: Partial<Order>) =>
     ({ state: "production", groupLabel: "Shop B", basketId: "bsk_1", ...patch }) as Order;
-
-  it("knows a group order from a single-shop one", () => {
-    expect(isGroupOrder(order({}))).toBe(true);
-    expect(isGroupOrder({ basketId: null })).toBe(false);
-  });
 
   it("says nothing about a group that is going", () => {
     expect(groupStoppedNote(order({}))).toBeNull();

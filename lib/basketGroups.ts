@@ -21,7 +21,6 @@
  */
 
 import type {
-  Basket,
   BasketGroup,
   Cart,
   CartLineRecord,
@@ -92,40 +91,6 @@ export function shopGroups(cart: Cart | null | undefined): ShopGroupView[] {
       distanceKm: typeof leg?.distanceKm === "number" ? leg.distanceKm : null,
     };
   });
-}
-
-export type MultiShopTotals = {
-  /** Printing across every group, fee inside. */
-  itemsMinor: number | null;
-  /** Each group's delivery fee added up. Null while any is unpriced. */
-  deliveryFeeMinor: number | null;
-  /**
-   * The hub pick-up fee, charged once for the whole basket. Null when there is
-   * none. It already sits inside the groups' delivery figures — never add it.
-   */
-  pickupFeeMinor: number | null;
-  totalMinor: number | null;
-  /** Paid in full: the whole total, in one transfer. */
-  payNowMinor: number | null;
-};
-
-/** Printing + delivery = total, added up from GRIDGO's own groups. */
-export function multiShopTotals(cart: Cart | null | undefined): MultiShopTotals {
-  const groups = shopGroups(cart);
-  const itemsMinor = sumMinor(groups.map((group) => group.itemsMinor));
-  const deliveryFeeMinor = sumMinor(groups.map((group) => group.deliveryFeeMinor));
-  const totalMinor = sumMinor(groups.map((group) => group.totalMinor));
-  const quotedPickup = cart?.clientQuote?.pickupFeeMinor;
-  const sharedPickup = cart?.groups?.some((group) => typeof group.pickupFeeMinor === "number")
-    ? sumMinor(cart.groups.map((group) => group.pickupFeeMinor ?? 0))
-    : null;
-  const pickupFeeMinor =
-    typeof quotedPickup === "number" && quotedPickup > 0
-      ? quotedPickup
-      : sharedPickup != null && sharedPickup > 0
-        ? sharedPickup
-        : null;
-  return { itemsMinor, deliveryFeeMinor, pickupFeeMinor, totalMinor, payNowMinor: totalMinor };
 }
 
 // ---------------------------------------------------------------------------
@@ -203,11 +168,6 @@ export function basketDeadlineOf(cart: Cart | null | undefined): string | null {
 // After checkout
 // ---------------------------------------------------------------------------
 
-/** True when this order is one shop group of a multi-shop basket. */
-export function isGroupOrder(order: Pick<Order, "basketId"> | null | undefined): boolean {
-  return Boolean(order?.basketId);
-}
-
 /** A group's chip, in the same words and tones as every other order chip. */
 export function groupStateMeta(
   group: Pick<BasketGroup, "state">,
@@ -249,22 +209,6 @@ export function receiptGroupStanding(group: Pick<BasketGroup, "state">): string 
     : null;
 }
 
-/** The groups of a placed basket, in receipt order, for the order view's switcher. */
-export function basketGroupsOf(basket: Basket | null | undefined): BasketGroup[] {
-  return basket?.groups ?? [];
-}
-
 function safeMinor(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
-}
-
-/** Adds figures that may be missing; one missing makes the sum missing. */
-function sumMinor(amounts: (number | null)[]): number | null {
-  if (amounts.length === 0) return null;
-  let total = 0;
-  for (const amount of amounts) {
-    if (amount == null) return null;
-    total += amount;
-  }
-  return total;
 }
