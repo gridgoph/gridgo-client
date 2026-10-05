@@ -5,6 +5,16 @@ the single root-layout `ReceiptOcrHost` / `RECEIPT_OCR_HTML` → `referenceFromO
 `useCheckoutPayment.applyOcrReference`. Parser fixtures alone do not exercise
 the WebView. User-facing checkout guidance lives in [README.md](../README.md#checkout-and-money).
 
+The picked screenshot is read into a data URL through React Native's own
+networking (`XMLHttpRequest` blob, then `FileReader`), never through
+`expo-file-system`. In Expo Go the document picker copies the file to the app's
+top-level cache (`…/host.exp.exponent/cache/DocumentPicker/`), and Expo's file
+system refuses anything outside the project's own folders with
+`Location '…' isn't readable.` That refusal ended every phone reading as
+"The number could not be read" while the upload still succeeded (#180). A check
+that feeds the recognizer a data URL or a bundled asset skips this read, so
+verify with a real pick.
+
 ## Draft ownership
 
 `store/checkoutPayment.ts` creates separate in-memory checkout and order-payment
@@ -54,6 +64,12 @@ cache namespace. The original receipt bytes and full OCR text are not committed.
   without attaching either neighbour; PAN/mobile/date exclusions remain.
 - Each request owns a WebView. Replacement or timeout destroys the old worker;
   request IDs prevent late messages from completing a newer receipt.
+- The 2026-09-08 check above stubbed the picker and passed data URLs, so it
+  never read a picked file. On Expo Go 57 (Android 15 emulator, 2026-10-05) a
+  real pick uploaded but `expo-file-system/legacy` refused the picker's cache
+  copy, and the field said the number could not be read. The same image read
+  correctly from the project's asset cache, which is how the read was isolated.
+  The recognizer now reads local files with React Native networking (#180).
 
 ## Regression checks
 
