@@ -66,6 +66,8 @@ type Props = {
   read: boolean;
   onOpen: (() => void) | null;
   onMarkRead: () => void;
+  /** The one sent-back application notice still asking (`openApplicationNoticeId`). */
+  applicationNoticeId?: string | null;
 };
 
 /**
@@ -99,7 +101,7 @@ type Props = {
  * on tap and carries its own accessibility action gains nothing from tracking
  * a finger off the JavaScript thread, and the change would be churn.
  */
-export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
+export function NotificationCard({ group, read, onOpen, onMarkRead, applicationNoticeId = null }: Props) {
   const notification = group.latest;
   const earlier = group.items.slice(1);
   const [expanded, setExpanded] = useState(false);
@@ -111,7 +113,7 @@ export function NotificationCard({ group, read, onOpen, onMarkRead }: Props) {
   const showServiceFee = usePlatformSettings((state) =>
     serviceFeeVisibleToClient(state.settings),
   );
-  const presented = presentNotification(notification, { showServiceFee });
+  const presented = presentNotification(notification, { showServiceFee, applicationNoticeId });
   const picture = notificationImageUrl(notification.imageUrl);
   // A row with no job is GRIDGO speaking, and says so rather than leaving the
   // strip empty beside its time.

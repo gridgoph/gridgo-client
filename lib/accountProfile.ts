@@ -347,6 +347,11 @@ export function businessApplicationPending(user: User | null): boolean {
   return businessApplication(user)?.status === "pending";
 }
 
+/** Operations sent the application back and it has not been sent again. */
+export function businessApplicationSentBack(user: User | null): boolean {
+  return businessApplication(user)?.status === "rejected";
+}
+
 /**
  * True while this account may still send an application from this app.
  *

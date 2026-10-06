@@ -17,6 +17,8 @@
 
 import { Platform } from "react-native";
 
+import { APPLICATION_ROUTE, isApplicationNotification } from "@/lib/organization";
+
 /**
  * The Android channel the server names in every message.
  *
@@ -134,6 +136,8 @@ export function pushTargetRoute(data: PushData): string {
   // The officer check and Operations' notices belong to the organization,
   // and its tab is where they are answered (gridgo-client#165).
   if (data.type && ORGANIZATION_PUSH_TYPES.has(data.type)) return "/(tabs)/organizations";
+  // A sent-back application opens on the application, filled in (#187).
+  if (isApplicationNotification(data.type)) return APPLICATION_ROUTE;
   if (!data.orderId) return "/(tabs)/notifications";
   if (data.type === "order_receipt_ready") {
     return `/order/receipt?orderId=${encodeURIComponent(data.orderId)}`;
