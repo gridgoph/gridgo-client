@@ -5,6 +5,7 @@ import Svg, { Line, Path } from "react-native-svg";
 
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { GroupPlate } from "@/components/ShopGroupSection";
+import { groupDateLine } from "@/lib/basketGroups";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
 import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
@@ -106,7 +107,7 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
               value={discountAmount(view.money.organizationDiscountMinor)}
             />
           ) : null}
-          <SlipRow {...receiptFulfilmentRow(view.money, view.groups?.length ?? 0)} />
+          <SlipRow {...receiptFulfilmentRow(view.money, view.groups ?? 0)} />
           {showServiceFee ? (
             <ServiceFeeRow explainOnly divider={false} rateBps={view.money.serviceFeeRateBps} />
           ) : null}
@@ -164,7 +165,7 @@ function SlipLine({ line }: { line: ReceiptLine }) {
 }
 
 /**
- * One shop group's section: its plate and label, its lines, its own delivery
+ * One group's section: its plate, label and date, its lines, its own delivery
  * and what the group came to. A group stopped since is marked here, beside
  * figures that stay as they were paid.
  */
@@ -173,7 +174,10 @@ function SlipGroup({ group }: { group: ReceiptGroup }) {
     <View className="gap-3" testID={`receipt-group-${group.letter}`}>
       <View className="flex-row items-center gap-2">
         <GroupPlate letter={group.letter} size="sm" />
-        <Text className="min-w-0 flex-1 text-body font-bold text-text-primary">{group.label}</Text>
+        <View className="min-w-0 flex-1">
+          <Text className="text-body font-bold text-text-primary">{group.label}</Text>
+          <Text className="text-caption text-text-secondary">{groupDateLine(group.deadline)}</Text>
+        </View>
         <Text className="text-body font-medium text-text-primary" style={FIGURES}>
           {formatPhp(group.totalMinor)}
         </Text>

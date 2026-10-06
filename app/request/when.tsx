@@ -9,13 +9,19 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { TourTarget } from "@/components/TourTarget";
 import { findCategory } from "@/lib/productCategories";
 import * as api from "@/lib/api";
-import { basketDeadlineOf, basketMatchContext, ONE_DATE_NOTE } from "@/lib/basketGroups";
-import { userFacingError } from "@/lib/copy";
-import { formatDeadline } from "@/lib/deadline";
-import { prefetchMatch } from "@/lib/matchPrefetch";
+import {
+  basketDates,
+  basketMatchContext,
+  groupDateLabel,
+  SAME_DATE_NOTE,
+  type BasketDate,
+} from "@/lib/basketGroups";
+import { clearMatchPrefetch, prefetchMatch } from "@/lib/matchPrefetch";
 import { fulfilmentStepFor } from "@/lib/requestFulfilment";
+import { userFacingError } from "@/lib/copy";
 import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
 import { useTourScreen } from "@/hooks/useTourScreen";
+import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
 import { useJobFulfilment, withJobFulfilment } from "@/store/jobFulfilment";
@@ -49,31 +55,55 @@ import {
  *
  * "No rush" is a real answer and the screen says so, because a client with no
  * deadline should not have to invent one to get past this.
+ *
+ * Every product keeps its own date (gridgo-client#189): a second product is
+ * asked afresh, with the dates already in the order offered first, because the
+ * same date from the same shop rides in the same delivery. "Add more from
+ * Shop A" is the one exception — that group is one shop on one date, so its
+ * date is shown rather than asked.
+ *
+ * Checkout opens it in `mode=group` to move one group's products to another
+ * date (or give them one: a basket in several groups needs a date on every
+ * product). That writes the date to those lines and comes back.
  */
 export default function WhenScreen() {
   const router = useRouter();
-  const { subcategory, category, mode } = useLocalSearchParams<{
+  const { subcategory, category, mode, lineIds, label } = useLocalSearchParams<{
     subcategory?: string;
     category?: string;
-    /** `basket`: checkout is setting the one date for the whole order. */
+    /** `group`: checkout is moving one group's products to another date. */
     mode?: string;
+    /** The group's line ids, comma-separated, in `mode=group`. */
+    lineIds?: string;
+    /** The group's label, in `mode=group`. */
+    label?: string;
   }>();
+  const groupMode = mode === "group";
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const setDeadline = useJobDeadline((state) => state.set);
   const setFulfilment = useJobFulfilment((state) => state.set);
   const cart = useCart((state) => state.cart);
   const dropoff = cart?.defaultDropoff ?? null;
   /*
-    One date for the whole order (gridgo-api#117). Once the basket has one,
-    every product after the first is held to it, so the date is shown rather
-    than asked — with a way to move it for everything at once.
+    "Add more from Shop A": that group is one shop on one date, so the new
+    product joins it on that date. Choosing another date lets go of the group
+    — it becomes a product of its own, matched against every shop.
   */
-  const basketMode = mode === "basket";
-  const basketDeadline = basketDeadlineOf(cart);
-  const [unlocked, setUnlocked] = useState(false);
-  const locked = !basketMode && basketDeadline != null && !unlocked;
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const targetGroupId = useBasketGroupTarget((state) => state.groupId);
+  const targetLabel = useBasketGroupTarget((state) => state.label);
+  const targetDeadline = useBasketGroupTarget((state) => state.deadline);
+  const locked = !groupMode && targetGroupId != null;
+  /** Dates other products in this order already have, soonest first. */
+  const inOrder = useMemo(() => {
+    const dates = basketDates(cart);
+    // Moving a group: its own date is not "another" date to move it to.
+    if (!groupMode || !cart) return dates;
+    const own = new Set((lineIds ?? "").split(",").filter(Boolean));
+    const others = cart.lines.filter((line) => !own.has(line.id));
+    return basketDates({ ...cart, lines: others });
+  }, [cart, groupMode, lineIds]);
 
   const [chosen, setChosen] = useState<string | null>(null);
   // Season windows shade the month as a heads-up. They never decide which
@@ -167,36 +197,44 @@ export default function WhenScreen() {
     return (found?.name ?? "this").toLowerCase();
   }, [category, subcategory]);
 
-  /** Move the basket's one date. Checkout rechecks every shop against it. */
-  const writeBasketDeadline = async (by: string): Promise<boolean> => {
+  /** A day the availability answer allows; any day while there is no answer. */
+  const pickable = (dayKey: string) =>
+    !availability || availability.some((entry) => entry.day === dayKey && entry.state !== "cannot");
+
+  /** A date already in the order: chosen, and its month brought into view. */
+  const pickInOrder = (entry: BasketDate) => {
+    setChosen(entry.dayKey);
+    setMonthPinned(true);
+    setMonth(new Date(`${entry.dayKey}T12:00:00`));
+  };
+
+  /**
+   * Move a checkout group's products to the chosen date, one line at a time.
+   * GRIDGO rechecks each against it; every answer is the basket as it now
+   * stands, so a refusal halfway leaves the phone showing what really moved.
+   */
+  const moveGroup = async (by: string) => {
+    const ids = (lineIds ?? "").split(",").filter(Boolean);
     const { run, adopt } = useCart.getState();
     setSaving(true);
     setSaveError(null);
-    const saved = await run((cartId) => api.setCartFulfilment(cartId, { deadline: by })).then(
-      (cart) => {
-        adopt(cart);
-        return true;
-      },
-      (e: unknown) => {
-        setSaveError(userFacingError(e, "GRIDGO could not change your order's date. Try again."));
-        return false;
-      },
-    );
-    setSaving(false);
-    return saved;
+    try {
+      for (const lineId of ids) adopt(await run((cartId) => api.updateCartLine(cartId, lineId, { deadline: by })));
+      router.back();
+    } catch (e) {
+      setSaveError(userFacingError(e, "GRIDGO could not move these items to that date. Try again."));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const confirm = async () => {
+  const confirm = () => {
     if (!chosen || saving) return;
-    const by = deadlineFor(chosen);
-    if (basketMode) {
-      if (await writeBasketDeadline(by)) router.back();
+    if (groupMode) {
+      void moveGroup(deadlineFor(chosen));
       return;
     }
-    if (unlocked && basketDeadline != null) {
-      if (!(await writeBasketDeadline(by))) return;
-    }
-    go(by);
+    go(deadlineFor(chosen));
   };
 
   const go = (by: string | null) => {
@@ -217,7 +255,10 @@ export default function WhenScreen() {
       prefetchMatch(
         withJobRanking(
           withJobFulfilment(
-            { subcategoryCode: subcategory, ...basketMatchContext(useCart.getState().cart, by) },
+            {
+              subcategoryCode: subcategory,
+              ...basketMatchContext(useCart.getState().cart, by, useBasketGroupTarget.getState().groupId),
+            },
             dropoff,
           ),
         ),
@@ -226,13 +267,17 @@ export default function WhenScreen() {
     router.push({ pathname: "/request/rank", params });
   };
 
-  if (locked && basketDeadline) {
+  if (locked) {
     return (
-      <LockedBasketDate
+      <GroupDate
         thing={thing}
-        deadline={basketDeadline}
-        onContinue={() => go(basketDeadline)}
-        onChange={() => setUnlocked(true)}
+        label={targetLabel ?? "this shop"}
+        deadline={targetDeadline}
+        onContinue={() => go(targetDeadline)}
+        onChange={() => {
+          clearMatchPrefetch();
+          useBasketGroupTarget.getState().clear();
+        }}
       />
     );
   }
@@ -251,11 +296,12 @@ export default function WhenScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text className="text-h2 text-text-primary">
-          {basketMode ? "When do you need your order?" : `When do you need your ${thing}?`}
+          {groupMode ? `When do you need ${label ?? "these items"}?` : `When do you need your ${thing}?`}
         </Text>
-        {basketMode || unlocked ? (
+        {groupMode ? (
           <Text className="mt-1 text-body text-text-secondary">
-            This date is for your whole order. Every shop in it is held to it.
+            Every item in {label ?? "this group"} moves to the date you pick. GRIDGO checks the shop
+            can still make it.
           </Text>
         ) : null}
         {/*
@@ -271,6 +317,10 @@ export default function WhenScreen() {
           <Text className="mt-1 text-body text-text-secondary">
             {earliestReadyLine(earliest)}
           </Text>
+        ) : null}
+
+        {inOrder.length > 0 ? (
+          <DatesInOrder dates={inOrder} chosen={chosen} pickable={pickable} onPick={pickInOrder} />
         ) : null}
 
         <TourTarget step="when" className="mt-4">
@@ -333,20 +383,21 @@ export default function WhenScreen() {
             // The date is already the largest thing on the screen. Repeating it
             // here wrapped the control onto two lines to say what the masthead
             // had just said.
-            label={saving ? "Saving the date…" : chosen ? (basketMode ? "Use this date" : "Continue") : "Pick a date"}
-            onPress={() => void confirm()}
+            label={saving ? "Saving the date…" : chosen ? (groupMode ? "Use this date" : "Continue") : "Pick a date"}
+            onPress={confirm}
             disabled={!chosen || saving}
           />
           {saveError ? (
-            <Text className="text-center text-caption text-error">{saveError}</Text>
+            <Text className="text-center text-caption text-error" accessibilityLiveRegion="polite">
+              {saveError}
+            </Text>
           ) : null}
           {/*
             A second, quieter way through. A client with no deadline should not
             have to invent one, and inventing one would filter out shops that
-            could have done the job. An order that already has a date, or is
-            being given one, has no "no rush" to offer.
+            could have done the job.
           */}
-          {basketMode || unlocked ? null : (
+          {groupMode ? null : (
             <SecondaryButton label="No rush — show me anyone" onPress={() => go(null)} />
           )}
       </View>
@@ -355,41 +406,110 @@ export default function WhenScreen() {
 }
 
 /**
- * A product joining a basket that already has its date. The date is shown,
- * not asked: every shop in one order is held to the same one. Moving it moves
- * it for the whole order, which is what the second button says.
+ * The dates other products in this order already have, as one-tap choices.
+ *
+ * Every product keeps its own date, so nothing here is forced — but the same
+ * date from the same shop is one delivery, so a client lining things up for
+ * one day should not have to find it on the calendar again. A day this product
+ * cannot make is shown and said, not hidden: "why is my date missing" is a
+ * worse question than "why can't this one make it".
  */
-function LockedBasketDate({
+function DatesInOrder({
+  dates,
+  chosen,
+  pickable,
+  onPick,
+}: {
+  dates: BasketDate[];
+  chosen: string | null;
+  pickable: (dayKey: string) => boolean;
+  onPick: (entry: BasketDate) => void;
+}) {
+  return (
+    <View className="mt-4 gap-2" testID="dates-in-order">
+      <Text className="text-overline text-text-muted">ALREADY IN YOUR ORDER</Text>
+      <View className="flex-row flex-wrap gap-2">
+        {dates.map((entry) => {
+          const can = pickable(entry.dayKey);
+          const selected = chosen === entry.dayKey;
+          const items = entry.itemCount === 1 ? "1 item" : `${entry.itemCount} items`;
+          return (
+            <Pressable
+              key={entry.dayKey}
+              onPress={() => onPick(entry)}
+              disabled={!can}
+              accessibilityRole="button"
+              accessibilityState={{ selected, disabled: !can }}
+              accessibilityLabel={
+                can
+                  ? `${entry.label}, ${items} already on this date`
+                  : `${entry.label}, ${items} already on this date. Not possible for this item.`
+              }
+              className={
+                selected
+                  ? "gg-touch rounded-field border border-accent bg-accent px-3 py-2"
+                  : can
+                    ? "gg-touch rounded-field border border-outline bg-surface px-3 py-2"
+                    : "gg-touch gg-disabled rounded-field border border-outline-subtle bg-surface-variant px-3 py-2"
+              }
+              style={({ pressed }) => (pressed && can ? { opacity: 0.8 } : undefined)}
+            >
+              <Text className={selected ? "text-body font-medium text-accent-on" : "text-body font-medium text-text-primary"}>
+                {entry.label}
+              </Text>
+              <Text className={selected ? "text-caption text-accent-on" : "text-caption text-text-muted"}>
+                {can ? items : "Not possible for this"}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text className="text-caption text-text-muted">{SAME_DATE_NOTE}</Text>
+    </View>
+  );
+}
+
+/**
+ * "Add more from Shop A": the group is one shop on one date, so its date is
+ * shown, not asked. Another date is a different delivery, which is what the
+ * second button says.
+ */
+function GroupDate({
   thing,
+  label,
   deadline,
   onContinue,
   onChange,
 }: {
   thing: string;
-  deadline: string;
+  label: string;
+  deadline: string | null;
   onContinue: () => void;
   onChange: () => void;
 }) {
+  const day = deadline ? groupDateLabel(deadline) : null;
   return (
     <Screen edges={["bottom"]}>
       <View className="gg-screen gg-page flex-1 pt-2">
         <Text className="text-h2 text-text-primary">When do you need your {thing}?</Text>
         <Text className="mt-1 text-body text-text-secondary">
-          It joins your order, so it shares your order&apos;s date.
+          It joins {label}, so it comes on {label}&apos;s date, in the same delivery.
         </Text>
         <View
           className="gg-card mt-6 gap-1"
           accessible
-          accessibilityLabel={`Your order's date: ${formatDeadline(deadline)}. ${ONE_DATE_NOTE}`}
+          accessibilityLabel={`${label}'s date: ${day ?? "no set date"}. No extra delivery fee.`}
         >
-          <Text className="text-overline text-text-muted">YOUR ORDER&apos;S DATE</Text>
-          <Text className="text-h3 text-text-primary">{formatDeadline(deadline)}</Text>
-          <Text className="text-caption text-text-muted">{ONE_DATE_NOTE}</Text>
+          <Text className="text-overline text-text-muted">{label.toUpperCase()}&apos;S DATE</Text>
+          <Text className="text-h3 text-text-primary">{day ?? "No set date"}</Text>
+          <Text className="text-caption text-text-muted">
+            Same shop, same date: no extra delivery fee.
+          </Text>
         </View>
       </View>
       <View className="gg-page gap-3 pb-2 pt-2">
         <PrimaryButton label="Continue" onPress={onContinue} />
-        <SecondaryButton label="Change the date for the whole order" onPress={onChange} />
+        <SecondaryButton label="Pick a different date" onPress={onChange} />
       </View>
     </Screen>
   );

@@ -282,7 +282,10 @@ export type Order = {
   basketId?: string | null;
   /** "Shop A", "Shop B" — never the shop's identity. */
   groupLabel?: string | null;
-  /** The basket's one deadline, shared by every group. */
+  /**
+   * The basket's one deadline, from before each product kept its own date
+   * (gridgo-client#189). A group's own date is its `deadline`.
+   */
   basketDeadline?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -2011,6 +2014,12 @@ export type CartLineRecord = {
   supplierId?: string;
   /** Which shop group this line is in, on a multi-shop basket only. */
   groupId?: string;
+  /**
+   * The date this product was matched for (gridgo-client#189). Each product
+   * keeps its own; null is "no rush". Absent on an API from before, which held
+   * the whole basket to `cart.deadline` — read it through `lineDeadlineOf`.
+   */
+  deadline?: string | null;
   catalogItemId: string;
   quantity: number;
   optionIds: string[];
@@ -2043,6 +2052,11 @@ export type CartGroup = {
   id: string;
   /** "Shop A", "Shop B" — never the shop's identity. */
   label: string;
+  /**
+   * The date this group is printed and delivered for: a group is one shop on
+   * one date (gridgo-client#189). Absent on an older API — `groupDeadlineOf`.
+   */
+  deadline?: string | null;
   lineIds: string[];
   clientItemSubtotalMinor: number | null;
   deliveryFeeMinor: number | null;
@@ -2059,7 +2073,11 @@ export type Cart = {
   version: number;
   serviceLevel: ServiceLevel;
   scheduledFor: string | null;
-  /** The one deadline every item in the basket is matched against. */
+  /**
+   * The basket's one deadline from before each product kept its own
+   * (gridgo-client#189). Only a fallback now — read dates through
+   * `lineDeadlineOf` / `groupDeadlineOf`.
+   */
   deadline?: string | null;
   fulfillmentMode: FulfilmentMode;
   defaultDropoff: OrderPoint | null;
@@ -2070,8 +2088,16 @@ export type Cart = {
   /** GRIDGO's figures for this draft. Null once checked out; absent on an older API. */
   clientQuote?: CartQuote | null;
   lines: CartLineRecord[];
-  /** One per shop, in the order they were first added. Absent on older APIs. */
+  /**
+   * One per shop and date, in the order they were first added
+   * (gridgo-client#189). Absent on older APIs.
+   */
   groups?: CartGroup[];
+  /** Two or more groups: grouped checkout, paid in full. Absent on older APIs. */
+  isMultiGroup?: boolean;
+  groupCount?: number;
+  /** Distinct shops behind the groups; one shop on two dates is 1. */
+  shopCount?: number;
   /** Set once a multi-shop basket has been checked out. */
   basketId?: string;
   checkedOutOrderId: string | null;
@@ -2083,6 +2109,8 @@ export type Cart = {
 export type BasketGroup = {
   orderId: string;
   label: string;
+  /** This group's own date (gridgo-client#189); absent on an older API. */
+  deadline?: string | null;
   state: string;
   clientItemSubtotalMinor: number;
   deliveryFeeMinor: number;
@@ -2105,6 +2133,9 @@ export type Basket = {
   pickupFeeMinor?: number;
   payment: PaymentInstallment & { amountMinor: number };
   groups: BasketGroup[];
+  /** Distinct shops behind the groups (gridgo-client#189); absent on older APIs. */
+  shopCount?: number;
+  groupCount?: number;
   createdAt?: string;
 };
 
@@ -2166,6 +2197,8 @@ export type InvoiceLine = {
 export type InvoiceGroup = {
   orderId: string;
   label: string;
+  /** This group's own date (gridgo-client#189); absent on an older API. */
+  deadline?: string | null;
   lines: InvoiceLine[];
   clientItemSubtotalMinor: number;
   deliveryFeeMinor: number;
@@ -2306,9 +2339,10 @@ export type MatchInput = {
   addressId?: string;
   dropoff?: OrderPoint | null;
   /**
-   * The basket this product joins. GRIDGO holds it to the basket's one
-   * deadline, rechecks a shop's queue with what the basket already has there,
-   * and keeps shop identities out of a multi-shop answer (gridgo-api#117).
+   * The basket this product joins. GRIDGO rechecks a shop's queue with what
+   * the basket already has there, and keeps shop identities out of a
+   * multi-shop answer (gridgo-api#117). The product keeps its own `deadline`
+   * (gridgo-client#189).
    * Sent only once the basket has a line — see `basketMatchContext`.
    */
   cartId?: string;
@@ -2361,7 +2395,7 @@ export type CartFulfilment = {
   serviceLevel?: ServiceLevel;
   scheduledFor?: string | null;
   defaultDropoff?: OrderPoint | null;
-  /** The basket's one deadline, ISO. Checkout rechecks every group against it. */
+  /** The basket's one deadline, ISO. Only an older basket has one (gridgo-client#189). */
   deadline?: string;
 };
 
@@ -2445,6 +2479,11 @@ export async function updateCartLine(
     /** Replaces the line's links; `[]` clears them. Omit to keep them. */
     artworkLinks?: ArtworkLink[];
     dropoff?: OrderPoint | null;
+    /**
+     * Move this product to another date (gridgo-client#189). GRIDGO rechecks
+     * the listing against it and refuses with `409 deadline_not_met`.
+     */
+    deadline?: string;
   },
 ): Promise<Cart> {
   const result = await request<{ cart: Cart }>(
