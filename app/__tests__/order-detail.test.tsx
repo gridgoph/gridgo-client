@@ -515,6 +515,26 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText(/commission/i)).toBeNull();
   });
 
+  it("offers a printed-invoice request when Super Admin has turned it on", async () => {
+    api.getSettings.mockResolvedValue({
+      issueWindowHours: 24,
+      deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+      serviceFeeRateBps: 1000,
+      physicalInvoiceRequestsEnabled: true,
+    });
+    setOrder({
+      subtotalMinor: 100000,
+      serviceFeeMinor: 10000,
+      serviceFeeRateBps: 1000,
+      deliveryFeeMinor: 2500,
+      totalMinor: 112500,
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Request a physical invoice")).toBeTruthy();
+    expect(screen.queryByText("View physical invoice request")).toBeNull();
+  });
+
   it("still shows a printed-invoice request filed before the pilot pause", async () => {
     setOrder({
       subtotalMinor: 100000,

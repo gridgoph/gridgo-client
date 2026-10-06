@@ -1,9 +1,9 @@
-import { PHYSICAL_INVOICE_REQUESTS_ENABLED } from "@/constants/features";
 import {
   EMPTY_PHYSICAL_INVOICE,
   firstPhysicalInvoiceError,
   physicalInvoiceEntry,
   physicalInvoiceReady,
+  physicalInvoiceRequestsEnabled,
   trimPhysicalInvoice,
 } from "@/lib/physicalInvoice";
 
@@ -44,8 +44,12 @@ describe("physical invoice entry point", () => {
     requestedAt: "2026-09-20T02:00:00.000Z",
   };
 
-  it("is switched off for the pilot (gridgoph/gridgo-web#61)", () => {
-    expect(PHYSICAL_INVOICE_REQUESTS_ENABLED).toBe(false);
+  it("treats a missing or false Super Admin switch as off", () => {
+    expect(physicalInvoiceRequestsEnabled(null)).toBe(false);
+    expect(physicalInvoiceRequestsEnabled(undefined)).toBe(false);
+    expect(physicalInvoiceRequestsEnabled({})).toBe(false);
+    expect(physicalInvoiceRequestsEnabled({ physicalInvoiceRequestsEnabled: false })).toBe(false);
+    expect(physicalInvoiceRequestsEnabled({ physicalInvoiceRequestsEnabled: true })).toBe(true);
   });
 
   it("offers no request while the switch is off", () => {

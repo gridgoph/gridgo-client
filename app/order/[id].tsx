@@ -62,7 +62,7 @@ import {
   paymentInstallment,
   paysInFull,
 } from "@/lib/payment";
-import { physicalInvoiceEntry } from "@/lib/physicalInvoice";
+import { physicalInvoiceEntry, physicalInvoiceRequestsEnabled } from "@/lib/physicalInvoice";
 import { orderArtwork } from "@/lib/orderArtwork";
 import { orderReference } from "@/lib/orderReference";
 import { artworkSummary, paymentSummary, specificationsSummary } from "@/lib/orderSections";
@@ -108,6 +108,7 @@ export default function OrderDetailScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const loadSequence = useRef(0);
+  const loadSettings = usePlatformSettings((state) => state.load);
   const applyOrderUpdate = useCallback((updated: api.Order) => {
     loadSequence.current++;
     setOrder(updated);
@@ -159,8 +160,9 @@ export default function OrderDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      void loadSettings({ refresh: true }).catch(() => undefined);
       return () => { loadSequence.current++; };
-    }, [load]),
+    }, [load, loadSettings]),
   );
 
   /*
@@ -636,7 +638,7 @@ function MoneyDetails({
   // something the client owes, so it is not drawn at all.
   const balance = paysInFull(order) ? undefined : paymentInstallment(order, "balance");
   const showFee = showsServiceFee(order) && serviceFeeVisibleToClient(settings);
-  const physicalInvoice = physicalInvoiceEntry(order);
+  const physicalInvoice = physicalInvoiceEntry(order, physicalInvoiceRequestsEnabled(settings));
   // The saved total less the saved fulfilment charge: both GRIDGO's figures.
   const printing = orderPrintingMinor(order);
   // A pick-up order chosen before matching carries the hub's fee in the

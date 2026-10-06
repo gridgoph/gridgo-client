@@ -20,7 +20,7 @@ import { FILE_CHECK_AFTER_PAYMENT } from "@/lib/checkout";
 import * as api from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
-import { physicalInvoiceEntry } from "@/lib/physicalInvoice";
+import { physicalInvoiceEntry, physicalInvoiceRequestsEnabled } from "@/lib/physicalInvoice";
 import { canRate } from "@/lib/rating";
 import {
   HOME_TAB,
@@ -52,6 +52,7 @@ export default function OrderReceiptScreen() {
   const colors = useThemeColors();
   const fromCheckout = isCheckoutReceipt(from);
   const settings = usePlatformSettings((state) => state.settings);
+  const loadSettings = usePlatformSettings((state) => state.load);
 
   // Checkout hands over the summary it was just given, so the slip can print
   // at once; the reads below refresh it.
@@ -84,6 +85,7 @@ export default function OrderReceiptScreen() {
       const [invoiceResult, current] = await Promise.all([
         api.getInvoice(orderId).catch(() => null),
         api.getOrder(orderId),
+        loadSettings({ refresh: true }).catch(() => null),
       ]);
       if (sequence !== loadSequence.current) return;
       // A multi-shop receipt marks any group that stopped since it was paid.
@@ -109,7 +111,7 @@ export default function OrderReceiptScreen() {
       if (sequence !== loadSequence.current) return;
       setError(userFacingError(caught, "Could not load this receipt. Open the order and try again."));
     }
-  }, [orderId]);
+  }, [orderId, loadSettings]);
 
   useFocusEffect(
     useCallback(() => {
@@ -120,7 +122,7 @@ export default function OrderReceiptScreen() {
     }, [load]),
   );
 
-  const physicalInvoice = physicalInvoiceEntry(order);
+  const physicalInvoice = physicalInvoiceEntry(order, physicalInvoiceRequestsEnabled(settings));
 
   const openOrder = () => {
     if (!orderId) return;

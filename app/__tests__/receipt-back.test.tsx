@@ -35,6 +35,11 @@ jest.mock("@/lib/api", () => {
     ...actual,
     getInvoice: jest.fn(),
     getOrder: jest.fn(),
+    getSettings: jest.fn(async () => ({
+      issueWindowHours: 24,
+      serviceFeeRateBps: 1000,
+      deliveryFeeBands: [],
+    })),
   };
 });
 

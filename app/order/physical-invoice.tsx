@@ -7,7 +7,6 @@ import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SpecRow } from "@/components/SpecRow";
-import { PHYSICAL_INVOICE_REQUESTS_ENABLED } from "@/constants/features";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
@@ -19,12 +18,14 @@ import {
   firstPhysicalInvoiceError,
   physicalInvoiceFieldError,
   physicalInvoiceReady,
+  physicalInvoiceRequestsEnabled,
   trimPhysicalInvoice,
   type PhysicalInvoiceDraft,
   type PhysicalInvoiceField,
   type PhysicalInvoiceRequest,
 } from "@/lib/physicalInvoice";
 import { formatTimelineStamp } from "@/lib/relativeTime";
+import { usePlatformSettings } from "@/store/platformSettings";
 
 /**
  * Ask GRIDGO for a printed invoice at an office.
@@ -33,7 +34,7 @@ import { formatTimelineStamp } from "@/lib/relativeTime";
  * is the contact, the office address, and when someone is in — GRIDGO uses
  * those to send the copy later.
  *
- * While `PHYSICAL_INVOICE_REQUESTS_ENABLED` is off, nothing links here to file
+ * While `physicalInvoiceRequestsEnabled` is off, nothing links here to file
  * one. A request already on file still shows; anything else that lands here (a
  * deep link, old history) is told the feature is paused rather than handed a
  * form GRIDGO is not taking.
@@ -41,6 +42,9 @@ import { formatTimelineStamp } from "@/lib/relativeTime";
 export default function PhysicalInvoiceScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const router = useRouter();
+  const loadSettings = usePlatformSettings((state) => state.load);
+  /** Null until this screen has read the switch. Absent settings count as off. */
+  const [requestsOpen, setRequestsOpen] = useState<boolean | null>(null);
 
   const [draft, setDraft] = useState<PhysicalInvoiceDraft>(EMPTY_PHYSICAL_INVOICE);
   const [existing, setExisting] = useState<PhysicalInvoiceRequest | null>(null);
@@ -53,12 +57,18 @@ export default function PhysicalInvoiceScreen() {
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     if (!orderId) {
+      setRequestsOpen(false);
       setLoaded(true);
       return;
     }
+    let open = false;
     try {
-      const request = await api.getPhysicalInvoice(orderId);
+      const [request, loadedSettings] = await Promise.all([
+        api.getPhysicalInvoice(orderId),
+        loadSettings({ refresh: true }).catch(() => null),
+      ]);
       if (sequence !== loadSequence.current) return;
+      open = physicalInvoiceRequestsEnabled(loadedSettings);
       setExisting(request);
       setError(null);
     } catch (caught) {
@@ -67,8 +77,10 @@ export default function PhysicalInvoiceScreen() {
         userFacingError(caught, "GRIDGO could not load this request. Try again in a moment."),
       );
     }
+    if (sequence !== loadSequence.current) return;
+    setRequestsOpen(open);
     setLoaded(true);
-  }, [orderId]);
+  }, [orderId, loadSettings]);
 
   useFocusEffect(
     useCallback(() => {
@@ -97,7 +109,7 @@ export default function PhysicalInvoiceScreen() {
   };
 
   const send = async () => {
-    if (!PHYSICAL_INVOICE_REQUESTS_ENABLED || !orderId || busy) return;
+    if (!physicalInvoiceRequestsEnabled(usePlatformSettings.getState().settings) || !orderId || busy) return;
     setAttempted(true);
     if (!physicalInvoiceReady(draft)) return;
     setBusy(true);
@@ -153,10 +165,12 @@ export default function PhysicalInvoiceScreen() {
     );
   }
 
-  if (!PHYSICAL_INVOICE_REQUESTS_ENABLED) {
-    // Wait for the read: an order that already has a request should open on
-    // it, not flash "not available" first.
-    if (!loaded) return <FormScreen>{null}</FormScreen>;
+  // Wait for the request and the switch. An order that already has a request
+  // opens on it; a switch that is still loading must not flash the form or
+  // the paused screen.
+  if (!loaded || requestsOpen === null) return <FormScreen>{null}</FormScreen>;
+
+  if (!requestsOpen) {
     return (
       <FormScreen>
         <View className="gg-page gap-6 pb-16 pt-4">
