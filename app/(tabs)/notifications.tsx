@@ -13,10 +13,17 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { NotificationCard } from "@/components/NotificationCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { SkeletonList } from "@/components/Skeleton";
+import { businessApplicationSentBack } from "@/lib/accountProfile";
 import { userFacingError } from "@/lib/copy";
-import { isOrganizationNotification, ORGANIZATIONS_ROUTE } from "@/lib/organization";
+import {
+  APPLICATION_ROUTE,
+  isApplicationNotification,
+  isOrganizationNotification,
+  ORGANIZATIONS_ROUTE,
+} from "@/lib/organization";
 import {
   isGroupUnread,
+  openApplicationNoticeId,
   partitionInbox,
   type NotificationGroup,
 } from "@/lib/notificationPresentation";
@@ -25,6 +32,7 @@ import {
   isNotificationRead,
   useNotifications,
 } from "@/store/notifications";
+import { useSession } from "@/store/session";
 
 /**
  * Every update on the client's jobs.
@@ -54,7 +62,9 @@ export default function NotificationsScreen() {
   );
 
   const unreadCount = countUnreadGroups(items, readIds);
-  const { needYou, updates } = partitionInbox(items);
+  const applicationSentBack = useSession((state) => businessApplicationSentBack(state.user));
+  const applicationNoticeId = openApplicationNoticeId(items, applicationSentBack);
+  const { needYou, updates } = partitionInbox(items, { applicationNoticeId });
   const splitInbox = needYou.length > 0 && updates.length > 0;
 
   function renderRow(group: NotificationGroup) {
@@ -64,6 +74,7 @@ export default function NotificationsScreen() {
       <NotificationCard
         key={group.key}
         group={group}
+        applicationNoticeId={applicationNoticeId}
         read={!isGroupUnread(group, (item) => isNotificationRead(item, readIds))}
         onOpen={
           isOrganizationNotification(notification.type)
@@ -71,6 +82,12 @@ export default function NotificationsScreen() {
                 // The officer check is answered on the Organizations tab (#165).
                 markGroupRead();
                 router.navigate(ORGANIZATIONS_ROUTE);
+              }
+            : isApplicationNotification(notification.type)
+            ? () => {
+                // Sent back: the application opens with what was sent filled in.
+                markGroupRead();
+                router.push(APPLICATION_ROUTE);
               }
             : notification.orderId
             ? () => {

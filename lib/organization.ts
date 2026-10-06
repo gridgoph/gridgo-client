@@ -187,6 +187,21 @@ export function isOrganizationNotification(type: string | null | undefined): boo
 
 export const ORGANIZATIONS_ROUTE = "/(tabs)/organizations" as const;
 
+/**
+ * Operations sent the account application back, or asked a business for its
+ * permit. Both are answered on the application itself (gridgo-client#187).
+ */
+export const APPLICATION_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
+  "approval_rejected",
+  "client_application_document_requested",
+]);
+
+export function isApplicationNotification(type: string | null | undefined): boolean {
+  return type != null && APPLICATION_NOTIFICATION_TYPES.has(type);
+}
+
+export const APPLICATION_ROUTE = "/business-apply" as const;
+
 /* --------------------------------------------------------------------------
    Refusals
    -------------------------------------------------------------------------- */

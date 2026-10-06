@@ -7,6 +7,7 @@ const GROUP: ShopGroupView = {
   id: "g1",
   label: "Shop A",
   letter: "A",
+  deadline: "2026-10-26T08:00:00.000Z",
   lines: [],
   itemsMinor: 11000,
   deliveryFeeMinor: 5000,

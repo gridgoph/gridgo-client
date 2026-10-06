@@ -2,6 +2,9 @@ import {
   applicationInput,
   applicationSteps,
   checklistFor,
+  correctionStartIndex,
+  documentProblems,
+  draftFromSubmission,
   emptyApplicationDraft,
   EMPTY_PERSON,
   formatDateTyping,
@@ -10,6 +13,7 @@ import {
   personProblems,
   refusalMessage,
   refusalStep,
+  sentBackFrom,
   stepProblem,
   type ApplicationDraft,
   type PersonDraft,
@@ -253,5 +257,70 @@ describe("refusals", () => {
     expect(refusalStep("invalid_application", ["documents.student_id"])).toBe("documents");
     expect(refusalStep("invalid_application", ["officer.dateOfBirth"])).toBe("person");
     expect(refusalMessage("organization_already_exists")).toContain("already on GRIDGO");
+  });
+});
+
+describe("a sent-back application (#187)", () => {
+  const view = {
+    application: {
+      accountType: "business" as const,
+      businessType: "sole_proprietor" as const,
+      businessName: "Bautista Trading",
+      businessNature: "Events",
+      signatory: {
+        fullName: "Ana Marie Reyes",
+        dateOfBirth: "2004-03-15",
+        address: "Purok 3, Bajada, Davao City",
+        phone: "0917 123 4567",
+        governmentIdType: "philid" as const,
+        governmentIdHasNoExpiry: true,
+      },
+      documents: {
+        government_id: { fileId: "f_gov", name: "philid.jpg" },
+        payout_bank_proof: { fileId: "f_bank", name: "bank.pdf" },
+        bir_2303: { fileId: "f_bir", name: null },
+        dti_certificate: { fileId: "f_dti", name: "dti.pdf" },
+        not_a_document: { fileId: "f_x", name: "x" },
+      },
+    },
+    sentBack: {
+      reason: "Please upload these again:\n- Payout bank account proof: Name differs",
+      documents: [
+        { key: "payout_bank_proof", label: "Payout bank account proof", note: "Name differs" },
+        { key: "made_up", label: "?", note: null },
+      ],
+    },
+  };
+  const sentBack = sentBackFrom(view)!;
+  const draft = draftFromSubmission(view.application, emptyApplicationDraft(), sentBack);
+  const checklist = checklistFor("sole_proprietor");
+  const steps = applicationSteps("apply", "business");
+
+  it("keeps only documents it knows, and names the file each flagged one replaces", () => {
+    expect(sentBack.documents).toEqual({ payout_bank_proof: { note: "Name differs", previousName: "bank.pdf" } });
+    expect(Object.keys(draft.documents).sort()).toEqual(["bir_2303", "dti_certificate", "government_id"]);
+    expect(draft.documents.bir_2303).toEqual({ fileId: "f_bir", name: checklist[2]!.label, kept: true });
+    expect(draft.person.governmentIdHasNoExpiry).toBe(true);
+    expect(draft.businessType).toBe("sole_proprietor");
+  });
+
+  it("holds Files on the flagged document by name", () => {
+    expect(documentProblems(draft, checklist, sentBack)).toEqual({
+      payout_bank_proof: "Upload the proof of bank account again.",
+    });
+    expect(stepProblem("documents", draft, { mode: "apply", checklist, emailVerified: false, today: TODAY, sentBack })).toBe(
+      "Upload the proof of bank account again.",
+    );
+  });
+
+  it("opens on Files, or earlier where an answer no longer holds", () => {
+    const options = { mode: "apply" as const, checklist, today: TODAY, sentBack };
+    expect(steps[correctionStartIndex(steps, draft, options)]?.id).toBe("documents");
+    const expired = {
+      ...draft,
+      person: { ...draft.person, governmentIdType: "passport" as const, governmentIdHasNoExpiry: false, governmentIdExpiresOn: "2026-01-01" },
+    };
+    expect(steps[correctionStartIndex(steps, expired, options)]?.id).toBe("person");
+    expect(correctionStartIndex(steps, draft, { ...options, sentBack: { reason: "Fix the name", documents: {} } })).toBe(0);
   });
 });

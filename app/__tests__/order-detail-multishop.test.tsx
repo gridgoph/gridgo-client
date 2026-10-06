@@ -1,7 +1,7 @@
 import { cleanup, screen } from "@testing-library/react-native";
 
 import OrderDetailScreen from "@/app/order/[id]";
-import { placedBasket } from "@/test/multiShopFixtures";
+import { DATE_MID, datedBasket, placedBasket } from "@/test/multiShopFixtures";
 import { groupOrder, renderPhone } from "@/test/multiShopOrderScreen";
 
 jest.mock("expo-router", () => ({
@@ -63,9 +63,9 @@ describe("OrderDetailScreen, one group of several shops", () => {
     await renderPhone(<OrderDetailScreen />);
 
     expect(await screen.findByText("One order, 3 shops")).toBeTruthy();
-    expect(screen.getByLabelText("Shop A. Delivered.")).toBeTruthy();
-    expect(screen.getByLabelText("Shop B. In production. Showing now.")).toBeTruthy();
-    expect(screen.getByLabelText("Shop C. Out for delivery.")).toBeTruthy();
+    expect(screen.getByLabelText("Shop A. Needed by Mon 26 Oct. Delivered.")).toBeTruthy();
+    expect(screen.getByLabelText("Shop B. Needed by Mon 26 Oct. In production. Showing now.")).toBeTruthy();
+    expect(screen.getByLabelText("Shop C. Needed by Mon 26 Oct. Out for delivery.")).toBeTruthy();
     expect(screen.getByText("Viewing")).toBeTruthy();
     expect(api.getBasket).toHaveBeenCalledWith("bsk_1");
     expect(screen.queryByText(/was cancelled/)).toBeNull();
@@ -91,9 +91,23 @@ describe("OrderDetailScreen, one group of several shops", () => {
     await renderPhone(<OrderDetailScreen />);
 
     expect(await screen.findByText(/^Shop B was cancelled\./)).toBeTruthy();
-    expect(screen.getByLabelText("Shop B. Cancelled. Showing now.")).toBeTruthy();
+    expect(screen.getByLabelText("Shop B. Needed by Mon 26 Oct. Cancelled. Showing now.")).toBeTruthy();
     expect(screen.queryByText(/We are checking your payment/)).toBeNull();
     expect(screen.queryByText("Show payment QR")).toBeNull();
+  });
+
+  it("lists each group with its own date, soonest first (gridgo-client#189)", async () => {
+    api.getOrder.mockResolvedValue(groupOrder({ deadline: DATE_MID }));
+    api.getBasket.mockResolvedValue(datedBasket(["production", "production", "delivered"]));
+    await renderPhone(<OrderDetailScreen />);
+
+    expect(await screen.findByText("One order, 2 shops on 3 dates")).toBeTruthy();
+    const rows = screen.getAllByRole("tab").map((node) => node.props.accessibilityLabel as string);
+    expect(rows).toEqual([
+      "Shop A. Needed by Mon 12 Oct. Delivered.",
+      "Shop B. Needed by Fri 16 Oct. In production. Showing now.",
+      "Shop A. Needed by Tue 20 Oct. In production.",
+    ]);
   });
 
   it("keeps the order on screen when the basket cannot be read", async () => {
@@ -101,7 +115,7 @@ describe("OrderDetailScreen, one group of several shops", () => {
     api.getBasket.mockRejectedValue(new Error("offline"));
     await renderPhone(<OrderDetailScreen />);
 
-    expect(await screen.findByText("One order, several shops")).toBeTruthy();
+    expect(await screen.findByText("One order, several parts")).toBeTruthy();
     expect(screen.getByText("Custom apparel")).toBeTruthy();
     expect(screen.getAllByText("Shop B").length).toBeGreaterThan(0);
   });

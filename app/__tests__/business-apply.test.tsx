@@ -79,7 +79,7 @@ describe("the account application", () => {
     await renderInSafeArea(<BusinessApplyScreen />);
 
     expect(screen.getByText("Application sent")).toBeTruthy();
-    expect(screen.getByText("Send it again with documents")).toBeTruthy();
+    expect(screen.getByText("Open the application")).toBeTruthy();
   });
 
   it("verifies an approved organization's first officer without asking which track", async () => {

@@ -155,3 +155,70 @@ export function combinedInvoice(): Invoice {
     paymentPlan: { method: "qr_manual", downpaymentPercent: 100, downpaymentMinor: 81720, balanceMinor: 0 },
   };
 }
+
+/*
+ * Per-product dates (gridgo-client#189): a group is one shop on one date. The
+ * same shop on two dates is two groups under the same label, with different
+ * ids — the shape gridgo-api sends once every product keeps its own date.
+ */
+export const DATE_EARLY = "2026-10-12T10:00:00.000Z";
+export const DATE_MID = "2026-10-16T10:00:00.000Z";
+export const DATE_LATE = "2026-10-20T10:00:00.000Z";
+
+/**
+ * Shop A on 20 Oct (started first), Shop B on 16 Oct, and Shop A again on
+ * 12 Oct: three groups, two shops, three dates. Listed in the order they were
+ * started, as GRIDGO sends them — soonest is last.
+ */
+export function datedCart(overrides: Partial<Cart> = {}): Cart {
+  const plan = [
+    { label: "Shop A", deadline: DATE_LATE },
+    { label: "Shop B", deadline: DATE_MID },
+    { label: "Shop A", deadline: DATE_EARLY },
+  ];
+  const base = multiCart(3);
+  const groups = base.groups!.map((group, index) => ({ ...group, ...plan[index] }));
+  const lines = base.lines.map((line, index) => ({ ...line, deadline: plan[index].deadline }));
+  return {
+    ...base,
+    // Different dates: GRIDGO reports no shared basket date.
+    deadline: null,
+    isMultiGroup: true,
+    groupCount: 3,
+    shopCount: 2,
+    groups,
+    lines,
+    ...overrides,
+  };
+}
+
+/** The placed basket behind `datedCart`: one group order per shop and date. */
+export function datedBasket(states: [string, string, string] = ["production", "production", "production"]): Basket {
+  const placed = placedBasket(states);
+  const dates = [DATE_LATE, DATE_MID, DATE_EARLY];
+  return {
+    ...placed,
+    deadline: null,
+    shopCount: 2,
+    groupCount: 3,
+    groups: placed.groups.map((group, index) => ({
+      ...group,
+      label: index === 1 ? "Shop B" : "Shop A",
+      deadline: dates[index],
+    })),
+  };
+}
+
+/** The one combined receipt behind `datedBasket`. */
+export function datedInvoice(): Invoice {
+  const invoice = combinedInvoice();
+  const basket = datedBasket();
+  return {
+    ...invoice,
+    groups: invoice.groups!.map((group, index) => ({
+      ...group,
+      label: basket.groups[index].label,
+      deadline: basket.groups[index].deadline,
+    })),
+  };
+}
