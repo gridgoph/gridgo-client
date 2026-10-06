@@ -21,6 +21,12 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.229 (New feature)
+
+- Order history stays open even when an update has missing details.
+- A sent-back account application reopens with everything you sent, so you only replace what Operations asked for.
+- Each item in one order can now have its own date. Checkout groups items by shop and date, each with its delivery fee.
+
 ## 1.0.221 (New feature)
 
 - The app no longer keeps checking your sign-in in the background, saving battery and data.
