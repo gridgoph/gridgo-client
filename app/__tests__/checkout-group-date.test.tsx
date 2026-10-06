@@ -5,7 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import CheckoutScreen from "@/app/checkout";
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
-import { datedCart, MULTI_SETTINGS } from "@/test/multiShopFixtures";
+import { DATE_MID, datedCart, MULTI_SETTINGS } from "@/test/multiShopFixtures";
 
 const mockPush = jest.fn();
 
@@ -67,6 +67,6 @@ it("moves one group to another date through the date step", async () => {
 
   expect(mockPush).toHaveBeenCalledWith({
     pathname: "/request/when",
-    params: { mode: "group", lineIds: "cline_1", label: "Shop B", subcategory: "" },
+    params: { mode: "group", lineIds: "cline_1", label: "Shop B", current: DATE_MID, subcategory: "" },
   });
 });

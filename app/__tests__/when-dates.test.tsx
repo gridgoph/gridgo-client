@@ -81,11 +81,17 @@ describe("WhenScreen, with an order already started", () => {
   });
 
   it("moves one checkout group to another date without offering no rush", async () => {
-    mockParams.current = { mode: "group", lineIds: "cline_2", label: "Shop A", subcategory: "brochures" };
+    mockParams.current = {
+      mode: "group",
+      lineIds: "cline_2",
+      label: "Shop A",
+      current: DATE_EARLY,
+      subcategory: "brochures",
+    };
     await renderInSafeArea(<WhenScreen />);
 
-    expect(screen.getByText("When do you need Shop A?")).toBeTruthy();
-    expect(screen.getByText(/Every item in Shop A moves to the date you pick/)).toBeTruthy();
+    expect(screen.getByText("New date for Shop A")).toBeTruthy();
+    expect(screen.getByText(/^Needed by Mon 12 Oct now\. Every item in this group moves/)).toBeTruthy();
     expect(screen.queryByText("No rush — show me anyone")).toBeNull();
     // The group's own date is not offered as somewhere to move it.
     expect(screen.queryByLabelText(/^Mon 12 Oct/)).toBeNull();

@@ -325,6 +325,7 @@ export default function CheckoutScreen() {
         mode: "group",
         lineIds: group.lines.map((line) => line.id).join(","),
         label: group.label,
+        ...(group.deadline ? { current: group.deadline } : {}),
         subcategory: group.lines[0]?.listing?.subcategoryCode ?? "",
       },
     });

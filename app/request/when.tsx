@@ -13,6 +13,7 @@ import {
   basketDates,
   basketMatchContext,
   groupDateLabel,
+  groupDateLine,
   SAME_DATE_NOTE,
   type BasketDate,
 } from "@/lib/basketGroups";
@@ -68,7 +69,7 @@ import {
  */
 export default function WhenScreen() {
   const router = useRouter();
-  const { subcategory, category, mode, lineIds, label } = useLocalSearchParams<{
+  const { subcategory, category, mode, lineIds, label, current } = useLocalSearchParams<{
     subcategory?: string;
     category?: string;
     /** `group`: checkout is moving one group's products to another date. */
@@ -77,6 +78,8 @@ export default function WhenScreen() {
     lineIds?: string;
     /** The group's label, in `mode=group`. */
     label?: string;
+    /** The group's date now, in `mode=group`; absent while it has none. */
+    current?: string;
   }>();
   const groupMode = mode === "group";
   const [saving, setSaving] = useState(false);
@@ -296,12 +299,12 @@ export default function WhenScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text className="text-h2 text-text-primary">
-          {groupMode ? `When do you need ${label ?? "these items"}?` : `When do you need your ${thing}?`}
+          {groupMode ? `New date for ${label ?? "these items"}` : `When do you need your ${thing}?`}
         </Text>
         {groupMode ? (
           <Text className="mt-1 text-body text-text-secondary">
-            Every item in {label ?? "this group"} moves to the date you pick. GRIDGO checks the shop
-            can still make it.
+            {current ? `${groupDateLine(current)} now. ` : ""}Every item in this group moves to the
+            date you pick, and GRIDGO checks the shop can still make it.
           </Text>
         ) : null}
         {/*

@@ -287,7 +287,7 @@ export function placedGroupsTitle(groups: readonly { label: string; deadline: st
  * "all 2 shops in this order", or "all 3 parts of this order" once one shop
  * delivers on more than one date — said where one payment covers them all.
  */
-export function allGroupsPhrase(basket: Pick<Basket, "deadline" | "groups">): string {
+export function allGroupsPhrase(basket: Pick<Basket, "deadline" | "groups" | "shopCount">): string {
   const dated = basket.groups.map((group) => ({ label: group.label, deadline: basketGroupDeadlineOf(group, basket) }));
   const { dates } = groupSpread(dated);
   const count = basket.groups.length;
