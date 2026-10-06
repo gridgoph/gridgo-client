@@ -1,3 +1,4 @@
+import { releasePushDownloadUrl } from "@/lib/releasePush";
 import { accountHold } from "@/lib/accountHold";
 import { getOrder } from "@/lib/api";
 import {
@@ -7,7 +8,7 @@ import {
   type Href,
 } from "expo-router";
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { AppState } from "react-native";
+import { AppState, Linking } from "react-native";
 
 import {
   parsePushData,
@@ -120,10 +121,17 @@ export function usePushNotifications(): void {
     }
     if (!Notifications) return;
 
-    const route = (identifier: string, data: unknown) => {
+    const route = (identifier: string, data: unknown, title?: string | null) => {
       if (routed.current.has(identifier)) return;
       routed.current.add(identifier);
       const sequence = ++tapSequence.current;
+      const download = releasePushDownloadUrl(data, title);
+      if (download) {
+        pending.current = null;
+        // An update is public and can rescue a signed-out install too.
+        void Linking.openURL(download).catch(() => undefined);
+        return;
+      }
       pending.current = null;
       const parsed = parsePushData(data);
       const target = pushTargetRoute(parsed);
@@ -170,6 +178,7 @@ export function usePushNotifications(): void {
           route(
             response.notification.request.identifier,
             response.notification.request.content.data,
+            response.notification.request.content.title,
           );
         },
       );
@@ -181,6 +190,7 @@ export function usePushNotifications(): void {
           route(
             response.notification.request.identifier,
             response.notification.request.content.data,
+            response.notification.request.content.title,
           );
         })
         .catch(() => {
