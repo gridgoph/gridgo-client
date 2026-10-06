@@ -4,10 +4,10 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import CheckoutScreen from "@/app/checkout";
 import type { Cart } from "@/lib/api";
-import { BASKET_DATE_MISSING, MULTI_SHOP_PAYMENT_TITLE } from "@/lib/basketGroups";
+import { MULTI_SHOP_PAYMENT_TITLE } from "@/lib/basketGroups";
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
-import { MULTI_SETTINGS, multiCart } from "@/test/multiShopFixtures";
+import { datedCart, MULTI_SETTINGS, multiCart } from "@/test/multiShopFixtures";
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), navigate: jest.fn(), back: jest.fn() }),
@@ -79,15 +79,15 @@ describe("CheckoutScreen, several shops", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("2 SHOPS, ONE ORDER");
 
-    expect(screen.getByLabelText(/^Shop A\. 1 item\. ₱440\.00/)).toBeTruthy();
-    expect(screen.getByLabelText(/^Shop B\. 1 item\. ₱198\.00/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Shop A\. Needed by Mon 26 Oct\. 1 item\. ₱440\.00/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Shop B\. Needed by Mon 26 Oct\. 1 item\. ₱198\.00/)).toBeTruthy();
     expect(screen.getByText("Delivery from Shop A")).toBeTruthy();
     expect(screen.getByText("Delivery from Shop B")).toBeTruthy();
     expect(screen.getByText("Away")).toBeTruthy();
     expect(screen.getByText("Delivery · Shop A")).toBeTruthy();
     expect(screen.getByText("Delivery · Shop B")).toBeTruthy();
-    expect(screen.getByText("Add more from Shop A")).toBeTruthy();
-    expect(screen.getByText("Add more from Shop B")).toBeTruthy();
+    expect(screen.getByText("Add more from Shop A for Mon 26 Oct")).toBeTruthy();
+    expect(screen.getByText("Add more from Shop B for Mon 26 Oct")).toBeTruthy();
     expect(screen.getByText("Add products")).toBeTruthy();
 
     // ₱440 + ₱198 printing, ₱25 + ₱50 delivery: ₱713, all of it now, even
@@ -96,11 +96,13 @@ describe("CheckoutScreen, several shops", () => {
     expect(screen.getAllByText("₱713.00").length).toBeGreaterThan(1);
     expect(screen.getByText("Pay in full now")).toBeTruthy();
     expect(screen.getByText(MULTI_SHOP_PAYMENT_TITLE)).toBeTruthy();
-    expect(screen.getByText(/printed by 2 shops/)).toBeTruthy();
+    expect(screen.getByText(/goes out as 2 shops/)).toBeTruthy();
     expect(screen.queryByText(/75%|25%|Before delivery/)).toBeNull();
 
-    // The one date, shown once above the groups.
-    expect(screen.getByText(/One date for the whole order/)).toBeTruthy();
+    // Each group says its date (here, the older basket's one date), with a way to move it.
+    expect(screen.getAllByText("Needed by Mon 26 Oct")).toHaveLength(2);
+    expect(screen.getAllByLabelText(/: Needed by Mon 26 Oct\. Change the date\.$/)).toHaveLength(2);
+    expect(screen.queryByText(/One date for the whole order/)).toBeNull();
     // No shop is measured from its pin: a multi-shop basket has none to read.
     expect(api.getCatalogShop).not.toHaveBeenCalled();
   });
@@ -117,17 +119,45 @@ describe("CheckoutScreen, several shops", () => {
     // ₱717.20 printing + ₱100 delivery.
     expect(screen.getByText("₱717.20")).toBeTruthy();
     expect(screen.getAllByText("₱817.20").length).toBeGreaterThan(1);
-    expect(screen.getByText(/printed by 3 shops/)).toBeTruthy();
+    expect(screen.getByText(/goes out as 3 shops/)).toBeTruthy();
   });
 
-  it("asks for one date when the basket reached several shops without one", async () => {
+  it("asks for a date on a group that has none, because each group goes out on its own", async () => {
     holding(multiCart(2, { deadline: null }));
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("2 SHOPS, ONE ORDER");
 
-    expect(screen.getByText("No date yet")).toBeTruthy();
-    expect(screen.getByText(BASKET_DATE_MISSING)).toBeTruthy();
-    expect(screen.getByLabelText(BASKET_DATE_MISSING)).toBeTruthy();
+    expect(screen.getAllByText("No set date — as soon as it is ready")).toHaveLength(2);
+    expect(screen.getAllByText("Choose")).toHaveLength(2);
+    expect(screen.getByLabelText("Shop A: No set date — as soon as it is ready. Choose a date.")).toBeTruthy();
+  });
+
+  /*
+   * Per-product dates (gridgo-client#189): one shop on two dates is two
+   * groups under one letter, each with its own date and delivery fee.
+   */
+  it("lays out two shops on three dates, soonest first, each with its own delivery", async () => {
+    holding(datedCart());
+    await renderInSafeArea(<CheckoutScreen />);
+    await screen.findByText("2 SHOPS, 3 DATES, ONE ORDER");
+
+    const headers = screen.getAllByRole("header").map((node) => node.props.accessibilityLabel as string);
+    expect(headers.filter((label) => /^Shop [AB]\. Needed by/.test(label))).toEqual([
+      expect.stringMatching(/^Shop A\. Needed by Mon 12 Oct\. 1 item\. ₱79\.20/),
+      expect.stringMatching(/^Shop B\. Needed by Fri 16 Oct\. 1 item\. ₱198\.00/),
+      expect.stringMatching(/^Shop A\. Needed by Tue 20 Oct\. 1 item\. ₱440\.00/),
+    ]);
+    // Two "Shop A" deliveries are two charges, told apart by date.
+    expect(screen.getByText("Delivery · Shop A · Mon 12 Oct")).toBeTruthy();
+    expect(screen.getByText("Delivery · Shop B · Fri 16 Oct")).toBeTruthy();
+    expect(screen.getByText("Delivery · Shop A · Tue 20 Oct")).toBeTruthy();
+    expect(screen.getByText("Add more from Shop A for Mon 12 Oct")).toBeTruthy();
+    expect(screen.getByText("Add more from Shop A for Tue 20 Oct")).toBeTruthy();
+    // Paid in full, with the reason in shops and dates.
+    expect(screen.getByText(/goes out as 2 shops on 3 dates/)).toBeTruthy();
+    expect(screen.getAllByText("₱817.20").length).toBeGreaterThan(1);
+    // The old block is gone.
+    expect(screen.queryByText(/shares one date|One date for the whole order/)).toBeNull();
   });
 
   it("keeps a group's missing delivery price as unknown, never zero", async () => {

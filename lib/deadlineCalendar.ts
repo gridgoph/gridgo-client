@@ -196,6 +196,15 @@ export function deadlineFor(dayKey: string): string {
   return date.toISOString();
 }
 
+/**
+ * The calendar day a deadline falls on, in the same clock `deadlineFor` set
+ * it with — so a date already in the basket lands on the cell it came from.
+ */
+export function dayKeyOfDeadline(value: string | null | undefined): string | null {
+  const date = parseDeadline(value ?? null);
+  return date ? dayKeyOf(date) : null;
+}
+
 /** "Friday 12 September" — the date said back once it is chosen. */
 export function chosenLabel(dayKey: string): string {
   const date = new Date(`${dayKey}T12:00:00`);

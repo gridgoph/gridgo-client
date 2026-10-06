@@ -13,6 +13,7 @@ import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { GroupPlate } from "@/components/ShopGroupSection";
+import { groupDateLine } from "@/lib/basketGroups";
 import { SkeletonLine, SkeletonList } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -32,7 +33,7 @@ import {
   receiptFromInvoice,
   receiptFromOrder,
   receiptFulfilmentRow,
-  withGroupStanding,
+  withBasket,
   type ReceiptView,
 } from "@/lib/receipt";
 import { formatTimelineStamp } from "@/lib/relativeTime";
@@ -95,7 +96,7 @@ export default function OrderReceiptScreen() {
       const built = invoiceResult
         ? receiptFromInvoice(invoiceResult, current)
         : receiptFromOrder(current);
-      const next = built && basket ? withGroupStanding(built, basket.groups) : built;
+      const next = built && basket ? withBasket(built, basket) : built;
       if (!next) {
         setView(null);
         setOrder(current);
@@ -222,9 +223,10 @@ export default function OrderReceiptScreen() {
               <View key={group.orderId} className="gg-card" testID={`receipt-group-${group.letter}`}>
                 <View className="flex-row items-center gap-3 pb-2">
                   <GroupPlate letter={group.letter} size="sm" />
-                  <Text className="min-w-0 flex-1 text-body-lg font-medium text-text-primary">
-                    {group.label}
-                  </Text>
+                  <View className="min-w-0 flex-1">
+                    <Text className="text-body-lg font-medium text-text-primary">{group.label}</Text>
+                    <Text className="text-caption text-text-secondary">{groupDateLine(group.deadline)}</Text>
+                  </View>
                   <Text className="text-body font-medium text-text-primary">
                     {formatPhp(group.totalMinor)}
                   </Text>
@@ -267,7 +269,7 @@ export default function OrderReceiptScreen() {
           <View className="gg-card">
             <SpecRow label="Printing" value={formatPhp(view.money.printingMinor)} />
             <OrganizationDiscountRow source={view.money} />
-            <SpecRow {...receiptFulfilmentRow(view.money, view.groups?.length ?? 0)} />
+            <SpecRow {...receiptFulfilmentRow(view.money, view.groups ?? 0)} />
             {serviceFeeVisibleToClient(settings) ? (
               <ServiceFeeRow
                 explainOnly

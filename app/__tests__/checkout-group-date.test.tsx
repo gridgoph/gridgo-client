@@ -3,7 +3,6 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import CheckoutScreen from "@/app/checkout";
-import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
 import { DATE_MID, datedCart, MULTI_SETTINGS } from "@/test/multiShopFixtures";
@@ -55,18 +54,19 @@ afterEach(async () => {
 });
 
 // One press per file: see "Running and testing" in AGENTS.md.
-it("adds more to one group by matching that group's shop on that group's date", async () => {
+it("moves one group to another date through the date step", async () => {
   const cart = datedCart();
   api.getSettings.mockResolvedValue(MULTI_SETTINGS);
   api.getCart.mockResolvedValue(cart);
   api.listAddresses.mockResolvedValue([]);
   useCheckoutPayment.getState().reset();
-  useBasketGroupTarget.getState().clear();
   useCart.setState({ cartId: cart.id, cart, loading: false, busy: false, error: null, hydrated: true });
 
   await renderInSafeArea(<CheckoutScreen />);
-  await fireEvent.press(await screen.findByLabelText("Add more from Shop B for Fri 16 Oct. No extra delivery fee."));
+  await fireEvent.press(await screen.findByLabelText("Shop B: Needed by Fri 16 Oct. Change the date."));
 
-  expect(useBasketGroupTarget.getState()).toMatchObject({ groupId: "cline_1", label: "Shop B", deadline: DATE_MID });
-  expect(mockPush).toHaveBeenCalledWith({ pathname: "/request/category", params: { forGroup: "1" } });
+  expect(mockPush).toHaveBeenCalledWith({
+    pathname: "/request/when",
+    params: { mode: "group", lineIds: "cline_1", label: "Shop B", current: DATE_MID, subcategory: "" },
+  });
 });

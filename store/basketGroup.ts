@@ -5,7 +5,8 @@ import { create } from "zustand";
  *
  * Set by checkout's add-more control and read by the match screen, which asks
  * GRIDGO for that group's shop only (`groupId` on `POST /me/matches`). Adding
- * to an existing group costs no extra delivery fee, which is the whole point.
+ * to an existing group — same shop, same date — costs no extra delivery fee,
+ * which is the whole point.
  *
  * Held here rather than threaded through the four screens between checkout and
  * the match. It is dropped as soon as the client starts a product any other
@@ -18,13 +19,19 @@ import { create } from "zustand";
 type BasketGroupTargetState = {
   groupId: string | null;
   label: string | null;
-  set: (groupId: string, label: string) => void;
+  /**
+   * The group's date (gridgo-client#189). A group is one shop on one date, so
+   * the product joining it is asked for that date rather than a new one.
+   */
+  deadline: string | null;
+  set: (groupId: string, label: string, deadline?: string | null) => void;
   clear: () => void;
 };
 
 export const useBasketGroupTarget = create<BasketGroupTargetState>((set) => ({
   groupId: null,
   label: null,
-  set: (groupId, label) => set({ groupId, label }),
-  clear: () => set({ groupId: null, label: null }),
+  deadline: null,
+  set: (groupId, label, deadline = null) => set({ groupId, label, deadline }),
+  clear: () => set({ groupId: null, label: null, deadline: null }),
 }));

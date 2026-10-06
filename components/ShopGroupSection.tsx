@@ -1,10 +1,10 @@
-import { Plus } from "lucide-react-native";
+import { CalendarDays, Plus } from "lucide-react-native";
 import { type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
-import { addMoreFromLabel, type ShopGroupView } from "@/lib/basketGroups";
+import { addMoreFromLabel, groupDateLine, type ShopGroupView } from "@/lib/basketGroups";
 import { listingZoneLine } from "@/lib/distanceZone";
 import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
 
@@ -54,14 +54,20 @@ type Props = {
   /** The group's basket lines, drawn by checkout. */
   children: ReactNode;
   onAddMore: () => void;
+  /** Move this group's products to another date. */
+  onChangeDate?: () => void;
+  /** The client tried to place the order and this group still has no date. */
+  dateError?: boolean;
 };
 
 /**
- * One shop's share of a multi-shop basket on checkout (gridgo-api#117).
+ * One group of a multi-group basket on checkout: one shop on one date
+ * (gridgo-api#117, gridgo-client#189).
  *
- * Plate and label, what the group's items come to, its lines, then its own
- * delivery fee — each shop delivers on its own, so each has one — and the way
- * to add more from the same shop, which rides with it at no extra delivery fee.
+ * Plate and label, the date it is needed by, what the group's items come to,
+ * its lines, then its own delivery fee — each shop delivers each date on its
+ * own, so each has one — and the way to add more from the same shop for the
+ * same date, which rides with it at no extra delivery fee.
  */
 export function ShopGroupSection({
   group,
@@ -71,6 +77,8 @@ export function ShopGroupSection({
   divided = false,
   children,
   onAddMore,
+  onChangeDate,
+  dateError = false,
 }: Props) {
   const colors = useThemeColors();
   const count = group.lines.length;
@@ -88,7 +96,7 @@ export function ShopGroupSection({
         className="flex-row items-center gap-3"
         accessible
         accessibilityRole="header"
-        accessibilityLabel={`${group.label}. ${count === 1 ? "1 item" : `${count} items`}. ${
+        accessibilityLabel={`${group.label}. ${groupDateLine(group.deadline)}. ${count === 1 ? "1 item" : `${count} items`}. ${
           group.itemsMinor == null ? "Price not yet known" : formatPhp(group.itemsMinor)
         }`}
       >
@@ -103,6 +111,40 @@ export function ShopGroupSection({
           {group.itemsMinor == null ? "Not yet" : formatPhp(group.itemsMinor)}
         </Text>
       </View>
+
+      {/*
+        The date is the group's other half: same shop, two dates, two groups.
+        It sits on its own row, with the way to move it, because "which of
+        these arrives when" is the question a client brings to this screen.
+      */}
+      <Pressable
+        onPress={onChangeDate}
+        disabled={!onChangeDate || busy}
+        accessibilityRole="button"
+        accessibilityLabel={`${group.label}: ${groupDateLine(group.deadline)}. ${group.deadline ? "Change the date" : "Choose a date"}.`}
+        accessibilityState={{ disabled: !onChangeDate || busy }}
+        testID={`shop-group-date-${group.letter}`}
+        className={
+          dateError
+            ? "gg-touch flex-row items-center gap-2 rounded-field border border-error px-3 py-2"
+            : "gg-touch flex-row items-center gap-2 rounded-field border border-outline px-3 py-2"
+        }
+        style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+      >
+        <CalendarDays size={16} color={dateError ? colors.error : colors.textPrimary} strokeWidth={2} aria-hidden />
+        <Text
+          className={
+            dateError
+              ? "min-w-0 flex-1 text-body font-medium text-error"
+              : "min-w-0 flex-1 text-body font-medium text-text-primary"
+          }
+        >
+          {groupDateLine(group.deadline)}
+        </Text>
+        {onChangeDate ? (
+          <Text className="text-button text-text-primary">{group.deadline ? "Change" : "Choose"}</Text>
+        ) : null}
+      </Pressable>
 
       {children}
 
@@ -141,13 +183,15 @@ export function ShopGroupSection({
         onPress={onAddMore}
         disabled={busy}
         accessibilityRole="button"
-        accessibilityLabel={`${addMoreFromLabel(group.label)}. No extra delivery fee.`}
+        accessibilityLabel={`${addMoreFromLabel(group.label, group.deadline)}. No extra delivery fee.`}
         accessibilityState={{ disabled: busy }}
         className={busy ? "gg-btn-secondary gg-disabled" : "gg-btn-secondary"}
         style={({ pressed }) => (pressed && !busy ? { opacity: 0.85 } : undefined)}
       >
         <Plus size={16} color={colors.textPrimary} strokeWidth={2.5} aria-hidden />
-        <Text className="text-button text-text-primary">{addMoreFromLabel(group.label)}</Text>
+        <Text className="min-w-0 shrink text-center text-button text-text-primary">
+          {addMoreFromLabel(group.label, group.deadline)}
+        </Text>
       </Pressable>
     </View>
   );

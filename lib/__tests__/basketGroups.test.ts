@@ -1,7 +1,16 @@
 import type { Order } from "@/lib/api";
 import {
-  basketDeadlineOf,
+  addMoreFromLabel,
+  allGroupsPhrase,
+  basketDates,
+  basketGroupDeadlineOf,
   basketMatchContext,
+  groupDateLine,
+  groupMoneyLabel,
+  groupsHeading,
+  groupTag,
+  lineDeadlineOf,
+  placedGroupsTitle,
   groupLetter,
   groupStateMeta,
   groupStoppedNote,
@@ -12,7 +21,15 @@ import {
   shopGroups,
 } from "@/lib/basketGroups";
 import { blockerLine, placeOrderBlockers } from "@/lib/checkout";
-import { multiCart } from "@/test/multiShopFixtures";
+import {
+  DATE_EARLY,
+  DATE_LATE,
+  DATE_MID,
+  datedBasket,
+  datedCart,
+  multiCart,
+  placedBasket,
+} from "@/test/multiShopFixtures";
 
 describe("isMultiShop", () => {
   it("is true only for two or more groups", () => {
@@ -22,6 +39,11 @@ describe("isMultiShop", () => {
     expect(isMultiShop({ ...single, groups: single.groups!.slice(0, 1) })).toBe(false);
     expect(isMultiShop({ groups: undefined })).toBe(false);
     expect(isMultiShop(null)).toBe(false);
+  });
+
+  it("follows GRIDGO's isMultiGroup when it is sent: one shop on two dates is two groups", () => {
+    expect(isMultiShop(datedCart())).toBe(true);
+    expect(isMultiShop({ groups: multiCart(2).groups, isMultiGroup: false })).toBe(false);
   });
 });
 
@@ -54,6 +76,17 @@ describe("shopGroups", () => {
     expect(groups[0].distanceKm).toBeNull();
   });
 
+  it("puts the soonest date first, and keeps each group's own date", () => {
+    const groups = shopGroups(datedCart());
+    expect(groups.map((group) => [group.label, group.deadline, group.lines.map((line) => line.id)])).toEqual([
+      ["Shop A", DATE_EARLY, ["cline_2"]],
+      ["Shop B", DATE_MID, ["cline_1"]],
+      ["Shop A", DATE_LATE, ["cline_0"]],
+    ]);
+    // Each group keeps its own delivery fee, whichever order it is drawn in.
+    expect(groups.map((group) => group.deliveryFeeMinor)).toEqual([2500, 5000, 2500]);
+  });
+
   it("keeps an unpriced group unpriced rather than zero", () => {
     const cart = multiCart(2);
     cart.groups![1] = { ...cart.groups![1], deliveryFeeMinor: null, totalMinor: null };
@@ -71,25 +104,25 @@ describe("basketMatchContext", () => {
     expect(basketMatchContext(multiCart(2, { lines: [] }), null)).toEqual({ deadline: null });
   });
 
-  it("holds every product to the basket's one date", () => {
+  it("keeps the product's own date, even when the basket has another (gridgo-client#189)", () => {
     expect(basketMatchContext(multiCart(2), "2026-12-01T08:00:00.000Z")).toEqual({
       cartId: "cart_multi",
-      deadline: "2026-10-26T08:00:00.000Z",
+      deadline: "2026-12-01T08:00:00.000Z",
     });
-  });
-
-  it("lets the job's date become the basket's while it has none", () => {
-    expect(basketMatchContext(multiCart(2, { deadline: null }), "2026-11-02T08:00:00.000Z")).toEqual({
-      cartId: "cart_multi",
-      deadline: "2026-11-02T08:00:00.000Z",
-    });
+    expect(basketMatchContext(datedCart(), null)).toEqual({ cartId: "cart_multi", deadline: null });
   });
 
   it("asks for one group's shop only while that group is still in the basket", () => {
-    expect(basketMatchContext(multiCart(2), null, "cline_1")).toEqual({
+    expect(basketMatchContext(datedCart(), DATE_MID, "cline_1")).toEqual({
       cartId: "cart_multi",
-      deadline: "2026-10-26T08:00:00.000Z",
+      deadline: DATE_MID,
       groupId: "cline_1",
+    });
+    // No date of its own: it takes the group's.
+    expect(basketMatchContext(datedCart(), null, "cline_2")).toEqual({
+      cartId: "cart_multi",
+      deadline: DATE_EARLY,
+      groupId: "cline_2",
     });
     expect(basketMatchContext(multiCart(2), null, "cline_gone")).not.toHaveProperty("groupId");
   });
@@ -99,11 +132,35 @@ describe("basketMatchContext", () => {
   });
 });
 
-describe("basketDeadlineOf", () => {
-  it("is the basket's date once it has something in it", () => {
-    expect(basketDeadlineOf(multiCart(2))).toBe("2026-10-26T08:00:00.000Z");
-    expect(basketDeadlineOf(multiCart(2, { lines: [] }))).toBeNull();
-    expect(basketDeadlineOf(multiCart(2, { deadline: null }))).toBeNull();
+describe("dates", () => {
+  it("reads a line's own date, else its group's, else an older basket's one date", () => {
+    const cart = datedCart();
+    expect(lineDeadlineOf(cart.lines[2], cart)).toBe(DATE_EARLY);
+    expect(lineDeadlineOf({ id: "cline_1", deadline: null }, cart)).toBeNull();
+    // An API from before: no date on the line or group, the basket's one date.
+    const older = multiCart(2);
+    expect(lineDeadlineOf(older.lines[0], older)).toBe("2026-10-26T08:00:00.000Z");
+  });
+
+  it("reads a placed group's date, falling back to the basket's", () => {
+    expect(basketGroupDeadlineOf(datedBasket().groups[2], datedBasket())).toBe(DATE_EARLY);
+    expect(basketGroupDeadlineOf(placedBasket().groups[0], placedBasket())).toBe("2026-10-26T08:00:00.000Z");
+  });
+
+  it("offers the dates already in the order, soonest first, with how many items each holds", () => {
+    const dates = basketDates(datedCart());
+    expect(dates.map((entry) => [entry.deadline, entry.itemCount])).toEqual([
+      [DATE_EARLY, 1],
+      [DATE_MID, 1],
+      [DATE_LATE, 1],
+    ]);
+    expect(basketDates(multiCart(2)).map((entry) => entry.itemCount)).toEqual([2]);
+    expect(basketDates(multiCart(2, { state: "checked_out" }))).toEqual([]);
+  });
+
+  it("says a group's date, and says it plainly when there is none", () => {
+    expect(groupDateLine(DATE_EARLY)).toBe("Needed by Mon 12 Oct");
+    expect(groupDateLine(null)).toBe("No set date — as soon as it is ready");
   });
 });
 
@@ -119,16 +176,46 @@ describe("placing a basket without a date", () => {
       hasSettings: true,
     });
     expect(blockers).toEqual(["date"]);
-    expect(blockerLine("date")).toBe("Choose one date for your whole order.");
+    expect(blockerLine("date")).toMatch(/^Choose a date for every item/);
   });
 });
 
 describe("words", () => {
   it("explains why a multi-shop order is paid in full", () => {
-    const note = multiShopPaymentNote(3);
-    expect(note).toMatch(/printed by 3 shops/);
+    const note = multiShopPaymentNote(shopGroups(multiCart(3)));
+    expect(note).toMatch(/goes out as 3 shops/);
     expect(note).toMatch(/whole total now, in one transfer/);
     expect(note).not.toMatch(/75|25%|downpayment|balance due/i);
+  });
+
+  it("says one shop on two dates is two parts, paid in full all the same", () => {
+    const cart = datedCart();
+    const sameShop = shopGroups({ ...cart, groups: [cart.groups![0], cart.groups![2]] });
+    expect(multiShopPaymentNote(sameShop)).toMatch(/goes out as 2 parts, one for each date/);
+    expect(multiShopPaymentNote(shopGroups(cart))).toMatch(/2 shops on 3 dates/);
+  });
+
+  it("heads the groups by shops and dates", () => {
+    const cart = datedCart();
+    expect(groupsHeading(shopGroups(multiCart(2)))).toBe("2 SHOPS, ONE ORDER");
+    expect(groupsHeading(shopGroups(cart))).toBe("2 SHOPS, 3 DATES, ONE ORDER");
+    expect(groupsHeading(shopGroups({ ...cart, groups: [cart.groups![0], cart.groups![2]] }))).toBe(
+      "2 DATES, ONE ORDER",
+    );
+    expect(placedGroupsTitle(shopGroups(cart))).toBe("One order, 2 shops on 3 dates");
+    expect(placedGroupsTitle(shopGroups(multiCart(3)))).toBe("One order, 3 shops");
+  });
+
+  it("tells two groups from one shop apart by date wherever they are named", () => {
+    const groups = shopGroups(datedCart());
+    expect(groupMoneyLabel(groups[0], groups)).toBe("Shop A · Mon 12 Oct");
+    expect(groupMoneyLabel(groups[0], shopGroups(multiCart(2)))).toBe("Shop A");
+    expect(addMoreFromLabel("Shop A", DATE_EARLY)).toBe("Add more from Shop A for Mon 12 Oct");
+    expect(addMoreFromLabel("Shop A")).toBe("Add more from Shop A");
+    expect(groupTag({ groupLabel: "Shop A", deadline: DATE_LATE })).toBe("Shop A · Tue 20 Oct");
+    expect(groupTag({ groupLabel: null, deadline: DATE_LATE })).toBeNull();
+    expect(allGroupsPhrase(datedBasket())).toBe("all 3 parts of this order");
+    expect(allGroupsPhrase(placedBasket())).toBe("all 3 shops in this order");
   });
 });
 
@@ -142,7 +229,7 @@ describe("after checkout", () => {
 
   it("names a cancelled group and says the others carry on", () => {
     expect(groupStoppedNote(order({ state: "cancelled" }))).toMatch(
-      /^Shop B was cancelled\. .*refunded on its own.*other shops in this order carry on/,
+      /^Shop B was cancelled\. .*refunded on its own.*rest of this order carries on/,
     );
     expect(groupStoppedNote(order({ state: "cancelled", refundDisposition: "cancelled" }))).toMatch(
       /refunded to you on its own/,
@@ -152,7 +239,7 @@ describe("after checkout", () => {
   it("says a group's refund leaves the others alone", () => {
     expect(groupStoppedNote(order({ refundHold: true }))).toMatch(/paused while GRIDGO reviews your refund/);
     expect(groupStoppedNote(order({ refundDisposition: "fulfilled_with_refund", state: "completed" }))).toMatch(
-      /refunded to you\. The other shops/,
+      /refunded to you\. The rest of this order/,
     );
   });
 
