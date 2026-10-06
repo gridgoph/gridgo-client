@@ -2,6 +2,7 @@ import { formatPhp, type Notification } from "@/lib/api";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
+import { isApplicationNotification } from "@/lib/organization";
 import { refundNotificationCopy } from "@/lib/refunds";
 import { formatTimelineStamp } from "@/lib/relativeTime";
 import { rescheduleNotificationCopy, rescheduleNotificationNeedsYou } from "@/lib/reschedule";
@@ -376,10 +377,36 @@ function calloutFor(
   return asked.callout;
 }
 
+/**
+ * A sent-back account application asks for something only while it is still
+ * sent back, and only on the newest send-back; older ones, and every one once
+ * it has been resent, are history (gridgo-client#187). The rows carry no live
+ * state, so the caller names the one row still asking (`openApplicationNoticeId`).
+ */
+const APPLICATION_SENT_BACK_CALLOUT: NotificationCallout = {
+  tone: "warning",
+  icon: "upload",
+  title: "Fix your application",
+  detail: "What you sent is kept. Fix only what Operations asked for.",
+};
+
+/** The newest send-back while the application is still sent back, else null. */
+export function openApplicationNoticeId(items: Notification[], sentBack: boolean): string | null {
+  if (!sentBack) return null;
+  let newest: Notification | null = null;
+  for (const item of items) {
+    if (item.type === "approval_rejected" && (!newest || Date.parse(item.at) > Date.parse(newest.at))) newest = item;
+  }
+  return newest?.id ?? null;
+}
+
+export type PresentOptions = { showServiceFee?: boolean; applicationNoticeId?: string | null };
+
 export function presentNotification(
   notification: Notification,
-  { showServiceFee = false }: { showServiceFee?: boolean } = {},
+  { showServiceFee = false, applicationNoticeId = null }: PresentOptions = {},
 ): PresentedNotification {
+  const applicationAsk = notification.type === "approval_rejected" && notification.id === applicationNoticeId;
   const eventState = notification.eventState ?? notification.orderState;
   const event = notification.eventState ? { ...notification, orderState: eventState } : notification;
   const payment = isShopChangeRow(notification) ? undefined : notification.paymentAction;
@@ -405,7 +432,11 @@ export function presentNotification(
             : {
                 title: notification.title,
                 body: notification.body,
-                hint: notification.orderId ? "Opens this job" : null,
+                hint: notification.orderId
+                  ? "Opens this job"
+                  : isApplicationNotification(notification.type)
+                    ? "Opens your application"
+                    : null,
               };
   const collectReady =
     collect && notification.orderState === "awaiting_collection" && !hold;
@@ -415,7 +446,8 @@ export function presentNotification(
     collectReady ||
     (notification.type != null && NEED_YOU_TYPES.has(notification.type)) ||
     shopRecoveryNotificationNeedsYou(notification) ||
-    rescheduleNotificationNeedsYou(notification.type);
+    rescheduleNotificationNeedsYou(notification.type) ||
+    applicationAsk;
 
   const railKind = eventState
     ? fulfilmentRailKind(collect ? "pickup" : notification.fulfillmentMode)
@@ -439,7 +471,7 @@ export function presentNotification(
     collectReady,
     lane: needsYou ? "need_you" : "update",
     hint: paymentPending ? "Opens current payment details" : overlay.hint,
-    callout: calloutFor(notification, hold, collectReady),
+    callout: applicationAsk ? APPLICATION_SENT_BACK_CALLOUT : calloutFor(notification, hold, collectReady),
   };
 }
 
@@ -512,14 +544,17 @@ export function isGroupUnread(
 }
 
 /** Split the grouped inbox by what the job's newest row asks of the client. */
-export function partitionInbox(items: Notification[]): {
+export function partitionInbox(
+  items: Notification[],
+  options: Pick<PresentOptions, "applicationNoticeId"> = {},
+): {
   needYou: NotificationGroup[];
   updates: NotificationGroup[];
 } {
   const needYou: NotificationGroup[] = [];
   const updates: NotificationGroup[] = [];
   for (const group of groupInbox(items)) {
-    if (presentNotification(group.latest).lane === "need_you") needYou.push(group);
+    if (presentNotification(group.latest, options).lane === "need_you") needYou.push(group);
     else updates.push(group);
   }
   return { needYou, updates };

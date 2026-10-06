@@ -3,14 +3,23 @@ import {
   CircleAlert,
   FileCheck2,
   FilePlus2,
+  FileWarning,
   LoaderCircle,
   LockKeyhole,
 } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
-import type { ChecklistItem, UploadedDocument } from "@/lib/clientApplication";
+import {
+  DOCUMENTS,
+  sentBackKeys,
+  type ChecklistItem,
+  type SentBack,
+  type SentBackDocument,
+  type UploadedDocument,
+} from "@/lib/clientApplication";
 import type { DocumentUpload } from "@/store/clientApplication";
 
 /** One step: what it is asking, why, then the controls that answer it. */
@@ -182,6 +191,50 @@ export function ChecklistProgress({ done, total }: { done: number; total: number
 }
 
 /**
+ * Operations sent the application back (gridgo-client#187). Says so in plain
+ * words, lists the documents they asked for again with what they said about
+ * each, and says the rest is kept — the client is correcting, not starting over.
+ * Without named documents, Operations' own words are the whole message.
+ */
+export function SentBackCard({ sentBack }: { sentBack: SentBack }) {
+  const keys = sentBackKeys(sentBack);
+  return (
+    <View className="gg-card gap-3" testID="sent-back-card">
+      <StatusChip tone="error" label="Not approved" icon="circle-x" />
+      <Text className="text-body-lg font-medium text-text-primary">
+        {keys.length
+          ? `Operations asked for ${keys.length === 1 ? "one document" : `${keys.length} documents`} again`
+          : "Operations sent your application back"}
+      </Text>
+      {keys.length ? (
+        <View className="gap-2">
+          {keys.map((key) => (
+            <View key={key} className="flex-row gap-2">
+              <Text className="text-body text-text-primary" aria-hidden>
+                •
+              </Text>
+              <Text className="min-w-0 flex-1 text-body text-text-primary">
+                <Text className="font-medium">{DOCUMENTS[key].label}</Text>
+                {sentBack.documents[key]?.note ? `: ${sentBack.documents[key]?.note}` : ""}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text className="text-body text-text-primary">
+          {sentBack.reason ? `Operations said: ${sentBack.reason}` : "Operations did not approve the last application."}
+        </Text>
+      )}
+      <Text className="text-caption text-text-muted">
+        {keys.length
+          ? `Everything else you sent is kept and filled in. Upload ${keys.length === 1 ? "that one" : "those"} again, then send the application.`
+          : "Everything you sent is filled in. Fix what they asked for, then send the application again."}
+      </Text>
+    </View>
+  );
+}
+
+/**
  * One document on the checklist: what it is, whether it has arrived, and the
  * one thing to do about it. The state is said in words beside its icon, so
  * nothing depends on colour.
@@ -191,6 +244,7 @@ export function DocumentRow({
   uploaded,
   upload,
   missing,
+  sentBack = null,
   onAdd,
   onRemove,
 }: {
@@ -199,31 +253,52 @@ export function DocumentRow({
   upload: DocumentUpload | undefined;
   /** True once Continue was pressed with this one still missing. */
   missing: boolean;
+  /** Operations asked for this one again. */
+  sentBack?: SentBackDocument | null;
   onAdd: () => void;
   onRemove: () => void;
 }) {
   const colors = useThemeColors();
   const sending = upload?.phase === "sending";
   const failed = upload?.phase === "failed";
+  // Sent back and not yet replaced: the one row on the list that needs the client.
+  const redo = Boolean(sentBack) && !uploaded && !sending;
   const status = sending
     ? upload.progress != null && upload.progress > 0
       ? `Uploading ${Math.round(upload.progress * 100)}%`
       : "Uploading…"
     : uploaded
-      ? "Added"
-      : failed
-        ? "Not added"
-        : item.required
-          ? "Required"
-          : "Optional";
+      ? uploaded.kept
+        ? "Kept"
+        : sentBack
+          ? "Replaced"
+          : "Added"
+      : redo
+        ? "Sent back"
+        : failed
+          ? "Not added"
+          : item.required
+            ? "Required"
+            : "Optional";
 
-  const Icon = sending ? LoaderCircle : uploaded ? FileCheck2 : failed ? CircleAlert : FilePlus2;
-  const iconColor = uploaded ? colors.success : failed || (missing && !sending) ? colors.error : colors.textMuted;
+  const Icon = sending ? LoaderCircle : uploaded ? FileCheck2 : redo ? FileWarning : failed ? CircleAlert : FilePlus2;
+  const iconColor = uploaded
+    ? colors.success
+    : redo || failed || (missing && !sending)
+      ? colors.error
+      : colors.textMuted;
+  const fileLine = uploaded
+    ? uploaded.kept
+      ? `${uploaded.name} · sent before`
+      : sentBack
+        ? `${uploaded.name} · new file`
+        : uploaded.name
+    : upload?.name ?? (redo && sentBack?.previousName ? `Sent before: ${sentBack.previousName}` : null);
 
   return (
     <View
       className={
-        missing && !uploaded && !sending
+        (missing || redo) && !uploaded && !sending
           ? "gap-3 rounded-card border border-error bg-surface p-4"
           : "gap-3 rounded-card border border-outline bg-surface p-4"
       }
@@ -240,7 +315,7 @@ export function DocumentRow({
               className={
                 uploaded
                   ? "text-caption font-medium text-success"
-                  : failed || (missing && !sending)
+                  : redo || failed || (missing && !sending)
                     ? "text-caption font-medium text-error"
                     : "text-caption text-text-muted"
               }
@@ -248,10 +323,15 @@ export function DocumentRow({
               {status}
             </Text>
           </View>
+          {sentBack ? (
+            <Text className={redo ? "text-body text-text-primary" : "text-caption text-text-secondary"}>
+              {sentBack.note ? `Operations: ${sentBack.note}` : "Operations asked for this one again."}
+            </Text>
+          ) : null}
           <Text className="text-caption text-text-secondary">{item.hint}</Text>
-          {uploaded || upload?.name ? (
+          {fileLine ? (
             <Text className="text-caption text-text-muted" numberOfLines={1}>
-              {uploaded?.name ?? upload?.name}
+              {fileLine}
             </Text>
           ) : null}
           {failed ? <Text className="text-caption text-error">{upload.error}</Text> : null}
@@ -262,12 +342,14 @@ export function DocumentRow({
           onPress={onAdd}
           disabled={sending}
           accessibilityRole="button"
-          accessibilityLabel={uploaded ? `Replace ${item.label}` : `Add ${item.label}`}
+          accessibilityLabel={
+            uploaded ? `Replace ${item.label}` : redo ? `Upload ${item.label} again` : `Add ${item.label}`
+          }
           className={sending ? "gg-btn-secondary gg-disabled min-h-11 flex-1" : "gg-btn-secondary min-h-11 flex-1"}
           style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
         >
           <Text className="text-button text-text-primary">
-            {uploaded ? "Replace" : failed ? "Try again" : "Add file"}
+            {uploaded ? "Replace" : failed ? "Try again" : redo ? "Upload again" : "Add file"}
           </Text>
         </Pressable>
         {uploaded || sending ? (

@@ -33,6 +33,12 @@ export default function BusinessApplyScreen() {
     return <ApplicationFlow mode="first_officer" organization={organization} onDone={() => router.back()} />;
   }
 
+  // A sent-back change of officer is corrected as the handover it was. This
+  // is where its notification lands, and it never names the organization anew.
+  if (application?.status === "rejected" && organization?.currentOfficer) {
+    return <ApplicationFlow mode="handover" organization={organization} onDone={() => router.back()} />;
+  }
+
   if (application?.status === "pending" && !correcting) {
     return <PendingApplication onCorrect={() => setCorrecting(true)} />;
   }
@@ -62,13 +68,14 @@ function PendingApplication({ onCorrect }: { onCorrect: () => void }) {
         <View className="gg-card gap-2">
           <Text className="text-body-lg font-medium text-text-primary">Need to fix something?</Text>
           <Text className="text-body text-text-muted">
-            If Operations asked for a document, or you applied before documents were needed, send
-            the full application again. It replaces the one waiting.
+            If Operations asked for a document, or you applied before documents were needed, open
+            the application again. What you sent is filled in, so change only what you need. It
+            replaces the one waiting.
           </Text>
         </View>
         <View className="gap-3">
           <PrimaryButton label="Back to account" onPress={() => router.back()} />
-          <SecondaryButton label="Send it again with documents" onPress={onCorrect} />
+          <SecondaryButton label="Open the application" onPress={onCorrect} />
         </View>
       </View>
     </FormScreen>

@@ -9,6 +9,7 @@ jest.mock("@/lib/api", () => {
   return {
     ...actual,
     getApplicationChecklist: jest.fn(),
+    getClientApplication: jest.fn(),
     requestOrganizationEmailCode: jest.fn(),
     verifyOrganizationEmailCode: jest.fn(),
     submitClientApplication: jest.fn(),
@@ -233,5 +234,177 @@ describe("an officer handover", () => {
     await store().submit();
     expect(store().steps[store().index]?.id).toBe("documents");
     expect(store().notice?.message).toContain("new officer's own documents");
+  });
+});
+
+/* A sent-back application comes back filled in (gridgo-client#187). */
+
+const SENT_BACK_USER: User = {
+  ...USER,
+  approvalCase: { id: "apc_1", kind: "business_client", status: "rejected", version: 5, rejectionReason: "x" },
+};
+
+const SENT_BACK_VIEW = {
+  approvalCase: { id: "apc_1", status: "rejected", version: 6, applicationRevision: 1 },
+  application: {
+    accountType: "organization",
+    businessName: "Grade 10 PTA",
+    businessNature: "Parents' association",
+    school: "Davao City National High School",
+    organizationEmail: "pta@school.edu.ph",
+    facultyAdviserContact: "Ms. Cruz",
+    handover: false,
+    officer: {
+      fullName: "Ana Reyes",
+      dateOfBirth: "2004-03-15",
+      address: "Bajada, Davao City",
+      phone: "0917 123 4567",
+      governmentIdType: "passport",
+      governmentIdExpiresOn: "2031-01-01",
+      studentIdExpiresOn: "2030-05-31",
+    },
+    documents: {
+      government_id: { fileId: "file_gov", name: "passport.jpg" },
+      student_id: { fileId: "file_student", name: "student-id.jpg" },
+      enrollment_document: { fileId: "file_enrol", name: "cor.pdf" },
+      school_recognition_certificate: { fileId: "file_recog", name: "recognition.jpg" },
+    },
+  },
+  sentBack: {
+    reason: "Please upload these again:\n- School recognition certificate: Does not look right",
+    documents: [
+      { key: "school_recognition_certificate", label: "School recognition certificate", note: "Does not look right" },
+    ],
+  },
+};
+
+describe("a sent-back application", () => {
+  it("reads back everything sent, keeps the files, and opens on the document asked for again", async () => {
+    api.getClientApplication.mockResolvedValue(SENT_BACK_VIEW);
+    store().start({ mode: "apply", user: SENT_BACK_USER });
+    expect(store().prefill).toBe("loading");
+
+    await store().loadPrevious();
+
+    const { draft } = store();
+    expect(store().prefill).toBe("idle");
+    expect(draft).toMatchObject({
+      accountType: "organization",
+      businessName: "Grade 10 PTA",
+      businessNature: "Parents' association",
+      school: "Davao City National High School",
+      facultyAdviserContact: "Ms. Cruz",
+      person: {
+        fullName: "Ana Reyes",
+        dateOfBirth: "2004-03-15",
+        governmentIdType: "passport",
+        governmentIdExpiresOn: "2031-01-01",
+        studentIdExpiresOn: "2030-05-31",
+        originalId: true,
+        detailsMatchId: true,
+      },
+    });
+    expect(draft.documents.government_id).toEqual({ fileId: "file_gov", name: "passport.jpg", kept: true });
+    // The one asked for again waits for a replacement.
+    expect(draft.documents.school_recognition_certificate).toBeUndefined();
+    expect(store().sentBack?.documents.school_recognition_certificate).toEqual({
+      note: "Does not look right",
+      previousName: "recognition.jpg",
+    });
+    expect(store().steps[store().index]?.id).toBe("documents");
+    expect(store().expectedVersion).toBe(6);
+
+    // Continue is held until the flagged document is uploaded again, optional or not.
+    store().next();
+    expect(store().steps[store().index]?.id).toBe("documents");
+    expect(store().showProblem).toBe(true);
+  });
+
+  it("resends the kept files with only the flagged one replaced", async () => {
+    api.getClientApplication.mockResolvedValue(SENT_BACK_VIEW);
+    store().start({ mode: "apply", user: SENT_BACK_USER });
+    await store().loadPrevious();
+    picker.getDocumentAsync.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: "file:///new.jpg", name: "recognition-new.jpg", mimeType: "image/jpeg", size: 1000 }],
+    });
+    api.uploadFile.mockReturnValue({ done: Promise.resolve({ fileId: "file_recog_2" }), cancel: jest.fn() });
+    await store().pickDocument("school_recognition_certificate");
+
+    store().next();
+    expect(store().steps[store().index]?.id).toBe("email");
+    api.submitClientApplication.mockResolvedValue({ ...USER, approvalCase: { ...SENT_BACK_USER.approvalCase, status: "pending" } });
+    expect(await store().submit()).toBe(true);
+
+    const [body] = api.submitClientApplication.mock.calls[0];
+    expect(body).toMatchObject({
+      accountType: "organization",
+      businessName: "Grade 10 PTA",
+      school: "Davao City National High School",
+      facultyAdviserContact: "Ms. Cruz",
+      officer: { fullName: "Ana Reyes", governmentIdExpiresOn: "2031-01-01", studentIdExpiresOn: "2030-05-31" },
+      documents: {
+        government_id: "file_gov",
+        student_id: "file_student",
+        enrollment_document: "file_enrol",
+        school_recognition_certificate: "file_recog_2",
+      },
+      expectedVersion: 6,
+    });
+  });
+
+  it("keeps a sent file when its replacement fails to upload", async () => {
+    api.getClientApplication.mockResolvedValue(SENT_BACK_VIEW);
+    store().start({ mode: "apply", user: SENT_BACK_USER });
+    await store().loadPrevious();
+    picker.getDocumentAsync.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: "file:///x.jpg", name: "x.jpg", mimeType: "image/jpeg", size: 1000 }],
+    });
+    api.uploadFile.mockReturnValue({ done: Promise.reject(new Error("offline")), cancel: jest.fn() });
+    await store().pickDocument("government_id");
+    expect(store().draft.documents.government_id).toEqual({ fileId: "file_gov", name: "passport.jpg", kept: true });
+    expect(store().uploads.government_id).toMatchObject({ phase: "failed" });
+  });
+
+  it("opens empty, as before, on an API without the read-back", async () => {
+    api.getClientApplication.mockRejectedValue(new ApiError(404, { error: "not_found" }));
+    store().start({ mode: "apply", user: SENT_BACK_USER });
+    await store().loadPrevious();
+    expect(store().prefill).toBe("idle");
+    expect(store().draft.businessName).toBe("");
+    expect(store().index).toBe(0);
+  });
+
+  it("says a failed read-back failed, and can be retried", async () => {
+    api.getClientApplication.mockRejectedValueOnce(new ApiError(503, { error: "unavailable" }));
+    store().start({ mode: "apply", user: SENT_BACK_USER });
+    await store().loadPrevious();
+    expect(store().prefill).toBe("failed");
+
+    api.getClientApplication.mockResolvedValueOnce(SENT_BACK_VIEW);
+    useClientApplication.setState({ prefill: "loading" });
+    await store().loadPrevious();
+    expect(store().draft.businessName).toBe("Grade 10 PTA");
+  });
+
+  it("reads nothing back for a first application", async () => {
+    store().start({ mode: "apply", user: USER });
+    expect(store().prefill).toBe("idle");
+    await store().loadPrevious();
+    expect(api.getClientApplication).not.toHaveBeenCalled();
+  });
+
+  it("never fills a handover with the earlier officer's answers", async () => {
+    const orgUser = { ...USER, accountType: "organization" as const };
+    api.getClientApplication.mockResolvedValue(SENT_BACK_VIEW);
+    store().start({
+      mode: "handover",
+      user: orgUser,
+      organization: { ...ORGANIZATION, approvalCase: { id: "apc_1", status: "rejected", version: 8 } },
+    });
+    await store().loadPrevious();
+    expect(store().draft.person.fullName).toBe("");
+    expect(store().draft.documents).toEqual({});
   });
 });

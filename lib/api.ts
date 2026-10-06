@@ -3318,6 +3318,42 @@ export async function getApplicationChecklist(): Promise<ApplicationChecklist> {
   return request("/me/client-application/checklist");
 }
 
+/** The applicant's details as they were sent; every field optional because an older revision may lack it. */
+export type SubmittedApplicant = Partial<Omit<ApplicantPerson, "originalId" | "detailsMatchId">>;
+
+/**
+ * What the client sent last, read back while it is with Operations or was
+ * sent back (gridgo-api `docs/ORGANIZATION_ACCOUNTS_API.md`, gridgo-client#187).
+ * `documents` lists only files GRIDGO still holds ready to be sent again.
+ */
+export type SubmittedApplication = {
+  accountType: "organization" | "business";
+  businessType?: BusinessType;
+  businessName?: string;
+  businessNature?: string;
+  school?: string;
+  organizationEmail?: string;
+  facultyAdviserContact?: string;
+  /** The revision was an officer handover. */
+  handover?: boolean;
+  officer?: SubmittedApplicant;
+  signatory?: SubmittedApplicant;
+  documents?: Record<string, { fileId: string; name: string | null }>;
+};
+
+/** A document Operations asked for again, with what they said about it. */
+export type SentBackDocument = { key: string; label: string; note: string | null };
+
+export type ClientApplicationView = {
+  approvalCase: { id: string; status: string; version: number; applicationRevision: number } | null;
+  application: SubmittedApplication | null;
+  sentBack: { reason: string | null; documents: SentBackDocument[] } | null;
+};
+
+export async function getClientApplication(): Promise<ClientApplicationView> {
+  return request("/me/client-application");
+}
+
 /** Sends a six-digit code to the organization's shared sign-in email. */
 export async function requestOrganizationEmailCode(
   email: string,
