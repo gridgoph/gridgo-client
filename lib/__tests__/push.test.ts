@@ -89,6 +89,15 @@ describe("parsePushData", () => {
 });
 
 describe("pushTargetRoute", () => {
+  it("opens the account application when Operations sends it back, from a cold start too", () => {
+    expect(pushTargetRoute(parsePushData({ type: "approval_rejected", notificationId: "ntf_1" }))).toBe(
+      "/business-apply",
+    );
+    expect(pushTargetRoute(parsePushData({ type: "client_application_document_requested" }))).toBe(
+      "/business-apply",
+    );
+  });
+
   it("opens the job an update is about", () => {
     expect(pushTargetRoute(parsePushData({ orderId: "ord_demo_1" }))).toBe("/order/ord_demo_1");
   });

@@ -2,6 +2,7 @@ import type { Notification } from "@/lib/api";
 import {
   groupInbox,
   isGroupUnread,
+  openApplicationNoticeId,
   partitionInbox,
   presentNotification,
   timelineRows,
@@ -605,4 +606,36 @@ it("never asks for a payment on a row about a shop that dropped the job", () => 
   expect(view.callout).toBeNull();
   expect(view.lane).toBe("update");
   expect(view.hint).toBe("Opens this job");
+});
+
+describe("a sent-back account application", () => {
+  const sentBack = note({
+    id: "ntf_new",
+    type: "approval_rejected",
+    title: "Application needs changes",
+    body: "Upload your school recognition certificate again. Everything else you sent is kept.",
+    at: "2026-10-06T06:30:00.000Z",
+  });
+  const earlier = note({ id: "ntf_old", type: "approval_rejected", title: "Application needs changes", body: "Earlier", at: "2026-10-05T06:30:00.000Z" });
+
+  it("names the fix and asks for it on the newest send-back while the application is still sent back", () => {
+    const id = openApplicationNoticeId([earlier, sentBack], true);
+    expect(id).toBe("ntf_new");
+    const presented = presentNotification(sentBack, { applicationNoticeId: id });
+    expect(presented.body).toBe("Upload your school recognition certificate again. Everything else you sent is kept.");
+    expect(presented.lane).toBe("need_you");
+    expect(presented.callout).toMatchObject({ title: "Fix your application", icon: "upload" });
+    expect(presented.hint).toBe("Opens your application");
+    // An earlier send-back is history: one ask, not two.
+    expect(presentNotification(earlier, { applicationNoticeId: id }).callout).toBeNull();
+    expect(partitionInbox([earlier, sentBack], { applicationNoticeId: id }).needYou).toHaveLength(1);
+  });
+
+  it("is history once the application has been sent again", () => {
+    expect(openApplicationNoticeId([sentBack], false)).toBeNull();
+    const presented = presentNotification(sentBack);
+    expect(presented.lane).toBe("update");
+    expect(presented.callout).toBeNull();
+    expect(presented.hint).toBe("Opens your application");
+  });
 });

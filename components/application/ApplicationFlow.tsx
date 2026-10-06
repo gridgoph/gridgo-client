@@ -12,6 +12,7 @@ import {
   PrivacyNote,
   ReviewBlock,
   ReviewRow,
+  SentBackCard,
   StepShell,
 } from "@/components/application/ApplicationParts";
 import { OtpCodeStep } from "@/components/auth/OtpCodeStep";
@@ -21,6 +22,7 @@ import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { RequestStepper } from "@/components/RequestStepper";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
@@ -74,6 +76,8 @@ export function ApplicationFlow({
     submitting,
     notice,
     loginEmail,
+    prefill,
+    sentBack,
     edit,
     editPerson,
     next,
@@ -88,9 +92,11 @@ export function ApplicationFlow({
   } = state;
 
   useEffect(() => {
-    const { start, loadChecklist, reset } = useClientApplication.getState();
+    const { start, loadChecklist, loadPrevious, reset } = useClientApplication.getState();
     start({ mode, user: useSession.getState().user, organization });
     void loadChecklist();
+    // A sent-back or waiting application comes back filled in (#187).
+    void loadPrevious();
     return reset;
     // `organization` is read once, at the start, on purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,18 +119,34 @@ export function ApplicationFlow({
     showProblem && stepId === "person"
       ? personProblems(draft.person, { organization: organizationTrack, today })
       : {};
-  const documentsShown = showProblem && stepId === "documents" ? documentProblems(draft, checklist) : {};
+  const documentsShown =
+    showProblem && stepId === "documents" ? documentProblems(draft, checklist, sentBack) : {};
   const documentsMissing =
     showProblem && stepId === "documents"
-      ? stepProblem("documents", draft, { mode, checklist, emailVerified: false, today })
+      ? stepProblem("documents", draft, { mode, checklist, emailVerified: false, today, sentBack })
       : null;
-  const requiredCount = checklist.filter((item) => item.required).length;
-  const requiredDone = checklist.filter((item) => item.required && draft.documents[item.key]).length;
+  // A document sent back is needed again, even one the checklist calls optional.
+  const needed = checklist.filter((item) => item.required || sentBack?.documents[item.key]);
+  const requiredCount = needed.length;
+  const requiredDone = needed.filter((item) => draft.documents[item.key]).length;
+  const sentBackCount = checklist.filter((item) => sentBack?.documents[item.key]).length;
+  // The ones Operations asked for again lead the list, straight under their words.
+  const documentRows = sentBackCount
+    ? [
+        ...checklist.filter((item) => sentBack?.documents[item.key]),
+        ...checklist.filter((item) => !sentBack?.documents[item.key]),
+      ]
+    : checklist;
   const officerWord = organizationTrack ? "officer" : "signatory";
   const currentOfficer = organization?.currentOfficer?.fullName ?? null;
   const caseNow = useSession((s) => s.user?.approvalCase ?? null);
+  // The read-back's words when it landed; the session's reason until then, or
+  // from an API that has no read-back.
   const turnedDown =
-    caseNow?.kind === "business_client" && caseNow.status === "rejected" ? caseNow : null;
+    sentBack ??
+    (caseNow?.kind === "business_client" && caseNow.status === "rejected"
+      ? { reason: caseNow.rejectionReason?.trim() || null, documents: {} }
+      : null);
 
   async function finish() {
     if (await submit()) onDone();
@@ -137,6 +159,39 @@ export function ApplicationFlow({
         ? "Send for review"
         : "Send application"
     : "Continue";
+
+  if (prefill !== "idle") {
+    return (
+      <FormScreen>
+        <View className="gg-page gap-8 pb-16 pt-4">
+          {prefill === "loading" ? (
+            <View className="gap-4" accessibilityLabel="Loading what you sent before" accessible>
+              <SkeletonBlock className="h-10 w-full" />
+              <SkeletonBlock className="h-36 w-full" />
+              <SkeletonLine width="w-2/3" height="h-6" />
+              <SkeletonBlock className="h-14 w-full" />
+              <SkeletonBlock className="h-14 w-full" />
+            </View>
+          ) : (
+            <>
+              <ErrorState
+                label="Not loaded"
+                body="Your earlier answers did not load. Check your connection and try again — nothing you sent is lost."
+                onRetry={() => {
+                  useClientApplication.setState({ prefill: "loading" });
+                  void useClientApplication.getState().loadPrevious();
+                }}
+              />
+              <SecondaryButton
+                label="Fill it in again instead"
+                onPress={() => useClientApplication.getState().startFresh()}
+              />
+            </>
+          )}
+        </View>
+      </FormScreen>
+    );
+  }
 
   // The code box carries its own button; a second one under it would be two
   // primaries for one action.
@@ -156,18 +211,12 @@ export function ApplicationFlow({
       <View className="gg-page gap-8 pb-16 pt-4">
         <RequestStepper steps={steps} currentIndex={index} />
 
-        {index === 0 && turnedDown ? (
-          <View className="gg-card gap-2">
-            <StatusChip tone="error" label="Not approved" icon="circle-x" />
-            <Text className="text-body text-text-primary">
-              {turnedDown.rejectionReason?.trim()
-                ? `Operations said: ${turnedDown.rejectionReason.trim()}`
-                : "Operations did not approve the last application."}
-            </Text>
-            <Text className="text-caption text-text-muted">
-              Fix what they asked for and send the application again.
-            </Text>
-          </View>
+        {/*
+          Over every step where something can be fixed, so the client never has
+          to remember what Operations asked while correcting it.
+        */}
+        {turnedDown && (stepId === "account" || stepId === "person" || stepId === "documents") ? (
+          <SentBackCard sentBack={turnedDown} />
         ) : null}
 
         {stepId === "account" ? (
@@ -415,9 +464,19 @@ export function ApplicationFlow({
 
         {stepId === "documents" ? (
           <StepShell
-            heading={mode === "handover" ? "Add the new officer's documents" : "Add your documents"}
+            heading={
+              sentBackCount
+                ? sentBackCount === 1
+                  ? "Upload the document again"
+                  : "Upload those documents again"
+                : mode === "handover"
+                  ? "Add the new officer's documents"
+                  : "Add your documents"
+            }
             body={
-              mode === "handover"
+              sentBackCount
+                ? "The rest are kept from your last application. Operations opens every one before approving the account."
+                : mode === "handover"
                 ? "Fresh copies in the new officer's name. Files from an earlier approval cannot be reused."
                 : "A clear photo or a PDF of each. Operations opens every one before approving the account."
             }
@@ -425,13 +484,14 @@ export function ApplicationFlow({
             <PrivacyNote>{DOCUMENT_PRIVACY}</PrivacyNote>
             <ChecklistProgress done={requiredDone} total={requiredCount} />
             <View className="gap-3">
-              {checklist.map((item) => (
+              {documentRows.map((item) => (
                 <DocumentRow
                   key={item.key}
                   item={item}
                   uploaded={draft.documents[item.key]}
                   upload={uploads[item.key]}
                   missing={Boolean(documentsShown[item.key])}
+                  sentBack={sentBack?.documents[item.key] ?? null}
                   onAdd={() => void pickDocument(item.key)}
                   onRemove={() => removeDocument(item.key)}
                 />
@@ -528,14 +588,25 @@ export function ApplicationFlow({
 
             <ReviewBlock title="Documents" onEdit={() => goTo("documents")}>
               {checklist
-                .filter((item) => item.required || draft.documents[item.key])
-                .map((item) => (
-                  <ReviewRow
-                    key={item.key}
-                    label={item.label}
-                    value={draft.documents[item.key]?.name ?? "Not added"}
-                  />
-                ))}
+                .filter((item) => item.required || draft.documents[item.key] || sentBack?.documents[item.key])
+                .map((item) => {
+                  const file = draft.documents[item.key];
+                  return (
+                    <ReviewRow
+                      key={item.key}
+                      label={item.label}
+                      value={
+                        !file
+                          ? "Not added"
+                          : file.kept
+                            ? `${file.name} (sent before)`
+                            : sentBack?.documents[item.key]
+                              ? `${file.name} (new)`
+                              : file.name
+                      }
+                    />
+                  );
+                })}
             </ReviewBlock>
 
             {organizationTrack ? (
