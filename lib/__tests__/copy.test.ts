@@ -59,6 +59,13 @@ describe("payment copy", () => {
 });
 
 describe("actorLabel", () => {
+  it.each([undefined, null, "", 0, 42, false, true, {}, []])(
+    "uses a neutral label for a missing or non-string actor: %p",
+    (by) => {
+      expect(actorLabel(by)).toBe("Unknown");
+    },
+  );
+
   it("maps known roles without leaking user ids", () => {
     expect(actorLabel("user_client")).toBe("You");
     expect(actorLabel("user_supplier")).toBe("Supplier");

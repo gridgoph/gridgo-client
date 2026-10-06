@@ -82,8 +82,8 @@ export const clientEmailUnavailableMessage =
  * Timeline actor: who did this, in roles the client understands.
  * Never surfaces raw user ids.
  */
-export function actorLabel(by: string | null | undefined): string {
-  if (!by) return "Unknown";
+export function actorLabel(by: unknown): string {
+  if (typeof by !== "string" || !by) return "Unknown";
   if (by === "system") return "System";
   if (by === "user_client" || by.endsWith("_client")) return "You";
   if (by === "user_supplier" || by.includes("supplier")) return "Supplier";

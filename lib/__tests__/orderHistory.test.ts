@@ -3,6 +3,16 @@ import { correctionReason, historyRows } from "@/lib/orderHistory";
 const INTERNAL = /payout|milestone|retention|proof|pof|file_|sharePercent/i;
 
 describe("historyRows", () => {
+  it.each([42, true, {}, []])("keeps history readable with a malformed actor: %p", (by) => {
+    const rows = historyRows(
+      [{ at: "2026-10-06T00:00:00Z", state: "production", by: by as never }],
+      { plainNotes: true },
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ title: "In production", actor: "Unknown" });
+  });
+
   it("reads GRIDGO's plain note for each step", () => {
     const rows = historyRows(
       [
