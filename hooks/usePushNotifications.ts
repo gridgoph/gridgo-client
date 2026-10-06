@@ -130,6 +130,7 @@ export function usePushNotifications(): void {
         pending.current = null;
         // An update is public and can rescue a signed-out install too.
         void Linking.openURL(download).catch(() => undefined);
+        void Notifications?.clearLastNotificationResponseAsync?.().catch(() => undefined);
         return;
       }
       pending.current = null;

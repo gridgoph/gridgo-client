@@ -9,6 +9,7 @@ type PushResponse = { notification: { request: { identifier: string; content: { 
 let mockTap: (value: PushResponse) => void;
 const mockNative = {
   setNotificationHandler: jest.fn(),
+  clearLastNotificationResponseAsync: jest.fn(async () => {}),
   addNotificationResponseReceivedListener: (listener: typeof mockTap) => {
     mockTap = listener;
     return { remove: jest.fn() };
@@ -41,6 +42,7 @@ function response(identifier: string, orderId: string) {
 
 beforeEach(() => {
   mockRouter.push.mockClear();
+  mockNative.clearLastNotificationResponseAsync.mockClear();
   mockSegments = ["(auth)", "login"];
   mockNative.getLastNotificationResponseAsync.mockReset().mockResolvedValue(response("cold-tap", "order1"));
   jest.mocked(getOrder).mockReset().mockResolvedValue({ id: "order1" } as never);
@@ -128,6 +130,7 @@ it.each(["cold start", "background"])("opens release download while signed out f
   if (mode === "background") await act(async () => { mockTap(release); mockTap(release); });
   await waitFor(() => expect(open).toHaveBeenCalledWith("https://gridgo.talasora.com/downloads/gridgo-client.apk"));
   expect(open).toHaveBeenCalledTimes(1);
+  expect(mockNative.clearLastNotificationResponseAsync).toHaveBeenCalledTimes(1);
   expect(mockRouter.push).not.toHaveBeenCalled();
   await view.unmount();
   open.mockRestore();
