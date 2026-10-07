@@ -1,3 +1,4 @@
+import { PrivacyPolicyLink } from "@/components/AccountPrivacy";
 import { useAuth, useClerk, useSignUp } from "@clerk/expo";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useEffect, useState } from "react";
@@ -292,6 +293,7 @@ export default function SignupScreen() {
               </FormField>
             </View>
 
+      <PrivacyPolicyLink />
             {/* Clerk's smart bot protection mounts its challenge here only when needed. */}
             <View nativeID="clerk-captcha" />
 

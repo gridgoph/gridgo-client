@@ -1,3 +1,4 @@
+import { AccountPrivacy } from "@/components/AccountPrivacy";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useUser } from "@clerk/expo";
 import { router, useFocusEffect } from "expo-router";
@@ -251,6 +252,8 @@ export default function AccountScreen() {
               onPress={() => router.push("/report-problem")}
             />
           </View>
+
+          <AccountPrivacy />
 
           <View className="pt-2">
             <SecondaryButton label="Sign out" onPress={() => setConfirmingSignOut(true)} />

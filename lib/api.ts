@@ -3552,6 +3552,10 @@ export async function statementExportRequest(
   return { url: `${getApiBase()}${statementQuery(period, format)}`, headers };
 }
 
+export function requestAccountDeletion(): Promise<{ ok: true; message: string }> {
+  return request('/me/account-deletion-request', { method: 'POST', body: JSON.stringify({ confirmed: true }) });
+}
+
 export async function answerDropoffConfirmation(orderId: string, answer: DropoffAnswer): Promise<DropoffConfirmation> {
   const result = await request<{ confirmation: DropoffConfirmation }>(
     `/orders/${encodeURIComponent(orderId)}/dropoff-confirmation`,
