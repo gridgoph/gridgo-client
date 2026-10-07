@@ -1,9 +1,8 @@
 import {
-  GALLERY_MAX_DOTS,
   clampPhotoIndex,
-  galleryIndicator,
   pageAtOffset,
   photoPositionLabel,
+  thumbStripOffset,
   viewerTopInset,
 } from "@/lib/gallery";
 
@@ -31,13 +30,19 @@ describe("gallery paging", () => {
     expect(photoPositionLabel(7, 5)).toBe("Photo 5 of 5");
   });
 
-  it("draws dots for a listing's photos and a counter past them", () => {
-    expect(galleryIndicator(0)).toBe("none");
-    expect(galleryIndicator(1)).toBe("none");
-    expect(galleryIndicator(2)).toBe("dots");
-    // gridgo-api allows eight sample photos a listing; all of them get a dot.
-    expect(galleryIndicator(8)).toBe("dots");
-    expect(galleryIndicator(GALLERY_MAX_DOTS + 1)).toBe("counter");
+  it("scrolls the thumbnail strip to keep the current photo in the middle", () => {
+    // Eight 56px thumbnails, 8px apart, 8px in from each end: 520px of strip.
+    // A strip that fits never scrolls.
+    expect(thumbStripOffset(3, 4, 390)).toBe(0);
+    // The first photos sit against the start rather than leaving a blank run.
+    expect(thumbStripOffset(0, 8, 300)).toBe(0);
+    expect(thumbStripOffset(1, 8, 300)).toBe(0);
+    // Photo 4's middle is at 8 + 3 × 64 + 28 = 228; centred in 300 → 78.
+    expect(thumbStripOffset(3, 8, 300)).toBe(78);
+    // The last photos stop at the strip's end: 520 − 300.
+    expect(thumbStripOffset(7, 8, 300)).toBe(220);
+    expect(thumbStripOffset(12, 8, 300)).toBe(220);
+    expect(thumbStripOffset(2, 8, 0)).toBe(0);
   });
 
   it("keeps the viewer's top controls clear of the status bar", () => {

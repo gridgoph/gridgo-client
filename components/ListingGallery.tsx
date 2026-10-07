@@ -1,19 +1,18 @@
 import { useRef, useState } from "react";
 import {
   FlatList,
-  Text,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
 
+import { PhotoThumbStrip } from "@/components/PhotoThumbStrip";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { SamplePhotoViewer, type ViewerPhoto } from "@/components/SamplePhotoViewer";
 import type { CatalogPhoto } from "@/lib/api";
 import {
   clampPhotoIndex,
-  galleryIndicator,
   pageAtOffset,
   photoPositionLabel,
 } from "@/lib/gallery";
@@ -31,10 +30,12 @@ type Props = {
  * The listing sheet's samples as one swipeable gallery.
  *
  * Every photo is a full-width page of the same crop-mark board, so a client
- * turns through the shop's work rather than squinting at a thumbnail strip.
- * The dots under it say where they are; a tap opens the full-screen viewer on
- * that photo, which swipes the same way and pinches to zoom. Closing the
- * viewer leaves the gallery on the photo they were last looking at.
+ * turns through the shop's work at a readable size. The thumbnail strip under
+ * it shows every photo at once, rings the one in view as they swipe, and jumps
+ * to one on a tap. A tap on the page opens the full-screen viewer on that
+ * photo, which swipes the same way, pinches to zoom and carries the same
+ * strip. Closing the viewer leaves the gallery on the photo they were last
+ * looking at.
  *
  * A screen reader steps through the photos on the position control (swiping
  * is not an accessible gesture), the same way the viewer's counter works.
@@ -44,9 +45,11 @@ export function ListingGallery({ photos, name, onStale }: Props) {
   const [index, setIndex] = useState(0);
   const [viewerAt, setViewerAt] = useState<number | null>(null);
   const listRef = useRef<FlatList<CatalogPhoto>>(null);
+  // A thumbnail tap glides past the pages between; the ring waits for the
+  // page it was sent to rather than flickering through each one.
+  const jumpingTo = useRef<number | null>(null);
   const count = photos.length;
   const shown = clampPhotoIndex(index, count);
-  const indicator = galleryIndicator(count);
 
   const altOf = (photo: CatalogPhoto | undefined) => photo?.altText || name;
 
@@ -76,7 +79,9 @@ export function ListingGallery({ photos, name, onStale }: Props) {
   const goTo = (page: number, animated: boolean) => {
     const target = clampPhotoIndex(page, count);
     setIndex(target);
-    if (width > 0) listRef.current?.scrollToOffset({ offset: target * width, animated });
+    if (width <= 0) return;
+    jumpingTo.current = animated && target !== shown ? target : null;
+    listRef.current?.scrollToOffset({ offset: target * width, animated });
   };
 
   const onLayout = (event: LayoutChangeEvent) => {
@@ -89,6 +94,10 @@ export function ListingGallery({ photos, name, onStale }: Props) {
 
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const next = pageAtOffset(event.nativeEvent.contentOffset.x, width, count);
+    if (jumpingTo.current !== null) {
+      if (next === jumpingTo.current) jumpingTo.current = null;
+      return;
+    }
     if (next !== index) setIndex(next);
   };
 
@@ -123,6 +132,7 @@ export function ListingGallery({ photos, name, onStale }: Props) {
             keyExtractor={(photo) => photo.fileId}
             getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
             onScroll={onScroll}
+            onScrollBeginDrag={() => (jumpingTo.current = null)}
             scrollEventThrottle={16}
             initialNumToRender={2}
             windowSize={3}
@@ -150,25 +160,14 @@ export function ListingGallery({ photos, name, onStale }: Props) {
           if (event.nativeEvent.actionName === "increment") goTo(shown + 1, true);
           if (event.nativeEvent.actionName === "decrement") goTo(shown - 1, true);
         }}
-        className="h-8 flex-row items-center justify-center gap-1.5"
+        className="py-2"
       >
-        {indicator === "dots" ? (
-          photos.map((photo, dot) => (
-            <View
-              key={photo.fileId}
-              testID={dot === shown ? "listing-gallery-dot-active" : "listing-gallery-dot"}
-              className={
-                dot === shown
-                  ? "h-1.5 w-4 rounded-pill bg-accent"
-                  : "h-1.5 w-1.5 rounded-pill bg-text-muted"
-              }
-            />
-          ))
-        ) : (
-          <Text className="text-caption text-text-muted">
-            {shown + 1} of {count}
-          </Text>
-        )}
+        <PhotoThumbStrip
+          photos={photos.map((photo) => ({ uri: samplePhotoUri(photo), key: photo.fileId }))}
+          selected={shown}
+          onSelect={(page) => goTo(page, true)}
+          testIDPrefix="listing-gallery"
+        />
       </View>
 
       <SamplePhotoViewer

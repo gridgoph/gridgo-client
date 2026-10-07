@@ -1,4 +1,4 @@
-import { X } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   Modal,
@@ -29,6 +29,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
+import { PhotoThumbStrip } from "@/components/PhotoThumbStrip";
 import {
   clampPhotoIndex,
   pageAtOffset,
@@ -61,7 +62,8 @@ type Props = {
  * pager is RNGH's own `FlatList` so the swipe and the pinch negotiate in one
  * gesture system instead of the native scroll view stealing the second finger.
  * While a photo is zoomed the pager is locked, so a pan moves the print rather
- * than turning the page.
+ * than turning the page — next, previous and the thumbnail strip along the
+ * bottom still step through, and step out of the zoom as they go.
  */
 export function SamplePhotoViewer({ photos, index = 0, open, onClose }: Props) {
   // The system back button closes the Modal from outside the stage, so the
@@ -119,6 +121,7 @@ function ViewerStage({
 }) {
   const insets = useSafeAreaInsets();
   const top = viewerTopInset(insets.top, Platform.OS, StatusBar.currentHeight) + 8;
+  const bottom = insets.bottom + 12;
   const { width, height } = useWindowDimensions();
   const [start] = useState(() => clampPhotoIndex(startIndex, photos.length));
   const [current, setCurrent] = useState(start);
@@ -126,6 +129,9 @@ function ViewerStage({
   // Bumped to remount every page at rest (see `ZoomablePhoto`).
   const [resets, setResets] = useState(0);
   const listRef = useRef<FlatList<ViewerPhoto>>(null);
+  // A jump glides past the pages between; the counter and the strip wait for
+  // the page it was sent to rather than counting through each one.
+  const jumpingTo = useRef<number | null>(null);
   const count = photos.length;
   const shown = clampPhotoIndex(current, count);
   const isTest = process.env.NODE_ENV === "test";
@@ -143,12 +149,17 @@ function ViewerStage({
       setZoomed(false);
       setResets((n) => n + 1);
     }
+    jumpingTo.current = target !== shown ? target : null;
     setCurrent(target);
     listRef.current?.scrollToIndex({ index: target, animated: true });
   };
 
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const next = pageAtOffset(event.nativeEvent.contentOffset.x, width, count);
+    if (jumpingTo.current !== null) {
+      if (next === jumpingTo.current) jumpingTo.current = null;
+      return;
+    }
     if (next !== current) setCurrent(next);
   };
 
@@ -190,6 +201,66 @@ function ViewerStage({
       </View>
     ) : null;
 
+  // Next and previous sit on the photo's edges, where a thumb already is on a
+  // phone; each is left out at its end of the gallery rather than drawn dead.
+  const step = (direction: "previous" | "next") => {
+    const target = direction === "next" ? shown + 1 : shown - 1;
+    if (count <= 1 || target < 0 || target >= count) return null;
+    const Icon = direction === "next" ? ChevronRight : ChevronLeft;
+    return (
+      <Pressable
+        onPress={() => goTo(target)}
+        testID={`sample-photo-${direction}`}
+        accessibilityRole="button"
+        accessibilityLabel={direction === "next" ? "Next photo" : "Previous photo"}
+        hitSlop={8}
+        className="absolute items-center justify-center rounded-pill"
+        style={({ pressed }) => ({
+          top: "50%",
+          marginTop: -22,
+          [direction === "next" ? "right" : "left"]: 12,
+          width: 44,
+          height: 44,
+          backgroundColor: pressed ? "rgba(0,0,0,0.75)" : "rgba(0,0,0,0.5)",
+        })}
+      >
+        <Icon size={24} color="#FFFFFF" strokeWidth={2} />
+      </Pressable>
+    );
+  };
+
+  // The same strip as the listing sheet, on the viewer's black, clear of the
+  // home indicator. The counter is its screen-reader stop, so the thumbnails
+  // stay pictures.
+  const strip =
+    count > 1 ? (
+      <View
+        testID="sample-photo-strip"
+        className="absolute left-0 right-0 pt-3"
+        style={{ bottom: 0, paddingBottom: bottom, backgroundColor: "rgba(0,0,0,0.55)" }}
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+      >
+        <PhotoThumbStrip
+          photos={photos.map((photo, i) => ({ uri: photo.uri, key: `${i}:${photo.uri}` }))}
+          selected={shown}
+          onSelect={goTo}
+          tone="dark"
+          testIDPrefix="sample-photo"
+        />
+      </View>
+    ) : null;
+
+  const controls = (
+    <>
+      {step("previous")}
+      {step("next")}
+      {strip}
+      {counter}
+      {closeButton}
+    </>
+  );
+
   if (isTest) {
     const photo = photos[shown];
     return (
@@ -203,8 +274,7 @@ function ViewerStage({
             style={{ width, height }}
           />
         </View>
-        {counter}
-        {closeButton}
+        {controls}
       </View>
     );
   }
@@ -227,6 +297,7 @@ function ViewerStage({
         getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
         keyExtractor={(photo, i) => `${resets}:${i}:${photo.uri}`}
         onScroll={onScroll}
+        onScrollBeginDrag={() => (jumpingTo.current = null)}
         scrollEventThrottle={16}
         windowSize={3}
         initialNumToRender={1}
@@ -242,8 +313,7 @@ function ViewerStage({
           />
         )}
       />
-      {counter}
-      {closeButton}
+      {controls}
     </GestureHandlerRootView>
   );
 }
