@@ -60,7 +60,7 @@ function sampleUrl(listing: CatalogItem | null): string | null {
 export function CategorySampleRow({ subcategory, listing, onPress, onStalePhoto }: Props) {
   const rate = useServiceFeeRateBps();
   const money = moneyLine(listing, rate);
-  const pressTime = listing ? printTimeLine(listing.turnaroundHours) : null;
+  const pressTime = printTimeLine(listing);
 
   return (
     <View className="flex-row items-start gap-3 rounded-card border border-outline bg-surface py-1 pr-4">

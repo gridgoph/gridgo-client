@@ -1384,6 +1384,16 @@ export type CatalogItem = {
   speedTiers: CatalogSpeedTier[];
   pricingBasis: string;
   turnaroundMode: "inherit" | "override";
+  /**
+   * Production time in whole working days on the shop's own open hours
+   * (gridgo-supplier#122). Read through `productionDays` in `lib/listing.ts`.
+   */
+  turnaroundDays?: number | null;
+  /** The soonest, in working days. Null when the listing has no range. */
+  minimumTurnaroundDays?: number | null;
+  /** The shop's working-day length; how an older GRIDGO's hours become days. */
+  productionDayMinutes?: number | null;
+  /** An older GRIDGO's working hours; kept for the release gap. */
   turnaroundHours: number | null;
   rush: { turnaroundHours: number; priceMinor: number; clientPriceMinor?: number | null } | null;
   acceptedFormats: AcceptedFormat[];
@@ -1896,6 +1906,9 @@ export type OtherListing = Pick<
   | "priceTiers"
   | "speedTiers"
   | "pricingBasis"
+  | "turnaroundDays"
+  | "minimumTurnaroundDays"
+  | "productionDayMinutes"
   | "turnaroundHours"
   | "rush"
   | "acceptedFormats"

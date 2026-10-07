@@ -164,10 +164,15 @@ describe("placeOrdinal", () => {
 describe("readyInLine", () => {
   const now = Date.parse("2026-10-11T14:58:00.000Z");
 
-  it("counts from now to the client promise", () => {
-    expect(readyInLine("2026-10-12T02:58:00.000Z", now)).toBe("Ready in 12 hours");
-    expect(readyInLine("2026-10-11T15:30:00.000Z", now)).toBe("Ready in 1 hour");
+  // Now is 10:58 PM on Sunday 11 Oct in Davao.
+  it("counts Davao calendar days to the client promise, never hours", () => {
+    expect(readyInLine("2026-10-11T15:30:00.000Z", now)).toBe("Ready today");
+    // Twelve hours away, but tomorrow on the calendar the READY BY date shows.
+    expect(readyInLine("2026-10-12T02:58:00.000Z", now)).toBe("Ready tomorrow");
     expect(readyInLine("2026-10-14T14:58:00.000Z", now)).toBe("Ready in 3 days");
+    // 49 hours away, yet three calendar days: the date wins over rounding.
+    expect(readyInLine("2026-10-13T15:58:00.000Z", now)).toBe("Ready in 2 days");
+    expect(readyInLine("2026-10-13T16:30:00.000Z", now)).toBe("Ready in 3 days");
   });
 
   it("says nothing without a promise, or with one already past", () => {

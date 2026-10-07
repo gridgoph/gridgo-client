@@ -13,15 +13,15 @@ const RATE_SETTINGS = {
   deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
 };
 
-it("labels the category row's turnaround as press time", async () => {
+it("labels the category row's production time in working days", async () => {
   await render(
     <CategorySampleRow
       subcategory={subcategory("Flyers")}
-      listing={{ ...listing(), turnaroundHours: 3 }}
+      listing={{ ...listing(), turnaroundDays: 2, turnaroundHours: 20 }}
       onPress={() => undefined}
     />,
   );
-  expect(screen.getByText("Prints in about 3 hours")).toBeTruthy();
+  expect(screen.getByText("Prints in 2 working days")).toBeTruthy();
   expect(screen.queryByText(/Ready in/)).toBeNull();
 });
 

@@ -25,7 +25,6 @@ import type {
   MatchResult,
   OtherListing,
 } from "@/lib/api";
-import { readyInShort } from "@/lib/listing";
 import { completeRanking, type PriorityRanking } from "@/lib/priorities";
 
 /** Either kind of listing a client can pick on the match screen. */
@@ -87,19 +86,28 @@ export function placeLabel(placeInLine: number | null | undefined): string | nul
 }
 
 /**
- * "Ready in 12 hours", counted from now to the listing's client promise. Only
- * the promise (`readyBy`) is read — never press time or the shop's own date —
- * so this line and the READY BY date can never disagree.
+ * "Ready tomorrow", "Ready in 3 days": how many Davao calendar days away the
+ * listing's client promise is. Only the promise (`readyBy`) is read — never
+ * production time or the shop's own date — and it counts calendar days rather
+ * than rounding hours, so this line and the READY BY date can never disagree.
  */
 export function readyInLine(
   readyBy: string | null | undefined,
   now: number = Date.now(),
 ): string | null {
   const at = readyBy ? Date.parse(readyBy) : Number.NaN;
-  if (!Number.isFinite(at)) return null;
-  const hours = Math.ceil((at - now) / 3_600_000);
-  const short = readyInShort(hours);
-  return short ? `Ready in ${short}` : null;
+  if (!Number.isFinite(at) || at <= now) return null;
+  const days = davaoDayNumber(at) - davaoDayNumber(now);
+  if (days === 0) return "Ready today";
+  if (days === 1) return "Ready tomorrow";
+  return `Ready in ${days} days`;
+}
+
+/** Davao keeps +08:00 all year, so a fixed offset is its calendar. */
+const DAVAO_OFFSET_MS = 8 * 3_600_000;
+
+function davaoDayNumber(at: number): number {
+  return Math.floor((at + DAVAO_OFFSET_MS) / 86_400_000);
 }
 
 /** "1st", "2nd", "3rd" — how a queue position is said out loud. */
