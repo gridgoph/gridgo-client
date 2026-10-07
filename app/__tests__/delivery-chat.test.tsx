@@ -25,8 +25,10 @@ jest.mock("react-native-keyboard-controller", () => {
 jest.mock("@/hooks/useLiveRefresh", () => ({ useLiveRefresh: () => undefined }));
 
 const mockGetDeliveryChat = jest.fn();
+const mockGetFileDownloadUrl = jest.fn();
 jest.mock("@/lib/api", () => ({
   getDeliveryChat: (...args: unknown[]) => mockGetDeliveryChat(...args),
+  getFileDownloadUrl: (...args: unknown[]) => mockGetFileDownloadUrl(...args),
   sendDeliveryMessage: jest.fn(),
 }));
 
@@ -69,6 +71,28 @@ it("shows the conversation and a composer while the rider has the job, with no c
   expect(screen.queryByText(/call/i)).toBeNull();
 });
 
+it("shows a photo the rider sent, opened through its signed link, and offers to add photos", async () => {
+  mockGetFileDownloadUrl.mockResolvedValue({ url: "https://files.example.invalid/door.png" });
+  mockGetDeliveryChat.mockResolvedValue({
+    chat: { status: "open", closesAt: null, retentionHours: 24 },
+    messages: [
+      {
+        id: "m3",
+        senderRole: "rider",
+        body: "",
+        attachments: [{ fileId: "file_door", contentType: "image/png", originalFilename: "door.png" }],
+        createdAt: "2026-10-07T16:02:00.000Z",
+        mine: false,
+      },
+    ],
+  });
+  await renderScreen(<DeliveryChatScreen />);
+
+  expect(await screen.findByLabelText("door.png")).toBeTruthy();
+  expect(mockGetFileDownloadUrl).toHaveBeenCalledWith("file_door");
+  expect(screen.getByLabelText("Add photos")).toBeTruthy();
+});
+
 it("keeps a delivered conversation readable but closed to new messages", async () => {
   mockGetDeliveryChat.mockResolvedValue({
     chat: { status: "read_only", closesAt: "2026-10-08T14:03:00.000Z", retentionHours: 24 },
@@ -79,6 +103,7 @@ it("keeps a delivered conversation readable but closed to new messages", async (
   expect(await screen.findByText("On Quimpo Blvd now.")).toBeTruthy();
   expect(screen.getByText(/This delivery is finished, so no new messages can be sent/)).toBeTruthy();
   expect(screen.queryByPlaceholderText("Write to your rider")).toBeNull();
+  expect(screen.queryByLabelText("Add photos")).toBeNull();
   expect(screen.getByText("Back to the order")).toBeTruthy();
 });
 
