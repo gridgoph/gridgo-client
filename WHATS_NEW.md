@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.237 (New feature)
+
+- Get a notification when a new app version is ready. Tap it to download the update.
+- Listings and matches now say production time in working days, matching the ready date.
+
 ## 1.0.229 (New feature)
 
 - Order history stays open even when an update has missing details.
