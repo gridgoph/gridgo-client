@@ -7,6 +7,7 @@ import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
 import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
 import type { DevicePlatform } from "@/lib/push";
+import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
 import { parseSeasonWindows, type SeasonWindows } from "@/lib/seasonWindows";
 
 /**
@@ -226,6 +227,11 @@ export type Order = {
   productionProgress?: ProductionProgress | null;
   /** Packed-work photos, separate from production and payout evidence. */
   packingProgress?: ProductionProgress | null;
+  /**
+   * Messages with the rider: `open` while they have the job, `read_only` for
+   * a day after delivery, absent otherwise. Read it through `deliveryChatOf`.
+   */
+  deliveryChat?: DeliveryChatSummary | null;
   paymentMethod: string | null;
   paymentStatus: string;
   /** When the client was told a supplier accepted. Payment is gated on it. */
@@ -3132,6 +3138,23 @@ export async function refundReschedule(
 export async function getRiderLocation(orderId: string): Promise<LocationPing | null> {
   const result = await request<{ ping: LocationPing | null }>(`/dispatch/${orderId}/location`);
   return result.ping;
+}
+
+/** The conversation with this order's rider (`lib/deliveryChat.ts`). */
+export async function getDeliveryChat(
+  orderId: string,
+): Promise<{ chat: DeliveryChatSummary; messages: DeliveryChatMessage[] }> {
+  return request(`/orders/${encodeURIComponent(orderId)}/delivery-chat`);
+}
+
+export async function sendDeliveryMessage(
+  orderId: string,
+  body: string,
+): Promise<{ chat: DeliveryChatSummary; message: DeliveryChatMessage }> {
+  return request(`/orders/${encodeURIComponent(orderId)}/delivery-chat/messages`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
 }
 
 /** Report a material issue while the order's issue window is open. */
