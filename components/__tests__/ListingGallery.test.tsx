@@ -38,12 +38,12 @@ async function measure(width = 390) {
 // One interaction per test, and the interacting tests go last (AGENTS.md:
 // a second press empties every later render in the file).
 describe("ListingGallery", () => {
-  it("draws one photo alone, with no dots", async () => {
+  it("draws one photo alone, with no thumbnails", async () => {
     const view = await renderGallery([photo(1)]);
 
     expect(screen.getByLabelText("Sample 1")).toBeTruthy();
     expect(screen.queryByTestId("listing-gallery-position")).toBeNull();
-    expect(screen.queryByTestId("listing-gallery-dot-active")).toBeNull();
+    expect(screen.queryByTestId("listing-gallery-thumbs")).toBeNull();
     await view.unmount();
   });
 
@@ -54,11 +54,13 @@ describe("ListingGallery", () => {
     await view.unmount();
   });
 
-  it("puts a dot under the gallery for every photo, the first one lit", async () => {
+  it("puts a thumbnail under the gallery for every photo, the first one ringed", async () => {
     const view = await renderGallery([photo(1), photo(2), photo(3)]);
 
-    expect(screen.getAllByTestId("listing-gallery-dot")).toHaveLength(2);
-    expect(screen.getAllByTestId("listing-gallery-dot-active")).toHaveLength(1);
+    expect(screen.getByTestId("listing-gallery-thumb-0")).toBeSelected();
+    expect(screen.getByTestId("listing-gallery-thumb-1")).not.toBeSelected();
+    expect(screen.getByTestId("listing-gallery-thumb-2")).not.toBeSelected();
+    expect(screen.queryByTestId("listing-gallery-thumb-3")).toBeNull();
     expect(screen.getByLabelText("Photo 1 of 3")).toBeTruthy();
     await view.unmount();
   });
@@ -73,7 +75,7 @@ describe("ListingGallery", () => {
     await view.unmount();
   });
 
-  it("moves the dots as the client swipes", async () => {
+  it("moves the thumbnail ring as the client swipes", async () => {
     const view = await renderGallery([photo(1), photo(2), photo(3)]);
     await measure();
 
@@ -86,6 +88,8 @@ describe("ListingGallery", () => {
     });
 
     expect(await screen.findByLabelText("Photo 2 of 3")).toBeTruthy();
+    expect(screen.getByTestId("listing-gallery-thumb-1")).toBeSelected();
+    expect(screen.getByTestId("listing-gallery-thumb-0")).not.toBeSelected();
     await view.unmount();
   });
 });
