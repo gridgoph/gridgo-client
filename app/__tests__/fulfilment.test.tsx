@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, screen } from "@testing-library/react-native";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react-native";
 
 import FulfilmentScreen from "@/app/request/fulfilment";
+import { invalidate } from "@/lib/live";
 import { clearMatchPrefetch } from "@/lib/matchPrefetch";
 import { useJobFulfilment } from "@/store/jobFulfilment";
 import { usePlatformSettings } from "@/store/platformSettings";
@@ -38,6 +39,7 @@ const HOME_ADDRESS = {
 
 const SETTINGS = {
   ...CHECKOUT_SETTINGS,
+  hubPickupEnabled: true,
   hubPickup: {
     point: { lat: 7.0923, lng: 125.6165, label: "GRIDGO Office" },
     feeMinor: 0,
@@ -116,4 +118,31 @@ describe("delivery or pick-up", () => {
       expect.objectContaining({ subcategoryCode: "flyers", fulfillmentMode: "delivery", dropoff: HOME_ADDRESS.point }),
     );
   });
+});
+
+for (const enabled of [false, undefined]) {
+  it(`hides pickup when availability is ${enabled} and replaces a held pickup selection`, async () => {
+    const settings = { ...SETTINGS, hubPickupEnabled: enabled };
+    api.getSettings.mockResolvedValue(settings);
+    usePlatformSettings.getState().adopt(settings);
+    useJobFulfilment.getState().set({ fulfillmentMode: "pickup", dropoff: null });
+    await renderInSafeArea(<FulfilmentScreen />);
+    expect(screen.queryByRole("radio", { name: /Pick up/ })).toBeNull();
+    expect(screen.queryByText("COLLECT AT")).toBeNull();
+    expect(screen.getByRole("radio", { name: /Deliver to me/ }).props.accessibilityState.checked).toBe(true);
+    await fireEvent.press(screen.getByText("Continue"));
+    expect(useJobFulfilment.getState().choice?.fulfillmentMode).toBe("delivery");
+  });
+}
+
+it("updates the pickup choice when refreshed settings change without remounting", async () => {
+  await renderInSafeArea(<FulfilmentScreen />);
+  expect(screen.getByRole("radio", { name: /Pick up/ })).toBeTruthy();
+  api.getSettings.mockResolvedValue({ ...SETTINGS, hubPickupEnabled: false });
+  await act(async () => { invalidate("settings"); await new Promise((resolve) => setTimeout(resolve, 100)); });
+  expect(screen.queryByRole("radio", { name: /Pick up/ })).toBeNull();
+  api.getSettings.mockResolvedValue(SETTINGS);
+  await act(async () => { invalidate("settings"); await new Promise((resolve) => setTimeout(resolve, 100)); });
+  expect(screen.getByRole("radio", { name: /Pick up/ })).toBeTruthy();
+  expect(api.getSettings).toHaveBeenCalled();
 });

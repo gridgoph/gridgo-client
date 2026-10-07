@@ -31,11 +31,12 @@ const onTheShelf = { fulfillmentMode: "pickup" as const, state: "awaiting_collec
 
 beforeEach(() => {
   api.listOrderRefunds.mockResolvedValue([]);
+  api.getSettings.mockResolvedValue({ hubPickupEnabled: false, issueWindowHours: 24, deliveryFeeBands: [] });
   api.getOrderHandover.mockReset();
 });
 
 describe("a hub pick-up on the shelf", () => {
-  it("shows the QR with its matching code, the instructions and the hub's days", async () => {
+  it("keeps existing pickup QR, code and collection hours available while new pickup is off", async () => {
     api.getOrder.mockResolvedValue(refundOrder(onTheShelf));
     api.getOrderHandover.mockResolvedValue(hubHandover());
     await renderScreen(<OrderDetailScreen />);
