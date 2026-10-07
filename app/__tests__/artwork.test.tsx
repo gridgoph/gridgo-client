@@ -199,6 +199,20 @@ describe("ArtworkScreen", () => {
     expect(screen.queryByLabelText("Choose your artwork file")).toBeNull();
   });
 
+  // Adding another product is checkout's, beside the whole basket. Here it
+  // read as a step this item still owed (gridgo-client#195).
+  it("offers no detour to add something else, before or after the file", async () => {
+    await renderInSafeArea(<ArtworkScreen />);
+    expect(screen.queryByText(/something else/i)).toBeNull();
+    expect(screen.queryByLabelText("Add something else to print")).toBeNull();
+
+    useCart.setState({ cart: cart({ lines: [line({ artworkFileId: "file_art" })] }) });
+    await renderInSafeArea(<ArtworkScreen />);
+    expect(screen.getByLabelText("Go to checkout")).toBeTruthy();
+    expect(screen.queryByText(/something else/i)).toBeNull();
+    expect(screen.queryByLabelText("Add something else to print")).toBeNull();
+  });
+
   it("warns when the file millimetres are not the product size", async () => {
     const cards: CatalogItem = {
       ...ITEM,
