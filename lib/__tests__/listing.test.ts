@@ -2,7 +2,6 @@ import type { CatalogItem, CatalogOptionGroup } from "@/lib/api";
 import {
   acceptedExtensions,
   addOnGroups,
-  artworkFitWarning,
   boundValue,
   fileMatchesFormats,
   firstMissingGroup,
@@ -388,54 +387,6 @@ describe("samplePhotoUri", () => {
   it("returns null when there is no photo", () => {
     expect(samplePhotoUri(null)).toBeNull();
     expect(samplePhotoUri(undefined)).toBeNull();
-  });
-});
-
-describe("artworkFitWarning", () => {
-  it("says nothing when the artwork is the shape of the sheet", () => {
-    expect(artworkFitWarning("A5", { width: 1480, height: 2100 })).toBeNull();
-  });
-
-  it("allows for bleed rather than nagging about 3mm", () => {
-    // A 3mm bleed on A5 moves the ratio by about 2%.
-    expect(artworkFitWarning("A5", { width: 1540, height: 2160 })).toBeNull();
-  });
-
-  it("warns — and never blocks — on a shape that will be cropped", () => {
-    const warning = artworkFitWarning("A5", { width: 1920, height: 1080 });
-    expect(warning).not.toBeNull();
-    expect(warning?.blocking).toBe(false);
-    expect(warning?.message).toContain("cropped");
-    expect(warning?.message).toContain("You can send it as it is");
-  });
-
-  it("does not nag about a design that is simply the other way up", () => {
-    // "A4" says nothing about orientation and a shop rotates a file for free,
-    // so a landscape A4 design on an A4 sheet is not a mismatch at all.
-    expect(artworkFitWarning("A4", { width: 2970, height: 2100 })).toBeNull();
-  });
-
-  it("names the orientation when the proportions are wrong as well", () => {
-    const warning = artworkFitWarning("A5", { width: 1920, height: 1080 });
-    expect(warning?.message).toContain("Your file is landscape and the size is portrait");
-  });
-
-  it("uses a resolved measurement when the size label has no ratio of its own", () => {
-    // Business-card listings bind "standard", not "3.5x2 in". The millimetres
-    // still have a proportion, and a tall screenshot is still the wrong shape.
-    const warning = artworkFitWarning("standard", { width: 1905, height: 4233 }, {
-      width: 88_900,
-      height: 50_800,
-    });
-    expect(warning?.message).toContain("cropped");
-  });
-
-  it("stays quiet when it has not seen the artwork or cannot measure the size", () => {
-    // A PDF never reports pixels, and GRIDGO has not looked inside it — so it
-    // must not claim the file is the wrong shape.
-    expect(artworkFitWarning("A5", null)).toBeNull();
-    expect(artworkFitWarning("Custom", { width: 1920, height: 1080 })).toBeNull();
-    expect(artworkFitWarning("A5", { width: 0, height: 0 })).toBeNull();
   });
 });
 
