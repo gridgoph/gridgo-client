@@ -1,4 +1,4 @@
-import { AccountPrivacy } from "@/components/AccountPrivacy";
+import { PrivacyPolicyButton } from "@/components/AccountPrivacy";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useUser } from "@clerk/expo";
 import { router, useFocusEffect } from "expo-router";
@@ -253,7 +253,15 @@ export default function AccountScreen() {
             />
           </View>
 
-          <AccountPrivacy />
+          {/*
+            The policy is a button of its own. Deleting the account is not
+            here: it lives under Danger zone on Your details, behind a check
+            that it is really the account holder asking.
+          */}
+          <View className="gap-2">
+            <Text className="text-overline text-text-muted">PRIVACY</Text>
+            <PrivacyPolicyButton />
+          </View>
 
           <View className="pt-2">
             <SecondaryButton label="Sign out" onPress={() => setConfirmingSignOut(true)} />

@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { DangerZone } from "@/components/AccountPrivacy";
 import { ClientMonogram } from "@/components/ClientMonogram";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
@@ -14,6 +15,7 @@ import { SkeletonBlock } from "@/components/Skeleton";
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { useThemeColors } from "@/hooks/useTheme";
+import { deletionConfirmMethod } from "@/lib/accountDeletion";
 import type { User } from "@/lib/api";
 import {
   accountHasOrgName,
@@ -434,7 +436,7 @@ export default function AccountDetailsScreen() {
 
                 <FormField
                   label="Mobile number"
-                  helper="The rider delivering your job gets this number."
+                  helper="Used by GRIDGO to reach you about your orders. Riders and shops do not see it."
                   error={fieldError("phone")}
                 >
                   <TextField
@@ -480,6 +482,13 @@ export default function AccountDetailsScreen() {
             </>
           ) : null}
         </View>
+
+        {/*
+          Last on the page and set apart, so it is never what a thumb lands on
+          while correcting a detail above. The button only opens the Delete
+          account screen, which confirms it is the account holder first.
+        */}
+        <DangerZone confirmBy={deletionConfirmMethod(clerkUser)} />
       </View>
     </FormScreen>
   );

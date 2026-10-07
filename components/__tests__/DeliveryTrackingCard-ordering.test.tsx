@@ -19,7 +19,8 @@ jest.mock("@/hooks/useLiveRefresh", () => ({
     jest.requireActual("@/hooks/useLiveRefresh").useLiveRefresh(resources, refresh, options);
   },
 }));
-jest.mock("@/hooks/useRoute", () => ({ useRoute: () => ({ route: null }) }));
+const mockRoute = jest.fn();
+jest.mock("@/hooks/useRoute", () => ({ useRoute: (args: unknown) => mockRoute(args) ?? { route: null } }));
 jest.mock("@/components/DeliveryMap", () => ({
   DeliveryMap: (props: unknown) => mockMap(props),
 }));
@@ -68,4 +69,21 @@ it("loads once on focus, polls, and stops polling on blur and unmount", async ()
   await act(() => jest.advanceTimersByTimeAsync(30_000));
   expect(api.getRiderLocation).toHaveBeenCalledTimes(3);
   jest.useRealTimers();
+});
+
+
+it("removes a visible rider and route when the next location read is hidden", async () => {
+  mockRoute.mockImplementation(({ from, to }) => ({ route: from && to ? { coordinates: [[from.lng, from.lat], [to.lng, to.lat]], routed: true, distanceMetres: 1000 } : null }));
+  const ping: api.LocationPing = { id: "ping", orderId: "order", riderId: "rider", accuracy: null, lat: 7.13, lng: 125.61, at: new Date().toISOString() };
+  jest.mocked(api.getRiderLocation).mockResolvedValue(ping);
+  const mounted = await render(<DeliveryTrackingCard order={{ id: "order", state: "out_for_delivery", dropoff: { lat: 7.14, lng: 125.61 }, pickup: { lat: 7.12, lng: 125.60 } } as api.Order} />);
+  expect(mockMap.mock.lastCall?.[0]).toMatchObject({ rider: { lat: 7.13, lng: 125.61 } });
+  jest.mocked(api.getRiderLocation).mockResolvedValue(null);
+  await act(async () => { await mockRefresh(); });
+  expect(mockMap.mock.lastCall?.[0]).toMatchObject({ rider: null, route: [] });
+  expect(screen.getByText("Your rider is on the way.")).toBeTruthy();
+  expect(mockRoute.mock.lastCall?.[0]).toMatchObject({ from: null });
+  expect(screen.queryByText(/from your drop-off/)).toBeNull();
+  expect(screen.queryByText("Could not check")).toBeNull();
+  await mounted.unmount();
 });

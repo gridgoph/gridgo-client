@@ -20,8 +20,10 @@ import { formatRelativeTime, formatTimelineStamp } from "@/lib/relativeTime";
 export function ProgressPhotoSheet({
   links,
   onStale,
+  label = "Progress photo",
 }: {
   links: readonly ProgressPhotoLink[];
+  label?: string;
   onStale: () => Promise<void>;
 }) {
   const rows = chunk(links, 3);
@@ -38,7 +40,7 @@ export function ProgressPhotoSheet({
                   url={link.url}
                   expiresAt={link.expiresAt}
                   onStale={onStale}
-                  altText={photoAlt(link)}
+                  altText={photoAlt(link, label)}
                   gutter="tight"
                   emptyLabel="Will not load"
                 />
@@ -78,8 +80,8 @@ export function WaitingForPhoto({ body }: { body?: string }) {
   );
 }
 
-export function photoAlt(link: Pick<ProgressPhotoLink, "at">): string {
-  return link.at ? `Progress photo, ${formatTimelineStamp(link.at)}` : "Progress photo";
+export function photoAlt(link: Pick<ProgressPhotoLink, "at">, label = "Progress photo"): string {
+  return link.at ? `${label}, ${formatTimelineStamp(link.at)}` : label;
 }
 
 /** Rows of `size`, the last padded with nulls so every cell keeps its width. */

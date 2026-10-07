@@ -3,12 +3,14 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
+import { DeliveryChatRow } from "@/components/DeliveryChatRow";
 import { DeliveryMap } from "@/components/DeliveryMap";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { useRoute } from "@/hooks/useRoute";
 import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
+import { deliveryChatOf } from "@/lib/deliveryChat";
 import {
   isGeoPoint,
   summarizeTracking,
@@ -18,6 +20,8 @@ import {
 
 type Props = {
   order: Order;
+  /** Opens the conversation with the rider; the row shows only while it is open. */
+  onOpenChat?: () => void;
 };
 
 /** How often the card asks the platform for a newer position. */
@@ -32,7 +36,7 @@ const POLL_MS = 30_000;
  * ready-by promise. An out-of-date position is labelled as one, in words
  * as well as colour.
  */
-export function DeliveryTrackingCard({ order }: Props) {
+export function DeliveryTrackingCard({ order, onOpenChat }: Props) {
   const [ping, setPing] = useState<RiderPing | null>(null);
   const [unavailable, setUnavailable] = useState(false);
 
@@ -78,8 +82,8 @@ export function DeliveryTrackingCard({ order }: Props) {
   );
 
   // Once the rider is sharing a position, the leg the client cares about is
-  // the one still ahead of them. Before that, show the whole journey.
-  const { route } = useRoute({ from: rider ?? pickup, to: dropoff });
+  // the one still ahead of them. A hidden position must not leave a route behind.
+  const { route } = useRoute({ from: rider, to: dropoff });
 
   const summary = summarizeTracking({
     state: order.state,
@@ -90,6 +94,9 @@ export function DeliveryTrackingCard({ order }: Props) {
   });
 
   const hasMappablePoints = Boolean(pickup || dropoff || rider);
+  // Only while the rider has the job; after delivery the order's help rows carry it.
+  const chat = deliveryChatOf(order);
+  const chatOpen = chat?.status === "open" ? chat : null;
 
   return (
     <View className="gg-card-flush">
@@ -138,6 +145,12 @@ export function DeliveryTrackingCard({ order }: Props) {
 
         <SecondaryButton label="Check for an update" onPress={() => void refresh()} />
       </View>
+
+      {chatOpen && onOpenChat ? (
+        <View className="border-t border-outline-subtle px-4 py-2">
+          <DeliveryChatRow chat={chatOpen} onPress={onOpenChat} />
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -5,19 +5,28 @@ import Animated, { FadeIn } from "react-native-reanimated";
 
 import { OrderStageRail } from "@/components/OrderStageRail";
 import { OrderTimeline } from "@/components/OrderTimeline";
-import { ProgressPhotoSheet, WaitingForPhoto, photoAlt } from "@/components/ProductionProgress";
+import {
+  ProgressPhotoSheet,
+  WaitingForPhoto,
+  photoAlt,
+} from "@/components/ProductionProgress";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { StatusChip } from "@/components/StatusChip";
 import { useProductionPhotoLinks } from "@/hooks/useProductionPhotoLinks";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order, ProductionPhoto } from "@/lib/api";
+import { packingPhotos, withPackingUpdates } from "@/lib/packingProgress";
 import { historyRows } from "@/lib/orderHistory";
 import { countLabel, photosByHistoryRow } from "@/lib/orderSections";
 import { fulfilmentRailKind, orderStageIndex } from "@/lib/orderStages";
 import { orderStateMeta } from "@/lib/orderState";
 import { paysInFull } from "@/lib/payment";
-import { hasPlainHistory, progressView, WAITING_FOR_PHOTO } from "@/lib/productionProgress";
+import {
+  hasPlainHistory,
+  progressView,
+  WAITING_FOR_PHOTO,
+} from "@/lib/productionProgress";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import { useOrderSections } from "@/store/orderSections";
 
@@ -52,11 +61,17 @@ export function LatestProgressCard({ order, note }: Props) {
   const toggle = useOrderSections((state) => state.toggle);
 
   const meta = orderStateMeta(order);
-  const rows = historyRows(order.timeline, {
+  const history = historyRows(order.timeline, {
     plainNotes: hasPlainHistory(order),
     fulfillmentMode: order.fulfillmentMode,
     paidInFull: paysInFull(order),
   });
+  const { packingProgress } = order;
+  const packed = useMemo(
+    () => packingPhotos({ packingProgress }),
+    [packingProgress],
+  );
+  const rows = withPackingUpdates(history, packed);
   const latest = rows.at(-1) ?? null;
 
   // Keyed on the fields it reads, so a live refresh that changes nothing does
@@ -66,15 +81,25 @@ export function LatestProgressCard({ order, note }: Props) {
     () => progressView({ state, productionProgress }),
     [state, productionProgress],
   );
-  const photos = progress?.kind === "photos" ? progress.photos : NO_PHOTOS;
+  const productionPhotos =
+    progress?.kind === "photos" ? progress.photos : NO_PHOTOS;
+  const photos = useMemo(
+    () =>
+      [...productionPhotos, ...packed].sort(
+        (a, b) => (Date.parse(b.at ?? "") || 0) - (Date.parse(a.at ?? "") || 0),
+      ),
+    [productionPhotos, packed],
+  );
+  const packingIds = new Set(packed.map((photo) => photo.fileId));
   const { links, onStale } = useProductionPhotoLinks(photos);
   const newest = links[0] ?? null;
   const linkById = new Map(links.map((link) => [link.fileId, link]));
 
-  const photoRows = photosByHistoryRow(rows, photos);
+  const photoRows = photosByHistoryRow(history, productionPhotos);
   const waitingRow =
     progress?.kind === "waiting"
-      ? ([...rows].reverse().find((row) => MAKING_STATES.includes(row.state)) ?? latest)
+      ? ([...rows].reverse().find((row) => MAKING_STATES.includes(row.state)) ??
+        latest)
       : null;
 
   const stage = orderStageIndex(order.state, order.fulfillmentMode);
@@ -105,20 +130,34 @@ export function LatestProgressCard({ order, note }: Props) {
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ expanded: open }}
-        accessibilityHint={open ? "Folds the full history away" : "Shows the full history with photos"}
+        accessibilityHint={
+          open
+            ? "Folds the full history away"
+            : "Shows the full history with photos"
+        }
         className="gap-4 p-4"
         style={({ pressed }) => (pressed ? { opacity: 0.8 } : undefined)}
       >
         <View className="flex-row gap-3">
           <View className="min-w-0 flex-1 gap-2">
             <View className="flex-row items-center justify-between gap-3">
-              <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />
-              {when ? <Text className="shrink text-caption text-text-muted">{when}</Text> : null}
+              <StatusChip
+                tone={meta.tone}
+                label={meta.label}
+                icon={meta.icon}
+              />
+              {when ? (
+                <Text className="shrink text-caption text-text-muted">
+                  {when}
+                </Text>
+              ) : null}
             </View>
             {latest ? (
               <Text className="text-h3 text-text-primary">{latest.title}</Text>
             ) : null}
-            {note ? <Text className="text-body text-text-secondary">{note}</Text> : null}
+            {note ? (
+              <Text className="text-body text-text-secondary">{note}</Text>
+            ) : null}
           </View>
           {newest ? (
             <View className="w-20">
@@ -126,7 +165,7 @@ export function LatestProgressCard({ order, note }: Props) {
                 url={newest.url}
                 expiresAt={newest.expiresAt}
                 onStale={onStale}
-                altText={`Latest ${photoAlt(newest).toLowerCase()}`}
+                altText={`Latest ${photoAlt(newest, packingIds.has(newest.fileId) ? "Packing photo" : "Progress photo").toLowerCase()}`}
                 gutter="tight"
                 emptyLabel="Will not load"
                 interactive={false}
@@ -147,9 +186,18 @@ export function LatestProgressCard({ order, note }: Props) {
           <Text className="flex-1 text-body font-medium text-text-primary">
             {open ? "Hide full history" : "Full history"}
           </Text>
-          {counts ? <Text className="text-caption text-text-muted">{counts}</Text> : null}
-          <View style={open ? { transform: [{ rotate: "180deg" }] } : undefined}>
-            <ChevronDown size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+          {counts ? (
+            <Text className="text-caption text-text-muted">{counts}</Text>
+          ) : null}
+          <View
+            style={open ? { transform: [{ rotate: "180deg" }] } : undefined}
+          >
+            <ChevronDown
+              size={18}
+              color={colors.textSecondary}
+              strokeWidth={2}
+              aria-hidden
+            />
           </View>
         </View>
       </Pressable>
@@ -163,15 +211,24 @@ export function LatestProgressCard({ order, note }: Props) {
             rows={rows}
             currentState={order.state}
             renderBelow={(row) => {
-              const rowPhotos = photoRows.get(row.key);
-              const waiting = waitingRow?.key === row.key && progress?.kind === "waiting";
+              const packingPhoto = packed.find(
+                (photo) => row.key === `packing:${photo.fileId}`,
+              );
+              const rowPhotos = packingPhoto
+                ? [packingPhoto]
+                : photoRows.get(row.key);
+              const waiting =
+                waitingRow?.key === row.key && progress?.kind === "waiting";
               if (!rowPhotos?.length && !waiting) return null;
               return (
                 <View className="gap-2 pt-3">
                   {rowPhotos?.length ? (
                     <ProgressPhotoSheet
-                      links={rowPhotos.flatMap((photo) => linkById.get(photo.fileId) ?? [])}
+                      links={rowPhotos.flatMap(
+                        (photo) => linkById.get(photo.fileId) ?? [],
+                      )}
                       onStale={onStale}
+                      label={packingPhoto ? "Packing photo" : "Progress photo"}
                     />
                   ) : null}
                   {waiting ? <WaitingForPhoto body={progress.body} /> : null}
@@ -179,10 +236,13 @@ export function LatestProgressCard({ order, note }: Props) {
               );
             }}
           />
-          {progress?.kind === "waiting" && !waitingRow ? <WaitingForPhoto body={progress.body} /> : null}
+          {progress?.kind === "waiting" && !waitingRow ? (
+            <WaitingForPhoto body={progress.body} />
+          ) : null}
           {photos.length ? (
             <Text className="text-caption text-text-muted">
-              Photos the print shop sent while making your job. Tap one to see it full size.
+              Photos the print shop sent while making and packing your job. Tap
+              one to see it full size.
             </Text>
           ) : null}
         </Animated.View>
