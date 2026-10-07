@@ -106,6 +106,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         : error.message;
 
     switch (code) {
+      case "hub_pickup_disabled":
+        return "Hub pick-up is currently unavailable for new orders. Choose delivery, or start a new print job to change a locked pick-up choice.";
       case "invalid_credentials":
         return "Wrong email or password. Check both and try again.";
       case "unauthorized":
@@ -114,6 +116,12 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "You do not have permission for that action.";
       case "order_not_found":
         return "That order was not found. Open Orders and pick it again.";
+      case "dropoff_confirmation_answered":
+        return "This drop-off was already answered. Refresh the order to see the saved destination.";
+      case "dropoff_confirmation_unavailable":
+        return "This order is no longer waiting for a drop-off confirmation. Refresh for its latest progress.";
+      case "invalid_dropoff_point":
+        return "Choose a pin and enter a street and landmark of up to 240 characters.";
       case "transition_not_allowed":
       case "invalid_state":
         return "This order is not ready for that action yet. Pull to refresh, or check the timeline.";
