@@ -294,6 +294,7 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
 export const ARTWORK_CHECKOUT_CODES = [
   "artwork_link_check_failed",
   "artwork_file_check_failed",
+  "document_page_count_required",
   "artwork_required",
   "artwork_check_required",
 ] as const;
@@ -312,6 +313,8 @@ function artworkRefusalFallback(code: ArtworkRefusal["code"]): string {
       return "GRIDGO could not open your design link. Set sharing to Anyone with the link, or remove the link and upload the file.";
     case "artwork_file_check_failed":
       return "GRIDGO could not read your file. Export it again and upload the new file.";
+    case "document_page_count_required":
+      return "Upload a document with a readable page count. If needed, export it as a PDF and upload it again.";
     case "artwork_required":
       return "Upload the artwork or add a design link anyone can view.";
     case "artwork_check_required":

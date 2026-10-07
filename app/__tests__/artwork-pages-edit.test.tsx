@@ -60,7 +60,7 @@ beforeEach(() => {
   useCart.setState({
     cartId: "cart_1",
     cart: documentCart({
-      lines: [documentLine({ artworkFileId: "file_pdf", measurement: { pages: 30 }, lineSubtotalMinor: 18_000 })],
+      lines: [documentLine({ artworkFileId: "file_pdf", documentPages: { total: 30, range: null, printed: 30 }, measurement: { pages: 30 }, lineSubtotalMinor: 18_000 })],
     }),
     loading: false,
     busy: false,
@@ -68,16 +68,18 @@ beforeEach(() => {
   });
 });
 
-it("lets the client change the page count after it was applied", async () => {
+it("saves a page range while keeping the file count read-only", async () => {
   await renderInSafeArea(<ArtworkScreen />);
 
-  const field = await screen.findByLabelText("How many pages");
-  fireEvent.changeText(field, "10");
-  fireEvent(field, "endEditing", { nativeEvent: { text: "10" } });
+  const field = await screen.findByLabelText("Pages to print");
+  fireEvent.changeText(field, "1-4");
+  await waitFor(() => expect(screen.getByLabelText("Pages to print").props.value).toBe("1-4"));
+  expect(screen.getByLabelText("Go to checkout").props.accessibilityState.disabled).toBe(true);
+  fireEvent.press(screen.getByText("Apply pages"));
 
   await waitFor(() => {
     expect(api.updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", {
-      measurement: { pages: 10 },
+      pageRange: "1-4",
     });
   });
 });

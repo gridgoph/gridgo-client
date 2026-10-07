@@ -1,3 +1,4 @@
+import { documentPagesSummary } from "@/lib/documentPages";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { ChevronRight, Home, Info, MapPin, Minus, Plus, QrCode, Truck } from "lucide-react-native";
@@ -1039,8 +1040,10 @@ export default function CheckoutScreen() {
           {totals.totalMinor == null && unpriced.length ? (
             <Text className="text-caption text-text-muted">
               {unpriced.length === 1
-                ? `${lineName(unpriced[0])} has no price at its quantity, so the total lands once you change it.`
-                : "Some items have no price at their quantity, so the total lands once you change them."}
+                ? unpriced[0].listing?.pricingUnit === "per_page" && !unpriced[0].documentPages
+                  ? "Upload the document before GRIDGO can calculate the total."
+                  : `${lineName(unpriced[0])} has no price at its quantity, so the total lands once you change it.`
+                : "Some items need attention before GRIDGO can calculate the total."}
             </Text>
           ) : totals.totalMinor == null && totals.reasons.some((reason) => reason.code === "catalog_item_stale" || reason.code === "shop_unavailable") ? (
             <Text className="text-caption text-text-muted">
@@ -1178,6 +1181,7 @@ function LineRow({
                   {options}
                 </Text>
               ) : null}
+              {line.documentPages ? <Text className="text-caption text-text-secondary">{documentPagesSummary(line.documentPages)}</Text> : null}
               {clientAmount == null ? (
                 <Text className="text-caption text-warning">{unpricedLineReason(line)}</Text>
               ) : (
