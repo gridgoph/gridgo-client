@@ -11,13 +11,24 @@ describe("client ready time", () => {
     expect(readyByDate(value)).toBeNull();
   });
 
-  it("labels working hours as press time, never elapsed days or a ready promise", () => {
-    expect(printTimeLine(3)).toBe("Prints in about 3 hours");
-    expect(printTimeLine(1)).toBe("Prints in about 1 hour");
-    expect(printTimeLine(30)).toBe("Prints in about 30 hours");
+  it("says production time in working days, never a ready promise", () => {
+    expect(printTimeLine({ turnaroundDays: 1, turnaroundHours: 10 })).toBe("Prints in 1 working day");
+    expect(printTimeLine({ turnaroundDays: 3, turnaroundHours: 30 })).toBe("Prints in 3 working days");
+    expect(printTimeLine({ turnaroundDays: 3, minimumTurnaroundDays: 1, turnaroundHours: 30 })).toBe(
+      "Prints in 1–3 working days",
+    );
   });
 
-  it.each([null, undefined, 0, -1, NaN, Infinity])("omits unavailable press time (%s)", (hours) => {
-    expect(printTimeLine(hours)).toBeNull();
+  it("reads an older GRIDGO's hours the way its migration does, never as calendar days", () => {
+    // 48 working hours at the default ten-hour day is five working days, not two.
+    expect(printTimeLine({ turnaroundHours: 48 })).toBe("Prints in 5 working days");
+    expect(printTimeLine({ turnaroundHours: 3 })).toBe("Prints in 1 working day");
+    expect(printTimeLine({ turnaroundHours: 48, productionDayMinutes: 480 })).toBe(
+      "Prints in 6 working days",
+    );
+  });
+
+  it.each([null, undefined, 0, -1, NaN, Infinity])("omits unavailable production time (%s)", (hours) => {
+    expect(printTimeLine({ turnaroundHours: hours as number | null })).toBeNull();
   });
 });

@@ -10,8 +10,8 @@ import {
   isSelectionComplete,
   linkFormats,
   pickerMimeTypes,
+  productionDays,
   quantityLine,
-  readyInShort,
   samplePhotoUri,
   selectedOptionIds,
   specGroups,
@@ -282,18 +282,21 @@ describe("what a quantity means", () => {
   });
 });
 
-describe("readyInShort", () => {
-  it("says hours under a day and rounded days above", () => {
-    expect(readyInShort(6)).toBe("6 hours");
-    expect(readyInShort(1)).toBe("1 hour");
-    expect(readyInShort(24)).toBe("1 day");
-    expect(readyInShort(48)).toBe("2 days");
-    expect(readyInShort(30)).toBe("1 day");
+describe("productionDays", () => {
+  it("prefers GRIDGO's days and keeps a range only when it is one", () => {
+    expect(productionDays({ turnaroundDays: 2, minimumTurnaroundDays: 1, turnaroundHours: 20 })).toEqual({
+      min: 1,
+      max: 2,
+    });
+    expect(productionDays({ turnaroundDays: 2, minimumTurnaroundDays: 2, turnaroundHours: 20 })).toEqual({
+      min: null,
+      max: 2,
+    });
   });
 
   it("says nothing when the shop stated nothing", () => {
-    expect(readyInShort(null)).toBeNull();
-    expect(readyInShort(0)).toBeNull();
+    expect(productionDays({ turnaroundHours: null })).toBeNull();
+    expect(productionDays({ turnaroundHours: 0 })).toBeNull();
   });
 });
 

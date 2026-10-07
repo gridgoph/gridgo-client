@@ -1,7 +1,9 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { HeaderHeightContext } from "expo-router/react-navigation";
+import { useRouter } from "expo-router";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
+  Alert,
   Pressable,
   ScrollView,
   Text,
@@ -10,8 +12,11 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { Send } from "lucide-react-native";
+import { File, Info, Send } from "lucide-react-native";
 
+import { ChatAvatar } from "@/components/ChatAvatar";
+import { ChatPhoto } from "@/components/ChatPhoto";
+import { ConversationDetails } from "@/components/ConversationDetails";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { Screen } from "@/components/Screen";
@@ -19,7 +24,13 @@ import { TextField } from "@/components/form/TextField";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
+import {
+  SUPPORT_CHAT_IMAGE_MAX_COUNT,
+  SUPPORT_CHAT_IMAGE_PURPOSE,
+  validateChatImageAsset,
+} from "@/lib/chatImages";
 import { userFacingError } from "@/lib/copy";
+import { getDocumentPickerNative } from "@/lib/nativeModules";
 import { openSupportChatStream } from "@/lib/supportChatStream";
 import { useSupportChatStore } from "@/store/supportChat";
 
@@ -37,15 +48,10 @@ export function SupportChatConversation({
   peerRole?: string;
 }) {
   const colors = useThemeColors();
+  const router = useRouter();
   const setUnreadCount = useSupportChatStore((s) => s.setUnreadCount);
   const listRef = useRef<ScrollView>(null);
-  // The keyboard pads this screen from its bottom edge, but the view's own
-  // layout starts below the stack header — `onLayout` reports y = 0 here. The
-  // header's height is that missing distance; without it the padding came up
-  // one header short and the composer sat under the keyboard (#128). Outside
-  // a stack (tests) there is no header, so 0.
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
-  // Whether the reader is looking at the newest message. See lib/chatScroll.ts.
   const followingEnd = useRef(true);
   const viewportHeight = useRef<number | null>(null);
   const [activeId, setActiveId] = useState<string | undefined>(threadId);
@@ -54,6 +60,23 @@ export function SupportChatConversation({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResult, setSearchResult] = useState<{
+    threadId: string;
+    query: string;
+    messages: api.SupportChatMessage[];
+  } | null>(null);
+  const [photoResult, setPhotoResult] = useState<{
+    threadId: string;
+    photos: api.SupportChatAttachment[];
+  } | null>(null);
+  const currentThreadId = threadId || activeId;
+  const searchResults = searchResult?.threadId === currentThreadId && searchResult?.query === query.trim()
+    ? searchResult.messages : [];
+  const photos = photoResult?.threadId === currentThreadId ? photoResult?.photos ?? [] : [];
+  const [pending, setPending] = useState<api.UploadAsset[]>([]);
 
   const adopt = useCallback((next: api.SupportChatMessage[]) => {
     setMessages(next);
@@ -91,6 +114,11 @@ export function SupportChatConversation({
   }, [adopt, setUnreadCount, threadId]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(query), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- A network read on mount: every state it sets lands after the response, not in the effect body.
     void load();
   }, [load]);
@@ -123,10 +151,6 @@ export function SupportChatConversation({
     });
   }, []);
 
-  // The keyboard opening (or the composer growing a line) shrinks the
-  // transcript from the bottom while its offset stays put, which pushed the
-  // newest messages out of sight. Keep them in view — unless the reader had
-  // scrolled up into history.
   const keepEndInView = useCallback((event: LayoutChangeEvent) => {
     const next = event.nativeEvent.layout.height;
     if (shouldRepinOnResize(viewportHeight.current, next, followingEnd.current)) {
@@ -135,15 +159,56 @@ export function SupportChatConversation({
     viewportHeight.current = next;
   }, []);
 
+  const pickPhoto = useCallback(async () => {
+    const picker = getDocumentPickerNative();
+    if (!picker) {
+      setError("This build cannot pick a photo. Install a development build that includes the file picker.");
+      return;
+    }
+    const picked = await picker.getDocumentAsync({
+      type: ["image/jpeg", "image/png", "image/webp"],
+      copyToCacheDirectory: true,
+      multiple: true,
+    });
+    if (picked.canceled || !picked.assets?.length) return;
+    const next = [...pending];
+    for (const asset of picked.assets) {
+      const problem = validateChatImageAsset(asset);
+      if (problem) {
+        setError(problem);
+        return;
+      }
+      if (next.length >= SUPPORT_CHAT_IMAGE_MAX_COUNT) {
+        setError(`A message can include up to ${SUPPORT_CHAT_IMAGE_MAX_COUNT} photos.`);
+        return;
+      }
+      next.push({
+        uri: asset.uri,
+        name: asset.name || "photo.jpg",
+        mimeType: asset.mimeType || "image/jpeg",
+      });
+    }
+    setError(null);
+    setPending(next);
+  }, [pending]);
+
   const send = useCallback(async () => {
     const body = draft.trim();
-    if (!body || sending) return;
+    if ((!body && !pending.length) || sending) return;
     setSending(true);
     setError(null);
     try {
-      const posted = await api.sendSupportChatMessage(body, activeId);
+      const fileIds: string[] = [];
+      for (const asset of pending) {
+        const stored = await api.uploadFile(asset, SUPPORT_CHAT_IMAGE_PURPOSE).done;
+        fileIds.push(stored.fileId);
+      }
+      const posted = fileIds.length
+        ? await api.sendSupportChatMessage(body, activeId, { attachmentFileIds: fileIds })
+        : await api.sendSupportChatMessage(body, activeId);
       setActiveId(posted.thread.id);
       setDraft("");
+      setPending([]);
       setMessages((current) => (
         current.some((row) => row.id === posted.message.id) ? current : [...current, posted.message]
       ));
@@ -153,7 +218,66 @@ export function SupportChatConversation({
     } finally {
       setSending(false);
     }
-  }, [activeId, draft, sending]);
+  }, [activeId, draft, pending, sending]);
+
+  const removeChat = useCallback(() => {
+    if (!activeId) return;
+    Alert.alert(
+      "Are you sure you want to delete this chat?",
+      "This conversation and its photos are removed for everyone in it.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void api.deleteSupportChatThread(activeId)
+              .then(() => router.back())
+              .catch((err) => {
+                setError(userFacingError(err, "Could not delete this chat. Try again."));
+              });
+          },
+        },
+      ],
+    );
+  }, [activeId, router]);
+
+  const canSend = !sending && Boolean(draft.trim() || pending.length);
+
+  useEffect(() => {
+    const id = threadId || activeId;
+    if (!id) return;
+    let cancelled = false;
+    void api.getSupportChatThread(id, { media: true })
+      .then((detail) => {
+        if (!cancelled) setPhotoResult({
+          threadId: id,
+          photos: detail.messages.flatMap((message) => message.attachments ?? []),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setPhotoResult({ threadId: id, photos: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, threadId, messages.length]);
+
+  useEffect(() => {
+    const id = threadId || activeId;
+    if (!id || !searchQuery.trim()) return;
+    let cancelled = false;
+    void api.getSupportChatThread(id, { q: searchQuery })
+      .then((detail) => {
+        if (!cancelled) setSearchResult({ threadId: id, query: searchQuery.trim(), messages: detail.messages });
+      })
+      .catch(() => {
+        if (!cancelled) setSearchResult({ threadId: id, query: searchQuery.trim(), messages: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, searchQuery, threadId]);
 
   return (
     <Screen edges={["bottom"]}>
@@ -163,9 +287,35 @@ export function SupportChatConversation({
         style={{ flex: 1 }}
       >
         <View className="gg-page flex-1 gap-3 pb-3 pt-4">
-          <View className="gap-1">
-            <Text className="text-h2 text-text-primary">{peerName}</Text>
-            <Text className="text-body text-text-secondary">{peerRole}</Text>
+          {detailsOpen ? (
+            <ConversationDetails
+              name={peerName}
+              subtitle={peerRole}
+              imageUrl={messages.find((message) => !message.mine)?.senderImageUrl}
+              searchValue={query}
+              onSearchValueChange={setQuery}
+              searchResults={searchResults}
+              photos={photos}
+              onDelete={removeChat}
+              onClose={() => setDetailsOpen(false)}
+            />
+          ) : (
+            <>
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="min-w-0 flex-1 gap-1">
+              <Text className="text-h2 text-text-primary">{peerName}</Text>
+              <Text className="text-body text-text-secondary">{peerRole}</Text>
+            </View>
+            {activeId ? (
+              <Pressable
+                onPress={() => setDetailsOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Conversation details"
+                className="gg-touch h-11 w-11 items-center justify-center"
+              >
+                <Info size={18} color={colors.textPrimary} strokeWidth={2} />
+              </Pressable>
+            ) : null}
           </View>
 
           {error && !loading ? (
@@ -192,31 +342,63 @@ export function SupportChatConversation({
               {!loading && messages.length === 0 ? (
                 <EmptyState title={EMPTY_TITLE} body={EMPTY_BODY} />
               ) : (
-                messages.map((message) => (
-                  <View
-                    key={message.id}
-                    className={message.mine ? "items-end" : "items-start"}
-                  >
+                messages.map((message) => {
+                  const name = message.mine ? "You" : peerName;
+                  return (
                     <View
-                      className="max-w-[85%] rounded-field px-3 py-2"
-                      style={{
-                        backgroundColor: message.mine ? colors.surfaceVariant : colors.surface,
-                        borderWidth: 1,
-                        borderColor: colors.outline,
-                      }}
+                      key={message.id}
+                      className={`flex-row items-end gap-2 ${message.mine ? "justify-end" : "justify-start"}`}
                     >
-                      <Text className="text-body text-text-primary">{message.body}</Text>
+                      {message.mine ? null : (
+                        <ChatAvatar name={name} imageUrl={message.senderImageUrl} />
+                      )}
+                      <View className={message.mine ? "max-w-[75%] items-end" : "max-w-[75%] items-start"}>
+                        <View
+                          className="rounded-field px-3 py-2"
+                          style={{
+                            backgroundColor: message.mine ? colors.surfaceVariant : colors.surface,
+                            borderWidth: 1,
+                            borderColor: colors.outline,
+                          }}
+                        >
+                          {message.body ? (
+                            <Text className="text-body text-text-primary">{message.body}</Text>
+                          ) : null}
+                          {message.attachments?.map((attachment) => (
+                            <View key={attachment.fileId} className={message.body ? "mt-2" : undefined}>
+                              <ChatPhoto attachment={attachment} />
+                            </View>
+                          ))}
+                        </View>
+                        <Text className="mt-1 text-caption text-text-muted">{name}</Text>
+                      </View>
+                      {message.mine ? (
+                        <ChatAvatar name={name} imageUrl={message.senderImageUrl} />
+                      ) : null}
                     </View>
-                    <Text className="mt-1 text-caption text-text-muted">
-                      {message.mine ? "You" : peerName}
-                    </Text>
-                  </View>
-                ))
+                  );
+                })
               )}
             </ScrollView>
           )}
 
+          {pending.length ? (
+            <Text className="text-caption text-text-muted">
+              {pending.length === 1 ? pending[0].name : `${pending.length} photos ready to send`}
+            </Text>
+          ) : null}
+
           <View className="flex-row items-end gap-2">
+            <Pressable
+              onPress={() => void pickPhoto()}
+              disabled={sending}
+              accessibilityRole="button"
+              accessibilityLabel="Add photos"
+              className="gg-touch h-12 w-12 items-center justify-center rounded-field"
+              style={{ borderWidth: 1, borderColor: colors.outline, opacity: sending ? 0.38 : 1 }}
+            >
+              <File size={18} color={colors.textPrimary} strokeWidth={2} aria-hidden />
+            </Pressable>
             <View className="min-w-0 flex-1">
               <TextField
                 value={draft}
@@ -233,12 +415,12 @@ export function SupportChatConversation({
             </View>
             <Pressable
               onPress={() => void send()}
-              disabled={sending || !draft.trim()}
+              disabled={!canSend}
               accessibilityRole="button"
               accessibilityLabel="Send"
-              accessibilityState={{ disabled: sending || !draft.trim() }}
+              accessibilityState={{ disabled: !canSend }}
               className="gg-touch h-12 w-12 items-center justify-center rounded-field bg-accent"
-              style={{ opacity: sending || !draft.trim() ? 0.38 : 1 }}
+              style={{ opacity: canSend ? 1 : 0.38 }}
             >
               <Send
                 size={18}
@@ -248,6 +430,8 @@ export function SupportChatConversation({
               />
             </Pressable>
           </View>
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Screen>

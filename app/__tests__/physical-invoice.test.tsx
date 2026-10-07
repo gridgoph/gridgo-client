@@ -14,16 +14,15 @@ jest.mock("expo-router", () => ({
   },
 }));
 
-// The form is paused for the pilot; these tests cover it as it comes back.
-// The paused screen is `physical-invoice-hidden.test.tsx`.
-jest.mock("@/constants/features", () => ({ PHYSICAL_INVOICE_REQUESTS_ENABLED: true }));
-
+// The form comes back when Super Admin turns the switch on. The paused
+// screen is `physical-invoice-hidden.test.tsx`.
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
   return {
     ...actual,
     getPhysicalInvoice: jest.fn(),
     requestPhysicalInvoice: jest.fn(),
+    getSettings: jest.fn(),
   };
 });
 
@@ -37,6 +36,15 @@ const wrap = (node: ReactElement) => (
 );
 
 describe("physical invoice request", () => {
+  beforeEach(() => {
+    api.getSettings.mockResolvedValue({
+      issueWindowHours: 24,
+      serviceFeeRateBps: 1000,
+      deliveryFeeBands: [],
+      physicalInvoiceRequestsEnabled: true,
+    });
+  });
+
   it("asks for the contact, the office and the hours", async () => {
     api.getPhysicalInvoice.mockResolvedValue(null);
     await render(wrap(<PhysicalInvoiceScreen />));

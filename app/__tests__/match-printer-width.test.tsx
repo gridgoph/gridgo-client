@@ -101,7 +101,7 @@ describe("a tarpaulin match", () => {
     expect(screen.getAllByText(/Prints up to/)).toHaveLength(2);
     expect(screen.getByLabelText(/^Wide tarpaulin, .*prints up to 10 ft wide/)).toBeTruthy();
     // The ready line is the client promise, never press time.
-    expect(screen.queryByText(/Prints in about/)).toBeNull();
+    expect(screen.queryByText(/Prints in/)).toBeNull();
   });
 
   it("leaves the width off when no listing publishes one", async () => {
