@@ -562,12 +562,6 @@ export default function ArtworkScreen() {
           </View>
         ) : null}
 
-        {/*
-          Drawn only once there is a file to take to checkout. A disabled yellow
-          slab under a card with no way to fill it was the whole of the reported
-          problem: the screen's one loud control did nothing, and the control
-          that would have done something did not exist.
-        */}
         {item && !uploads.length && !links.length && otherLinks.length ? (
           <Text className="mt-3 text-body text-text-secondary">
             GRIDGO takes {formatSentence(otherLinks)} for this rather than an upload. Place the
@@ -575,6 +569,17 @@ export default function ArtworkScreen() {
           </Text>
         ) : null}
 
+        {/*
+          Drawn only once there is a file to take to checkout. A disabled yellow
+          slab under a card with no way to fill it was the whole of the reported
+          problem: the screen's one loud control did nothing, and the control
+          that would have done something did not exist.
+
+          Checkout is the only way on. Adding another product is offered there,
+          beside the whole basket, never here: a basket can hold several
+          products, and "add something else first" read as a step this one
+          still owed.
+        */}
         {hasArtwork ? (
           <Pressable
             onPress={() => router.replace("/checkout")}
@@ -595,18 +600,6 @@ export default function ArtworkScreen() {
             {"Fix the link's sharing, or clear it to go on with"} {onLine ? "your file" : "an upload"}.
           </Text>
         ) : null}
-
-        <Pressable
-          onPress={() => router.replace("/request/category")}
-          accessibilityRole="button"
-          accessibilityLabel="Add something else to print"
-          className="gg-touch mt-6 items-center justify-center"
-          style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-        >
-          <Text className="text-body text-text-secondary underline">
-            Add something else first
-          </Text>
-        </Pressable>
 
         {!hasArtwork ? (
           <Text className="mt-4 text-center text-caption text-text-muted">
