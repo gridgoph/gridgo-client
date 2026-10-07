@@ -139,7 +139,7 @@ export function summarizeTracking({
     if (state === "rider_assigned") {
       return {
         headline: "A rider is assigned and heading to the print shop.",
-        detail: "They start sharing their position once they collect your order.",
+        detail: "Their location will appear when they are closer to your drop-off.",
         // Not "Rider assigned": the order header already carries that state,
         // and this chip's job is to say what the *map* knows. What it knows
         // here is nothing, and it should say so.
@@ -151,10 +151,10 @@ export function summarizeTracking({
       };
     }
     return {
-      headline: "Your order is on its way.",
+      headline: "Your rider is on the way.",
       detail:
-        "The rider app has not shared a position for this trip yet. Nothing is shown on the map until it does.",
-      chip: { tone: "warning", label: "No location shared", icon: "triangle-alert" },
+        "The rider’s location will appear when they are closer to your drop-off. You can follow your delivery progress here.",
+      chip: { tone: "neutral", label: "On the way", icon: "clock" },
       stale: false,
       remainingKm: null,
       remainingIsRoad: false,
