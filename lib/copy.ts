@@ -106,6 +106,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         : error.message;
 
     switch (code) {
+      case "hub_pickup_disabled":
+        return "Hub pick-up is currently unavailable for new orders. Choose delivery, or start a new print job to change a locked pick-up choice.";
       case "invalid_credentials":
         return "Wrong email or password. Check both and try again.";
       case "unauthorized":

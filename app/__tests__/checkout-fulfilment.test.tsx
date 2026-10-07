@@ -1,4 +1,4 @@
-import { cleanup, screen } from "@testing-library/react-native";
+import { cleanup, fireEvent, screen } from "@testing-library/react-native";
 
 import CheckoutScreen from "@/app/checkout";
 import type { Cart } from "@/lib/api";
@@ -137,4 +137,23 @@ describe("checkout reads back the choice made before matching", () => {
     expect(screen.getByRole("radio", { name: "Multi-drop" })).toBeTruthy();
     expect(screen.getByLabelText("Change the delivery address")).toBeTruthy();
   });
+});
+
+it.each([false, true])("legacy checkout offers pickup only when enabled=%s", async (enabled) => {
+  api.getSettings.mockResolvedValue({ ...CHECKOUT_SETTINGS, hubPickupEnabled: enabled });
+  await show(checkoutCart({ requestFulfillment: null }));
+  await screen.findByText("WHAT GRIDGO IS PRINTING");
+  if (enabled) expect(await screen.findByRole("radio", { name: "Pickup" })).toBeTruthy();
+  else expect(screen.queryByRole("radio", { name: "Pickup" })).toBeNull();
+  expect(screen.getByRole("radio", { name: "Delivery" })).toBeTruthy();
+});
+
+it("explains a locked pickup draft while preserving its selected hub", async () => {
+  api.getSettings.mockResolvedValue({ ...CHECKOUT_SETTINGS, hubPickupEnabled: false });
+  await show(checkoutCart({ fulfillmentMode: "pickup", requestFulfillment: { fulfillmentMode: "pickup", dropoff: OFFICE }, hubPickup: HUB }));
+  expect(await screen.findByText(/Start a new print job and choose delivery/)).toBeTruthy();
+  expect(screen.getByText("GRIDGO Office")).toBeTruthy();
+  expect(useCart.getState().cart?.fulfillmentMode).toBe("pickup");
+  await fireEvent.press(screen.getByLabelText("Place this order"));
+  expect(await screen.findByText(/Choose delivery, or start a new print job to change a locked pick-up choice/)).toBeTruthy();
 });
