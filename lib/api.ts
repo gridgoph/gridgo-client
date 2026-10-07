@@ -145,6 +145,13 @@ export type ProductionItem = {
   artworkLinks?: ArtworkLink[];
 };
 
+export type DropoffConfirmation =
+  | { status: "pending"; requestedAt: string }
+  | { status: "confirmed"; requestedAt: string; answeredAt: string; point: OrderPoint }
+  | { status: "needs_review"; requestedAt: string; answeredAt: string; requestedPoint: OrderPoint };
+
+export type DropoffAnswer = { action: "confirm" } | { action: "change"; point: OrderPoint };
+
 /**
  * One print job as the client is allowed to see it.
  *
@@ -245,6 +252,7 @@ export type Order = {
   pickup?: OrderPoint | null;
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
+  dropoffConfirmation?: DropoffConfirmation | null;
   /** The choice made before matching, snapshotted at checkout (gridgo-api#148). */
   requestFulfillment?: RequestFulfilment | null;
   /** A pick-up order's hub hours and fee as they stood at checkout. */
@@ -3542,4 +3550,12 @@ export async function statementExportRequest(
     headers["X-GRIDGO-Role"] = "client";
   }
   return { url: `${getApiBase()}${statementQuery(period, format)}`, headers };
+}
+
+export async function answerDropoffConfirmation(orderId: string, answer: DropoffAnswer): Promise<DropoffConfirmation> {
+  const result = await request<{ confirmation: DropoffConfirmation }>(
+    `/orders/${encodeURIComponent(orderId)}/dropoff-confirmation`,
+    { method: "POST", body: JSON.stringify(answer) },
+  );
+  return result.confirmation;
 }

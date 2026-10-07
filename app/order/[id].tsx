@@ -9,6 +9,7 @@ import { Screen } from "@/components/Screen";
 import { BasketGroupsCard } from "@/components/BasketGroupsCard";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
+import { DropoffConfirmationCard } from "@/components/DropoffConfirmationCard";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
 import { DeliveryHandoverCard } from "@/components/DeliveryHandoverCard";
@@ -354,6 +355,8 @@ export default function OrderDetailScreen() {
               : null
           }
         />
+
+        <DropoffConfirmationCard key={order.id} order={order} onUpdated={applyOrderUpdate} onRefresh={() => void load()} />
 
         {finished ? <JobCompleteCard order={order} /> : null}
 
