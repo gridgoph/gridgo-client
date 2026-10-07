@@ -37,3 +37,18 @@ export function galleryIndicator(count: number): "none" | "dots" | "counter" {
   if (count <= 1) return "none";
   return count <= GALLERY_MAX_DOTS ? "dots" : "counter";
 }
+
+/**
+ * How far the full-screen viewer's counter and close button sit from the top
+ * edge. The viewer draws under the status bar (`statusBarTranslucent`), so on
+ * Android the status bar's own height is a floor: a safe-area reading of 0
+ * inside the Modal put "6 / 6" and the close button over the clock.
+ */
+export function viewerTopInset(
+  safeAreaTop: number,
+  platformOS: string,
+  statusBarHeight: number | undefined,
+): number {
+  const floor = platformOS === "android" ? (statusBarHeight ?? 0) : 0;
+  return Math.max(safeAreaTop, floor);
+}

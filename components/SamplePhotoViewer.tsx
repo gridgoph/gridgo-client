@@ -2,7 +2,9 @@ import { X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   Modal,
+  Platform,
   Pressable,
+  StatusBar,
   Text,
   View,
   useWindowDimensions,
@@ -21,9 +23,18 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  initialWindowMetrics,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
-import { clampPhotoIndex, pageAtOffset, photoPositionLabel } from "@/lib/gallery";
+import {
+  clampPhotoIndex,
+  pageAtOffset,
+  photoPositionLabel,
+  viewerTopInset,
+} from "@/lib/gallery";
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
@@ -81,13 +92,16 @@ export function SamplePhotoViewer({ photos, index = 0, open, onClose }: Props) {
       statusBarTranslucent
     >
       {/* A Modal mounts its content only while visible, so the stage starts
-          on the tapped photo every time it opens. */}
-      <ViewerStage
-        photos={photos}
-        startIndex={index}
-        onShown={(i) => (shownRef.current = i)}
-        onClose={onClose}
-      />
+          on the tapped photo every time it opens. It is its own window, so it
+          measures its own insets: the screen's provider read 0 at the top. */}
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <ViewerStage
+          photos={photos}
+          startIndex={index}
+          onShown={(i) => (shownRef.current = i)}
+          onClose={onClose}
+        />
+      </SafeAreaProvider>
     </Modal>
   );
 }
@@ -104,6 +118,7 @@ function ViewerStage({
   onClose: (lastIndex: number) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const top = viewerTopInset(insets.top, Platform.OS, StatusBar.currentHeight) + 8;
   const { width, height } = useWindowDimensions();
   const [start] = useState(() => clampPhotoIndex(startIndex, photos.length));
   const [current, setCurrent] = useState(start);
@@ -143,8 +158,9 @@ function ViewerStage({
       testID="close-sample-photo"
       accessibilityRole="button"
       accessibilityLabel="Close the photo"
+      hitSlop={8}
       className="absolute items-center justify-center"
-      style={{ top: insets.top + 8, right: 12, width: 44, height: 44 }}
+      style={{ top, right: 12, width: 44, height: 44 }}
     >
       <X size={22} color="#FFFFFF" strokeWidth={2} />
     </Pressable>
@@ -166,11 +182,7 @@ function ViewerStage({
           if (event.nativeEvent.actionName === "decrement") goTo(shown - 1);
         }}
         className="absolute justify-center rounded-pill px-3"
-        style={{
-          top: insets.top + 8,
-          left: 12,
-          height: 44,
-        }}
+        style={{ top, left: 12, height: 44 }}
       >
         <Text className="text-body font-medium" style={{ color: "#FFFFFF" }}>
           {shown + 1} / {count}
