@@ -14,6 +14,7 @@ import { SpecRow } from "@/components/SpecRow";
 import { usePaymentProof } from "@/hooks/usePaymentProof";
 import * as api from "@/lib/api";
 import { formatPhp, type Basket, type InstallmentCode, type Order } from "@/lib/api";
+import { allGroupsPhrase } from "@/lib/basketGroups";
 import { userFacingError } from "@/lib/copy";
 import { afterPayCopy, checkPaymentReference, downpaymentPercentOf, installmentLabel, MANUAL_CONFIRMATION_NOTICE, paymentInstallment, paysInFull, payInstruction } from "@/lib/payment";
 import { liveGeneration } from "@/lib/live";
@@ -103,7 +104,7 @@ function PaymentForm({ order, installment, basket, onSubmitted }: Props) {
         <Text className="text-body text-text-secondary">{afterPayCopy(installment)}</Text>
         {basketId && basket ? (
           <Text className="text-body text-text-secondary">
-            One payment for all {basket.groups.length} shops in this order.
+            One payment for {allGroupsPhrase(basket)}.
           </Text>
         ) : null}
       </View>
@@ -178,7 +179,7 @@ export function PaymentUnderReviewCard({
           sentMinor != null ? formatPhp(sentMinor) : "—"
         } />
         {order.basketId && basket ? (
-          <SpecRow label="Covers" value={`All ${basket.groups.length} shops in this order`} />
+          <SpecRow label="Covers" value={capitalize(allGroupsPhrase(basket))} />
         ) : null}
         <SpecRow label="Reference you sent" value={record?.reference || "—"} />
       </View>
@@ -189,4 +190,9 @@ export function PaymentUnderReviewCard({
       </Text>
     </View>
   );
+}
+
+/** "All 3 parts of this order" — a phrase that starts a value. */
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

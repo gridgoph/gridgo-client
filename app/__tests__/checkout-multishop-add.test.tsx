@@ -6,7 +6,7 @@ import CheckoutScreen from "@/app/checkout";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
-import { MULTI_SETTINGS, multiCart } from "@/test/multiShopFixtures";
+import { DATE_MID, datedCart, MULTI_SETTINGS } from "@/test/multiShopFixtures";
 
 const mockPush = jest.fn();
 
@@ -55,8 +55,8 @@ afterEach(async () => {
 });
 
 // One press per file: see "Running and testing" in AGENTS.md.
-it("adds more to one shop group by matching that group's shop", async () => {
-  const cart = multiCart(2);
+it("adds more to one group by matching that group's shop on that group's date", async () => {
+  const cart = datedCart();
   api.getSettings.mockResolvedValue(MULTI_SETTINGS);
   api.getCart.mockResolvedValue(cart);
   api.listAddresses.mockResolvedValue([]);
@@ -65,8 +65,8 @@ it("adds more to one shop group by matching that group's shop", async () => {
   useCart.setState({ cartId: cart.id, cart, loading: false, busy: false, error: null, hydrated: true });
 
   await renderInSafeArea(<CheckoutScreen />);
-  await fireEvent.press(await screen.findByLabelText("Add more from Shop B. No extra delivery fee."));
+  await fireEvent.press(await screen.findByLabelText("Add more from Shop B for Fri 16 Oct. No extra delivery fee."));
 
-  expect(useBasketGroupTarget.getState()).toMatchObject({ groupId: "cline_1", label: "Shop B" });
+  expect(useBasketGroupTarget.getState()).toMatchObject({ groupId: "cline_1", label: "Shop B", deadline: DATE_MID });
   expect(mockPush).toHaveBeenCalledWith({ pathname: "/request/category", params: { forGroup: "1" } });
 });

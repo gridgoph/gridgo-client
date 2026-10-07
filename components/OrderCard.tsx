@@ -6,6 +6,7 @@ import { ReadyTime } from "@/components/ReadyTime";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp, type Order } from "@/lib/api";
+import { groupTag } from "@/lib/basketGroups";
 import { paymentStatusLabel } from "@/lib/copy";
 import { paysInFull } from "@/lib/payment";
 import { orderReferenceSpoken } from "@/lib/orderReference";
@@ -65,7 +66,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${order.title}, ${order.groupLabel ? `${order.groupLabel} of a multi-shop order, ` : ""}${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
+        accessibilityLabel={`${order.title}, ${order.groupLabel ? `${groupTag(order)}, part of a larger order, ` : ""}${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
         accessibilityHint={orderWaitingOn(order) ?? undefined}
         className="p-4"
       >
@@ -80,12 +81,13 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
             </Text>
             <View className="mt-2 flex-row items-center gap-2">
               <OrderReference id={order.id} />
-              {/* One shop group of a multi-shop order: its letter, never its shop. */}
+              {/*
+                One group of a larger order: its letter and its date, never its
+                shop. One shop on two dates is two groups under one letter.
+              */}
               {order.groupLabel ? (
                 <View className="gg-chip">
-                  <Text className="text-caption text-text-secondary">
-                    {order.groupLabel} · multi-shop
-                  </Text>
+                  <Text className="text-caption text-text-secondary">{groupTag(order)}</Text>
                 </View>
               ) : null}
             </View>

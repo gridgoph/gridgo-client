@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
-import { CalendarDays, ChevronRight, Home, Info, MapPin, Minus, Plus, QrCode, Truck } from "lucide-react-native";
+import { ChevronRight, Home, Info, MapPin, Minus, Plus, QrCode, Truck } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -48,20 +48,18 @@ import {
   printRuns,
 } from "@/lib/basket";
 import {
-  BASKET_DATE_MISSING,
-  basketDeadlineOf,
   groupDeliveryNote,
+  groupMoneyLabel,
   groupsHeading,
   isMultiShop,
   MULTI_SHOP_PAYMENT_TITLE,
   multiShopPaymentNote,
-  ONE_DATE_NOTE,
   shopGroups,
+  type ShopGroupView,
 } from "@/lib/basketGroups";
 import { unpricedLineReason } from "@/lib/clientPrice";
-import { formatDeadline } from "@/lib/deadline";
 import { lineArtworkLinks, lineArtworkSummary, lineHasArtwork } from "@/lib/designLink";
-import { holdPlacedReceipt, openReceiptAfterCheckout, receiptFromCheckout } from "@/lib/receipt";
+import { holdPlacedReceipt, openReceiptAfterCheckout, receiptFromCheckout, withBasket } from "@/lib/receipt";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
 import { clearOrderFlow } from "@/lib/orderFlow";
 import {
@@ -226,7 +224,6 @@ export default function CheckoutScreen() {
   const totals = useMemo(() => basketTotals({ cart, settings }), [cart, settings]);
   const multi = isMultiShop(cart);
   const groups = useMemo(() => shopGroups(cart), [cart]);
-  const basketDate = basketDeadlineOf(cart);
 
   const travel = travelChoiceOf(cart);
   // Chosen before the match (#158): read back here, never asked again.
@@ -256,7 +253,9 @@ export default function CheckoutScreen() {
     linesCheckingArtwork: checkingArtwork.length,
     linesArtworkProblem: artworkProblem.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
-    missingBasketDate: multi && !basketDate,
+    // More than one group: each is printed and delivered for its own date, so
+    // GRIDGO needs one on every product (gridgo-client#189).
+    missingBasketDate: multi && groups.some((group) => group.deadline == null),
     referenceOk: ocrReading || referenceCheck.ok,
     hasProof: Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
@@ -309,15 +308,27 @@ export default function CheckoutScreen() {
    */
   const lastLine = lines.at(-1) ?? null;
 
-  /** "Add more from Shop A": the next product is matched to that group's shop. */
-  const addToGroup = (groupId: string, label: string) => {
-    useBasketGroupTarget.getState().set(groupId, label);
+  /**
+   * "Add more from Shop A for Fri 12 Oct": the next product is matched to that
+   * group's shop on that group's date, so it rides in the same delivery.
+   */
+  const addToGroup = (groupId: string, label: string, deadline: string | null) => {
+    useBasketGroupTarget.getState().set(groupId, label, deadline);
     router.push({ pathname: "/request/category", params: { forGroup: "1" } });
   };
 
-  /** The one date every shop in the order is held to. */
-  const changeBasketDate = () =>
-    router.push({ pathname: "/request/when", params: { mode: "basket" } });
+  /** Move one group's products to another date — or give a "no rush" group one. */
+  const changeGroupDate = (group: ShopGroupView) =>
+    router.push({
+      pathname: "/request/when",
+      params: {
+        mode: "group",
+        lineIds: group.lines.map((line) => line.id).join(","),
+        label: group.label,
+        ...(group.deadline ? { current: group.deadline } : {}),
+        subcategory: group.lines[0]?.listing?.subcategoryCode ?? "",
+      },
+    });
 
   const goStep = (step: OrderStepId) => {
     if (step === "shop") {
@@ -393,13 +404,15 @@ export default function CheckoutScreen() {
       if (!cart?.serviceLevel) {
         await api.setCartFulfilment(cartId, { serviceLevel: "standard" });
       }
-      const { order, invoice } = await api.checkoutCart(cartId, {
+      const { order, invoice, basket } = await api.checkoutCart(cartId, {
         reference: reference.trim(),
         proofFileId: proof.state.fileId,
       });
       // A multi-shop basket answers with one combined receipt; its order is
       // the first shop group, which the receipt and its "View order" open.
-      holdPlacedReceipt(receiptFromCheckout(invoice, order, reference));
+      // The basket beside it carries each group's date for the slip.
+      const placed = receiptFromCheckout(invoice, order, reference);
+      holdPlacedReceipt(placed && basket?.groups ? withBasket(placed, basket) : placed);
       resetPayment();
       useBasketGroupTarget.getState().clear();
       clearCart();
@@ -636,18 +649,13 @@ export default function CheckoutScreen() {
           {multi ? (
             <>
               {/*
-                Several shops, one order (gridgo-api#117). Each group is a shop
-                GRIDGO matched — named by letter, never by who it is — with
-                its own delivery fee and its own way to add more. The one date
-                they are all held to sits above them, because it is the one
-                thing they share.
+                Several parts, one order (gridgo-api#117, gridgo-client#189).
+                Each group is one shop GRIDGO matched — named by letter, never
+                by who it is — on one date, with its own delivery fee and its
+                own way to add more. Soonest date first, so the screen reads
+                as what arrives when.
               */}
-              <Text className="text-overline text-text-muted">{groupsHeading(groups.length)}</Text>
-              <BasketDateRow
-                deadline={basketDate}
-                error={attempted && blockers.includes("date")}
-                onChange={changeBasketDate}
-              />
+              <Text className="text-overline text-text-muted">{groupsHeading(groups)}</Text>
               {groups.map((group, index) => (
                 <ShopGroupSection
                   key={group.id}
@@ -656,7 +664,9 @@ export default function CheckoutScreen() {
                   pickup={travel === "pickup"}
                   sharedPickupFee={totals.pickupFeeMinor != null && totals.pickupFeeMinor > 0}
                   busy={busy}
-                  onAddMore={() => addToGroup(group.id, group.label)}
+                  onAddMore={() => addToGroup(group.id, group.label, group.deadline)}
+                  onChangeDate={() => changeGroupDate(group)}
+                  dateError={attempted && group.deadline == null}
                 >
                   {group.lines.map(lineRow)}
                 </ShopGroupSection>
@@ -847,7 +857,7 @@ export default function CheckoutScreen() {
           </Pressable>
           <Text className="text-caption text-text-muted">{DIGITAL_ONLY_NOTICE}</Text>
           {multi ? (
-            <MultiShopPaymentNote groupCount={groups.length} />
+            <MultiShopPaymentNote groups={groups} />
           ) : (
             <Text className="text-caption text-text-muted">
               {paymentPlanNote(totals.downpaymentPercent)}
@@ -958,7 +968,7 @@ export default function CheckoutScreen() {
               groups.map((group) => (
                 <SpecRow
                   key={group.id}
-                  label={`Delivery · ${group.label}`}
+                  label={`Delivery · ${groupMoneyLabel(group, groups)}`}
                   value={group.deliveryFeeMinor == null ? "Set with your address" : formatPhp(group.deliveryFeeMinor)}
                 />
               ))
@@ -1054,67 +1064,21 @@ function withZone(fee: string, zone: string | null): string {
 }
 
 /**
- * The one date a multi-shop order is held to (gridgo-api#117). Every shop in
- * it must make it, so it is shown once, above the groups, with the way to
- * move it for all of them. A basket that reached several shops without a
- * date — its first product was "no rush" — is asked for one here.
- */
-function BasketDateRow({
-  deadline,
-  error,
-  onChange,
-}: {
-  deadline: string | null;
-  error: boolean;
-  onChange: () => void;
-}) {
-  const colors = useThemeColors();
-  return (
-    <Pressable
-      onPress={onChange}
-      accessibilityRole="button"
-      accessibilityLabel={
-        deadline
-          ? `Your order's date: ${formatDeadline(deadline)}. ${ONE_DATE_NOTE} Change it.`
-          : BASKET_DATE_MISSING
-      }
-      className={error ? "gg-card-flush gg-touch border border-error" : "gg-card-flush gg-touch"}
-    >
-      {({ pressed }) => (
-        <View className="flex-row items-center gap-3 p-4">
-          <CalendarDays size={20} color={error ? colors.error : colors.textPrimary} strokeWidth={2} aria-hidden />
-          <View className="min-w-0 flex-1 gap-0.5">
-            <Text className="text-body-lg font-medium text-text-primary">
-              {deadline ? formatDeadline(deadline) : "No date yet"}
-            </Text>
-            <Text className={error ? "text-caption text-error" : "text-caption text-text-muted"}>
-              {deadline ? ONE_DATE_NOTE : BASKET_DATE_MISSING}
-            </Text>
-          </View>
-          <Text className="text-button text-text-primary">{deadline ? "Change" : "Choose"}</Text>
-          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-/**
  * Why a multi-shop order is paid in full, said where the client pays rather
  * than discovered on the QR. Info, not warning: nothing is wrong.
  */
-function MultiShopPaymentNote({ groupCount }: { groupCount: number }) {
+function MultiShopPaymentNote({ groups }: { groups: ShopGroupView[] }) {
   const colors = useThemeColors();
   return (
     <View
       className="gg-panel flex-row gap-3"
       accessible
-      accessibilityLabel={`${MULTI_SHOP_PAYMENT_TITLE}. ${multiShopPaymentNote(groupCount)}`}
+      accessibilityLabel={`${MULTI_SHOP_PAYMENT_TITLE}. ${multiShopPaymentNote(groups)}`}
     >
       <Info size={18} color={colors.info} strokeWidth={2} aria-hidden />
       <View className="min-w-0 flex-1 gap-1">
         <Text className="text-body font-medium text-text-primary">{MULTI_SHOP_PAYMENT_TITLE}</Text>
-        <Text className="text-caption text-text-secondary">{multiShopPaymentNote(groupCount)}</Text>
+        <Text className="text-caption text-text-secondary">{multiShopPaymentNote(groups)}</Text>
       </View>
     </View>
   );

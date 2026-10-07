@@ -15,7 +15,9 @@ import type {
   ApplicantPerson,
   BusinessType,
   ClientApplicationInput,
+  ClientApplicationView,
   GovernmentIdType,
+  SubmittedApplication,
 } from "@/lib/api";
 import { mobileNumberProblem } from "@/lib/accountProfile";
 
@@ -190,7 +192,12 @@ export type PersonDraft = {
   detailsMatchId: boolean;
 };
 
-export type UploadedDocument = { fileId: string; name: string };
+export type UploadedDocument = {
+  fileId: string;
+  name: string;
+  /** Sent with the last application and still held by GRIDGO; sent again as it is. */
+  kept?: boolean;
+};
 
 export type ApplicationDraft = {
   accountType: "organization" | "business";
@@ -235,6 +242,89 @@ export function emptyApplicationDraft(
 export function trackOf(draft: Pick<ApplicationDraft, "accountType" | "businessType">): ApplicationTrack | null {
   if (draft.accountType === "organization") return "organization";
   return draft.businessType;
+}
+
+/* --------------------------------------------------------------------------
+   A sent-back application (gridgo-client#187)
+   -------------------------------------------------------------------------- */
+
+export function isDocumentKey(value: string): value is DocumentKey {
+  return Object.prototype.hasOwnProperty.call(DOCUMENTS, value);
+}
+
+/** One document Operations asked for again. */
+export type SentBackDocument = {
+  note: string | null;
+  /** The file it replaces, by the name the client sent it under. */
+  previousName: string | null;
+};
+
+/** What Operations sent back: their words, and the documents they named. */
+export type SentBack = {
+  reason: string | null;
+  documents: Partial<Record<DocumentKey, SentBackDocument>>;
+};
+
+export function sentBackFrom(view: Pick<ClientApplicationView, "sentBack" | "application">): SentBack | null {
+  if (!view.sentBack) return null;
+  const documents: SentBack["documents"] = {};
+  for (const row of view.sentBack.documents ?? []) {
+    if (!isDocumentKey(row.key)) continue;
+    documents[row.key] = {
+      note: row.note?.trim() || null,
+      previousName: view.application?.documents?.[row.key]?.name?.trim() || null,
+    };
+  }
+  return { reason: view.sentBack.reason?.trim() || null, documents };
+}
+
+export function sentBackKeys(sentBack: SentBack | null): DocumentKey[] {
+  return sentBack ? (Object.keys(sentBack.documents) as DocumentKey[]) : [];
+}
+
+/**
+ * The application as the client sent it, ready to correct. Every answer comes
+ * back, and every file GRIDGO still holds is kept — except the ones Operations
+ * asked for again, which wait for a replacement. `base` supplies anything the
+ * submission does not carry.
+ */
+export function draftFromSubmission(
+  application: SubmittedApplication,
+  base: ApplicationDraft,
+  sentBack: SentBack | null,
+): ApplicationDraft {
+  const organization = application.accountType === "organization";
+  const sent = (organization ? application.officer : application.signatory) ?? {};
+  const governmentIdType = GOVERNMENT_ID_TYPES.some((option) => option.value === sent.governmentIdType)
+    ? (sent.governmentIdType as GovernmentIdType)
+    : null;
+  const documents: ApplicationDraft["documents"] = {};
+  for (const [key, file] of Object.entries(application.documents ?? {})) {
+    if (!isDocumentKey(key) || !file?.fileId || sentBack?.documents[key]) continue;
+    documents[key] = { fileId: file.fileId, name: file.name?.trim() || DOCUMENTS[key].label, kept: true };
+  }
+  return {
+    accountType: organization ? "organization" : "business",
+    businessType: organization ? null : (application.businessType ?? base.businessType),
+    businessName: application.businessName ?? base.businessName,
+    businessNature: application.businessNature ?? base.businessNature,
+    school: organization ? (application.school ?? base.school) : "",
+    facultyAdviserContact: organization ? (application.facultyAdviserContact ?? "") : "",
+    person: {
+      fullName: sent.fullName ?? base.person.fullName,
+      dateOfBirth: sent.dateOfBirth ?? "",
+      address: sent.address ?? "",
+      phone: sent.phone ?? base.person.phone,
+      governmentIdType,
+      governmentIdExpiresOn: sent.governmentIdExpiresOn ?? "",
+      governmentIdHasNoExpiry: Boolean(sent.governmentIdHasNoExpiry),
+      studentIdExpiresOn: sent.studentIdExpiresOn ?? "",
+      // Both were confirmed when it was sent; the send itself confirms again.
+      originalId: true,
+      detailsMatchId: true,
+    },
+    documents,
+  };
 }
 
 /* --------------------------------------------------------------------------
@@ -358,10 +448,14 @@ export function personProblems(
 export function documentProblems(
   draft: ApplicationDraft,
   checklist: ChecklistItem[],
+  sentBack: SentBack | null = null,
 ): FieldProblems {
   const problems: FieldProblems = {};
   for (const item of checklist) {
-    if (item.required && !draft.documents[item.key]) problems[item.key] = `Add the ${item.label.toLowerCase()}.`;
+    if (draft.documents[item.key]) continue;
+    // Asked for again, it is needed even where the checklist calls it optional.
+    if (sentBack?.documents[item.key]) problems[item.key] = `Upload the ${item.label.toLowerCase()} again.`;
+    else if (item.required) problems[item.key] = `Add the ${item.label.toLowerCase()}.`;
   }
   return problems;
 }
@@ -375,7 +469,14 @@ export function stepProblem(
     checklist,
     emailVerified,
     today,
-  }: { mode: ApplicationMode; checklist: ChecklistItem[]; emailVerified: boolean; today: string },
+    sentBack = null,
+  }: {
+    mode: ApplicationMode;
+    checklist: ChecklistItem[];
+    emailVerified: boolean;
+    today: string;
+    sentBack?: SentBack | null;
+  },
 ): string | null {
   const first = (problems: FieldProblems) => Object.values(problems)[0] ?? null;
   switch (step) {
@@ -389,8 +490,15 @@ export function stepProblem(
         }),
       );
     case "documents": {
-      const missing = Object.keys(documentProblems(draft, checklist)).length;
+      const problems = documentProblems(draft, checklist, sentBack);
+      const missing = Object.keys(problems).length;
       if (!missing) return null;
+      const again = checklist.filter((item) => problems[item.key] && sentBack?.documents[item.key]);
+      if (again.length === missing) {
+        return missing === 1
+          ? (problems[again[0]!.key] ?? null)
+          : `Upload the ${missing} documents Operations sent back.`;
+      }
       return missing === 1 ? "One document is still missing." : `${missing} documents are still missing.`;
     }
     case "email":
@@ -398,6 +506,26 @@ export function stepProblem(
     case "review":
       return null;
   }
+}
+
+/**
+ * Where a correction opens. With documents sent back, it opens on Files —
+ * the one thing to do — unless an earlier answer no longer holds (an ID that
+ * has expired since), in which case it opens there. Without, it opens at the
+ * start, where Operations' words are shown over the answers they are about.
+ */
+export function correctionStartIndex(
+  steps: ApplicationStep[],
+  draft: ApplicationDraft,
+  options: { mode: ApplicationMode; checklist: ChecklistItem[]; today: string; sentBack: SentBack | null },
+): number {
+  if (!sentBackKeys(options.sentBack).length) return 0;
+  const files = steps.findIndex((step) => step.id === "documents");
+  if (files < 0) return 0;
+  const blocked = steps
+    .slice(0, files)
+    .findIndex((step) => stepProblem(step.id, draft, { ...options, emailVerified: false }) !== null);
+  return blocked >= 0 ? blocked : files;
 }
 
 /* --------------------------------------------------------------------------

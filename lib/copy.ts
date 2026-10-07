@@ -82,8 +82,8 @@ export const clientEmailUnavailableMessage =
  * Timeline actor: who did this, in roles the client understands.
  * Never surfaces raw user ids.
  */
-export function actorLabel(by: string | null | undefined): string {
-  if (!by) return "Unknown";
+export function actorLabel(by: unknown): string {
+  if (typeof by !== "string" || !by) return "Unknown";
   if (by === "system") return "System";
   if (by === "user_client" || by.endsWith("_client")) return "You";
   if (by === "user_supplier" || by.includes("supplier")) return "Supplier";
@@ -153,13 +153,13 @@ export function userFacingError(error: unknown, fallback: string): string {
           ? `This shop takes orders of ${minimum} and up. Change the quantity and try again.`
           : "This shop takes a minimum quantity. Change the quantity and try again.";
       }
-      // ---- basket: several shops, one date, one payment (gridgo-api#117) ----
+      // ---- basket: several shops and dates, one payment (gridgo-api#117, gridgo-client#189) ----
       case "basket_deadline_required":
-        return "Your order is printed by more than one shop, so it needs one date for all of them. Choose a date and try again.";
+        return "Your order goes out in more than one part, so every item needs a date. Choose one for any item with no set date and try again.";
       case "basket_deadline_mismatch":
-        return "Everything in one order shares one date. GRIDGO looked again with your order's date — pick from the new answer.";
+        return "GRIDGO looked again with this item's date — pick from the new answer.";
       case "deadline_not_met":
-        return "A shop in your order can no longer make your date. Choose a later date for the whole order, or remove that item.";
+        return "A shop in your order can no longer make one of your dates. Choose a later date for that item, or remove it.";
       case "cart_group_not_found":
         return "That shop group is no longer in your order. Add this as a new product instead.";
       case "basket_payment_required":

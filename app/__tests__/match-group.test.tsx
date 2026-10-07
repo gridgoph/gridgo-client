@@ -70,14 +70,14 @@ beforeEach(() => {
 });
 
 describe("MatchScreen, adding to a basket", () => {
-  it("matches with the basket and its one date", async () => {
+  it("matches with the basket and this product's own date (gridgo-client#189)", async () => {
     useBasketGroupTarget.getState().clear();
     api.matchShop.mockResolvedValue(topPickMatch());
     await renderInSafeArea(<MatchScreen />);
     await screen.findByText("TOP PICK");
 
     expect(api.matchShop).toHaveBeenCalledWith(
-      expect.objectContaining({ cartId: "cart_multi", deadline: "2026-10-26T08:00:00.000Z" }),
+      expect.objectContaining({ cartId: "cart_multi", deadline: "2026-12-01T08:00:00.000Z" }),
     );
     expect(api.matchShop.mock.calls[0][0]).not.toHaveProperty("groupId");
     expect(screen.queryByText(/^Adding to Shop/)).toBeNull();

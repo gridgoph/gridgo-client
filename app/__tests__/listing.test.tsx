@@ -52,7 +52,8 @@ const ITEM: CatalogItem = {
   speedTiers: [],
   pricingBasis: "per_unit",
   turnaroundMode: "override",
-  turnaroundHours: 12,
+  turnaroundDays: 2,
+  turnaroundHours: 20,
   rush: null,
   acceptedFormats: [],
   photos: [],
@@ -116,7 +117,7 @@ describe("ListingScreen", () => {
     await renderInSafeArea(<ListingScreen />);
 
     expect(screen.getByText("Flyers")).toBeTruthy();
-    expect(screen.getByText("Prints in about 12 hours")).toBeTruthy();
+    expect(screen.getByText("Prints in 2 working days")).toBeTruthy();
     expect(screen.queryByText(/Ready in/)).toBeNull();
     // The eyebrow is the storefront the sheet belongs to, never the press.
     expect(screen.getByText("GRIDGO")).toBeTruthy();

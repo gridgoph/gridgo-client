@@ -1,12 +1,15 @@
+import { Linking } from "react-native";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { usePushNotifications } from "../usePushNotifications";
 import { getOrder } from "@/lib/api";
 import { useSession } from "@/store/session";
 const mockRouter = { push: jest.fn() };
 let mockSegments = ["(auth)", "login"];
-let mockTap: (value: ReturnType<typeof response>) => void;
+type PushResponse = { notification: { request: { identifier: string; content: { data: unknown; title?: string } } } };
+let mockTap: (value: PushResponse) => void;
 const mockNative = {
   setNotificationHandler: jest.fn(),
+  clearLastNotificationResponseAsync: jest.fn(async () => {}),
   addNotificationResponseReceivedListener: (listener: typeof mockTap) => {
     mockTap = listener;
     return { remove: jest.fn() };
@@ -39,6 +42,7 @@ function response(identifier: string, orderId: string) {
 
 beforeEach(() => {
   mockRouter.push.mockClear();
+  mockNative.clearLastNotificationResponseAsync.mockClear();
   mockSegments = ["(auth)", "login"];
   mockNative.getLastNotificationResponseAsync.mockReset().mockResolvedValue(response("cold-tap", "order1"));
   jest.mocked(getOrder).mockReset().mockResolvedValue({ id: "order1" } as never);
@@ -113,4 +117,21 @@ it("does not let delayed launch-response replay replace a live tap", async () =>
   expect(mockRouter.push.mock.calls).toEqual([["/order/latest"]]);
   expect(getOrder).not.toHaveBeenCalledWith("old");
   await hook.unmount();
+});
+
+
+it.each(["cold start", "background"])("opens release download while signed out from %s", async mode => {
+  const open = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+  const release = { notification: { request: { identifier: "release-tap", content: {
+    title: "GRIDGO Client 1.0.123 is ready", data: { type: "announcement" },
+  } } } };
+  mockNative.getLastNotificationResponseAsync.mockResolvedValue(mode === "cold start" ? release : null);
+  const view = await renderHook(() => usePushNotifications());
+  if (mode === "background") await act(async () => { mockTap(release); mockTap(release); });
+  await waitFor(() => expect(open).toHaveBeenCalledWith("https://gridgo.talasora.com/downloads/gridgo-client.apk"));
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(mockNative.clearLastNotificationResponseAsync).toHaveBeenCalledTimes(1);
+  expect(mockRouter.push).not.toHaveBeenCalled();
+  await view.unmount();
+  open.mockRestore();
 });

@@ -335,7 +335,7 @@ export default function ListingScreen() {
   const runMinimum = belowMinimumOrder(item, quantity);
   const uploads = fileFormats(item);
   const links = linkFormats(item);
-  const pressTime = printTimeLine(item.turnaroundHours);
+  const pressTime = printTimeLine(item);
   const capLine = printerCapLine(item);
   const sizeValue = boundValue(item, selection, "size");
   // Said before the tap, because GRIDGO refuses the line otherwise

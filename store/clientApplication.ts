@@ -8,12 +8,16 @@ import {
   applicationInput,
   applicationSteps,
   checklistFor,
+  correctionStartIndex,
   documentIds,
+  draftFromSubmission,
   emailCodeMessage,
   emptyApplicationDraft,
   manilaToday,
   refusalMessage,
   refusalStep,
+  sentBackFrom,
+  sentBackKeys,
   stepProblem,
   trackOf,
   type ApplicationDraft,
@@ -22,6 +26,7 @@ import {
   type ChecklistItem,
   type DocumentKey,
   type PersonDraft,
+  type SentBack,
 } from "@/lib/clientApplication";
 import { userFacingError } from "@/lib/copy";
 import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
@@ -39,7 +44,8 @@ import { useSession } from "@/store/session";
  *
  * Nothing is persisted. It holds ID details, and an application half-filled
  * last week is not one to resume silently on a phone that may have changed
- * hands.
+ * hands. What was *sent* is GRIDGO's to give back: a correction reads it from
+ * `GET /me/client-application` (#187) instead of starting from nothing.
  */
 
 /** GRIDGO takes these for verification documents, up to 20 MiB. */
@@ -53,6 +59,9 @@ export type DocumentUpload =
 export type EmailPhase = "idle" | "sending" | "sent" | "verifying" | "verified";
 
 export type ApplicationNotice = { message: string; tone: "error" | "info" };
+
+/** Reading back what was sent. `failed` is a read that did not land, never "nothing sent". */
+export type PrefillPhase = "idle" | "loading" | "failed";
 
 export type ClientApplicationState = {
   mode: ApplicationMode;
@@ -75,6 +84,9 @@ export type ClientApplicationState = {
   submitting: boolean;
   notice: ApplicationNotice | null;
   idempotencyKey: string;
+  prefill: PrefillPhase;
+  /** What Operations asked for when they sent the application back. */
+  sentBack: SentBack | null;
 
   start: (input: {
     mode: ApplicationMode;
@@ -82,6 +94,10 @@ export type ClientApplicationState = {
     organization?: ClientOrganization | null;
   }) => void;
   loadChecklist: () => Promise<void>;
+  /** Fills the form from what was sent, when there is something to read back. */
+  loadPrevious: () => Promise<void>;
+  /** Gives up on the read-back and fills the form in again. */
+  startFresh: () => void;
   edit: (patch: Partial<Omit<ApplicationDraft, "person" | "documents">>) => void;
   editPerson: (patch: Partial<PersonDraft>) => void;
   next: () => void;
@@ -113,6 +129,8 @@ const EMPTY = {
   submitting: false,
   notice: null,
   idempotencyKey: "",
+  prefill: "idle" as PrefillPhase,
+  sentBack: null,
 };
 
 /** Each start gets a scope; an upload from an abandoned form never lands in a new one. */
@@ -177,6 +195,9 @@ export const useClientApplication = create<ClientApplicationState>((set, get) =>
     if (mode !== "apply") draft.accountType = "organization";
     const caseVersion = organization?.approvalCase?.version ?? user?.approvalCase?.version ?? null;
     const caseStatus = user?.approvalCase?.status;
+    // Something sent and not yet decided, or sent back, is read back first.
+    // An approved organization's first officer starts from nothing.
+    const openStatus = mode === "apply" ? caseStatus : mode === "handover" ? organization?.approvalCase?.status : null;
     set({
       ...EMPTY,
       mode,
@@ -190,8 +211,54 @@ export const useClientApplication = create<ClientApplicationState>((set, get) =>
           : caseVersion,
       loginEmail: user?.email ?? "",
       idempotencyKey: api.newIdempotencyKey(),
+      prefill: openStatus === "pending" || openStatus === "rejected" ? "loading" : "idle",
     });
   },
+
+  loadPrevious: async () => {
+    if (get().prefill !== "loading") return;
+    const mine = scope;
+    let view: api.ClientApplicationView;
+    try {
+      view = await api.getClientApplication();
+    } catch (error) {
+      if (mine !== scope) return;
+      // An API from before the read-back has nothing to give: the form opens
+      // empty, as it always did. Anything else is a read that can be retried.
+      const missingRoute = error instanceof api.ApiError && (error.status === 404 || error.status === 405);
+      set({ prefill: missingRoute ? "idle" : "failed" });
+      return;
+    }
+    if (mine !== scope) return;
+    const state = get();
+    const sentBack = sentBackFrom(view);
+    const application = view.application;
+    // A handover is a new person: an earlier officer's answers never fill it,
+    // and a handover's never fill an ordinary application.
+    const usable = application && Boolean(application.handover) === (state.mode === "handover") ? application : null;
+    if (!usable) {
+      set({ prefill: "idle", sentBack });
+      return;
+    }
+    const draft = draftFromSubmission(usable, state.draft, sentBack);
+    if (state.mode !== "apply") draft.accountType = "organization";
+    const steps = applicationSteps(state.mode, draft.accountType);
+    const checklist = currentChecklist({ ...state, draft });
+    const index = correctionStartIndex(steps, draft, { mode: state.mode, checklist, today: manilaToday(), sentBack });
+    set({
+      draft,
+      steps,
+      sentBack,
+      index,
+      // Opened short of Files because an answer no longer holds: say which.
+      showProblem: sentBackKeys(sentBack).length > 0 && steps[index]?.id !== "documents",
+      // The read is newer than the session's copy of the case.
+      expectedVersion: view.approvalCase?.version ?? state.expectedVersion,
+      prefill: "idle",
+    });
+  },
+
+  startFresh: () => set({ prefill: "idle" }),
 
   loadChecklist: async () => {
     const mine = scope;
@@ -241,6 +308,7 @@ export const useClientApplication = create<ClientApplicationState>((set, get) =>
       checklist: currentChecklist(state),
       emailVerified: state.email.phase === "verified",
       today: manilaToday(),
+      sentBack: state.sentBack,
     });
     if (problem) {
       set({ showProblem: true });
@@ -301,6 +369,8 @@ export const useClientApplication = create<ClientApplicationState>((set, get) =>
 
     const mine = scope;
     handles.get(key)?.cancel();
+    // A file already on the draft stays the answer if its replacement fails.
+    const previous = get().draft.documents[key];
     const handle = api.uploadFile(
       {
         uri: picked.uri,
@@ -337,7 +407,12 @@ export const useClientApplication = create<ClientApplicationState>((set, get) =>
     } catch (error) {
       if (mine !== scope || handles.get(key) !== handle) return;
       handles.delete(key);
-      set((state) => ({ uploads: { ...state.uploads, [key]: { phase: "failed", name, error: uploadError(error) } } }));
+      set((state) => ({
+        uploads: { ...state.uploads, [key]: { phase: "failed", name, error: uploadError(error) } },
+        ...(previous && !state.draft.documents[key]
+          ? { draft: { ...state.draft, documents: { ...state.draft.documents, [key]: previous } } }
+          : {}),
+      }));
     }
   },
 

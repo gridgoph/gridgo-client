@@ -18,9 +18,19 @@ export const SHOP_IDENTITY = [
   "user_rapid",
 ] as const;
 
-/** An ISO instant this far from now — "Ready in" lines count from the real clock. */
+/** An ISO instant this far from now. */
 export function fromNow(minutes: number): string {
   return new Date(Date.now() + minutes * 60_000).toISOString();
+}
+
+/**
+ * Noon in Davao this many calendar days from today — "Ready in" lines count
+ * Davao calendar days from the real clock, so a fixed hour count would flip
+ * between "today" and "tomorrow" with the time the suite runs.
+ */
+export function davaoDaysFromNow(days: number): string {
+  const davaoToday = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+  return new Date(Date.parse(`${davaoToday}T12:00:00+08:00`) + days * 86_400_000).toISOString();
 }
 
 export function topListing(id = "sci_lovis_tarp", overrides: Partial<MatchListing> = {}): MatchListing {
@@ -47,7 +57,8 @@ export function topListing(id = "sci_lovis_tarp", overrides: Partial<MatchListin
     speedTiers: [],
     pricingBasis: "per_area",
     turnaroundMode: "override",
-    turnaroundHours: 12,
+    turnaroundDays: 2,
+    turnaroundHours: 20,
     rush: null,
     acceptedFormats: [],
     photos: [],
@@ -55,8 +66,8 @@ export function topListing(id = "sci_lovis_tarp", overrides: Partial<MatchListin
     optionGroups: [],
     version: 1,
     serviceVersion: 1,
-    // Twelve hours out, less a minute: "Ready in 12 hours".
-    readyBy: fromNow(12 * 60 - 1),
+    // Two Davao calendar days out: "Ready in 2 days".
+    readyBy: davaoDaysFromNow(2),
     placeInLine: 4,
     selectToken: `tok_${id}`,
     distanceZone: { key: "nearby", label: "Nearby" },
@@ -87,12 +98,13 @@ export function otherListing(id: string, overrides: Partial<OtherListing> = {}):
     priceTiers: [],
     speedTiers: [],
     pricingBasis: "per_area",
-    turnaroundHours: 1,
+    turnaroundDays: 1,
+    turnaroundHours: 10,
     rush: null,
     acceptedFormats: [],
     optionGroups: [],
     version: 1,
-    readyBy: fromNow(50),
+    readyBy: davaoDaysFromNow(1),
     placeInLine: 1,
     selectToken: `tok_${id}`,
     ...overrides,

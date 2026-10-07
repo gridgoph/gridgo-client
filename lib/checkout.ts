@@ -226,8 +226,9 @@ export function placeOrderBlockers({
   linesArtworkProblem?: number;
   linesMissingDropoff: number;
   /**
-   * A basket printed by several shops has no date yet. GRIDGO holds every shop
-   * to one date and refuses the checkout without it (gridgo-api#117).
+   * A basket that goes out in more than one group has a product with no date.
+   * Each group is printed and delivered for its own date, so GRIDGO refuses
+   * the checkout without one on every line (gridgo-client#189).
    */
   missingBasketDate?: boolean;
   scheduledFor?: string | null;
@@ -271,7 +272,9 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
     case "address":
       return "Set a delivery address for every item.";
     case "date":
-      return "Choose one date for your whole order.";
+      return detail
+        ? `Choose a date for ${detail}.`
+        : "Choose a date for every item. Your order goes out in parts, each on its own date.";
     case "schedule":
       return "Pick the day and time you want it.";
     case "proof":

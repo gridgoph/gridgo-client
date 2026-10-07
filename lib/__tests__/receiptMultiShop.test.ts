@@ -1,6 +1,21 @@
 import { printRuns } from "@/lib/basket";
-import { receiptFromCheckout, receiptFromInvoice, receiptFulfilmentRow, withGroupStanding } from "@/lib/receipt";
-import { combinedInvoice, multiCart, placedBasket } from "@/test/multiShopFixtures";
+import {
+  receiptFromCheckout,
+  receiptFromInvoice,
+  receiptFulfilmentRow,
+  withBasket,
+  withGroupStanding,
+} from "@/lib/receipt";
+import {
+  combinedInvoice,
+  DATE_EARLY,
+  DATE_LATE,
+  DATE_MID,
+  datedBasket,
+  datedInvoice,
+  multiCart,
+  placedBasket,
+} from "@/test/multiShopFixtures";
 
 describe("the combined multi-shop receipt", () => {
   it("has a section per shop group, in GRIDGO's own figures", () => {
@@ -87,6 +102,45 @@ describe("the combined multi-shop receipt", () => {
     expect(view.groups).toBeUndefined();
     expect(view.money.printingMinor).toBe(44000);
     expect(withGroupStanding(view, placedBasket().groups)).toBe(view);
+  });
+});
+
+/*
+ * Per-product dates (gridgo-client#189): one receipt, a section per shop and
+ * date, soonest first, each saying its date.
+ */
+describe("the combined receipt over several dates", () => {
+  it("orders its sections by date and keeps each group's date and figures", () => {
+    const view = receiptFromInvoice(datedInvoice());
+    expect(view.groups?.map((group) => [group.label, group.deadline, group.totalMinor])).toEqual([
+      ["Shop A", DATE_EARLY, 10420],
+      ["Shop B", DATE_MID, 24800],
+      ["Shop A", DATE_LATE, 46500],
+    ]);
+    // The total is the receipt's own, however the sections are ordered.
+    expect(view.money.totalMinor).toBe(81720);
+  });
+
+  it("says delivery across dates, not across shops", () => {
+    const view = receiptFromInvoice(datedInvoice());
+    expect(receiptFulfilmentRow(view.money, view.groups)).toEqual({
+      label: "Delivery · 3 deliveries",
+      value: "₱100.00",
+    });
+    expect(receiptFulfilmentRow(view.money, receiptFromInvoice(combinedInvoice()).groups).label).toBe(
+      "Delivery · 3 shops",
+    );
+  });
+
+  it("reads a group's date from the placed basket when the receipt has none", () => {
+    const invoice = combinedInvoice();
+    const view = withBasket(receiptFromInvoice(invoice), datedBasket(["production", "cancelled", "production"]));
+    expect(view.groups?.map((group) => [group.orderId, group.deadline])).toEqual([
+      ["ord_c", DATE_EARLY],
+      ["ord_b", DATE_MID],
+      ["ord_a", DATE_LATE],
+    ]);
+    expect(view.groups?.[1].stopped).toMatch(/^Cancelled/);
   });
 });
 

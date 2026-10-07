@@ -11,8 +11,14 @@
  * read as shop items + the snapshotted fee. The fee is not a third charge.
  */
 
-import type { BasketGroup, Invoice, InvoiceLine, MatchedOrder, Order, OrderPayments } from "@/lib/api";
-import { groupLetter, receiptGroupStanding } from "@/lib/basketGroups";
+import type { Basket, BasketGroup, Invoice, InvoiceLine, MatchedOrder, Order, OrderPayments } from "@/lib/api";
+import {
+  basketGroupDeadlineOf,
+  byDate,
+  groupLetter,
+  groupSpread,
+  receiptGroupStanding,
+} from "@/lib/basketGroups";
 import { formatPhp } from "@/lib/api";
 import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { orderReference } from "@/lib/orderReference";
@@ -89,6 +95,8 @@ export type ReceiptGroup = {
   orderId: string;
   label: string;
   letter: string;
+  /** The date this group was ordered for (gridgo-client#189); null is "no rush". */
+  deadline: string | null;
   lines: ReceiptLine[];
   printingMinor: number;
   deliveryFeeMinor: number;
@@ -171,11 +179,13 @@ function receiptLine(line: InvoiceLine, serviceFeeRateBps: number | null | undef
 
 /** The invoice's own figures: printing, delivery and total, plus its lines. */
 function invoiceParts(invoice: Invoice) {
+  // Soonest date first, the same order checkout and the order view use.
   const groups = invoice.groups && invoice.groups.length > 1
-    ? invoice.groups.map((group): ReceiptGroup => ({
+    ? byDate(invoice.groups, (group) => group.deadline ?? null).map((group): ReceiptGroup => ({
         orderId: group.orderId,
         label: group.label,
         letter: groupLetter(group.label),
+        deadline: group.deadline ?? null,
         lines: group.lines.map((line) => receiptLine(line, invoice.serviceFeeRateBps)),
         printingMinor: group.clientItemSubtotalMinor,
         deliveryFeeMinor: group.deliveryFeeMinor,
@@ -211,16 +221,31 @@ function invoiceParts(invoice: Invoice) {
  */
 export function withGroupStanding(
   view: ReceiptView,
-  groups: Pick<BasketGroup, "orderId" | "state">[],
+  groups: Pick<BasketGroup, "orderId" | "state" | "deadline">[],
 ): ReceiptView {
   if (!view.groups) return view;
-  return {
-    ...view,
-    groups: view.groups.map((section) => {
-      const live = groups.find((group) => group.orderId === section.orderId);
-      return live ? { ...section, stopped: receiptGroupStanding(live) } : section;
-    }),
-  };
+  const sections = view.groups.map((section) => {
+    const live = groups.find((group) => group.orderId === section.orderId);
+    if (!live) return section;
+    return {
+      ...section,
+      // A receipt written before groups carried their own date reads it from the basket.
+      deadline: section.deadline ?? live.deadline ?? null,
+      stopped: receiptGroupStanding(live),
+    };
+  });
+  return { ...view, groups: byDate(sections, (section) => section.deadline) };
+}
+
+/**
+ * `withGroupStanding` from a placed basket, each group's date resolved the
+ * way the order view resolves it (a group's own, else the basket's one).
+ */
+export function withBasket(view: ReceiptView, basket: Pick<Basket, "deadline" | "groups">): ReceiptView {
+  return withGroupStanding(
+    view,
+    basket.groups.map((group) => ({ ...group, deadline: basketGroupDeadlineOf(group, basket) })),
+  );
 }
 
 export function receiptFromInvoice(invoice: Invoice, order?: Order | null): ReceiptView {
@@ -359,12 +384,19 @@ export function receiptFromOrder(order: Order): ReceiptView | null {
  */
 export function receiptFulfilmentRow(
   money: Pick<ReceiptMoney, "deliveryFeeMinor" | "pickup">,
-  /** Shop groups on a multi-shop receipt: a pick-up fee is still charged once. */
-  groupCount = 0,
+  /**
+   * Groups on a multi-group receipt (or their count): a pick-up fee is still
+   * charged once, and delivery is one per shop and date.
+   */
+  groups: number | readonly { label: string; deadline: string | null }[] = 0,
 ): { label: string; value: string } {
+  const groupCount = typeof groups === "number" ? groups : groups.length;
+  const dates = typeof groups === "number" ? 1 : groupSpread(groups).dates;
   const label = money.pickup && money.deliveryFeeMinor > 0
     ? groupCount > 1 ? "Pick-up fee, once per order" : "Pick-up fee"
-    : groupCount > 1 ? `Delivery · ${groupCount} shops` : "Delivery";
+    : groupCount > 1
+      ? dates > 1 ? `Delivery · ${groupCount} deliveries` : `Delivery · ${groupCount} shops`
+      : "Delivery";
   return {
     label,
     value: money.deliveryFeeMinor === 0 ? "None — you collect" : formatPhp(money.deliveryFeeMinor),

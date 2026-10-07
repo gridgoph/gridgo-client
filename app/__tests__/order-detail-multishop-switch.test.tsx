@@ -54,7 +54,7 @@ it("opens another shop group in the same order view", async () => {
   api.getBasket.mockResolvedValue(placedBasket());
   await renderPhone(<OrderDetailScreen />);
 
-  await fireEvent.press(await screen.findByLabelText("Shop C. In production."));
+  await fireEvent.press(await screen.findByLabelText("Shop C. Needed by Mon 26 Oct. In production."));
 
   expect(mockSetParams).toHaveBeenCalledWith({ id: "ord_c" });
 });
