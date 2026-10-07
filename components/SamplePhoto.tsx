@@ -38,6 +38,11 @@ type Props = {
    * (the order's progress docket opens its history): no loupe of its own.
    */
   interactive?: boolean;
+  /**
+   * Opens a viewer the caller owns instead of this tile's own loupe — a
+   * gallery opens every photo, starting on this one, rather than one alone.
+   */
+  onOpen?: () => void;
 };
 
 /**
@@ -74,6 +79,7 @@ export function SamplePhoto({
   gutter = "standard",
   emptyLabel,
   interactive = true,
+  onOpen,
 }: Props) {
   const colors = useThemeColors();
   // Everything below is remembered against the url it happened to, so a new
@@ -135,10 +141,14 @@ export function SamplePhoto({
             ) : null}
             {interactive ? (
               <Pressable
-                onPress={() => setOpen(true)}
+                onPress={onOpen ?? (() => setOpen(true))}
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${alt} larger`}
-                accessibilityHint="Opens the sample full screen so you can pinch to zoom"
+                accessibilityHint={
+                  onOpen
+                    ? "Opens the samples full screen so you can swipe between them and pinch to zoom"
+                    : "Opens the sample full screen so you can pinch to zoom"
+                }
                 style={{ width: "100%", height: "100%" }}
               >
                 <Image
@@ -162,10 +172,9 @@ export function SamplePhoto({
                 onError={onImageError}
               />
             )}
-            {canOpen ? (
+            {canOpen && !onOpen ? (
               <SamplePhotoViewer
-                uri={url}
-                alt={alt}
+                photos={[{ uri: url, alt }]}
                 open={open}
                 onClose={() => setOpen(false)}
               />

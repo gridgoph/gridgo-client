@@ -2,14 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Match / listing / checkout must all load samples through samplePhotoUri.
+ * Match / listing gallery / checkout must all load samples through samplePhotoUri.
  * Reading downloadUrl (or the metadata url) at the call site is how the
  * match row and hero drifted into empty "No sample" plates.
  */
 const SURFACES = [
   "components/TopPickCard.tsx",
   "components/OtherListingRow.tsx",
-  "app/request/listing.tsx",
+  // The listing sheet draws its samples through the gallery.
+  "components/ListingGallery.tsx",
   "app/checkout.tsx",
 ] as const;
 
