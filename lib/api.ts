@@ -224,6 +224,8 @@ export type Order = {
   correction?: { reason: string; requestedAt: string | null } | null;
   /** Progress photos, or the honest lack of one. See `lib/productionProgress.ts`. */
   productionProgress?: ProductionProgress | null;
+  /** Packed-work photos, separate from production and payout evidence. */
+  packingProgress?: ProductionProgress | null;
   paymentMethod: string | null;
   paymentStatus: string;
   /** When the client was told a supplier accepted. Payment is gated on it. */
