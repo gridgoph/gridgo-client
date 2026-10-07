@@ -21,6 +21,12 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.273 (New feature)
+
+- You can now send your rider a photo, like your gate or landmark, in your delivery messages.
+- An image that does not match your print size now shows a note with both sizes before checkout.
+- Document printing reads the page count from your file and lets you choose which pages to print.
+
 ## 1.0.267 (New feature)
 
 - See a photo of your packed order in its updates before it leaves the print shop.
