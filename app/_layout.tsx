@@ -418,6 +418,14 @@ function AppNavigation() {
                   options={pushedScreenOptions("Password")}
                 />
                 {/*
+                  Reached only from Danger zone on Your details. It asks for
+                  the password (or an emailed code) before anything is sent.
+                */}
+                <Stack.Screen
+                  name="delete-account"
+                  options={pushedScreenOptions("Delete account")}
+                />
+                {/*
                   Becoming an organization or business client, and handing an
                   organization to a new officer. Each step carries its own
                   question as the heading, so the band names the flow they are
