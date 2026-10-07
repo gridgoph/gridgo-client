@@ -1,4 +1,4 @@
-import { CircleAlert, FileCheck, TriangleAlert } from "lucide-react-native";
+import { CircleAlert, FileCheck } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -6,6 +6,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
+import { ArtworkSizeNote } from "@/components/ArtworkSizeNote";
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { DesignLinkField } from "@/components/DesignLinkField";
 import { ErrorScreenState } from "@/components/ErrorState";
@@ -15,15 +16,12 @@ import { StepTrailBar } from "@/components/StepTrail";
 import { TourTarget } from "@/components/TourTarget";
 import { useArtworkUpload, type FormatGuard } from "@/hooks/useArtworkUpload";
 import {
-  applyDetectedPages,
   artworkCheckFailure,
   detectedProportions,
   detectedSummary,
-  missingPageCountMessage,
-  pageCountOffer,
 } from "@/lib/artworkUpload";
+import { artworkSizeNote } from "@/lib/artworkSize";
 import {
-  artworkPrintSizeWarning,
   measuredSizeMilli,
   physicalSizeMilli,
   printResolution,
@@ -31,6 +29,7 @@ import {
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
+import { documentPagesSummary, pageRangeError } from "@/lib/documentPages";
 import { userFacingError } from "@/lib/copy";
 import {
   designLinkFormats,
@@ -40,7 +39,6 @@ import {
   parseDesignLink,
 } from "@/lib/designLink";
 import {
-  artworkFitWarning,
   fileFormats,
   fileMatchesFormats,
   formatSentence,
@@ -97,7 +95,7 @@ export default function ArtworkScreen() {
   } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [pagesDraft, setPagesDraft] = useState<string | null>(null);
+  const [rangeDraft, setRangeDraft] = useState<{ fileId: string; text: string } | null>(null);
 
   /**
    * The picker filter and its refusal, in the shop's words. Rebuilt only when
@@ -141,15 +139,10 @@ export default function ArtworkScreen() {
     if (savedLinks[0]) void verifyLink(savedLinks[0]);
   }, [line?.id, savedUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Put the file on the basket line as soon as GRIDGO holds it, so leaving this
-  // screen after a successful upload never loses what was just sent. A per-page
-  // listing also takes the file's own page count in that same write — waiting
-  // for a tap is how a 30-page document was billed as one page. Later edits
-  // stay: this runs only while the file is not yet on the line.
+  // Saving the file lets GRIDGO derive its page count and reset any old range.
   const stored = upload.state.fileId;
   useEffect(() => {
     if (!line || !stored || stored === line.artworkFileId || saving) return;
-    const pages = applyDetectedPages(upload.state.detected, item?.pricingUnit);
     void (async () => {
       setSaving(true);
       setSaveError(null);
@@ -157,7 +150,6 @@ export default function ArtworkScreen() {
         const updated = await run((cartId) =>
           api.updateCartLine(cartId, line.id, {
             artworkFileId: stored,
-            ...(pages != null ? { measurement: { pages } } : {}),
           }),
         );
         adopt(updated);
@@ -174,30 +166,22 @@ export default function ArtworkScreen() {
     })();
   }, [stored, upload.state.detected, line?.id, line?.artworkFileId, item?.pricingUnit]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /**
-   * Take the file's page count as the quantity, when the client asks for it.
-   *
-   * The same save path the artwork itself takes, for the same reason: the cart
-   * lives on GRIDGO, and the response is the basket rather than something to
-   * re-read afterwards.
-   */
-  const setPageCount = useCallback(
-    async (pages: number) => {
+  /** Save the selection; GRIDGO returns the normalized range and updated price. */
+  const savePageRange = useCallback(
+    async (pageRange: string | null) => {
       if (!line || saving) return;
       setSaving(true);
       setSaveError(null);
       try {
         adopt(
           await run((cartId) =>
-            // The page count is the measurement, not the quantity: quantity is
-            // how many copies of the document, and writing pages there would
-            // bill ten copies of a one-page job.
-            api.updateCartLine(cartId, line.id, { measurement: { pages } }),
+            api.updateCartLine(cartId, line.id, { pageRange }),
           ),
         );
+        setRangeDraft(null);
       } catch (error) {
         setSaveError(
-          userFacingError(error, "That page count did not save. Try again in a moment."),
+          userFacingError(error, "Those pages did not save. Try again in a moment."),
         );
       } finally {
         setSaving(false);
@@ -307,17 +291,15 @@ export default function ArtworkScreen() {
     measuredSizeMilli(line.measurement, item?.measureUnit) ??
     physicalSizeMilli(size, { subcategoryCode: item?.subcategoryCode });
   const resolution = printResolution(filePixels, orderedSize);
-  const printSizeWarning = artworkPrintSizeWarning(detected, orderedSize, size);
-  const warning = printSizeWarning
-    ? { message: printSizeWarning, blocking: false as const }
-    : artworkFitWarning(size, measured ?? pixels, orderedSize);
-  const pageOffer = pageCountOffer(detected, item?.pricingUnit, line.measurement?.pages);
-  const unreadPages = missingPageCountMessage(
-    detected,
-    item?.pricingUnit,
-    line.measurement?.pages,
-    upload.state.contentType,
-  );
+  const sizeNote = artworkSizeNote({ detected, pixels, sizeMilli: orderedSize, label: size });
+  const documentPages = line.documentPages;
+  const rangeText = rangeDraft?.fileId === line.artworkFileId ? rangeDraft.text : documentPages?.range ?? "";
+  const rangeDirty = rangeText !== (documentPages?.range ?? "");
+  const rangeError = documentPages ? pageRangeError(rangeText, documentPages.total) : null;
+  const unreadPages = item?.pricingUnit === "per_page" && !documentPages
+    ? "Upload a document with a readable page count. If needed, export it as a PDF and upload it again."
+    : null;
+
   const onLine = Boolean(line.artworkFileId);
   const acceptedFormats = item?.acceptedFormats ?? [];
   const parsedLink = committedLink ? parseDesignLink(committedLink, acceptedFormats) : null;
@@ -338,7 +320,7 @@ export default function ArtworkScreen() {
   const fileProblem = onLine ? artworkCheckFailure(upload.state.fileCheck) : null;
   const checkoutProblem = currentProblem(artworkProblems, line);
   const canCheckout =
-    hasArtwork && !saving && !linkSaving && !linkChecking && !unreadPages && !linkBlocked && !fileProblem;
+    hasArtwork && (!asksPages || (stored === line.artworkFileId && !saveError)) && !saving && !linkSaving && !linkChecking && !unreadPages && !rangeDirty && !rangeError && !linkBlocked && !fileProblem;
   const name = item?.name ?? "this item";
   /** Check the link and, unless it plainly cannot be opened, keep it on the line. */
   const commitLinkText = (text: string, options?: { recheck?: boolean }) =>
@@ -402,9 +384,16 @@ export default function ArtworkScreen() {
               onCancel={upload.cancel}
               emphasis={hasArtwork ? "quiet" : "primary"}
               resolution={resolution}
+              resolutionQuiet={sizeNote != null}
             />
           </TourTarget>
         ) : null}
+
+        {/*
+          Under the file it is about. A warning, never a block: a file of the
+          wrong size can still be printed scaled, and the client decides.
+        */}
+        {sizeNote ? <ArtworkSizeNote note={sizeNote} /> : null}
 
         {saveError ? <Text className="mt-3 text-body text-error">{saveError}</Text> : null}
         {fileProblem ? (
@@ -470,62 +459,41 @@ export default function ArtworkScreen() {
           </View>
         ) : null}
 
-        {/*
-          A ten-page document priced by the page, ordered as one page. GRIDGO
-          knows the number by the time the file lands, so it offers it — as an
-          offer, because a client may deliberately want two pages of a ten-page
-          file, and a quantity that rewrites itself is a total nobody chose.
-
-          The offer is a quiet control, not the screen's yellow: the yellow
-          belongs to the upload card until there is a file and to checkout
-          after, and a third loud thing here would make all three quiet.
-        */}
         {asksPages ? (
-          <View className="mt-4 gap-2">
-            <Text className="text-overline text-text-muted">HOW MANY PAGES</Text>
-            <View className="gg-field flex-row items-center">
-              <TextInput
-                value={
-                  pagesDraft ??
-                  (line.measurement?.pages == null ? "" : String(line.measurement.pages))
-                }
-                onChangeText={(text) => setPagesDraft(text.replace(/[^0-9]/g, ""))}
-                onEndEditing={(event) => {
-                  const next = Number.parseInt(event.nativeEvent.text, 10);
-                  setPagesDraft(null);
-                  if (Number.isSafeInteger(next) && next > 0 && next !== line.measurement?.pages) {
-                    void setPageCount(next);
-                  }
-                }}
-                keyboardType="number-pad"
-                placeholder="0"
-                accessibilityLabel="How many pages"
-                className="min-w-0 flex-1 text-body-lg text-text-primary"
-                style={{ paddingStart: 16, paddingEnd: 8, includeFontPadding: false }}
-              />
-              <Text className="pe-4 text-body text-text-muted">pages</Text>
-            </View>
-            {unreadPages ? (
-              <Text className="text-body text-error">{unreadPages}</Text>
-            ) : (
-              <Text className="text-caption text-text-secondary">
-                Copies are set at checkout. This is how many pages each copy has.
-              </Text>
-            )}
-          </View>
-        ) : null}
-
-        {pageOffer ? (
-          <View className="mt-4 gap-2 rounded-field border border-outline bg-surface p-3">
-            <Text className="text-body font-medium text-text-primary">
-              Print all {pageOffer.pages} pages?
-            </Text>
-            <Text className="text-caption text-text-secondary">{pageOffer.message}</Text>
-            <SecondaryButton
-              label={`Use ${pageOffer.pages} pages`}
-              onPress={() => void setPageCount(pageOffer.pages)}
-              disabled={saving}
-            />
+          <View className="mt-4 gap-3">
+            <Text className="text-overline text-text-muted">DOCUMENT PAGES</Text>
+            {documentPages ? (
+              <>
+                <Text className="text-body-lg text-text-primary">
+                  {documentPages.total} pages in this file
+                </Text>
+                <Text className="text-caption text-text-secondary">
+                  Read from your file. Copies are set at checkout.
+                </Text>
+                <Text className="text-body font-medium text-text-primary">Pages to print</Text>
+                <TextInput
+                  value={rangeText}
+                  onChangeText={(text) => setRangeDraft({ fileId: line.artworkFileId ?? "", text })}
+                  editable={!saving}
+                  placeholder="All pages"
+                  accessibilityLabel="Pages to print"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={1000}
+                  className="gg-field px-4 text-body-lg text-text-primary"
+                />
+                <Text className="text-caption text-text-secondary">
+                  Leave blank for all pages, or enter 1-4, 7. Overlapping pages print once per copy.
+                </Text>
+                {rangeError ? <Text accessibilityRole="alert" className="text-body text-error">{rangeError}</Text> : null}
+                {rangeDirty ? (
+                  <SecondaryButton label="Apply pages" disabled={saving || Boolean(rangeError)}
+                    onPress={() => void savePageRange(rangeText.trim() || null)} />
+                ) : (
+                  <Text className="text-body text-text-primary">{documentPagesSummary(documentPages)}</Text>
+                )}
+              </>
+            ) : <Text className="text-body text-error">{unreadPages}</Text>}
           </View>
         ) : null}
 
@@ -540,25 +508,6 @@ export default function ArtworkScreen() {
               size={size || null}
             />
             <Text className="text-caption text-text-muted">{MOCKUP_LABEL}</Text>
-          </View>
-        ) : null}
-
-        {warning ? (
-          <View className="mt-6 flex-row items-start gap-3 rounded-field border border-warning bg-surface p-3">
-            <View className="pt-0.5">
-              <TriangleAlert
-                size={16}
-                color={colors.warning}
-                strokeWidth={2}
-                aria-hidden
-              />
-            </View>
-            <View className="min-w-0 flex-1 gap-1">
-              <Text className="text-body font-medium text-text-primary">
-                Check the size before you send this
-              </Text>
-              <Text className="text-caption text-text-secondary">{warning.message}</Text>
-            </View>
           </View>
         ) : null}
 

@@ -10,6 +10,10 @@
 
   There is no call button. Neither side ever sees the other's phone number;
   calling waits on a masked-call service.
+
+  A message may carry photos (gridgo-client#218), uploaded as
+  `delivery_chat_image` and drawn with the support chat's `ChatPhoto`. Only the
+  client and the rider can open them, and they go with the conversation.
 */
 
 export type DeliveryChatStatus = "open" | "read_only";
@@ -21,15 +25,25 @@ export type DeliveryChatSummary = {
   retentionHours: number;
 };
 
+export type DeliveryChatAttachment = {
+  fileId: string;
+  contentType?: string | null;
+  originalFilename?: string | null;
+};
+
 export type DeliveryChatMessage = {
   id: string;
   senderRole: "client" | "rider";
+  /** Empty when a photo is the whole message. */
   body: string;
+  /** Absent from an API older than delivery chat photos. */
+  attachments?: DeliveryChatAttachment[];
   createdAt: string;
   mine: boolean;
 };
 
 export const DELIVERY_MESSAGE_MAX = 1000;
+export const DELIVERY_CHAT_IMAGE_PURPOSE = "delivery_chat_image";
 export const DELIVERY_CHAT_ROUTE = "/order/delivery-chat" as const;
 /** How often an open conversation asks for new messages while on screen. */
 export const DELIVERY_CHAT_POLL_MS = 5_000;
@@ -151,7 +165,13 @@ export function deliverySendError(error: unknown): string {
     return "You are sending messages too fast. Wait a moment and try again.";
   }
   if (code === "invalid_request") {
-    return `Write a message of up to ${DELIVERY_MESSAGE_MAX} characters.`;
+    return `Write a message of up to ${DELIVERY_MESSAGE_MAX} characters, or add a photo.`;
+  }
+  if (code === "invalid_chat_image" || code === "invalid_file_type" || code === "file_too_large") {
+    return "That photo could not be sent. Choose a JPEG, PNG, or WebP of up to 15 MB.";
+  }
+  if (code === "file_already_attached") {
+    return "That photo was already sent. Choose it again to send it once more.";
   }
   return "That did not reach your rider. Check your connection and send it again.";
 }

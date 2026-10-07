@@ -24,11 +24,7 @@ import { TextField } from "@/components/form/TextField";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
-import {
-  SUPPORT_CHAT_IMAGE_MAX_COUNT,
-  SUPPORT_CHAT_IMAGE_PURPOSE,
-  validateChatImageAsset,
-} from "@/lib/chatImages";
+import { SUPPORT_CHAT_IMAGE_PURPOSE, addChatPhotos } from "@/lib/chatImages";
 import { userFacingError } from "@/lib/copy";
 import { getDocumentPickerNative } from "@/lib/nativeModules";
 import { openSupportChatStream } from "@/lib/supportChatStream";
@@ -171,25 +167,13 @@ export function SupportChatConversation({
       multiple: true,
     });
     if (picked.canceled || !picked.assets?.length) return;
-    const next = [...pending];
-    for (const asset of picked.assets) {
-      const problem = validateChatImageAsset(asset);
-      if (problem) {
-        setError(problem);
-        return;
-      }
-      if (next.length >= SUPPORT_CHAT_IMAGE_MAX_COUNT) {
-        setError(`A message can include up to ${SUPPORT_CHAT_IMAGE_MAX_COUNT} photos.`);
-        return;
-      }
-      next.push({
-        uri: asset.uri,
-        name: asset.name || "photo.jpg",
-        mimeType: asset.mimeType || "image/jpeg",
-      });
+    const added = addChatPhotos(pending, picked.assets, (asset) => asset);
+    if (!added.ok) {
+      setError(added.error);
+      return;
     }
     setError(null);
-    setPending(next);
+    setPending(added.pending);
   }, [pending]);
 
   const send = useCallback(async () => {

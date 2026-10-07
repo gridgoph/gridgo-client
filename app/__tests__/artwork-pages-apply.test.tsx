@@ -68,14 +68,14 @@ it("writes a 30-page PDF onto a per-page line without tapping Use 30 pages", asy
       "cline_1",
       expect.objectContaining({
         artworkFileId: "file_pdf",
-        measurement: { pages: 30 },
       }),
     );
   });
   await waitFor(() => {
     expect(useCart.getState().cart?.lines[0].measurement).toEqual({ pages: 30 });
   });
-  expect(await screen.findByLabelText("How many pages")).toBeTruthy();
+  expect(await screen.findByText("30 pages in this file")).toBeTruthy();
+  expect(screen.queryByLabelText("How many pages")).toBeNull();
   expect(screen.queryByText("Use 30 pages")).toBeNull();
   expect(screen.queryByText("Print all 30 pages?")).toBeNull();
 });

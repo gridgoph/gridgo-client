@@ -131,7 +131,10 @@ export type PriceRange = {
   deliveryFeeStatus: string;
 };
 
+export type DocumentPages = { total: number; range: string | null; printed: number };
+
 export type ProductionItem = {
+  documentPages?: DocumentPages | null;
   id: string;
   itemName: string;
   quantity: number;
@@ -2041,6 +2044,7 @@ export type CartQuote = {
 };
 
 export type CartLineRecord = {
+  documentPages?: DocumentPages | null;
   id: string;
   /** Queue-and-calendar projection for this configured line; absent on older APIs. */
   promiseBy?: string | null;
@@ -2490,6 +2494,7 @@ export async function addCartLine(
     quantity: number;
     /** Required by a listing the shop prices by size; refused by any other. */
     measurement?: LineMeasurement | null;
+    pageRange?: string | null;
     structuredSpec?: Record<string, unknown>;
     artworkFileId?: string | null;
     /** Replaces the line's links; `[]` clears them. Omit to keep them. */
@@ -2511,6 +2516,7 @@ export async function updateCartLine(
     quantity?: number;
     optionIds?: string[];
     measurement?: LineMeasurement | null;
+    pageRange?: string | null;
     structuredSpec?: Record<string, unknown>;
     artworkFileId?: string | null;
     /** Replaces the line's links; `[]` clears them. Omit to keep them. */
@@ -3147,13 +3153,18 @@ export async function getDeliveryChat(
   return request(`/orders/${encodeURIComponent(orderId)}/delivery-chat`);
 }
 
+/** `attachmentFileIds` are `delivery_chat_image` uploads; a photo may be the whole message. */
 export async function sendDeliveryMessage(
   orderId: string,
   body: string,
+  options?: { attachmentFileIds?: string[] },
 ): Promise<{ chat: DeliveryChatSummary; message: DeliveryChatMessage }> {
   return request(`/orders/${encodeURIComponent(orderId)}/delivery-chat/messages`, {
     method: "POST",
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({
+      body,
+      ...(options?.attachmentFileIds?.length ? { attachmentFileIds: options.attachmentFileIds } : {}),
+    }),
   });
 }
 

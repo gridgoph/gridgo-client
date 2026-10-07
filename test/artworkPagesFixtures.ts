@@ -17,7 +17,7 @@ export const uploadMock: {
 
 export const DOCUMENT_ITEM: CatalogItem = {
   id: "sci_docs",
-  supplierId: "user_lovis",
+  supplierId: "supplier_documents",
   supplierServiceId: "svc",
   categoryCode: "documents_publications",
   subcategoryCode: "document_printing",
@@ -67,7 +67,7 @@ export function pdfDetected(overrides: Partial<DetectedArtwork> = {}): DetectedA
 export function documentLine(overrides: Partial<CartLineRecord> = {}): CartLineRecord {
   return {
     id: "cline_1",
-    supplierId: "user_lovis",
+    supplierId: "supplier_documents",
     catalogItemId: "sci_docs",
     quantity: 2,
     optionIds: [],
@@ -127,10 +127,11 @@ export function mockUpdateCartLine(api: { updateCartLine: jest.Mock }) {
               ...entry,
               artworkFileId:
                 body.artworkFileId === undefined ? entry.artworkFileId : (body.artworkFileId as string | null),
-              measurement:
-                body.measurement === undefined
-                  ? entry.measurement
-                  : (body.measurement as CartLineRecord["measurement"]),
+              documentPages: entry.listing?.pricingUnit === "per_page" && uploadMock.detected?.pageCount
+                ? { total: uploadMock.detected.pageCount, range: typeof body.pageRange === "string" ? body.pageRange : null,
+                    printed: body.pageRange === "1-4" ? 4 : uploadMock.detected.pageCount } : null,
+              measurement: entry.listing?.pricingUnit === "per_page" && uploadMock.detected?.pageCount
+                ? { pages: body.pageRange === "1-4" ? 4 : uploadMock.detected.pageCount } : entry.measurement,
             }
           : entry,
       ),
