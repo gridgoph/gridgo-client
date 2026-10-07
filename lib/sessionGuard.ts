@@ -18,6 +18,7 @@ export const AUTHENTICATED_ROOT_SCREENS = [
   "order/refund",
   "order/refund-request",
   "order/refund-account",
+  "order/delivery-chat",
   "design-system",
   "settings",
   "whats-new",

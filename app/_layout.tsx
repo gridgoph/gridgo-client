@@ -331,6 +331,11 @@ function AppNavigation() {
                   name="order/physical-invoice"
                   options={pushedScreenOptions("Physical invoice")}
                 />
+                {/* The client and their rider, during one delivery (#198). */}
+                <Stack.Screen
+                  name="order/delivery-chat"
+                  options={pushedScreenOptions("Messages")}
+                />
                 {/*
                   Refunds are pushed screens, not sheets: the request carries
                   uploads and a long explanation, and the status screen is a
