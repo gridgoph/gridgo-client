@@ -21,6 +21,12 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.252 (New feature)
+
+- Delivery and pick-up choices now reflect current availability. Existing pick-up orders stay ready to collect.
+- Confirm or change your drop-off pin when your rider is on the way.
+- Request account deletion from Account and read the Privacy Policy from Account or sign-up.
+
 ## 1.0.245 (New feature)
 
 - The artwork step no longer asks you to add something else first. Add more products at checkout.
