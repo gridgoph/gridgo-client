@@ -4,6 +4,7 @@ import {
   galleryIndicator,
   pageAtOffset,
   photoPositionLabel,
+  viewerTopInset,
 } from "@/lib/gallery";
 
 describe("gallery paging", () => {
@@ -37,5 +38,14 @@ describe("gallery paging", () => {
     // gridgo-api allows eight sample photos a listing; all of them get a dot.
     expect(galleryIndicator(8)).toBe("dots");
     expect(galleryIndicator(GALLERY_MAX_DOTS + 1)).toBe("counter");
+  });
+
+  it("keeps the viewer's top controls clear of the status bar", () => {
+    expect(viewerTopInset(47, "ios", undefined)).toBe(47);
+    // The Modal's safe area read 0 on an Android phone; its status bar is the floor.
+    expect(viewerTopInset(0, "android", 43)).toBe(43);
+    expect(viewerTopInset(48, "android", 43)).toBe(48);
+    expect(viewerTopInset(0, "android", undefined)).toBe(0);
+    expect(viewerTopInset(0, "web", 43)).toBe(0);
   });
 });

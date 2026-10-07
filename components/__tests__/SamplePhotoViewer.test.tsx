@@ -51,6 +51,19 @@ describe("SamplePhotoViewer", () => {
     await view.unmount();
   });
 
+  it("sets the counter and close button below the top inset", async () => {
+    const notched = { ...metrics, insets: { ...metrics.insets, top: 47 } };
+    const view = await render(
+      <SafeAreaProvider initialMetrics={notched}>
+        <SamplePhotoViewer photos={photos} open onClose={() => {}} />
+      </SafeAreaProvider>,
+    );
+
+    expect(screen.getByTestId("sample-photo-counter")).toHaveStyle({ top: 55 });
+    expect(screen.getByTestId("close-sample-photo")).toHaveStyle({ top: 55 });
+    await view.unmount();
+  });
+
   it("closes on the photo the client stepped to", async () => {
     const onClose = jest.fn();
     const view = await render(
