@@ -43,6 +43,11 @@ type Props = {
    * custom size nobody has measured, or a file that stated no dimensions.
    */
   resolution?: PrintResolution | null;
+  /**
+   * Set when a note under the card already warns about this file's size, so
+   * the resolution stays a quiet fact here rather than a second amber line.
+   */
+  resolutionQuiet?: boolean;
 };
 
 /**
@@ -67,6 +72,7 @@ export function ArtworkUploadCard({
   readOnly,
   emphasis = "quiet",
   resolution = null,
+  resolutionQuiet = false,
 }: Props) {
   const colors = useThemeColors();
   const chip = artworkChip(state);
@@ -139,7 +145,7 @@ export function ArtworkUploadCard({
           {resolution ? (
             <Text
               className={
-                resolution.verdict === "low"
+                resolution.verdict === "low" && !resolutionQuiet
                   ? "text-caption text-warning"
                   : "text-caption text-text-muted"
               }

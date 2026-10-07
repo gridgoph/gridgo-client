@@ -4,10 +4,25 @@ import { Image } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import ArtworkScreen from "@/app/request/artwork";
-import type { Cart, CartLineRecord, CatalogItem } from "@/lib/api";
+import type { Cart, CartLineRecord, CatalogItem, DetectedArtwork } from "@/lib/api";
 import { useCart } from "@/store/cart";
 
 const mockPick = jest.fn(async () => undefined);
+
+/** What GRIDGO read from the stored file. A phone screenshot unless a test says otherwise. */
+const SCREENSHOT: DetectedArtwork = {
+  kind: "raster",
+  pageCount: 1,
+  pixelWidth: 720,
+  pixelHeight: 1600,
+  dpi: 96,
+  measureUnit: "mm",
+  widthMilli: 190_500,
+  heightMilli: 423_300,
+  pageSize: null,
+  orientation: "portrait",
+};
+let mockDetected: DetectedArtwork = SCREENSHOT;
 
 jest.mock("expo-router", () => ({
   // The first-order tour registers its screen on focus (`useTourScreen`).
@@ -33,18 +48,7 @@ jest.mock("@/hooks/useArtworkUpload", () => ({
           error: null,
           size: 492_000,
           contentType: "image/png",
-          detected: {
-            kind: "raster",
-            pageCount: 1,
-            pixelWidth: 720,
-            pixelHeight: 1600,
-            dpi: 96,
-            measureUnit: "mm",
-            widthMilli: 190_500,
-            heightMilli: 423_300,
-            pageSize: null,
-            orientation: "portrait",
-          },
+          detected: mockDetected,
         }
       : {
           phase: "empty",
@@ -167,6 +171,7 @@ beforeEach(() => {
   // covered directly in lib/__tests__/listing.test.ts.
   jest.spyOn(Image, "getSize").mockImplementation(() => undefined);
   mockPick.mockClear();
+  mockDetected = SCREENSHOT;
   useCart.setState({ cartId: "cart_1", cart: cart(), loading: false, busy: false, error: null });
 });
 
@@ -236,9 +241,41 @@ describe("ArtworkScreen", () => {
 
     expect(screen.getByText("Size")).toBeTruthy();
     expect(screen.getByText("480 KB")).toBeTruthy();
-    expect(screen.getByText(/We read this as 190\.5 × 423\.3 mm/)).toBeTruthy();
-    expect(screen.getByText("Check the size before you send this")).toBeTruthy();
-    expect(screen.getByText(/do not match/)).toBeTruthy();
+    expect(screen.getByText(/We read this as 720 × 1600 pixels/)).toBeTruthy();
+    expect(screen.getByText("This file does not match the print size")).toBeTruthy();
+    expect(screen.getByText("Standard · 50.8 × 88.9 mm · about 600 × 1050 pixels")).toBeTruthy();
+    expect(screen.getByText("720 × 1600 pixels")).toBeTruthy();
+    expect(screen.getByText(/carry on and it will be printed scaled to fit/)).toBeTruthy();
+    // A warning, never a block: checkout stays open.
+    expect(screen.getByLabelText("Go to checkout")).toBeEnabled();
+  });
+
+  // gridgo-client#196: a file made at the size shows no note, even when its
+  // header still declares 72 DPI.
+  it("shows no size note for an image that matches the size", async () => {
+    mockDetected = {
+      ...SCREENSHOT,
+      pixelWidth: 2480,
+      pixelHeight: 3508,
+      dpi: 72,
+      widthMilli: 874_900,
+      heightMilli: 1_237_500,
+    };
+    useCart.setState({ cart: cart({ lines: [line({ artworkFileId: "file_art" })] }) });
+    await renderInSafeArea(<ArtworkScreen />);
+
+    expect(screen.getByLabelText("Go to checkout")).toBeTruthy();
+    expect(screen.queryByText("This file does not match the print size")).toBeNull();
+  });
+
+  it("gives both sizes when an image is too small for A4", async () => {
+    mockDetected = { ...SCREENSHOT, pixelWidth: 595, pixelHeight: 842, dpi: null, widthMilli: null, heightMilli: null };
+    useCart.setState({ cart: cart({ lines: [line({ artworkFileId: "file_art" })] }) });
+    await renderInSafeArea(<ArtworkScreen />);
+
+    expect(screen.getByText("This file does not match the print size")).toBeTruthy();
+    expect(screen.getByText("A4 · 210 × 297 mm · about 2480 × 3508 pixels")).toBeTruthy();
+    expect(screen.getByText("595 × 842 pixels")).toBeTruthy();
   });
 
   it("opens the picker from the card itself", async () => {

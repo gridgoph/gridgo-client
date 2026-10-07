@@ -11,8 +11,9 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { Bike, Lock, Send } from "lucide-react-native";
+import { Bike, ImagePlus, Lock, Send, X } from "lucide-react-native";
 
+import { ChatPhoto } from "@/components/ChatPhoto";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { Screen } from "@/components/Screen";
@@ -22,8 +23,10 @@ import { TextField } from "@/components/form/TextField";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { addChatPhotos } from "@/lib/chatImages";
 import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
 import {
+  DELIVERY_CHAT_IMAGE_PURPOSE,
   DELIVERY_CHAT_POLL_MS,
   DELIVERY_MESSAGE_MAX,
   deliveryChatNotice,
@@ -34,15 +37,16 @@ import {
   type DeliveryChatSummary,
   type DeliveryChatUnavailable,
 } from "@/lib/deliveryChat";
+import { getDocumentPickerNative } from "@/lib/nativeModules";
 
 const EMPTY_TITLE = "No messages yet";
 const EMPTY_BODY =
-  "Tell your rider anything that helps them find you: a gate code, a landmark, or who will receive it.";
+  "Tell your rider anything that helps them find you: a gate code, a landmark, a photo of your gate, or who will receive it.";
 
 /**
  * The client's side of one delivery's conversation with its rider.
  *
- * Text only, and no call button: neither side ever sees the other's number.
+ * Text and photos, and no call button: neither side ever sees the other's number.
  * New messages arrive by polling while the screen is in front — the rider's
  * first message also lands as a notification, but a burst rides on that one
  * notice, so the notice alone cannot keep a transcript current.
@@ -68,6 +72,7 @@ export function DeliveryChatConversation({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [pending, setPending] = useState<api.UploadAsset[]>([]);
 
   const load = useCallback(async () => {
     const current = ++sequence.current;
@@ -132,14 +137,43 @@ export function DeliveryChatConversation({
     viewportHeight.current = next;
   }, []);
 
+  const pickPhoto = useCallback(async () => {
+    const picker = getDocumentPickerNative();
+    if (!picker) {
+      setSendError("This build cannot pick a photo. Install the latest GRIDGO app to send one.");
+      return;
+    }
+    const picked = await picker.getDocumentAsync({
+      type: ["image/jpeg", "image/png", "image/webp"],
+      copyToCacheDirectory: true,
+      multiple: true,
+    });
+    if (picked.canceled || !picked.assets?.length) return;
+    const added = addChatPhotos(pending, picked.assets, (asset) => asset);
+    if (!added.ok) {
+      setSendError(added.error);
+      return;
+    }
+    setSendError(null);
+    setPending(added.pending);
+  }, [pending]);
+
   const send = useCallback(async () => {
     const body = draft.trim();
-    if (!body || sending) return;
+    if ((!body && !pending.length) || sending) return;
     setSending(true);
     setSendError(null);
     try {
-      const posted = await api.sendDeliveryMessage(orderId, body);
+      const fileIds: string[] = [];
+      for (const asset of pending) {
+        const stored = await api.uploadFile(asset, DELIVERY_CHAT_IMAGE_PURPOSE).done;
+        fileIds.push(stored.fileId);
+      }
+      const posted = fileIds.length
+        ? await api.sendDeliveryMessage(orderId, body, { attachmentFileIds: fileIds })
+        : await api.sendDeliveryMessage(orderId, body);
       setDraft("");
+      setPending([]);
       setChat(posted.chat);
       setMessages((current) =>
         current.some((row) => row.id === posted.message.id) ? current : [...current, posted.message],
@@ -153,9 +187,9 @@ export function DeliveryChatConversation({
     } finally {
       setSending(false);
     }
-  }, [draft, load, orderId, sending]);
+  }, [draft, load, orderId, pending, sending]);
 
-  const canSend = !sending && Boolean(draft.trim());
+  const canSend = !sending && Boolean(draft.trim() || pending.length);
   const open = chat?.status === "open";
 
   if (unavailable) {
@@ -248,12 +282,19 @@ export function DeliveryChatConversation({
                         borderColor: colors.outline,
                       }}
                     >
-                      <Text
-                        className="text-body"
-                        style={{ color: message.mine ? colors.accentOn : colors.textPrimary }}
-                      >
-                        {message.body}
-                      </Text>
+                      {message.body ? (
+                        <Text
+                          className="text-body"
+                          style={{ color: message.mine ? colors.accentOn : colors.textPrimary }}
+                        >
+                          {message.body}
+                        </Text>
+                      ) : null}
+                      {message.attachments?.map((attachment) => (
+                        <View key={attachment.fileId} className={message.body ? "mt-2" : undefined}>
+                          <ChatPhoto attachment={attachment} />
+                        </View>
+                      ))}
                     </View>
                     <Text className="mt-1 text-caption text-text-muted">
                       {senderLabel(message)} · {timeOf(message.createdAt)}
@@ -270,8 +311,36 @@ export function DeliveryChatConversation({
             </Text>
           ) : null}
 
+          {open && pending.length ? (
+            <View className="flex-row items-center gap-2">
+              <Text className="min-w-0 flex-1 text-caption text-text-muted" numberOfLines={1}>
+                {pending.length === 1 ? pending[0].name : `${pending.length} photos ready to send`}
+              </Text>
+              <Pressable
+                onPress={() => setPending([])}
+                disabled={sending}
+                accessibilityRole="button"
+                accessibilityLabel={pending.length === 1 ? "Remove the photo" : "Remove the photos"}
+                className="gg-touch h-11 w-11 items-center justify-center"
+              >
+                <X size={16} color={colors.textMuted} strokeWidth={2} aria-hidden />
+              </Pressable>
+            </View>
+          ) : null}
+
           {open ? (
             <View className="flex-row items-end gap-2">
+              <Pressable
+                onPress={() => void pickPhoto()}
+                disabled={sending}
+                accessibilityRole="button"
+                accessibilityLabel="Add photos"
+                accessibilityState={{ disabled: sending }}
+                className="gg-touch h-12 w-12 items-center justify-center rounded-field"
+                style={{ borderWidth: 1, borderColor: colors.outline, opacity: sending ? 0.38 : 1 }}
+              >
+                <ImagePlus size={18} color={colors.textPrimary} strokeWidth={2} aria-hidden />
+              </Pressable>
               <View className="min-w-0 flex-1">
                 <TextField
                   value={draft}
