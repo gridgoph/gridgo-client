@@ -21,6 +21,15 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.267 (New feature)
+
+- See a photo of your packed order in its updates before it leaves the print shop.
+- Follow your delivery progress while your rider is on the way. Their location appears as they get closer.
+- Message your rider during a delivery. Your phone number stays private, and messages go a day after delivery.
+- Listing photos show small thumbnails again: tap one to jump, and use them or next and previous in full screen.
+- Delete account now lives under Danger zone in Your details and asks for your password or an emailed code first.
+- Your details now says your mobile number stays private: riders and shops do not see it.
+
 ## 1.0.252 (New feature)
 
 - Delivery and pick-up choices now reflect current availability. Existing pick-up orders stay ready to collect.
