@@ -399,6 +399,7 @@ export default function ArtworkScreen() {
               onCancel={upload.cancel}
               emphasis={hasArtwork ? "quiet" : "primary"}
               resolution={resolution}
+              resolutionQuiet={sizeNote != null}
             />
           </TourTarget>
         ) : null}
