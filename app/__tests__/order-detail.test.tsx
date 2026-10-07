@@ -760,7 +760,7 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText("Waiting for a progress photo")).toBeNull();
   });
 
-  it("says a delivery has no shared position rather than showing nothing", async () => {
+  it("shows delivery progress while the rider location is hidden", async () => {
     setOrder({
       state: "out_for_delivery",
       riderId: "user_rider",
@@ -770,8 +770,9 @@ describe("OrderDetailScreen", () => {
     });
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText(/has not shared a position/i)).toBeTruthy();
-    expect(screen.getByText("No location shared")).toBeTruthy();
+    expect(await screen.findByText("Your rider is on the way.")).toBeTruthy();
+    expect(screen.getByText(/closer to your drop-off/i)).toBeTruthy();
+    expect(screen.queryByText("No location shared")).toBeNull();
   });
 
   it("reports road distance from the rider, and never an ETA", async () => {

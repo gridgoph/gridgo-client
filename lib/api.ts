@@ -3128,7 +3128,7 @@ export async function refundReschedule(
 // Tracking and issues
 // ---------------------------------------------------------------------------
 
-/** Newest rider position for an order. `null` means none has been shared. */
+/** Newest visible rider position. `null` also covers a rider outside the client reveal distance. */
 export async function getRiderLocation(orderId: string): Promise<LocationPing | null> {
   const result = await request<{ ping: LocationPing | null }>(`/dispatch/${orderId}/location`);
   return result.ping;

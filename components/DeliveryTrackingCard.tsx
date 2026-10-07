@@ -78,8 +78,8 @@ export function DeliveryTrackingCard({ order }: Props) {
   );
 
   // Once the rider is sharing a position, the leg the client cares about is
-  // the one still ahead of them. Before that, show the whole journey.
-  const { route } = useRoute({ from: rider ?? pickup, to: dropoff });
+  // the one still ahead of them. A hidden position must not leave a route behind.
+  const { route } = useRoute({ from: rider, to: dropoff });
 
   const summary = summarizeTracking({
     state: order.state,

@@ -83,15 +83,17 @@ describe("summarizeTracking", () => {
     expect(summary.headline).toMatch(/rider is assigned/i);
   });
 
-  it("does not present a missing position as an unremarkable state", () => {
+  it("shows expected delivery progress while the rider location is hidden", () => {
     const summary = summarizeTracking({
       state: "out_for_delivery",
       ping: null,
       dropoff: DROPOFF,
       now: NOW,
     });
-    expect(summary.chip.label).toMatch(/no location/i);
-    expect(summary.chip.icon).toBe("triangle-alert");
+    expect(summary.headline).toBe("Your rider is on the way.");
+    expect(summary.detail).toMatch(/closer to your drop-off/i);
+    expect(summary.chip.tone).toBe("neutral");
+    expect(summary.remainingKm).toBeNull();
   });
 
   it("falls back to a straight line when OSRM gave no road distance", () => {
