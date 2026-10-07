@@ -1,7 +1,7 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Minus, Plus, TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -9,8 +9,8 @@ import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { GridgoPrice } from "@/components/GridgoPrice";
+import { ListingGallery } from "@/components/ListingGallery";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
-import { SamplePhoto } from "@/components/SamplePhoto";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { StepTrailBar } from "@/components/StepTrail";
@@ -48,7 +48,6 @@ import {
   quantityLine,
   clientLineEstimateMinor,
   printTimeLine,
-  samplePhotoUri,
   selectedOptionIds,
   specGroups,
   unitLine,
@@ -483,34 +482,7 @@ export default function ListingScreen() {
         bottomOffset={KEYBOARD_CARET_GAP}
         keyboardShouldPersistTaps="handled"
       >
-        <View className="bg-surface-variant px-2 pt-2">
-          <SamplePhoto
-            url={samplePhotoUri(item.photos[0])}
-            expiresAt={item.photos[0]?.downloadUrlExpiresAt}
-            onStale={onStalePhoto}
-            altText={item.photos[0]?.altText ?? item.name}
-            ratio="wide"
-            emptyLabel="No sample photo"
-          />
-        </View>
-
-        {item.photos.length > 1 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="bg-surface-variant">
-            <View className="flex-row px-1 pb-1">
-              {item.photos.slice(1).map((photo) => (
-                <View key={photo.fileId} className="w-20">
-                  <SamplePhoto
-                    url={samplePhotoUri(photo)}
-                    expiresAt={photo.downloadUrlExpiresAt}
-                    onStale={onStalePhoto}
-                    altText={photo.altText ?? item.name}
-                    gutter="tight"
-                  />
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-        ) : null}
+        <ListingGallery photos={item.photos} name={item.name} onStale={onStalePhoto} />
 
         <View className="gg-page pt-6">
           {/* The storefront this sheet belongs to. Never the press behind it. */}

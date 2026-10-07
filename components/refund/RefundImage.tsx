@@ -61,7 +61,7 @@ export function RefundImage({ fileId, alt, size = "plate" }: Props) {
           />
         </View>
       </Pressable>
-      <SamplePhotoViewer uri={uri} alt={alt} open={open} onClose={() => setOpen(false)} />
+      <SamplePhotoViewer photos={[{ uri, alt }]} open={open} onClose={() => setOpen(false)} />
     </>
   );
 }
