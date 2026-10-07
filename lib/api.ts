@@ -3541,3 +3541,7 @@ export async function statementExportRequest(
   }
   return { url: `${getApiBase()}${statementQuery(period, format)}`, headers };
 }
+
+export function requestAccountDeletion(): Promise<{ ok: true; message: string }> {
+  return request('/me/account-deletion-request', { method: 'POST', body: JSON.stringify({ confirmed: true }) });
+}
