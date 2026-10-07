@@ -98,7 +98,7 @@ import {
   OCR_UNREADABLE,
 } from "@/lib/receiptOcr";
 import { zoneLine } from "@/lib/distanceZone";
-import { hubFeeLabel } from "@/lib/hubPickup";
+import { hubFeeLabel, hubPickupEnabled } from "@/lib/hubPickup";
 import { fulfilmentSummary } from "@/lib/requestFulfilment";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
@@ -385,6 +385,10 @@ export default function CheckoutScreen() {
 
   const commit = () => {
     if (ocrReading || placing || busy) return;
+    if (travel === "pickup" && !hubPickupEnabled(settings)) {
+      setPlaceError("Hub pick-up is currently unavailable for new orders. Choose delivery, or start a new print job to change a locked pick-up choice.");
+      return;
+    }
     if (blockers.length) {
       setAttempted(true);
       if (blockers.includes("reference")) setReferenceTouched(true);
@@ -738,6 +742,13 @@ export default function CheckoutScreen() {
 
         {/* ---- How it travels -------------------------------------------- */}
         <Section title="HOW IT GETS TO YOU">
+          {travel === "pickup" && !hubPickupEnabled(settings) ? (
+            <Text className="text-body text-error" accessibilityRole="alert">
+              Hub pick-up is currently unavailable for new orders. {locked
+                ? "Start a new print job and choose delivery. Your current basket is kept."
+                : "Choose delivery below."}
+            </Text>
+          ) : null}
           {locked ? (
             <ChosenTravel
               choice={locked}
@@ -747,7 +758,7 @@ export default function CheckoutScreen() {
           ) : (
           <>
           <Segmented
-            options={TRAVEL_CHOICES.map((choice) => ({
+            options={TRAVEL_CHOICES.filter((choice) => choice !== "pickup" || hubPickupEnabled(settings)).map((choice) => ({
               value: choice,
               label: travelLabel(choice),
               disabled: choice === "multi_drop",

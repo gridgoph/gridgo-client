@@ -1,5 +1,5 @@
 import { Check, ChevronRight, MapPin, Package, Plus, Truck, type LucideIcon } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
@@ -8,11 +8,12 @@ import { HubPickupPanel } from "@/components/HubPickupPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SkeletonLine } from "@/components/Skeleton";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import type { ClientAddress, FulfilmentMode, OrderPoint } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
-import { hubFeeLabel, hubPickupOf } from "@/lib/hubPickup";
+import { hubFeeLabel, hubPickupOf, hubPickupEnabled } from "@/lib/hubPickup";
 import { prefetchMatch } from "@/lib/matchPrefetch";
 import {
   PICKUP_CHOICE,
@@ -51,7 +52,9 @@ export default function FulfilmentScreen() {
   const settings = usePlatformSettings((state) => state.settings);
   const loadSettings = usePlatformSettings((state) => state.load);
 
-  const [mode, setMode] = useState<FulfilmentMode | null>(held?.fulfillmentMode ?? null);
+  const [selectedMode, setMode] = useState<FulfilmentMode | null>(held?.fulfillmentMode ?? null);
+  const pickupAvailable = hubPickupEnabled(settings);
+  const mode = pickupAvailable ? selectedMode : "delivery";
   const [dropoff, setDropoff] = useState<OrderPoint | null>(
     held?.fulfillmentMode === "delivery" ? held.dropoff : null,
   );
@@ -59,12 +62,13 @@ export default function FulfilmentScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
 
-  // Fresh hours and fee: Super Admin can change them without a release.
-  useEffect(() => {
-    loadSettings({ refresh: true }).catch(() => {
-      /* The held settings stand; the pick-up panel says what it can. */
-    });
-  }, [loadSettings]);
+  const refreshSettings = useCallback(() => loadSettings({ refresh: true }), [loadSettings]);
+  useLiveRefresh(["settings"], refreshSettings, { refreshOnFocus: false });
+
+  // Fresh availability, hours and fee on every visit.
+  useFocusEffect(useCallback(() => {
+    void loadSettings({ refresh: true }).catch(() => undefined);
+  }, [loadSettings]));
 
   // Re-read on focus, so an address added on the pin editor is in the list
   // when the client comes back to choose it.
@@ -151,7 +155,7 @@ export default function FulfilmentScreen() {
           GRIDGO matches a printer for where it is going, so this comes first.
         </Text>
 
-        <View className="mt-6 gap-3" accessibilityRole="radiogroup" accessibilityLabel="Delivery or pick-up">
+        <View className="mt-6 gap-3" accessibilityRole="radiogroup" accessibilityLabel={pickupAvailable ? "Delivery or pick-up" : "Delivery"}>
           <ChoiceRow
             icon={Truck}
             title={fulfilmentTitle("delivery")}
@@ -160,14 +164,14 @@ export default function FulfilmentScreen() {
             selected={mode === "delivery"}
             onPress={() => setMode("delivery")}
           />
-          <ChoiceRow
+          {pickupAvailable ? <ChoiceRow
             icon={Package}
             title={fulfilmentTitle("pickup")}
             body={fulfilmentBlurb("pickup")}
             aside={fee}
             selected={mode === "pickup"}
             onPress={() => setMode("pickup")}
-          />
+          /> : null}
         </View>
 
         {mode === "delivery" ? (

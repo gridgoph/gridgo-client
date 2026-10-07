@@ -378,6 +378,8 @@ export type PlatformSettings = {
    * an API from before the hub settings.
    */
   hubPickup?: HubPickup;
+  /** Availability for new orders only; missing means off. */
+  hubPickupEnabled?: boolean;
   /** The approved-organization discount on printing. Absent on an older API. */
   organizationDiscountRateBps?: number;
 };

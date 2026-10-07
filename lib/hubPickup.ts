@@ -149,3 +149,8 @@ export function upcomingClosureLines(
 export function openWeekdays(schedule: HubSchedule | null | undefined): Set<number> {
   return new Set((schedule?.week ?? []).map((window) => window.weekday));
 }
+
+/** Availability only gates new requests; placed orders keep their collection access. */
+export function hubPickupEnabled(settings: Pick<PlatformSettings, "hubPickupEnabled"> | null | undefined): boolean {
+  return settings?.hubPickupEnabled === true;
+}
