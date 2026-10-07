@@ -11,11 +11,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OrderDetailScreen from "@/app/order/[id]";
 import { OrderCard } from "@/components/OrderCard";
-import type { Order } from "@/lib/api";
+import type { Order, PlatformSettings } from "@/lib/api";
 import { useOrderPayment } from "@/store/checkoutPayment";
 import { useOrderSections } from "@/store/orderSections";
 import { usePlatformSettings } from "@/store/platformSettings";
-import { expectNoServiceFee, setServiceFeeSwitch } from "@/test/serviceFeeSwitch";
+import { expectNoServiceFee, feeSettings, setServiceFeeSwitch } from "@/test/serviceFeeSwitch";
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
@@ -593,6 +593,8 @@ describe("OrderDetailScreen", () => {
 
   it("shows no sign of a service fee while Operations hides it, and the total still adds up", async () => {
     setServiceFeeSwitch(false);
+    // Opening the order refreshes settings for the printed-invoice switch too.
+    api.getSettings.mockResolvedValue(feeSettings(false));
     setOrder({
       subtotalMinor: 100000,
       serviceFeeMinor: 10000,
@@ -613,12 +615,20 @@ describe("OrderDetailScreen", () => {
 
   it("names no fee before GRIDGO's settings are read", async () => {
     usePlatformSettings.setState({ settings: null });
+    let resolveSettings!: (settings: PlatformSettings) => void;
+    api.getSettings.mockReturnValue(new Promise<PlatformSettings>((resolve) => {
+      resolveSettings = resolve;
+    }));
     setOrder({ subtotalMinor: 84000, serviceFeeMinor: 8400, deliveryFeeMinor: 7500, totalMinor: 99900 });
     await renderInSafeArea(<OrderDetailScreen />);
 
     await screen.findByText("Grand opening tarpaulin");
     expect(screen.getByText("₱924.00")).toBeTruthy();
     expect(screen.getByText("₱999.00")).toBeTruthy();
+    expect(usePlatformSettings.getState().settings).toBeNull();
+    expectNoServiceFee(screen);
+    // Settle the focus refresh so no in-flight read leaks into the next test.
+    await act(async () => { resolveSettings(feeSettings(false)); });
     expectNoServiceFee(screen);
   });
 
