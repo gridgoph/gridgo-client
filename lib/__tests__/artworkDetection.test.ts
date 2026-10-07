@@ -65,6 +65,22 @@ describe("what the client is told the file is", () => {
     expect(summary).toBe("1080 × 1920 pixels");
   });
 
+  it("says an image's pixels rather than the millimetres its header implies", () => {
+    // 2480 × 3508 is an A4 file at 300 DPI; its "72 DPI" header would make it 875 mm tall.
+    const summary = detectedSummary(
+      read({
+        kind: "raster",
+        pageSize: null,
+        dpi: 72,
+        widthMilli: 874_900,
+        heightMilli: 1_237_500,
+        pixelWidth: 2480,
+        pixelHeight: 3508,
+      }),
+    );
+    expect(summary).toBe("2480 × 3508 pixels");
+  });
+
   it("says nothing at all when the file said nothing", () => {
     expect(detectedSummary(null)).toBeNull();
   });

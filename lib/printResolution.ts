@@ -199,42 +199,6 @@ export function pixelsNeeded(
   };
 }
 
-function formatMilliAsMm(widthMilli: number, heightMilli: number): string {
-  const width = Math.round(widthMilli / 100) / 10;
-  const height = Math.round(heightMilli / 100) / 10;
-  return `${width} × ${height} mm`;
-}
-
-/**
- * When the file's own millimetres are not the product the client ordered.
- *
- * A screenshot at 96 DPI reports 190 × 423 mm and still looks like a flyer on
- * the phone. The product may be A5, a 3.5 × 2 in card, or a 3 × 6 ft tarp —
- * those are not the same piece of paper, and that has to be said here, as a
- * warning, before checkout. Never a block: the shop can still trim or refuse.
- */
-export function artworkPrintSizeWarning(
-  detected: { widthMilli?: number | null; heightMilli?: number | null } | null | undefined,
-  sizeMilli: { width: number; height: number } | null,
-  label?: string | null,
-): string | null {
-  if (!detected?.widthMilli || !detected.heightMilli || !sizeMilli) return null;
-  const file = [detected.widthMilli, detected.heightMilli].sort((a, b) => a - b);
-  const product = [sizeMilli.width, sizeMilli.height].sort((a, b) => a - b);
-  const tolerance = 2 * MILLI;
-  if (Math.abs(file[0] - product[0]) <= tolerance && Math.abs(file[1] - product[1]) <= tolerance) {
-    return null;
-  }
-  const productWords = label?.trim()
-    ? `${label.trim()} (${formatMilliAsMm(sizeMilli.width, sizeMilli.height)})`
-    : formatMilliAsMm(sizeMilli.width, sizeMilli.height);
-  return (
-    `This file is ${formatMilliAsMm(detected.widthMilli, detected.heightMilli)} and the product is ` +
-    `${productWords}. They do not match. You can send it as it is — the shop will tell you if it ` +
-    `needs a new file.`
-  );
-}
-
 /**
  * The physical size a *measured* line was ordered at.
  *

@@ -1,4 +1,4 @@
-import { CircleAlert, FileCheck, TriangleAlert } from "lucide-react-native";
+import { CircleAlert, FileCheck } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -6,6 +6,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
+import { ArtworkSizeNote } from "@/components/ArtworkSizeNote";
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { DesignLinkField } from "@/components/DesignLinkField";
 import { ErrorScreenState } from "@/components/ErrorState";
@@ -22,8 +23,8 @@ import {
   missingPageCountMessage,
   pageCountOffer,
 } from "@/lib/artworkUpload";
+import { artworkSizeNote } from "@/lib/artworkSize";
 import {
-  artworkPrintSizeWarning,
   measuredSizeMilli,
   physicalSizeMilli,
   printResolution,
@@ -40,7 +41,6 @@ import {
   parseDesignLink,
 } from "@/lib/designLink";
 import {
-  artworkFitWarning,
   fileFormats,
   fileMatchesFormats,
   formatSentence,
@@ -307,10 +307,7 @@ export default function ArtworkScreen() {
     measuredSizeMilli(line.measurement, item?.measureUnit) ??
     physicalSizeMilli(size, { subcategoryCode: item?.subcategoryCode });
   const resolution = printResolution(filePixels, orderedSize);
-  const printSizeWarning = artworkPrintSizeWarning(detected, orderedSize, size);
-  const warning = printSizeWarning
-    ? { message: printSizeWarning, blocking: false as const }
-    : artworkFitWarning(size, measured ?? pixels, orderedSize);
+  const sizeNote = artworkSizeNote({ detected, pixels, sizeMilli: orderedSize, label: size });
   const pageOffer = pageCountOffer(detected, item?.pricingUnit, line.measurement?.pages);
   const unreadPages = missingPageCountMessage(
     detected,
@@ -402,9 +399,16 @@ export default function ArtworkScreen() {
               onCancel={upload.cancel}
               emphasis={hasArtwork ? "quiet" : "primary"}
               resolution={resolution}
+              resolutionQuiet={sizeNote != null}
             />
           </TourTarget>
         ) : null}
+
+        {/*
+          Under the file it is about. A warning, never a block: a file of the
+          wrong size can still be printed scaled, and the client decides.
+        */}
+        {sizeNote ? <ArtworkSizeNote note={sizeNote} /> : null}
 
         {saveError ? <Text className="mt-3 text-body text-error">{saveError}</Text> : null}
         {fileProblem ? (
@@ -540,25 +544,6 @@ export default function ArtworkScreen() {
               size={size || null}
             />
             <Text className="text-caption text-text-muted">{MOCKUP_LABEL}</Text>
-          </View>
-        ) : null}
-
-        {warning ? (
-          <View className="mt-6 flex-row items-start gap-3 rounded-field border border-warning bg-surface p-3">
-            <View className="pt-0.5">
-              <TriangleAlert
-                size={16}
-                color={colors.warning}
-                strokeWidth={2}
-                aria-hidden
-              />
-            </View>
-            <View className="min-w-0 flex-1 gap-1">
-              <Text className="text-body font-medium text-text-primary">
-                Check the size before you send this
-              </Text>
-              <Text className="text-caption text-text-secondary">{warning.message}</Text>
-            </View>
           </View>
         ) : null}
 
