@@ -111,7 +111,7 @@ describe("MatchScreen — the Top Pick (#154)", () => {
     expect(screen.getByText("YOUR PLACE")).toBeTruthy();
     expect(screen.getByText("4th")).toBeTruthy();
     expect(screen.getByText("READY BY")).toBeTruthy();
-    expect(screen.getByText("Ready in 12 hours")).toBeTruthy();
+    expect(screen.getByText("Ready in 2 days")).toBeTruthy();
   });
 
   it("dates the pick by its client promise, in Davao time", async () => {
@@ -211,11 +211,11 @@ describe("MatchScreen — other listings, and no shop identity", () => {
     expect(screen.getByText("Tarpaulin Banner")).toBeTruthy();
     expect(screen.getByText("₱11.00 per sq ft")).toBeTruthy();
     expect(screen.getByText("₱13.20 per sq ft")).toBeTruthy();
-    expect(screen.getAllByText("Ready in 1 hour")).toHaveLength(2);
+    expect(screen.getAllByText("Ready tomorrow")).toHaveLength(2);
     expect(screen.getByText("Long Distance")).toBeTruthy();
     expect(screen.getByText("4.6 (8)")).toBeTruthy();
     // The place each would take, said the way a queue is said.
-    expect(screen.getByLabelText(/UV Printing, ₱11\.00 per sq ft, Ready in 1 hour, 1st in line/)).toBeTruthy();
+    expect(screen.getByLabelText(/UV Printing, ₱11\.00 per sq ft, Ready tomorrow, 1st in line/)).toBeTruthy();
     expect(screen.getByLabelText(/Tarpaulin Banner, ₱13\.20 per sq ft, .*2nd in line/)).toBeTruthy();
     // One badge on the whole screen: the Top Pick's.
     expect(screen.getAllByText(/^MATCHED FOR/)).toHaveLength(1);

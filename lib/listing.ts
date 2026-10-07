@@ -279,18 +279,58 @@ export function quantityLine(item: CatalogItem, quantity: number): string {
 // Time
 // ---------------------------------------------------------------------------
 
-/** Press time only: working hours do not include the queue or closed hours. */
-export function printTimeLine(hours: number | null | undefined): string | null {
-  if (typeof hours !== "number" || !Number.isFinite(hours) || hours <= 0) return null;
-  return `Prints in about ${hours} ${hours === 1 ? "hour" : "hours"}`;
+/** An older GRIDGO's working day when it does not say: 8 AM to 6 PM. */
+const DEFAULT_WORKDAY_MINUTES = 600;
+
+/**
+ * A listing's production time in whole working days (gridgo-supplier#122).
+ *
+ * `turnaroundDays` when GRIDGO sends it. An older GRIDGO sends only working
+ * hours, which are converted the way its migration converts them — divided by
+ * the shop's working day and rounded up, never below one day — and never
+ * divided by 24, which would make a listing look three times quicker than the
+ * date it is promised.
+ */
+export function productionDays(
+  item: Pick<CatalogItem, "turnaroundHours"> &
+    Partial<Pick<CatalogItem, "turnaroundDays" | "minimumTurnaroundDays" | "productionDayMinutes">> & {
+      minimumTurnaroundHours?: number | null;
+    },
+): { min: number | null; max: number } | null {
+  const dayMinutes = positive(item.productionDayMinutes) ?? DEFAULT_WORKDAY_MINUTES;
+  const fromHours = (hours: number | null | undefined) => {
+    const value = positive(hours);
+    return value == null ? null : Math.max(1, Math.ceil((value * 60) / dayMinutes));
+  };
+  const days = (value: number | null | undefined) => {
+    const whole = positive(value);
+    return whole == null ? null : Math.max(1, Math.ceil(whole));
+  };
+  const max = days(item.turnaroundDays) ?? fromHours(item.turnaroundHours);
+  if (max == null) return null;
+  const min = days(item.minimumTurnaroundDays) ?? fromHours(item.minimumTurnaroundHours);
+  return { min: min != null && min < max ? min : null, max };
 }
 
-/** Just the duration — "2 days", "6 hours" — for a card's readout cell. */
-export function readyInShort(hours: number | null | undefined): string | null {
-  if (typeof hours !== "number" || !Number.isFinite(hours) || hours <= 0) return null;
-  if (hours < 24) return hours === 1 ? "1 hour" : `${hours} hours`;
-  const days = Math.round(hours / 24);
-  return days === 1 ? "1 day" : `${days} days`;
+function positive(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** "1 working day", "3 working days". */
+export function workingDaysLabel(days: number): string {
+  return days === 1 ? "1 working day" : `${days} working days`;
+}
+
+/**
+ * Production time only — "Prints in 2 working days". It leaves out the queue
+ * and closed days, so it is never the ready date; that is `readyByDate`.
+ */
+export function printTimeLine(item: Parameters<typeof productionDays>[0] | null | undefined): string | null {
+  const window = item ? productionDays(item) : null;
+  if (!window) return null;
+  return window.min != null
+    ? `Prints in ${window.min}–${window.max} working days`
+    : `Prints in ${workingDaysLabel(window.max)}`;
 }
 
 // ---------------------------------------------------------------------------
