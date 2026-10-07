@@ -44,6 +44,7 @@ const mockGetSupportChatMe = jest.fn<Promise<SupportChatMe>, unknown[]>(async ()
 const mockGetSupportChatThread = jest.fn();
 const mockOpenSupportChatThread = jest.fn();
 const mockSendSupportChatMessage = jest.fn();
+const mockDeleteSupportChatThread = jest.fn();
 const mockMarkSupportChatRead = jest.fn<Promise<SupportChatRead>, unknown[]>(async () => ({
   thread: null,
   unreadCount: 0,
@@ -54,6 +55,7 @@ jest.mock("@/lib/api", () => ({
   getSupportChatThread: (...args: unknown[]) => mockGetSupportChatThread(...args),
   openSupportChatThread: (...args: unknown[]) => mockOpenSupportChatThread(...args),
   sendSupportChatMessage: (...args: unknown[]) => mockSendSupportChatMessage(...args),
+  deleteSupportChatThread: (...args: unknown[]) => mockDeleteSupportChatThread(...args),
   markSupportChatRead: (...args: unknown[]) => mockMarkSupportChatRead(...args),
 }));
 
@@ -114,6 +116,7 @@ describe("chat history", () => {
     expect(screen.queryByText("Supplier")).toBeNull();
     expect(screen.queryByText("Rider")).toBeNull();
     expect(screen.queryByText("Gridbot")).toBeNull();
+    expect(screen.queryByLabelText("Delete chat")).toBeNull();
     expect(screen.queryByLabelText("Message Operations")).toBeNull();
   });
 

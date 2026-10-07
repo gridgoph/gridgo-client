@@ -4,9 +4,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import PhysicalInvoiceScreen from "@/app/order/physical-invoice";
 
-// No features mock: this file runs against the real switch, which is off for
-// the pilot (gridgoph/gridgo-web#61). A deep link or old history can still
-// land here, so the screen must hold up without the form.
+// The Super Admin switch is off. A deep link or old history can still land
+// here, so the screen must hold up without the form.
 jest.mock("expo-router", () => ({
   useRouter: () => ({
     push: jest.fn(),
@@ -28,6 +27,7 @@ jest.mock("@/lib/api", () => {
     ...actual,
     getPhysicalInvoice: jest.fn(),
     requestPhysicalInvoice: jest.fn(),
+    getSettings: jest.fn(),
   };
 });
 
@@ -43,6 +43,12 @@ const wrap = (node: ReactElement) => (
 describe("physical invoice while paused for the pilot", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    api.getSettings.mockResolvedValue({
+      issueWindowHours: 24,
+      serviceFeeRateBps: 1000,
+      deliveryFeeBands: [],
+      physicalInvoiceRequestsEnabled: false,
+    });
   });
 
   it("says requests are paused instead of offering the form", async () => {

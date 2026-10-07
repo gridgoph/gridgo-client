@@ -36,6 +36,7 @@ jest.mock("@/lib/api", () => {
     ...actual,
     getInvoice: jest.fn(),
     getOrder: jest.fn(),
+    getSettings: jest.fn(),
   };
 });
 
@@ -53,6 +54,11 @@ describe("order receipt", () => {
     // Operations shows the fee; the switch-off case is receipt-fee-switch.test.tsx.
     setServiceFeeSwitch(true);
     mockPush.mockReset();
+    api.getSettings.mockResolvedValue({
+      issueWindowHours: 24,
+      serviceFeeRateBps: 1000,
+      deliveryFeeBands: [],
+    });
     api.getInvoice.mockResolvedValue({
       invoiceNumber: "GG-20260824-0001",
       orderId: "ord_3ff0128e105a",
@@ -154,5 +160,17 @@ describe("order receipt", () => {
     await render(wrap(<OrderReceiptScreen />));
     expect(await screen.findByText("View physical invoice request")).toBeTruthy();
     expect(screen.queryByText("Request a physical invoice")).toBeNull();
+  });
+
+  it("offers a printed-invoice request when Super Admin has turned it on", async () => {
+    api.getSettings.mockResolvedValue({
+      issueWindowHours: 24,
+      serviceFeeRateBps: 1000,
+      deliveryFeeBands: [],
+      physicalInvoiceRequestsEnabled: true,
+    });
+    await render(wrap(<OrderReceiptScreen />));
+    expect(await screen.findByText("Request a physical invoice")).toBeTruthy();
+    expect(screen.queryByText("View physical invoice request")).toBeNull();
   });
 });

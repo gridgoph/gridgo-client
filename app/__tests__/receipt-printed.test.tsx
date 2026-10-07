@@ -29,7 +29,16 @@ jest.mock("expo-router/react-navigation", () => ({
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
-  return { ...actual, getInvoice: jest.fn(), getOrder: jest.fn() };
+  return {
+    ...actual,
+    getInvoice: jest.fn(),
+    getOrder: jest.fn(),
+    getSettings: jest.fn(async () => ({
+      issueWindowHours: 24,
+      serviceFeeRateBps: 1000,
+      deliveryFeeBands: [],
+    })),
+  };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports

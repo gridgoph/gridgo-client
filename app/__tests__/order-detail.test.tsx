@@ -11,11 +11,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OrderDetailScreen from "@/app/order/[id]";
 import { OrderCard } from "@/components/OrderCard";
-import type { Order } from "@/lib/api";
+import type { Order, PlatformSettings } from "@/lib/api";
 import { useOrderPayment } from "@/store/checkoutPayment";
 import { useOrderSections } from "@/store/orderSections";
 import { usePlatformSettings } from "@/store/platformSettings";
-import { expectNoServiceFee, setServiceFeeSwitch } from "@/test/serviceFeeSwitch";
+import { expectNoServiceFee, feeSettings, setServiceFeeSwitch } from "@/test/serviceFeeSwitch";
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
@@ -515,6 +515,26 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText(/commission/i)).toBeNull();
   });
 
+  it("offers a printed-invoice request when Super Admin has turned it on", async () => {
+    api.getSettings.mockResolvedValue({
+      issueWindowHours: 24,
+      deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+      serviceFeeRateBps: 1000,
+      physicalInvoiceRequestsEnabled: true,
+    });
+    setOrder({
+      subtotalMinor: 100000,
+      serviceFeeMinor: 10000,
+      serviceFeeRateBps: 1000,
+      deliveryFeeMinor: 2500,
+      totalMinor: 112500,
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Request a physical invoice")).toBeTruthy();
+    expect(screen.queryByText("View physical invoice request")).toBeNull();
+  });
+
   it("still shows a printed-invoice request filed before the pilot pause", async () => {
     setOrder({
       subtotalMinor: 100000,
@@ -573,6 +593,8 @@ describe("OrderDetailScreen", () => {
 
   it("shows no sign of a service fee while Operations hides it, and the total still adds up", async () => {
     setServiceFeeSwitch(false);
+    // Opening the order refreshes settings for the printed-invoice switch too.
+    api.getSettings.mockResolvedValue(feeSettings(false));
     setOrder({
       subtotalMinor: 100000,
       serviceFeeMinor: 10000,
@@ -593,12 +615,20 @@ describe("OrderDetailScreen", () => {
 
   it("names no fee before GRIDGO's settings are read", async () => {
     usePlatformSettings.setState({ settings: null });
+    let resolveSettings!: (settings: PlatformSettings) => void;
+    api.getSettings.mockReturnValue(new Promise<PlatformSettings>((resolve) => {
+      resolveSettings = resolve;
+    }));
     setOrder({ subtotalMinor: 84000, serviceFeeMinor: 8400, deliveryFeeMinor: 7500, totalMinor: 99900 });
     await renderInSafeArea(<OrderDetailScreen />);
 
     await screen.findByText("Grand opening tarpaulin");
     expect(screen.getByText("₱924.00")).toBeTruthy();
     expect(screen.getByText("₱999.00")).toBeTruthy();
+    expect(usePlatformSettings.getState().settings).toBeNull();
+    expectNoServiceFee(screen);
+    // Settle the focus refresh so no in-flight read leaks into the next test.
+    await act(async () => { resolveSettings(feeSettings(false)); });
     expectNoServiceFee(screen);
   });
 

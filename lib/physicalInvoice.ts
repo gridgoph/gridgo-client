@@ -5,10 +5,10 @@
  * physical copy. The request is the contact, the office, and when someone
  * is there — nothing else.
  *
- * Switched off for the pilot by `PHYSICAL_INVOICE_REQUESTS_ENABLED`.
+ * Super Admin turns new requests on with `physicalInvoiceRequestsEnabled`
+ * (`GET /settings`). The switch defaults off. A request already on file
+ * stays visible either way.
  */
-
-import { PHYSICAL_INVOICE_REQUESTS_ENABLED } from "@/constants/features";
 
 export const PHYSICAL_INVOICE_CONTACT_MAX = 80;
 export const PHYSICAL_INVOICE_ADDRESS_MAX = 240;
@@ -88,17 +88,30 @@ export function physicalInvoiceReady(draft: PhysicalInvoiceDraft): boolean {
 }
 
 /**
+ * Whether Super Admin is accepting new printed-invoice requests.
+ *
+ * Absent, or anything other than `true`, means off. That is the pilot default,
+ * and it is also the answer before settings have loaded.
+ */
+export function physicalInvoiceRequestsEnabled(
+  settings: { physicalInvoiceRequestsEnabled?: boolean | null } | null | undefined,
+): boolean {
+  return settings?.physicalInvoiceRequestsEnabled === true;
+}
+
+/**
  * What an order screen offers for a printed invoice, if anything.
  *
  * A request already on file is always viewable — hiding it would leave a
  * client wondering whether GRIDGO still has it. Only filing a new one waits on
- * the switch.
+ * the switch. Callers pass `physicalInvoiceRequestsEnabled(settings)`; the
+ * default is off so a screen that has not read settings yet offers nothing new.
  */
 export type PhysicalInvoiceEntry = { kind: "request" | "view"; label: string } | null;
 
 export function physicalInvoiceEntry(
   order: { physicalInvoiceRequest?: PhysicalInvoiceRequest | null } | null | undefined,
-  enabled: boolean = PHYSICAL_INVOICE_REQUESTS_ENABLED,
+  enabled: boolean = false,
 ): PhysicalInvoiceEntry {
   if (!order) return null;
   if (order.physicalInvoiceRequest) {
