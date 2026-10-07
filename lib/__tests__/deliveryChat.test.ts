@@ -98,5 +98,8 @@ describe("refusals", () => {
     );
     expect(deliverySendError(apiError("too_many_requests"))).toMatch(/too fast/);
     expect(deliverySendError(new Error("offline"))).toMatch(/did not reach your rider/);
+    expect(deliverySendError(apiError("invalid_chat_image"))).toMatch(/JPEG, PNG, or WebP/);
+    expect(deliverySendError(apiError("file_too_large"))).toMatch(/up to 15 MB/);
+    expect(deliverySendError(apiError("file_already_attached"))).toMatch(/already sent/);
   });
 });

@@ -19,3 +19,26 @@ export function validateChatImageAsset(asset: {
   }
   return null;
 }
+
+type PickedPhoto = { uri: string; name?: string | null; mimeType?: string | null; size?: number | null };
+
+/**
+ * Adds picked photos to a message's unsent ones, or says why it cannot. The
+ * support chat and the delivery chat both take up to four photos per message.
+ */
+export function addChatPhotos<T extends { uri: string; name: string; mimeType?: string | null }>(
+  pending: T[],
+  assets: PickedPhoto[],
+  toPending: (asset: { uri: string; name: string; mimeType: string }) => T,
+): { ok: true; pending: T[] } | { ok: false; error: string } {
+  const next = [...pending];
+  for (const asset of assets) {
+    const problem = validateChatImageAsset(asset);
+    if (problem) return { ok: false, error: problem };
+    if (next.length >= SUPPORT_CHAT_IMAGE_MAX_COUNT) {
+      return { ok: false, error: `A message can include up to ${SUPPORT_CHAT_IMAGE_MAX_COUNT} photos.` };
+    }
+    next.push(toPending({ uri: asset.uri, name: asset.name || "photo.jpg", mimeType: asset.mimeType || "image/jpeg" }));
+  }
+  return { ok: true, pending: next };
+}
