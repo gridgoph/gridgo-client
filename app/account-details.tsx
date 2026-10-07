@@ -436,7 +436,7 @@ export default function AccountDetailsScreen() {
 
                 <FormField
                   label="Mobile number"
-                  helper="The rider delivering your job gets this number."
+                  helper="Used by GRIDGO to reach you about your orders. Riders and shops do not see it."
                   error={fieldError("phone")}
                 >
                   <TextField

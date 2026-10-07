@@ -215,14 +215,16 @@ function ViewerStage({
         accessibilityLabel={direction === "next" ? "Next photo" : "Previous photo"}
         hitSlop={8}
         className="absolute items-center justify-center rounded-pill"
-        style={({ pressed }) => ({
+        // A plain object: beside a className, a phone drops a style function
+        // and both controls land in the top-left corner (#212).
+        style={{
           top: "50%",
           marginTop: -22,
           [direction === "next" ? "right" : "left"]: 12,
           width: 44,
           height: 44,
-          backgroundColor: pressed ? "rgba(0,0,0,0.75)" : "rgba(0,0,0,0.5)",
-        })}
+          backgroundColor: "rgba(0,0,0,0.5)",
+        }}
       >
         <Icon size={24} color="#FFFFFF" strokeWidth={2} />
       </Pressable>
