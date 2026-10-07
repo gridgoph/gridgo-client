@@ -257,11 +257,14 @@ export function detectedSummary(detected: DetectedArtwork | null): string | null
     parts.push(
       detected.orientation === "landscape" ? `${detected.pageSize} landscape` : detected.pageSize,
     );
-  } else if (detected.widthMilli && detected.heightMilli) {
+  } else if (detected.widthMilli && detected.heightMilli && detected.kind !== "raster") {
     parts.push(`${mm(detected.widthMilli)} × ${mm(detected.heightMilli)} mm`);
   } else if (detected.pixelWidth && detected.pixelHeight) {
-    // Pixels are the honest answer when no density was declared, and saying so
-    // is what stops a client assuming GRIDGO knows the printed size.
+    // An image's millimetres are only its header's density, and a print file
+    // still saying "72 DPI" would read as a 875 mm poster. Its pixels are what
+    // the size note beside this compares (lib/artworkSize.ts).
+    // Pixels are also the honest answer when no density was declared, and
+    // saying so is what stops a client assuming GRIDGO knows the printed size.
     parts.push(`${detected.pixelWidth} × ${detected.pixelHeight} pixels`);
   }
 

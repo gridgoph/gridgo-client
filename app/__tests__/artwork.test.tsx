@@ -241,7 +241,7 @@ describe("ArtworkScreen", () => {
 
     expect(screen.getByText("Size")).toBeTruthy();
     expect(screen.getByText("480 KB")).toBeTruthy();
-    expect(screen.getByText(/We read this as 190\.5 × 423\.3 mm/)).toBeTruthy();
+    expect(screen.getByText(/We read this as 720 × 1600 pixels/)).toBeTruthy();
     expect(screen.getByText("This file does not match the print size")).toBeTruthy();
     expect(screen.getByText("Standard · 50.8 × 88.9 mm · about 600 × 1050 pixels")).toBeTruthy();
     expect(screen.getByText("720 × 1600 pixels")).toBeTruthy();
