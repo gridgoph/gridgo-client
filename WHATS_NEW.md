@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.245 (New feature)
+
+- The artwork step no longer asks you to add something else first. Add more products at checkout.
+- Swipe through a listing's sample photos, with dots to show where you are, and open any of them full screen.
+
 ## 1.0.237 (New feature)
 
 - Get a notification when a new app version is ready. Tap it to download the update.
