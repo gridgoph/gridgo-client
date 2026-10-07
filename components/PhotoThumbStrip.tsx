@@ -106,14 +106,17 @@ export function PhotoThumbStrip({
                 ? "overflow-hidden rounded-sm border-2"
                 : `overflow-hidden rounded-sm border-2 ${isCurrent ? "border-accent" : "border-transparent"}`
             }
-            style={({ pressed }) => ({
+            // A plain object, never a `({ pressed }) =>` function: beside a
+            // className, a phone drops a style function and the thumb draws
+            // zero wide (#212).
+            style={{
               width: THUMB_SIZE,
               height: THUMB_SIZE,
               // The ring says which photo; the others step back so it reads at
               // a glance, and still read as photos rather than disabled ones.
-              opacity: isCurrent ? 1 : pressed ? 0.85 : 0.6,
+              opacity: isCurrent ? 1 : 0.6,
               ...(dark ? { borderColor: isCurrent ? "#FFFFFF" : "transparent" } : null),
-            })}
+            }}
           >
             {photo.uri && !broken ? (
               <Image

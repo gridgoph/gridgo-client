@@ -133,6 +133,18 @@ describe("Your details, while /me has not answered", () => {
     expect(screen.queryByLabelText("Loading your account")).toBeNull();
   });
 
+  it("says the mobile number stays private, never that the rider gets it", async () => {
+    api.getAccount.mockImplementation(hangingAccount);
+
+    await renderInSafeArea();
+
+    // Delivery messages keep numbers private (#198); the helper must agree.
+    expect(
+      screen.getByText("Used by GRIDGO to reach you about your orders. Riders and shops do not see it."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/rider delivering your job gets/i)).toBeNull();
+  });
+
   it("offers the sign-in rows and the picture control straight away", async () => {
     api.getAccount.mockImplementation(hangingAccount);
 
