@@ -45,5 +45,6 @@ export function unpricedLineReason(line: CartLineRecord): string {
   if (minimum != null && line.quantity < minimum) {
     return `No price at this quantity — this shop takes orders of ${minimum} and up.`;
   }
+  if (line.listing?.pricingUnit === "per_page" && !line.documentPages) return "Upload your document to read its pages and calculate the price.";
   return "No price for this pick — open it and change what you picked.";
 }

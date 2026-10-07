@@ -2,7 +2,6 @@ import { screen } from "@testing-library/react-native";
 import { Image } from "react-native";
 
 import ArtworkScreen from "@/app/request/artwork";
-import { UNREADABLE_PAGE_COUNT } from "@/lib/artworkUpload";
 import { useCart } from "@/store/cart";
 
 import {
@@ -11,7 +10,6 @@ import {
   mockUpdateCartLine,
   pdfDetected,
   renderInSafeArea,
-  uploadHookState,
   uploadMock,
 } from "../../test/artworkPagesFixtures";
 
@@ -73,6 +71,7 @@ beforeEach(() => {
 it("blocks checkout when a per-page PDF has no readable count and no pages", async () => {
   await renderInSafeArea(<ArtworkScreen />);
 
-  expect(screen.getByText(UNREADABLE_PAGE_COUNT)).toBeTruthy();
+  expect(screen.getByText(/Upload a document with a readable page count/)).toBeTruthy();
+  expect(screen.queryByLabelText("How many pages")).toBeNull();
   expect(screen.getByLabelText("Go to checkout").props.accessibilityState.disabled).toBe(true);
 });

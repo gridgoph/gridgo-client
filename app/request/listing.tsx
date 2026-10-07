@@ -254,7 +254,7 @@ export default function ListingScreen() {
   const resetQuote = useListingQuote((state) => state.reset);
   useEffect(() => resetQuote, [resetQuote]);
   const quoteAsk = useMemo(() => {
-    if (!item) return null;
+    if (!item || item.pricingUnit === "per_page") return null;
     const measuredNow = toMeasurement(measurementKind(item), measured);
     const input: api.CatalogQuoteInput | null =
       isSelectionComplete(item, selection) && isMeasurementComplete(item, measured)
@@ -321,7 +321,7 @@ export default function ListingScreen() {
   // them; an older payload is marked up from the shop's.
   const clientUnit = clientUnitDisplayMinor(item, selection);
   const kind = measurementKind(item);
-  const measurement = toMeasurement(kind, measured);
+  const measurement = kind === "pages" ? null : toMeasurement(kind, measured);
   // Only an API without the quote route falls back to working the line out
   // here (shop first, then GRIDGO's fee). Null — a measured listing with no
   // measurement, a refused configuration — is drawn as "—", never as zero,
@@ -329,7 +329,7 @@ export default function ListingScreen() {
   const shopTotal =
     quoteStatus === "unsupported" ? lineTotalMinor(item, quantity, measurement, shopUnit) : null;
   const estimate = complete ? null : clientLineEstimateMinor(item, quantity, measurement, selection);
-  const sized = isMeasurementComplete(item, measured);
+  const sized = kind === "pages" || isMeasurementComplete(item, measured);
   const atMinimum = minimumApplies(item, measurement);
   const runMinimum = belowMinimumOrder(item, quantity);
   const uploads = fileFormats(item);
@@ -593,10 +593,10 @@ export default function ListingScreen() {
             client who puts 15 in the quantity because the banner is 15 square
             feet buys fifteen banners.
           */}
-          {kind !== "none" ? (
+          {kind !== "none" && kind !== "pages" ? (
             <View className="mt-10 gap-3">
               <Text className="text-overline text-text-muted">
-                {kind === "pages" ? "HOW MANY PAGES" : "HOW BIG"}
+                HOW BIG
               </Text>
               <MeasurementFields
                 kind={kind}
@@ -694,6 +694,11 @@ export default function ListingScreen() {
               {measurement ? ` · ${measurementSummary(item, measurement)}` : ""}
             </Text>
           </View>
+          {kind === "pages" ? (
+            <Text className="max-w-48 text-right text-body text-text-secondary">
+              Total after artwork
+            </Text>
+          ) : (
           <GridgoPrice
             clientMinor={!complete ? estimate : quoteStatus === "priced" ? quoted?.clientLineSubtotalMinor : null}
             supplierMinor={!complete && estimate == null ? lineTotalMinor(item, quantity, measurement, shopUnit) : shopTotal}
@@ -701,6 +706,7 @@ export default function ListingScreen() {
             className="text-h3 text-text-primary"
             waitingWidth="w-24"
           />
+          )}
         </View>
 
         <Pressable
@@ -796,17 +802,6 @@ function MeasurementFields({
   draft: MeasurementDraft;
   onChange: (next: MeasurementDraft) => void;
 }) {
-  if (kind === "pages") {
-    return (
-      <MeasureInput
-        value={draft.pages}
-        onChange={(pages) => onChange({ ...draft, pages })}
-        suffix="pages"
-        label="How many pages"
-        wholeNumbers
-      />
-    );
-  }
   if (kind === "length") {
     return (
       <MeasureInput
