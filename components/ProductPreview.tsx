@@ -1,9 +1,12 @@
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { Image } from "expo-image";
+import { FileText } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
 import { useArtworkImage } from "@/hooks/useArtworkImage";
+import { useThemeColors } from "@/hooks/useTheme";
+import { isWordDocument } from "@/lib/artworkUpload";
 import {
   MOCKUP_LABEL,
   templateForFamily,
@@ -30,8 +33,8 @@ type Props = {
  * The artwork, seen as the product, before the client commits to printing it.
  *
  * Image artwork is fetched through the storage API and composited into the
- * template for its family. A PDF cannot be rasterised on the phone, so the
- * template names the file instead of pretending to show it. Every render
+ * template for its family. A PDF or a Word file cannot be laid out on the
+ * phone, so the template names the file instead of pretending to show it. Every render
  * carries the mockup label on the render itself.
  */
 export function ProductPreview({
@@ -45,7 +48,7 @@ export function ProductPreview({
   const template = subcategoryCode
     ? templateForSubcategory(subcategoryCode)
     : templateForFamily(family);
-  const { uri, unavailable, document, markUnrenderable, retry, openFile, opening, openError } = useArtworkImage(artworkFileId);
+  const { uri, unavailable, document, contentType, markUnrenderable, retry, openFile, opening, openError } = useArtworkImage(artworkFileId);
   const name = artworkName?.trim() || "No artwork yet";
 
   const artwork: ReactNode = uri ? (
@@ -59,7 +62,7 @@ export function ProductPreview({
       accessibilityLabel={`Mockup of ${name}`}
     />
   ) : (
-    <FileFace name={name} />
+    <FileFace name={name} word={isWordDocument(contentType)} />
   );
 
   return (
@@ -93,10 +96,21 @@ export function ProductPreview({
   );
 }
 
-/** Fallback face: the file's name, set inside the product's shape. */
-function FileFace({ name }: { name: string }) {
+/**
+ * Fallback face: the file's name, set inside the product's shape. A Word file
+ * also carries a document mark, so it reads as a document rather than a blank
+ * sheet; it is never laid out here.
+ */
+function FileFace({ name, word = false }: { name: string; word?: boolean }) {
+  const colors = useThemeColors();
   return (
-    <View className="h-full w-full items-center justify-center bg-canvas px-3">
+    <View className="h-full w-full items-center justify-center gap-2 bg-canvas px-3">
+      {word ? (
+        <>
+          <FileText size={32} color={colors.textSecondary} strokeWidth={1.75} aria-hidden />
+          <Text className="text-caption text-text-muted">Word document</Text>
+        </>
+      ) : null}
       <Text className="text-center text-caption text-text-primary" numberOfLines={4}>
         {name}
       </Text>

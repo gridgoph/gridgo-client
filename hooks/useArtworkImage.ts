@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "@/lib/api";
 import { isArtworkImage } from "@/lib/orderArtwork";
 
-type Preview = { fileId: string; uri: string | null; unavailable: boolean; document: boolean };
+type Preview = { fileId: string; uri: string | null; unavailable: boolean; document: boolean; contentType?: string | null };
 
 /** Read metadata first: a PDF or Photoshop document is never sent to Image. */
 export function useArtworkImage(fileId: string | null | undefined) {
@@ -24,7 +24,7 @@ export function useArtworkImage(fileId: string | null | undefined) {
         const file = await api.getFile(id);
         const image = isArtworkImage(file);
         const link = image ? await api.getFileDownloadUrl(id) : null;
-        if (alive) setPreview({ fileId: id, uri: link?.url ?? null, unavailable: false, document: !image });
+        if (alive) setPreview({ fileId: id, uri: link?.url ?? null, unavailable: false, document: !image, contentType: file.detectedContentType });
       } catch {
         if (alive) setPreview({ fileId: id, uri: null, unavailable: true, document: false });
       }
@@ -61,6 +61,7 @@ export function useArtworkImage(fileId: string | null | undefined) {
 
   const shown = preview?.fileId === fileId ? preview : null;
   return { uri: shown?.uri ?? null, unavailable: shown?.unavailable ?? false, document: shown?.document ?? false,
+    contentType: shown?.contentType ?? null,
     markUnrenderable, retry, openFile, opening: openState !== null && openState.fileId === fileId && openState.opening,
     openError: openState !== null && openState.fileId === fileId ? openState.error : null };
 }

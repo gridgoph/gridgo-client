@@ -5,6 +5,9 @@ import {
   ARTWORK_ACCEPTED,
   ARTWORK_MAX_BYTES,
   ARTWORK_MAX_MIB,
+  DOCX_CONTENT_TYPE,
+  DOCX_MAX_BYTES,
+  DOCX_MAX_MIB,
   EMPTY_ARTWORK,
   artworkCheckFailure,
   artworkErrorMessage,
@@ -24,8 +27,8 @@ import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/native
  * `201` carrying a file id; a progress bar at 100% moves to `saving`.
  */
 
-/** Picker filter. PDFs plus any image — the server judges the real format. */
-const PICKER_TYPES = ["application/pdf", "image/*"];
+/** Picker filter. PDFs, Word files and any image — the server judges the real format. */
+const PICKER_TYPES = ["application/pdf", DOCX_CONTENT_TYPE, "image/*"];
 
 /**
  * Narrowing the picker to one shop's listing.
@@ -242,6 +245,17 @@ export function useArtworkUpload(
         phase: "failed",
         fileName: chosenName,
         error: `Artwork has to be under ${ARTWORK_MAX_MIB} MB, and this file is larger. Flatten the layers or export at a lower resolution, then pick it again.`,
+      });
+      return;
+    }
+
+    const docx = chosenName.toLowerCase().endsWith(".docx") || asset.mimeType === DOCX_CONTENT_TYPE;
+    if (docx && typeof asset.size === "number" && asset.size > DOCX_MAX_BYTES) {
+      setState({
+        ...EMPTY_ARTWORK,
+        phase: "failed",
+        fileName: chosenName,
+        error: `Word documents have to be under ${DOCX_MAX_MIB} MB, and this file is larger. Save it as a PDF, or make the pictures in it smaller, then pick it again.`,
       });
       return;
     }

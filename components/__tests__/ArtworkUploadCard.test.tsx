@@ -38,7 +38,7 @@ describe("ArtworkUploadCard", () => {
 
     expect(screen.getByText("Choose a file")).toBeTruthy();
     expect(screen.getByLabelText("Choose your artwork file").props.accessibilityHint).toBe(
-      "JPEG, PNG, WebP or PDF, up to 200 MB",
+      "JPEG, PNG, WebP, PDF or Word document, up to 200 MB",
     );
   });
 

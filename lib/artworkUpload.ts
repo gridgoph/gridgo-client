@@ -153,7 +153,20 @@ export function artworkChip(state: ArtworkUploadState): ArtworkChip {
 /** Purpose limits, mirrored from the contract so the app can say them first. */
 export const ARTWORK_MAX_BYTES = 209_715_200;
 export const ARTWORK_MAX_MIB = 200;
-export const ARTWORK_ACCEPTED = "JPEG, PNG, WebP or PDF";
+export const ARTWORK_ACCEPTED = "JPEG, PNG, WebP, PDF or Word document";
+
+/** A Word file, as GRIDGO's storage API detects it (gridgo-api#198). */
+export const DOCX_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+/** Word files have their own, smaller limit: the whole package is checked before storage. */
+export const DOCX_MAX_BYTES = 16_777_216;
+export const DOCX_MAX_MIB = 16;
+
+/** A Word file, by detected type or, before the server has answered, by its name. */
+export function isWordDocument(contentType?: string | null, fileName?: string | null): boolean {
+  if (contentType?.toLowerCase().split(";")[0].trim() === DOCX_CONTENT_TYPE) return true;
+  return !contentType && /\.docx$/i.test(fileName ?? "");
+}
 
 /**
  * Turn a storage-API failure into a sentence that names the problem and the
@@ -298,12 +311,12 @@ export function detectedProportions(
  * How many pages a per-page listing should start at.
  *
  * A ten-page PDF priced by the page is ten, and making the client count their
- * own document is the exact work the upload already did. Only a PDF answers:
- * an image is one page and does not need saying, and a file that would not
+ * own document is the exact work the upload already did. Only a PDF or a Word
+ * file answers: an image is one page and does not need saying, and a file that would not
  * state a count leaves the stepper where it was.
  */
 export function detectedPageQuantity(detected: DetectedArtwork | null): number | null {
-  if (detected?.kind !== "pdf") return null;
+  if (detected?.kind !== "pdf" && detected?.kind !== "document") return null;
   const pages = detected.pageCount;
   return pages && pages > 0 ? pages : null;
 }
@@ -378,4 +391,23 @@ export function missingPageCountMessage(
   if (!pdf) return null;
   if (detectedPageQuantity(detected)) return null;
   return UNREADABLE_PAGE_COUNT;
+}
+
+/**
+ * Whether the client types this file's page total.
+ *
+ * Word saves a page count inside the file, but not always, and it is only a
+ * cache of the last layout. When a per-page Word file came without one, GRIDGO
+ * takes the client's total (`measurement.pages`) and prices pages, ranges and
+ * copies from it exactly as it would a counted PDF. A counted file, a PDF, an
+ * image and a file not yet read never ask: a count GRIDGO read always wins.
+ */
+export function needsManualPageTotal(
+  detected: DetectedArtwork | null | undefined,
+  contentType: string | null | undefined,
+  pricingUnit: string | null | undefined,
+): boolean {
+  if (pricingUnit !== "per_page") return false;
+  if (!isWordDocument(contentType)) return false;
+  return detectedPageQuantity(detected ?? null) == null;
 }
