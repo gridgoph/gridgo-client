@@ -2,18 +2,45 @@ import { render } from "@testing-library/react-native";
 import { createElement, type ReactElement, type ReactNode } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import type { Cart, CartLineRecord, CatalogItem, DetectedArtwork } from "@/lib/api";
+import type { AcceptedFormat, Cart, CartLineRecord, CatalogItem, DetectedArtwork } from "@/lib/api";
 import { useCart } from "@/store/cart";
 
 export const uploadMock: {
   fileId: string | null;
   detected: DetectedArtwork | null;
   contentType: string | null;
+  fileName?: string;
 } = {
   fileId: null,
   detected: null,
   contentType: null,
 };
+
+export const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** The registry rows a PDF/DOCX-only document listing names (gridgo-api#198). */
+export const PDF_FORMAT: AcceptedFormat = {
+  code: "pdf", displayName: "PDF", inputKind: "file", extensions: ["pdf"], mimeTypes: ["application/pdf"], active: true,
+};
+export const DOCX_FORMAT: AcceptedFormat = {
+  code: "docx", displayName: "Word document", inputKind: "file", extensions: ["docx"], mimeTypes: [DOCX_TYPE], active: true,
+};
+
+/** What GRIDGO reads from a Word file: a page count, when Word saved one, and nothing else. */
+export function docxDetected(pageCount: number | null): DetectedArtwork {
+  return {
+    kind: "document",
+    pageCount,
+    pixelWidth: null,
+    pixelHeight: null,
+    dpi: null,
+    measureUnit: null,
+    widthMilli: null,
+    heightMilli: null,
+    pageSize: null,
+    orientation: null,
+  };
+}
 
 export const DOCUMENT_ITEM: CatalogItem = {
   id: "sci_docs",
@@ -146,7 +173,7 @@ export function uploadHookState(initial?: { fileId?: string | null }) {
       ? {
           phase: "stored" as const,
           fileId,
-          fileName: "thesis.pdf",
+          fileName: uploadMock.fileName ?? "thesis.pdf",
           progress: null,
           error: null,
           size: 48_000,

@@ -66,7 +66,7 @@ describe("artworkErrorMessage", () => {
   const cases: [string, number, RegExp][] = [
     ["heic_not_supported", 415, /Most Compatible|JPEG/],
     ["file_too_large", 413, /under 200 MB/],
-    ["file_type_mismatch", 415, /JPEG, PNG, WebP or PDF/],
+    ["file_type_mismatch", 415, /JPEG, PNG, WebP, PDF or Word document/],
     ["minio_unavailable", 503, /storage is offline/i],
     ["file_empty", 400, /empty/i],
   ];

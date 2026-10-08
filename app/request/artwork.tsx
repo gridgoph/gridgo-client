@@ -19,6 +19,8 @@ import {
   artworkCheckFailure,
   detectedProportions,
   detectedSummary,
+  isWordDocument,
+  needsManualPageTotal,
 } from "@/lib/artworkUpload";
 import { artworkSizeNote } from "@/lib/artworkSize";
 import {
@@ -29,7 +31,7 @@ import {
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
-import { documentPagesSummary, pageRangeError } from "@/lib/documentPages";
+import { documentPagesSummary, pageRangeError, pageTotalError } from "@/lib/documentPages";
 import { userFacingError } from "@/lib/copy";
 import {
   designLinkFormats,
@@ -44,6 +46,7 @@ import {
   formatSentence,
   linkFormats,
   pickerMimeTypes,
+  uploadLimitLine,
 } from "@/lib/listing";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
@@ -66,9 +69,10 @@ import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
  * a Canva page tells nobody outside a browser who may see it, and Operations
  * opens every design before it prints.
  *
- * An image is shown on the product. A PDF or a link is not: nothing on this
- * phone can rasterise a PDF, and a drawn rectangle standing in for one would be
- * a picture of a file GRIDGO has not looked at. That case gets the file named
+ * An image is shown on the product. A PDF, a Word file or a link is not:
+ * nothing on this phone can rasterise a PDF or lay out a Word file, and a
+ * drawn rectangle standing in for one would be a picture of a file GRIDGO has
+ * not looked at. That case gets the file named
  * instead, which is the honest version of the same reassurance.
  *
  * A size that does not match the sheet is a warning and never a block. A client
@@ -96,6 +100,7 @@ export default function ArtworkScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [rangeDraft, setRangeDraft] = useState<{ fileId: string; text: string } | null>(null);
+  const [totalDraft, setTotalDraft] = useState<{ fileId: string; text: string } | null>(null);
 
   /**
    * The picker filter and its refusal, in the shop's words. Rebuilt only when
@@ -191,6 +196,33 @@ export default function ArtworkScreen() {
   );
 
   /**
+   * The page total of a Word file that did not say. GRIDGO prices pages,
+   * ranges and copies from it, and keeps any range already chosen.
+   */
+  const savePageTotal = useCallback(
+    async (pages: number) => {
+      if (!line || saving) return;
+      setSaving(true);
+      setSaveError(null);
+      try {
+        adopt(
+          await run((cartId) =>
+            api.updateCartLine(cartId, line.id, { measurement: { pages } }),
+          ),
+        );
+        setTotalDraft(null);
+      } catch (error) {
+        setSaveError(
+          userFacingError(error, "That page count did not save. Try again in a moment."),
+        );
+      } finally {
+        setSaving(false);
+      }
+    },
+    [line?.id, saving], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  /**
    * The artwork's own proportions.
    *
    * GRIDGO reads these out of the bytes as they are uploaded, which is both
@@ -219,9 +251,11 @@ export default function ArtworkScreen() {
       .catch(() => setMeasuredPixels(null));
   }, []);
 
+  // A Word file has no shape to measure, and Image cannot open one.
+  const wordFile = detected?.kind === "document" || isWordDocument(upload.state.contentType);
   useEffect(() => {
-    if (!measured) measure(stored ?? null);
-  }, [stored, measure, measured]);
+    if (!measured && !wordFile) measure(stored ?? null);
+  }, [stored, measure, measured, wordFile]);
 
   const pixels = !measured && stored && measuredPixels?.fileId === stored ? measuredPixels.size : null;
   useTourScreen("artwork", line != null);
@@ -296,7 +330,15 @@ export default function ArtworkScreen() {
   const rangeText = rangeDraft?.fileId === line.artworkFileId ? rangeDraft.text : documentPages?.range ?? "";
   const rangeDirty = rangeText !== (documentPages?.range ?? "");
   const rangeError = documentPages ? pageRangeError(rangeText, documentPages.total) : null;
-  const unreadPages = item?.pricingUnit === "per_page" && !documentPages
+  const wordNeedsTotal = needsManualPageTotal(detected, upload.state.contentType, item?.pricingUnit);
+  // Asked only once the file is the line's: the count belongs to the file GRIDGO holds.
+  const manualTotal = wordNeedsTotal && stored === line.artworkFileId;
+  const savedTotal = documentPages ? String(documentPages.total) : "";
+  const totalText = totalDraft?.fileId === line.artworkFileId ? totalDraft.text : savedTotal;
+  const totalDirty = manualTotal && totalText.trim() !== savedTotal;
+  const totalError = totalDirty ? pageTotalError(totalText) : null;
+  const pagesMissing = item?.pricingUnit === "per_page" && !documentPages;
+  const unreadPages = pagesMissing && !wordNeedsTotal
     ? "Upload a document with a readable page count. If needed, export it as a PDF and upload it again."
     : null;
 
@@ -320,7 +362,7 @@ export default function ArtworkScreen() {
   const fileProblem = onLine ? artworkCheckFailure(upload.state.fileCheck) : null;
   const checkoutProblem = currentProblem(artworkProblems, line);
   const canCheckout =
-    hasArtwork && (!asksPages || (stored === line.artworkFileId && !saveError)) && !saving && !linkSaving && !linkChecking && !unreadPages && !rangeDirty && !rangeError && !linkBlocked && !fileProblem;
+    hasArtwork && (!asksPages || (stored === line.artworkFileId && !saveError)) && !saving && !linkSaving && !linkChecking && !pagesMissing && !totalDirty && !rangeDirty && !rangeError && !linkBlocked && !fileProblem;
   const name = item?.name ?? "this item";
   /** Check the link and, unless it plainly cannot be opened, keep it on the line. */
   const commitLinkText = (text: string, options?: { recheck?: boolean }) =>
@@ -385,6 +427,7 @@ export default function ArtworkScreen() {
               emphasis={hasArtwork ? "quiet" : "primary"}
               resolution={resolution}
               resolutionQuiet={sizeNote != null}
+              accepts={uploads.length ? uploadLimitLine(uploads) : undefined}
             />
           </TourTarget>
         ) : null}
@@ -462,14 +505,49 @@ export default function ArtworkScreen() {
         {asksPages ? (
           <View className="mt-4 gap-3">
             <Text className="text-overline text-text-muted">DOCUMENT PAGES</Text>
-            {documentPages ? (
+            {/*
+              A Word file that did not save its page count. The client says how
+              many pages it has; a count GRIDGO read is never typed over.
+            */}
+            {manualTotal ? (
               <>
                 <Text className="text-body-lg text-text-primary">
-                  {documentPages.total} pages in this file
+                  {documentPages ? `${documentPages.total} pages in this file` : "How many pages does your file have?"}
                 </Text>
                 <Text className="text-caption text-text-secondary">
-                  Read from your file. Copies are set at checkout.
+                  Your Word file did not say how many pages it has. Enter the total and GRIDGO
+                  prices your pages from it. Copies are set at checkout.
                 </Text>
+                <Text className="text-body font-medium text-text-primary">Total pages in this file</Text>
+                <TextInput
+                  value={totalText}
+                  onChangeText={(text) => setTotalDraft({ fileId: line.artworkFileId ?? "", text })}
+                  editable={!saving}
+                  placeholder="For example 12"
+                  accessibilityLabel="Total pages in this file"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  className="gg-field px-4 text-body-lg text-text-primary"
+                />
+                {totalError ? <Text accessibilityRole="alert" className="text-body text-error">{totalError}</Text> : null}
+                {totalDirty ? (
+                  <SecondaryButton label="Save page count" disabled={saving || Boolean(totalError)}
+                    onPress={() => void savePageTotal(Number(totalText.trim()))} />
+                ) : null}
+              </>
+            ) : null}
+            {documentPages ? (
+              <>
+                {manualTotal ? null : (
+                  <>
+                    <Text className="text-body-lg text-text-primary">
+                      {documentPages.total} pages in this file
+                    </Text>
+                    <Text className="text-caption text-text-secondary">
+                      Read from your file. Copies are set at checkout.
+                    </Text>
+                  </>
+                )}
                 <Text className="text-body font-medium text-text-primary">Pages to print</Text>
                 <TextInput
                   value={rangeText}
@@ -493,7 +571,7 @@ export default function ArtworkScreen() {
                   <Text className="text-body text-text-primary">{documentPagesSummary(documentPages)}</Text>
                 )}
               </>
-            ) : <Text className="text-body text-error">{unreadPages}</Text>}
+            ) : unreadPages ? <Text className="text-body text-error">{unreadPages}</Text> : null}
           </View>
         ) : null}
 

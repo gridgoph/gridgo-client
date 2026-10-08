@@ -297,6 +297,7 @@ export const ARTWORK_CHECKOUT_CODES = [
   "document_page_count_required",
   "artwork_required",
   "artwork_check_required",
+  "artwork_file_format_not_accepted",
 ] as const;
 
 export type ArtworkRefusal = {
@@ -319,6 +320,8 @@ function artworkRefusalFallback(code: ArtworkRefusal["code"]): string {
       return "Upload the artwork or add a design link anyone can view.";
     case "artwork_check_required":
       return "Your artwork changed while GRIDGO was checking it. Place the order again.";
+    case "artwork_file_format_not_accepted":
+      return "This item does not take that type of file. Upload the artwork in one of the formats it lists.";
   }
 }
 
