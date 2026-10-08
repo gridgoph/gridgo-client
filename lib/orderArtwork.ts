@@ -1,4 +1,5 @@
 import type { Order, StoredFile } from "@/lib/api";
+import { isWordDocument } from "@/lib/artworkUpload";
 
 export type ArtworkReference = { fileId: string; kind: "artwork" | "mockup"; itemName?: string };
 
@@ -43,7 +44,8 @@ export function isOrderArtwork(file: StoredFile, orderId: string, kind: ArtworkR
 
 export function describeArtwork(file: StoredFile): string {
   const mime = file.detectedContentType.toLowerCase();
-  const type = mime === "application/pdf" ? "PDF" : mime === "image/vnd.adobe.photoshop" ? "Photoshop file" : mime.split("/")[1]?.toUpperCase() || "File";
+  const type = mime === "application/pdf" ? "PDF" : mime === "image/vnd.adobe.photoshop" ? "Photoshop file"
+    : isWordDocument(mime) ? "Word document" : mime.split("/")[1]?.toUpperCase() || "File";
   const size = file.size >= 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1024))} KB`;
   return `${type} · ${size}`;
 }

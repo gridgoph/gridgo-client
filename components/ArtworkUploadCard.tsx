@@ -1,4 +1,4 @@
-import { Upload } from "lucide-react-native";
+import { FileText, Upload } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -11,6 +11,7 @@ import {
   artworkChip,
   artworkStatusLine,
   isArtworkBusy,
+  isWordDocument,
   type ArtworkUploadState,
 } from "@/lib/artworkUpload";
 import {
@@ -48,6 +49,11 @@ type Props = {
    * the resolution stays a quiet fact here rather than a second amber line.
    */
   resolutionQuiet?: boolean;
+  /**
+   * What this listing takes and how large, in its own terms ("PDF or Word
+   * document, up to …"). Omitted where no listing narrows it.
+   */
+  accepts?: string;
 };
 
 /**
@@ -73,10 +79,13 @@ export function ArtworkUploadCard({
   emphasis = "quiet",
   resolution = null,
   resolutionQuiet = false,
+  accepts,
 }: Props) {
   const colors = useThemeColors();
   const chip = artworkChip(state);
   const busy = isArtworkBusy(state);
+  const acceptLine = accepts || `${ARTWORK_ACCEPTED}, up to ${ARTWORK_MAX_MIB} MB`;
+  const wordFile = isWordDocument(state.contentType, state.fileName);
   const facts = describeArtworkFile({
     originalFilename: state.fileName || null,
     detectedContentType: state.contentType,
@@ -107,13 +116,23 @@ export function ArtworkUploadCard({
 
       {state.phase === "empty" ? (
         <Text className="text-body text-text-secondary">
-          Send the file you want printed — {ARTWORK_ACCEPTED}, up to {ARTWORK_MAX_MIB} MB.
+          Send the file you want printed — {acceptLine}.
         </Text>
       ) : (
         <View className="gap-2">
-          <Text className="text-body-lg text-text-primary" numberOfLines={2}>
-            {state.fileName}
-          </Text>
+          {/* A Word file is named, never drawn: nothing on the phone lays one out. */}
+          {wordFile ? (
+            <View className="flex-row items-center gap-2">
+              <FileText size={20} color={colors.textSecondary} strokeWidth={2} accessibilityLabel="Word document" />
+              <Text className="min-w-0 flex-1 text-body-lg text-text-primary" numberOfLines={2}>
+                {state.fileName}
+              </Text>
+            </View>
+          ) : (
+            <Text className="text-body-lg text-text-primary" numberOfLines={2}>
+              {state.fileName}
+            </Text>
+          )}
           <Text
             className={state.phase === "failed" ? "text-body text-error" : "text-body text-text-secondary"}
           >
@@ -220,7 +239,7 @@ export function ArtworkUploadCard({
       onPress={onPick}
       accessibilityRole="button"
       accessibilityLabel="Choose your artwork file"
-      accessibilityHint={`${ARTWORK_ACCEPTED}, up to ${ARTWORK_MAX_MIB} MB`}
+      accessibilityHint={acceptLine}
       className="gg-card gg-touch gap-4"
       style={({ pressed }) => (pressed ? { opacity: 0.9 } : undefined)}
     >

@@ -21,6 +21,7 @@ import {
   type CatalogPhoto,
   type LineMeasurement,
 } from "@/lib/api";
+import { ARTWORK_MAX_MIB, DOCX_CONTENT_TYPE, DOCX_MAX_MIB } from "@/lib/artworkUpload";
 import { clientFromPriceMinorOf, clientAmountMinor } from "@/lib/gridgoPrice";
 import { lineTotalMinor, squareUnitWord, unitWord } from "@/lib/measurement";
 
@@ -400,6 +401,23 @@ export function fileMatchesFormats(
   if (extension && accepted.includes(extension)) return true;
   const mime = mimeType?.toLowerCase() ?? "";
   return mime ? pickerMimeTypes(item).some((type) => type.toLowerCase() === mime) : false;
+}
+
+/** Word files are held to their own, smaller limit (gridgo-api#198). */
+function isWordFormat(format: AcceptedFormat): boolean {
+  return format.code === "docx" || format.mimeTypes.includes(DOCX_CONTENT_TYPE);
+}
+
+/**
+ * "PDF or Word document, up to 200 MB (Word documents up to 16 MB)" — what the
+ * empty artwork card asks for, in this listing's terms and with its limits.
+ */
+export function uploadLimitLine(formats: AcceptedFormat[]): string {
+  if (!formats.length) return "";
+  const sentence = formatSentence(formats);
+  if (!formats.some(isWordFormat)) return `${sentence}, up to ${ARTWORK_MAX_MIB} MB`;
+  if (formats.every(isWordFormat)) return `${sentence}, up to ${DOCX_MAX_MIB} MB`;
+  return `${sentence}, up to ${ARTWORK_MAX_MIB} MB (Word documents up to ${DOCX_MAX_MIB} MB)`;
 }
 
 // ---------------------------------------------------------------------------

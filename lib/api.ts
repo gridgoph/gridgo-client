@@ -460,8 +460,9 @@ export type Zone = {
  * physical one.
  */
 export type DetectedArtwork = {
-  kind: "pdf" | "raster";
-  /** Pages in a PDF; 1 for an image; null when the file would not say. */
+  /** "document" is a Word file: read for its page count only, never rendered. */
+  kind: "pdf" | "raster" | "document";
+  /** Pages in a PDF or Word file; 1 for an image; null when the file would not say. */
   pageCount: number | null;
   pixelWidth: number | null;
   pixelHeight: number | null;

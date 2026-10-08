@@ -165,8 +165,11 @@ export type ArtworkFact = {
   tone: "neutral" | "warn";
 };
 
+const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
 const PRINTABLE_TYPES: Record<string, string> = {
   "application/pdf": "PDF",
+  [DOCX_TYPE]: "Word document",
   "image/jpeg": "JPEG image",
   "image/png": "PNG image",
   "image/webp": "WebP image",
@@ -197,7 +200,8 @@ export function describeArtworkFile(file: {
       id: "size",
       label: "Size",
       value: formatBytes(file.size),
-      tone: file.size < THIN_FILE_BYTES ? "warn" : "neutral",
+      // A small Word file is normal: text is light, and it has no pixels to be thin on.
+      tone: file.size < THIN_FILE_BYTES && file.detectedContentType !== DOCX_TYPE ? "warn" : "neutral",
     });
   }
   return facts;
