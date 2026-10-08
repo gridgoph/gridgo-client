@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.276 (New feature)
+
+- Document printing now takes Word files, and you can type the page count when a file does not say.
+
 ## 1.0.273 (New feature)
 
 - You can now send your rider a photo, like your gate or landmark, in your delivery messages.
