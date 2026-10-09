@@ -8,6 +8,7 @@ import {
   PackageCheck,
   SquarePen,
   Star,
+  TicketPercent,
   Upload,
   Wallet,
   type LucideIcon,
@@ -48,6 +49,7 @@ const CALLOUT_ICONS = {
   "square-pen": SquarePen,
   "package-check": PackageCheck,
   star: Star,
+  ticket: TicketPercent,
 } satisfies Record<NotificationCalloutIcon, LucideIcon>;
 
 /** Semantic tone → the theme colour it is drawn in. `neutral` carries no signal. */

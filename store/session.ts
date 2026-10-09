@@ -2,6 +2,7 @@ import { useCart } from "@/store/cart";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useHandoverActions } from "@/store/handoverActions";
 import { useNotifications } from "@/store/notifications";
+import { useVouchers } from "@/store/vouchers";
 import { useOrderRanking } from "@/store/orderRanking";
 import { setLiveOwner } from "@/lib/live";
 import { clearBoardCache } from "@/lib/shopBoards";
@@ -359,5 +360,6 @@ useSession.subscribe((state, previous) => {
   clearMatchSelections();
   useOrderRanking.getState().clear();
   useNotifications.getState().setOwner(id);
+  useVouchers.getState().reset();
   setLiveOwner(id);
 });

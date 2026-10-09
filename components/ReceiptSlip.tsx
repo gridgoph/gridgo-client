@@ -6,6 +6,7 @@ import Svg, { Line, Path } from "react-native-svg";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { GroupPlate } from "@/components/ShopGroupSection";
 import { groupDateLine } from "@/lib/basketGroups";
+import { VOUCHER_LABEL, VOUCHER_SHARE_LABEL, voucherAmount } from "@/lib/vouchers";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
 import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
@@ -107,6 +108,9 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
               value={discountAmount(view.money.organizationDiscountMinor)}
             />
           ) : null}
+          {view.money.voucherDiscountMinor ? (
+            <SlipRow label={VOUCHER_LABEL} value={voucherAmount(view.money.voucherDiscountMinor)} />
+          ) : null}
           <SlipRow {...receiptFulfilmentRow(view.money, view.groups ?? 0)} />
           {showServiceFee ? (
             <ServiceFeeRow explainOnly divider={false} rateBps={view.money.serviceFeeRateBps} />
@@ -197,6 +201,9 @@ function SlipGroup({ group }: { group: ReceiptGroup }) {
           label={ORGANIZATION_DISCOUNT_LABEL}
           value={discountAmount(group.organizationDiscountMinor)}
         />
+      ) : null}
+      {group.voucherDiscountMinor ? (
+        <SlipRow label={VOUCHER_SHARE_LABEL} value={voucherAmount(group.voucherDiscountMinor)} />
       ) : null}
     </View>
   );

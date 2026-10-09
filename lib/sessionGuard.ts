@@ -24,6 +24,7 @@ export const AUTHENTICATED_ROOT_SCREENS = [
   "whats-new",
   "saved-places",
   "saved-place",
+  "vouchers",
 ] as const;
 
 /** Only reachable while signed out (mirror of the signed-in set). */

@@ -205,6 +205,9 @@ export type Order = {
   invoiceNumber?: string | null;
   /** An approved organization's discount, already inside `totalMinor`. */
   organizationDiscountMinor?: number;
+  /** The GRIDGO-funded voucher this order used, already inside `totalMinor` (gridgo-api#204). */
+  voucher?: VoucherLine | null;
+  voucherDiscountMinor?: number;
   /** The officer of record when the order was placed. Never today's officer. */
   organizationOfficer?: OrganizationOfficerSnapshot | null;
   /** A printed-invoice request this client filed, when there is one. */
@@ -566,6 +569,8 @@ export type Notification = {
   imageUrl?: string | null;
   read: boolean;
   at: string;
+  /** The wallet item a voucher notice is about (gridgo-api#204). */
+  voucherId?: string;
   /** Organization reminders and notices (gridgo-client#165). */
   organizationUserId?: string;
   officerId?: string | null;
@@ -2043,6 +2048,18 @@ export type CartQuote = {
    * (gridgo-api#155). Drawn as its own line, never subtracted again.
    */
   organizationDiscountMinor?: number;
+  /**
+   * The voucher GRIDGO picked or the client applied (gridgo-api#204). A GET
+   * previews it without holding it; `reservation` says when it is held.
+   * Null when none applies. Absent on an API from before vouchers.
+   */
+  voucher?: Voucher | null;
+  /** What the voucher takes off, already out of `totalMinor`. Zero when none. */
+  voucherDiscountMinor?: number;
+  /** Which discount won: a voucher and the organization discount never stack. */
+  discountKind?: "voucher" | "organization" | null;
+  /** Each group's share of the voucher, keyed by the group's id. */
+  voucherGroups?: { groupId: string; voucherDiscountMinor: number; totalMinor: number }[];
 };
 
 export type CartLineRecord = {
@@ -2108,6 +2125,8 @@ export type CartGroup = {
   pickupFeeMinor?: number;
   /** This group's own organization discount, already out of `totalMinor` (#166). */
   organizationDiscountMinor?: number;
+  /** This group's share of the voucher, already out of `totalMinor` (gridgo-api#204). */
+  voucherDiscountMinor?: number;
 };
 
 export type Cart = {
@@ -2249,6 +2268,8 @@ export type InvoiceGroup = {
   pickupFeeMinor?: number;
   /** This group's own organization discount, already out of `totalMinor` (#166). */
   organizationDiscountMinor?: number;
+  /** This group's share of the voucher, already out of `totalMinor` (gridgo-api#204). */
+  voucherDiscountMinor?: number;
 };
 
 export type Invoice = {
@@ -2282,6 +2303,9 @@ export type Invoice = {
   };
   /** An approved organization's discount, already inside `totalMinor`. */
   organizationDiscountMinor?: number;
+  /** The voucher line, already inside `totalMinor` (gridgo-api#204). */
+  voucher?: VoucherLine | null;
+  voucherDiscountMinor?: number;
   /** The officer of record when the order was placed (gridgo-client#164). */
   organizationOfficer?: OrganizationOfficerSnapshot | null;
 };
@@ -2695,6 +2719,82 @@ export async function requestPhysicalInvoice(
     { method: "POST", body: JSON.stringify(draft) },
   );
   return result.request;
+}
+
+// ---------------------------------------------------------------------------
+// Vouchers — see docs/VOUCHERS_API.md in gridgo-api (gridgo-api#204)
+// ---------------------------------------------------------------------------
+
+export type VoucherStatus = "available" | "used" | "expired" | "void" | (string & {});
+
+/**
+ * One wallet item. GRIDGO pays for it: it is never cash and never someone
+ * else's. `redeemable` is false while it is held for an order (`reservation`)
+ * or its offer is paused — it still sits under Available.
+ */
+export type Voucher = {
+  id: string;
+  campaignId: string;
+  name: string | null;
+  valueMinor: number;
+  status: VoucherStatus;
+  issuedAt: string;
+  expiresAt: string;
+  secondsRemaining: number;
+  redeemable: boolean;
+  reservation: { id: string; cartId: string; expiresAt: string } | null;
+  fundedBy: "GRIDGO" | (string & {});
+  transferable: false;
+  cashValue: false;
+};
+
+/** The voucher as an order or invoice snapshotted it. */
+export type VoucherLine = {
+  id: string;
+  campaignId?: string;
+  label?: string;
+  fundedBy?: string;
+  amountMinor: number;
+};
+
+export type VoucherTab = "available" | "used" | "expired" | "all";
+
+export type VoucherList = { serverTime: string; vouchers: Voucher[] };
+
+/** `GET /me/vouchers?tab=` — Expired also carries void items. */
+export async function listVouchers(tab: VoucherTab = "all"): Promise<VoucherList> {
+  return request<VoucherList>(`/me/vouchers?tab=${encodeURIComponent(tab)}`);
+}
+
+/**
+ * `POST /me/vouchers/code` — claims a shared code. Idempotent: a code already
+ * claimed answers with the same wallet item and `issued: false`.
+ */
+export async function addVoucherCode(code: string): Promise<{ voucher: Voucher; issued: boolean }> {
+  return request(`/me/vouchers/code`, { method: "POST", body: JSON.stringify({ code }) });
+}
+
+export type CartVoucherResult = { cart: Cart; serverTime: string };
+
+/** `GET /me/carts/:id/voucher` — the quote with GRIDGO's automatic pick. Holds nothing. */
+export async function getCartVoucher(cartId: string): Promise<CartVoucherResult> {
+  return request(`/me/carts/${encodeURIComponent(cartId)}/voucher`);
+}
+
+/** `POST /me/carts/:id/voucher` — applies a wallet voucher or a code, and holds it for 30 minutes. */
+export async function applyCartVoucher(
+  cartId: string,
+  input: { voucherId: string } | { code: string },
+): Promise<CartVoucherResult> {
+  return request(`/me/carts/${encodeURIComponent(cartId)}/voucher`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** `DELETE /me/carts/:id/voucher` — takes it off and stops GRIDGO picking it again for this basket. */
+export async function removeCartVoucher(cartId: string): Promise<CartVoucherResult> {
+  return request(`/me/carts/${encodeURIComponent(cartId)}/voucher`, { method: "DELETE" });
 }
 
 // ---------------------------------------------------------------------------

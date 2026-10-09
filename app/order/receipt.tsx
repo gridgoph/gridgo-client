@@ -6,6 +6,8 @@ import { CircleCheck, ChevronLeft } from "lucide-react-native";
 
 import { ErrorState } from "@/components/ErrorState";
 import { OrganizationDiscountRow } from "@/components/OrganizationDiscount";
+import { VoucherDiscountRow } from "@/components/VoucherDiscountRow";
+import { VOUCHER_SHARE_LABEL } from "@/lib/vouchers";
 import { OrderReference } from "@/components/OrderReference";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PrintedReceipt } from "@/components/PrintedReceipt";
@@ -248,6 +250,7 @@ export default function OrderReceiptScreen() {
                   value={group.deliveryFeeMinor === 0 ? "None" : formatPhp(group.deliveryFeeMinor)}
                 />
                 <OrganizationDiscountRow source={group} />
+                <VoucherDiscountRow source={group} label={VOUCHER_SHARE_LABEL} />
               </View>
             ))}
           </View>
@@ -271,6 +274,7 @@ export default function OrderReceiptScreen() {
           <View className="gg-card">
             <SpecRow label="Printing" value={formatPhp(view.money.printingMinor)} />
             <OrganizationDiscountRow source={view.money} />
+            <VoucherDiscountRow source={view.money} />
             <SpecRow {...receiptFulfilmentRow(view.money, view.groups ?? 0)} />
             {serviceFeeVisibleToClient(settings) ? (
               <ServiceFeeRow

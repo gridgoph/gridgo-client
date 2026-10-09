@@ -4,6 +4,7 @@ import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
 import { isApplicationNotification } from "@/lib/organization";
 import { refundNotificationCopy } from "@/lib/refunds";
+import { exactTime, voucherNotificationCopy } from "@/lib/vouchers";
 import { formatTimelineStamp } from "@/lib/relativeTime";
 import { rescheduleNotificationCopy, rescheduleNotificationNeedsYou } from "@/lib/reschedule";
 import {
@@ -37,7 +38,8 @@ export type NotificationCalloutIcon =
   | "upload"
   | "square-pen"
   | "package-check"
-  | "star";
+  | "star"
+  | "ticket";
 
 /**
  * The one thing on a card the client must do or know.
@@ -433,6 +435,9 @@ export function presentNotification(
   const paymentPending = payment != null && payment.amountMinor > 0;
   const collect = isCollect(notification);
   const hold = collectionHeld(notification);
+  // A voucher notice is about the wallet, never a job (gridgo-api#204).
+  const voucher = voucherNotificationCopy(notification.type, notification.body);
+  if (voucher) return presentVoucher(notification, voucher);
   const refund =
     refundNotificationCopy(notification.type) ??
     shopRecoveryNotificationCopy(notification) ??
@@ -494,6 +499,46 @@ export function presentNotification(
     lane: needsYou ? "need_you" : "update",
     hint: paymentPending ? "Opens current payment details" : overlay.hint,
     callout: applicationAsk ? APPLICATION_SENT_BACK_CALLOUT : calloutFor(notification, hold, collectReady),
+  };
+}
+
+/**
+ * A voucher notice: the app's own words, a way into the wallet, and the
+ * expiry as the one callout — amber two days out, red on the last day, the
+ * same thresholds as the wallet's countdown.
+ */
+function presentVoucher(
+  notification: Notification,
+  copy: NonNullable<ReturnType<typeof voucherNotificationCopy>>,
+): PresentedNotification {
+  const issued = notification.type === "voucher_issued";
+  return {
+    stamp: null,
+    title: copy.title,
+    body: copy.body,
+    jobLine: null,
+    reference: null,
+    railKind: null,
+    stageIndex: null,
+    stageLabel: null,
+    collectHold: false,
+    collectReady: false,
+    lane: "update",
+    hint: "Opens your vouchers",
+    callout: issued
+      ? {
+          tone: "info",
+          icon: "ticket",
+          // The date goes here, not in the body: the body is cut at two lines.
+          title: copy.expiresAt ? `Use it before ${exactTime(copy.expiresAt)}` : "Comes off at checkout",
+          detail: "It comes off your next order at checkout. One voucher per order.",
+        }
+      : {
+          tone: notification.type === "voucher_expiry_24h" ? "error" : "warning",
+          icon: "clock",
+          title: copy.expiresAt ? `Use it before ${exactTime(copy.expiresAt)}` : "Use it soon",
+          detail: "It cannot be used after that, and it is never paid out as cash.",
+        },
   };
 }
 
