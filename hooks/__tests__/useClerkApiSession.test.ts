@@ -5,6 +5,7 @@ import { ApiError, type User } from "@/lib/api";
 import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
 import { useSignupFlow } from "@/store/signupFlow";
+import { useEnrollmentConsent } from "@/store/enrollmentConsent";
 
 const mockGetToken = jest.fn(
   async (_options?: { skipCache?: boolean }): Promise<string | null> => "clerk-jwt",
@@ -110,7 +111,8 @@ describe("useClerkApiSession", () => {
     );
   });
 
-  it("activates then adopts a new Google client", async () => {
+  it("finishes a sign-up whose agreement is held: activates, then adopts", async () => {
+    useEnrollmentConsent.getState().hold({ kind: "legacy" });
     const client: User = {
       id: "u1",
       email: "ana@company.com",
@@ -130,6 +132,18 @@ describe("useClerkApiSession", () => {
     expect(mockSignOut).not.toHaveBeenCalled();
     expect(useSession.getState().justProvisioned).toBe(true);
     expect(mockGetToken).toHaveBeenCalledWith({ skipCache: true });
+    expect(useEnrollmentConsent.getState().choice).toBeNull();
+  });
+
+  it("sends a new Google identity to Finish signing up instead of enrolling it", async () => {
+    useEnrollmentConsent.getState().clear();
+    mockMe.mockRejectedValue(new ApiError(401, { error: "unauthorized" }));
+
+    renderHook(() => useClerkApiSession());
+
+    await waitFor(() => expect(useSession.getState().pendingClerkProfile).toBe(true));
+    expect(mockActivate).not.toHaveBeenCalled();
+    expect(useSession.getState().user).toBeNull();
   });
 
   it("signs out a leftover session that cannot mint a JWT instead of failing login", async () => {

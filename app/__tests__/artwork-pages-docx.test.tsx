@@ -13,6 +13,7 @@ import {
   renderInSafeArea,
   uploadMock,
 } from "../../test/artworkPagesFixtures";
+import { agreeArtworkRights } from "@/test/legalGate";
 
 jest.mock("expo-router", () => ({
   useFocusEffect: () => undefined,
@@ -44,6 +45,8 @@ jest.mock("@/lib/api", () => ({
 const api = require("@/lib/api");
 
 beforeEach(() => {
+  // The per-order artwork box, ticked by the client (one press per test).
+  agreeArtworkRights("cart:cart_1");
   jest.spyOn(Image, "getSize").mockImplementation(() => undefined);
   uploadMock.fileId = "file_docx";
   uploadMock.fileName = "thesis.docx";

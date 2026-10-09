@@ -5,6 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import SsoCallbackScreen from "@/app/sso-callback";
 import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
+import { clearLegalGate } from "@/test/legalGate";
 
 const mockReplace = jest.fn();
 const mockSetActive = jest.fn(async () => undefined);
@@ -84,6 +85,7 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("SSO callback route", () => {
   beforeEach(() => {
+    clearLegalGate();
     mockIsSignedIn = false;
     mockSessionId = null;
     mockParams = {};

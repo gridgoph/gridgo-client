@@ -3,6 +3,7 @@ import { Redirect, type Href } from "expo-router";
 
 import { SessionWait } from "@/components/SessionWait";
 import { authLanding, type AuthLanding } from "@/lib/authLanding";
+import { legalGateFor, useLegalConsent } from "@/store/legalConsent";
 import { hasRanked, usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
 
@@ -16,6 +17,7 @@ import { useSession } from "@/store/session";
  */
 
 const COMPLETE_PROFILE = "/complete-profile" as Href;
+const LEGAL_REVIEW = "/legal/review" as Href;
 
 export function useAuthLanding(): AuthLanding {
   const user = useSession((state) => state.user);
@@ -29,12 +31,14 @@ export function useAuthLanding(): AuthLanding {
   const { isSignedIn } = useAuth();
   const prioritiesReady = usePriorities((state) => state.loaded);
   const ranked = usePriorities(hasRanked);
+  const legal = useLegalConsent((state) => legalGateFor(state, user?.id));
   return authLanding({
     user,
     pendingClerkProfile,
     justProvisioned,
     prioritiesReady,
     hasRanked: ranked,
+    legal,
     signingOut,
     loading,
     ssoInFlight,
@@ -53,6 +57,7 @@ export function AuthLandingRedirect({
   whenSignedOut?: Href;
 }) {
   if (landing.kind === "complete_profile") return <Redirect href={COMPLETE_PROFILE} />;
+  if (landing.kind === "legal_review") return <Redirect href={LEGAL_REVIEW} />;
   if (landing.kind === "signing_in") return <SessionWait tone="in" role="client" />;
   if (landing.kind === "signing_out") return <SessionWait tone="out" role="client" />;
   // Ranking read: show nothing rather than identity copy.

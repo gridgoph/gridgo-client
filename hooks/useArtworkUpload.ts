@@ -54,7 +54,7 @@ export type ArtworkUploadController = {
   /** Abandon an in-flight transfer. */
   cancel: () => void;
   /** Bind a stored file to an order. Returns the updated order. */
-  attachTo: (orderId: string) => Promise<api.Order>;
+  attachTo: (orderId: string, artworkRights?: api.ArtworkRightsBody | null) => Promise<api.Order>;
   /** Forget everything, e.g. after the request is sent. */
   reset: () => void;
   /** Adopt a file the order already holds, without re-uploading. */
@@ -283,14 +283,19 @@ export function useArtworkUpload(
   }, []);
 
   const attachTo = useCallback(
-    async (orderId: string) => {
+    /**
+     * `artworkRights` is the client's per-order rights statement, recorded by
+     * GRIDGO against this order (`docs/LEGAL_API.md`). Null only against an
+     * API with no legal library.
+     */
+    async (orderId: string, artworkRights?: api.ArtworkRightsBody | null) => {
       const fileId = state.fileId;
       if (!fileId) {
         throw new Error(`Upload your artwork first. Accepted formats are ${ARTWORK_ACCEPTED}.`);
       }
       setState((prev) => ({ ...prev, phase: "attaching", error: null }));
       try {
-        const { order, file } = await api.attachFileToOrder(fileId, orderId);
+        const { order, file } = await api.attachFileToOrder(fileId, orderId, artworkRights);
         if (aliveRef.current) {
           setState((prev) => ({
             ...prev,

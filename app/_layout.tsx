@@ -33,6 +33,7 @@ import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
 import { useClientPreferences } from "@/hooks/useClientPreferences";
+import { useLegalGate } from "@/hooks/useLegalGate";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
@@ -42,6 +43,7 @@ import {
   pushedScreenOptions,
 } from "@/lib/navigationHeaders";
 import { hasActiveSession } from "@/lib/sessionGuard";
+import { legalGateFor, useLegalConsent } from "@/store/legalConsent";
 import { useSession } from "@/store/session";
 // Side-effect: rehydrate persisted theme preference from AsyncStorage.
 import "@/store/theme";
@@ -93,12 +95,21 @@ function AppNavigation() {
   // the signed-in area from anywhere (tabs + root stack siblings), not only at launch.
   const user = useSession((s) => s.user);
   const isSignedIn = hasActiveSession(user);
+  // Terms waiting to be agreed close the ordinary app; the agreement screen,
+  // the documents, privacy requests and sign-out stay open (`docs/LEGAL_API.md`).
+  const legalBlocked = useLegalConsent(
+    (state) => legalGateFor(state, user?.id) === "blocked",
+  );
 
   useClerkApiSession();
 
   // What this account asked GRIDGO to match on, read once a session exists.
   // The landing ladder waits on it, so it cannot live in the ranking screen.
   useClientPreferences();
+
+  // Whether GRIDGO has terms waiting for this client, on every sign-in and
+  // every return to the app. The landing ladder and the guards below read it.
+  useLegalGate();
 
   // Registration, token rotation, and opening the right screen from a tapped
   // notification. Mounted once, above every route, so a tap that launched the
@@ -197,6 +208,12 @@ function AppNavigation() {
                 name="sso-callback"
                 options={{ headerShown: false, title: "Signing in" }}
               />
+              {/*
+                One legal document, by its version. Public: sign-up links to
+                it before there is an account, and the agreement screen opens
+                it while the rest of the app is closed.
+              */}
+              <Stack.Screen name="legal/[versionId]" options={pushedScreenOptions("Legal")} />
 
               <Stack.Protected guard={!isSignedIn}>
                 {/*
@@ -225,7 +242,40 @@ function AppNavigation() {
                 Expo Router removes these history entries so Android back cannot re-enter.
                 Covers root-stack pushes outside (tabs): order/[id], design-system.
               */}
+              {/*
+                Terms waiting to be agreed. While they are, this is the only
+                signed-in screen besides the documents, privacy and sign-out,
+                and it has no back: the guard below has closed what it would go
+                back to.
+              */}
+              <Stack.Protected guard={isSignedIn && legalBlocked}>
+                <Stack.Screen
+                  name="legal/review"
+                  options={{ headerShown: false, title: "Terms", gestureEnabled: false }}
+                />
+              </Stack.Protected>
+
+              {/*
+                Open to every signed-in client, including one with terms still
+                to agree to: reading the documents, asking about their data and
+                deleting the account must never wait behind a checkbox.
+              */}
               <Stack.Protected guard={isSignedIn}>
+                <Stack.Screen name="legal/index" options={pushedScreenOptions("Legal & Privacy")} />
+                <Stack.Screen name="privacy/index" options={pushedScreenOptions("Your data")} />
+                <Stack.Screen name="privacy/request" options={pushedScreenOptions("Your data")} />
+                {/*
+                  Reached from Your data and from Danger zone on Your details.
+                  It asks for the password (or an emailed code) before anything
+                  is sent.
+                */}
+                <Stack.Screen
+                  name="delete-account"
+                  options={pushedScreenOptions("Delete account")}
+                />
+              </Stack.Protected>
+
+              <Stack.Protected guard={isSignedIn && !legalBlocked}>
                 {/*
                   The tab shell draws its own per-tab headers, so its header is
                   hidden — but it still carries a title. Every screen pushed above
@@ -419,14 +469,6 @@ function AppNavigation() {
                 <Stack.Screen
                   name="change-password"
                   options={pushedScreenOptions("Password")}
-                />
-                {/*
-                  Reached only from Danger zone on Your details. It asks for
-                  the password (or an emailed code) before anything is sent.
-                */}
-                <Stack.Screen
-                  name="delete-account"
-                  options={pushedScreenOptions("Delete account")}
                 />
                 {/*
                   Becoming an organization or business client, and handing an

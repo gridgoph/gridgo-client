@@ -185,6 +185,7 @@ export type PlaceOrderBlocker =
   | "schedule"
   | "reference"
   | "proof"
+  | "rights"
   | "settings";
 
 /** Quiet helper on the basket lines. Swipe is not the only remove path. */
@@ -211,6 +212,7 @@ export function placeOrderBlockers({
   referenceOk,
   hasProof,
   hasSettings,
+  rightsAgreed = true,
 }: {
   lineCount: number;
   /** Lines GRIDGO answered with no price — checkout would refuse them too. */
@@ -236,6 +238,8 @@ export function placeOrderBlockers({
   referenceOk: boolean;
   hasProof: boolean;
   hasSettings: boolean;
+  /** The per-order artwork rights box (`docs/LEGAL_API.md`). */
+  rightsAgreed?: boolean;
 }): PlaceOrderBlocker[] {
   const blockers: PlaceOrderBlocker[] = [];
   if (lineCount === 0) blockers.push("empty");
@@ -247,6 +251,7 @@ export function placeOrderBlockers({
   if (missingBasketDate) blockers.push("date");
   if (!hasProof) blockers.push("proof");
   if (!referenceOk) blockers.push("reference");
+  if (!rightsAgreed) blockers.push("rights");
   if (!hasSettings) blockers.push("settings");
   return blockers;
 }
@@ -281,6 +286,8 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
       return "Add the screenshot of your QR payment.";
     case "reference":
       return "Enter the reference number from your payment receipt.";
+    case "rights":
+      return "Tick the box to say you have the right to print this artwork.";
     case "settings":
       return "GRIDGO could not read its current charges. Try again in a moment.";
   }

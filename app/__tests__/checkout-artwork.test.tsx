@@ -11,6 +11,7 @@ import {
   checkoutLine,
   renderInSafeArea,
 } from "@/test/checkoutFixtures";
+import { agreeArtworkRights } from "@/test/legalGate";
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), navigate: jest.fn(), dismissTo: jest.fn(), back: jest.fn() }),
@@ -49,6 +50,8 @@ const api = require("@/lib/api");
 const LINK = { formatCode: "canva_link", url: "https://www.canva.com/design/DAF1/view" };
 
 function show(cart: Cart) {
+  // The per-order artwork box, ticked by the client.
+  agreeArtworkRights(`cart:${cart.id}`);
   api.getCart.mockResolvedValue(cart);
   useCart.setState({ cartId: cart.id, cart, loading: false, busy: false, error: null, hydrated: true });
   return renderInSafeArea(<CheckoutScreen />);

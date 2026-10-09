@@ -15,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import LoginScreen from "@/app/(auth)/login";
 import { ApiError } from "@/lib/api";
 import { useSession } from "@/store/session";
+import { useEnrollmentConsent } from "@/store/enrollmentConsent";
 
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
@@ -111,6 +112,9 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("LoginScreen when the API cannot verify a just-issued Clerk token", () => {
   beforeEach(() => {
+    // An identity that has just agreed to the terms (a sign-up finishing), so
+    // GRIDGO's activate is reached and refuses the token.
+    useEnrollmentConsent.getState().hold({ kind: "legacy" });
     const unauthorized = new ApiError(401, { error: "unauthorized" });
     mockPassword.mockReset().mockResolvedValue({});
     mockFinalize.mockReset().mockResolvedValue({});

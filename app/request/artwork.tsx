@@ -51,6 +51,8 @@ import {
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { MOCKUP_LABEL } from "@/lib/productPreview";
+import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
+import { cartRightsScope, useArtworkRights } from "@/store/artworkRights";
 import { useCart } from "@/store/cart";
 import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
 
@@ -86,6 +88,10 @@ export default function ArtworkScreen() {
   const { lineId } = useLocalSearchParams<{ lineId?: string }>();
 
   const cart = useCart((state) => state.cart);
+  const rightsScope = cart ? cartRightsScope(cart.id) : null;
+  const rightsAgreed = useArtworkRights((state) =>
+    rightsScope ? state.agreed[rightsScope] === true : false,
+  );
   const run = useCart((state) => state.run);
   const adopt = useCart((state) => state.adopt);
   const line = cart?.lines.find((entry) => entry.id === lineId) ?? null;
@@ -362,7 +368,8 @@ export default function ArtworkScreen() {
   const fileProblem = onLine ? artworkCheckFailure(upload.state.fileCheck) : null;
   const checkoutProblem = currentProblem(artworkProblems, line);
   const canCheckout =
-    hasArtwork && (!asksPages || (stored === line.artworkFileId && !saveError)) && !saving && !linkSaving && !linkChecking && !pagesMissing && !totalDirty && !rangeDirty && !rangeError && !linkBlocked && !fileProblem;
+    hasArtwork &&
+    rightsAgreed && (!asksPages || (stored === line.artworkFileId && !saveError)) && !saving && !linkSaving && !linkChecking && !pagesMissing && !totalDirty && !rangeDirty && !rangeError && !linkBlocked && !fileProblem;
   const name = item?.name ?? "this item";
   /** Check the link and, unless it plainly cannot be opened, keep it on the line. */
   const commitLinkText = (text: string, options?: { recheck?: boolean }) =>
@@ -607,6 +614,16 @@ export default function ArtworkScreen() {
           products, and "add something else first" read as a step this one
           still owed.
         */}
+        {/*
+          The per-order rights statement, where the artwork goes in. Checkout
+          draws the same box again and records it against every order.
+        */}
+        {hasArtwork && rightsScope ? (
+          <View className="mt-8">
+            <ArtworkRightsBox scope={rightsScope} onOpen={(href) => router.push(href)} />
+          </View>
+        ) : null}
+
         {hasArtwork ? (
           <Pressable
             onPress={() => router.replace("/checkout")}
@@ -614,7 +631,7 @@ export default function ArtworkScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go to checkout"
             accessibilityState={{ disabled: !canCheckout }}
-            className={!canCheckout ? "gg-btn-primary gg-disabled mt-8" : "gg-btn-primary mt-8"}
+            className={!canCheckout ? "gg-btn-primary gg-disabled mt-4" : "gg-btn-primary mt-4"}
             style={({ pressed }) => (pressed && canCheckout ? { opacity: 0.9 } : undefined)}
           >
             <Text className="text-button text-action-yellow-on">

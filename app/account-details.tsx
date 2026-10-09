@@ -7,6 +7,7 @@ import { Pressable, Text, View } from "react-native";
 import { DangerZone } from "@/components/AccountPrivacy";
 import { ClientMonogram } from "@/components/ClientMonogram";
 import { ErrorState } from "@/components/ErrorState";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { FormScreen } from "@/components/FormScreen";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -324,6 +325,10 @@ export default function AccountDetailsScreen() {
             />
           </View>
         </View>
+
+        <WhyWeAsk>
+          Optional. Your photo only marks your account in the app, so you know it is yours.
+        </WhyWeAsk>
 
         {photoProblem ? (
           <ErrorState label="Picture not saved" body={photoProblem} />

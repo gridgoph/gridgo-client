@@ -1,6 +1,7 @@
 import { ApiError, type User } from "@/lib/api";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
 import { useSession } from "@/store/session";
+import { useEnrollmentConsent } from "@/store/enrollmentConsent";
 
 const mockMe = jest.fn();
 const mockActivate = jest.fn();
@@ -118,6 +119,8 @@ describe("clerkGridgoSync", () => {
   });
 
   it("offers sign-out, not an expiry, when the API refuses a live Clerk token", async () => {
+    // A sign-up finishing: the agreement is held, so activate does run.
+    useEnrollmentConsent.getState().hold({ kind: "legacy" });
     const unauthorized = new ApiError(401, { error: "unauthorized" });
     mockMe.mockRejectedValue(unauthorized);
     mockActivate.mockRejectedValue(unauthorized);
@@ -133,6 +136,17 @@ describe("clerkGridgoSync", () => {
     expect(useSession.getState().loading).toBe(false);
     // Clerk stays signed in; the person presses the recovery themselves.
     expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("never enrolls an identity that has not agreed to the terms", async () => {
+    useEnrollmentConsent.getState().clear();
+    mockMe.mockRejectedValue(new ApiError(401, { error: "unauthorized" }));
+
+    const result = await syncClerkToGridgo({ getToken, signOut, sessionId: "sess_1" });
+
+    expect(result.kind).toBe("needs_profile");
+    expect(mockActivate).not.toHaveBeenCalled();
+    expect(useSession.getState().pendingClerkProfile).toBe(true);
   });
 
   it("keeps wrong-role recovery available when Clerk sign-out fails", async () => {
