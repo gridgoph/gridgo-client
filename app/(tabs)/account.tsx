@@ -28,6 +28,9 @@ import { useIsApprovedOrganization, useOwnOrganization } from "@/store/organizat
 import { usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
 import { useTour } from "@/store/tour";
+import { useVouchers } from "@/store/vouchers";
+import { useServerNow } from "@/hooks/useVoucherClock";
+import { VOUCHERS_ROUTE, walletSummary } from "@/lib/vouchers";
 
 /**
  * The client's own account.
@@ -71,10 +74,15 @@ export default function AccountScreen() {
    */
   useLiveRefresh(["identity", "approvals"], refresh, { refreshOnFocus: false });
 
+  const loadVouchers = useVouchers((s) => s.load);
+  const vouchers = useVouchers((s) => s.list);
+  const now = useServerNow(60_000);
+
   useFocusEffect(
     useCallback(() => {
       void refresh();
-    }, [refresh]),
+      void loadVouchers();
+    }, [refresh, loadVouchers]),
   );
 
   const headline = accountHeadline(user);
@@ -163,6 +171,16 @@ export default function AccountScreen() {
               title="Saved Places"
               detail="Home, Work, and the spots you drop off to"
               onPress={() => router.push("/saved-places")}
+            />
+            {/*
+              The voucher wallet (gridgo-api#204). The line is the wallet's
+              own state — what is there and when the next one runs out — so a
+              tester can see it without opening anything.
+            */}
+            <DestinationRow
+              title="Vouchers"
+              detail={walletSummary(vouchers, now)}
+              onPress={() => router.push(VOUCHERS_ROUTE)}
             />
             {/*
               Offered only while the account is still personal. After the

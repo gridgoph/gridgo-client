@@ -18,7 +18,9 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DeliveryZonesHelp } from "@/components/DeliveryZonesHelp";
 import { EmptyState } from "@/components/EmptyState";
 import { HubPickupPanel } from "@/components/HubPickupPanel";
+import { CheckoutVoucher } from "@/components/CheckoutVoucher";
 import { OrganizationDiscountRow, OrganizationSavingsNote } from "@/components/OrganizationDiscount";
+import { VoucherDiscountRow } from "@/components/VoucherDiscountRow";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { paymentQrFromSettings, QrPaySheet } from "@/components/QrPaySheet";
@@ -105,6 +107,9 @@ import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
+import { useIsApprovedOrganization } from "@/store/organization";
+import { useVouchers } from "@/store/vouchers";
+import { voucherDiscountOf, voucherErrorMessage } from "@/lib/vouchers";
 import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
 
 /**
@@ -172,6 +177,9 @@ export default function CheckoutScreen() {
   const loadSequence = useRef(0);
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
+    // The wallet beside the basket: which vouchers could go on it, and
+    // whether the one on it is held. GRIDGO's quote already carries its pick.
+    void useVouchers.getState().load();
     await loadCart();
     if (sequence !== loadSequence.current) return;
     try {
@@ -272,6 +280,58 @@ export default function CheckoutScreen() {
         userFacingError(e, "GRIDGO could not change your order. Try again in a moment."),
       );
     }
+  };
+
+  /*
+   * The voucher on this basket (gridgo-api#204). Every change goes through
+   * GRIDGO, which answers with the re-priced basket; the wallet is read again
+   * after, because applying holds a voucher and removing lets it go.
+   */
+  const isOrganization = useIsApprovedOrganization();
+  const voucherChange = async (
+    work: (id: string) => Promise<api.CartVoucherResult>,
+    after?: () => void,
+  ): Promise<boolean> => {
+    const vouchers = useVouchers.getState();
+    vouchers.setCodeNotice(null);
+    try {
+      const result = await run(work);
+      adopt(result.cart);
+      vouchers.adoptClock(result.serverTime);
+      after?.();
+      return true;
+    } catch (e) {
+      vouchers.setCodeNotice({
+        ok: false,
+        text: voucherErrorMessage(e, userFacingError(e, "GRIDGO could not change the voucher on your order. Try again in a moment.")),
+      });
+      return false;
+    } finally {
+      void useVouchers.getState().load();
+    }
+  };
+  const applyVoucher = (voucherId: string) =>
+    void voucherChange(
+      (id) => api.applyCartVoucher(id, { voucherId }),
+      () => cartId && useVouchers.getState().markRemoved(cartId, false),
+    );
+  const removeVoucher = () =>
+    void voucherChange(
+      (id) => api.removeCartVoucher(id),
+      () => cartId && useVouchers.getState().markRemoved(cartId, true),
+    );
+  /** A code typed at checkout: into the wallet first, so its answer is precise, then onto this order. */
+  const applyCode = async (code: string): Promise<boolean> => {
+    const outcome = await useVouchers.getState().addCode(code);
+    if (!outcome.ok || !outcome.usable) return false;
+    const applied = await voucherChange(
+      (id) => api.applyCartVoucher(id, { voucherId: outcome.voucher.id }),
+      () => cartId && useVouchers.getState().markRemoved(cartId, false),
+    );
+    if (applied) {
+      useVouchers.getState().setCodeNotice({ ok: true, text: `${formatPhp(outcome.voucher.valueMinor)} voucher added and applied to this order.` });
+    }
+    return applied;
   };
 
   useEffect(() => {
@@ -409,6 +469,21 @@ export default function CheckoutScreen() {
       if (!cart?.serviceLevel) {
         await api.setCartFulfilment(cartId, { serviceLevel: "standard" });
       }
+      // A voucher can run out or be released between the screen and the tap,
+      // and GRIDGO then writes the order at the full price. The payment the
+      // client just sent was for the total on screen, so read the basket
+      // again and stop if that total moved.
+      if (voucherDiscountOf(cart?.clientQuote) > 0) {
+        const fresh = await api.getCart(cartId);
+        if (fresh.clientQuote?.totalMinor !== totals.totalMinor) {
+          adopt(fresh);
+          void useVouchers.getState().load();
+          setPlaceError(
+            "Your total changed because the voucher can no longer be used on this order. Check the new total and pay that amount before you place the order.",
+          );
+          return;
+        }
+      }
       const { order, invoice, basket } = await api.checkoutCart(cartId, {
         reference: reference.trim(),
         proofFileId: proof.state.fileId,
@@ -442,9 +517,12 @@ export default function CheckoutScreen() {
       setPlaceError(
         refusal
           ? refusal.message
-          : userFacingError(
+          : voucherErrorMessage(
               e,
-              "GRIDGO could not place your order. Nothing was charged — your order is still here, so try again.",
+              userFacingError(
+                e,
+                "GRIDGO could not place your order. Nothing was charged — your order is still here, so try again.",
+              ),
             ),
       );
     } finally {
@@ -824,6 +902,24 @@ export default function CheckoutScreen() {
           )}
         </Section>
 
+        {/* ---- Voucher ---------------------------------------------------- */}
+        {/*
+          Ahead of paying, because it changes what is paid: the QR amount
+          below is already the total after the voucher.
+        */}
+        <Section title="VOUCHER">
+          <CheckoutVoucher
+            cartId={cartId}
+            quote={cart?.clientQuote}
+            isOrganization={isOrganization}
+            showServiceFee={serviceFeeVisibleToClient(settings)}
+            busy={busy || placing}
+            onApply={applyVoucher}
+            onRemove={removeVoucher}
+            onCode={applyCode}
+          />
+        </Section>
+
         {/* ---- Paying ----------------------------------------------------- */}
         <Section title="HOW YOU PAY">
           {/*
@@ -1026,6 +1122,8 @@ export default function CheckoutScreen() {
 
             {/* Already out of the total GRIDGO sends (#166): drawn, never subtracted. */}
             <OrganizationDiscountRow source={cart?.clientQuote} />
+            {/* Already out of the total too (gridgo-api#204); the two never stack. */}
+            <VoucherDiscountRow source={cart?.clientQuote} />
 
             <View className="gg-divider my-2" />
 

@@ -403,6 +403,8 @@ function AppNavigation() {
                   name="saved-place"
                   options={pushedScreenOptions("Saved Places")}
                 />
+                {/* The voucher wallet (gridgo-api#204), from Account. */}
+                <Stack.Screen name="vouchers" options={pushedScreenOptions("Vouchers")} />
                 {/*
                   The two halves of the sign-in that take steps rather than
                   keystrokes. The band names the thing being changed, because

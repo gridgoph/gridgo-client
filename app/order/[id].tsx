@@ -20,6 +20,8 @@ import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { JobCompleteCard } from "@/components/JobCompleteCard";
 import { OrderReference } from "@/components/OrderReference";
 import { OrganizationDiscountRow } from "@/components/OrganizationDiscount";
+import { VoucherDiscountRow } from "@/components/VoucherDiscountRow";
+import { VOUCHER_LABEL, VOUCHER_SHARE_LABEL } from "@/lib/vouchers";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
@@ -669,6 +671,8 @@ function MoneyDetails({
       <View>
         <SpecRow label="Printing" value={printing != null ? formatPhp(printing) : "—"} />
         <OrganizationDiscountRow source={order} />
+        {/* On one part of a multi-shop order this is that part's share of the one voucher. */}
+        <VoucherDiscountRow source={order} label={order.basketId ? VOUCHER_SHARE_LABEL : VOUCHER_LABEL} />
         <SpecRow
           label={pickupFee ? "Pick-up fee" : "Delivery"}
           value={

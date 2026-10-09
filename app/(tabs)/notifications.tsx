@@ -14,6 +14,7 @@ import { NotificationCard } from "@/components/NotificationCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { SkeletonList } from "@/components/Skeleton";
 import { businessApplicationSentBack } from "@/lib/accountProfile";
+import { isVoucherNotification, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { userFacingError } from "@/lib/copy";
 import {
   APPLICATION_ROUTE,
@@ -82,6 +83,12 @@ export default function NotificationsScreen() {
                 // The officer check is answered on the Organizations tab (#165).
                 markGroupRead();
                 router.navigate(ORGANIZATIONS_ROUTE);
+              }
+            : isVoucherNotification(notification.type)
+            ? () => {
+                // A voucher notice is about the wallet, not a job.
+                markGroupRead();
+                router.push(VOUCHERS_ROUTE);
               }
             : isApplicationNotification(notification.type)
             ? () => {

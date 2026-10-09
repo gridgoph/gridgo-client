@@ -24,6 +24,7 @@ import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { orderReference } from "@/lib/orderReference";
 import { FULL_PAYMENT_PERCENT, isInstallmentConfirmed, paysInFull } from "@/lib/payment";
 import { organizationDiscountOf } from "@/lib/organization";
+import { voucherDiscountOf } from "@/lib/vouchers";
 import { orderPrintingMinor, printingMinor, showsServiceFee } from "@/lib/serviceFee";
 
 export const RECEIPT_HEADLINE = "Order receipt";
@@ -59,9 +60,13 @@ export function openReceiptAfterCheckout(router: ReceiptLandingRouter, orderId: 
 }
 
 /** Only an order that had one carries the discount, so other receipts read as before. */
-function discountField(source: { organizationDiscountMinor?: number | null }): { organizationDiscountMinor?: number } {
+function discountField(source: {
+  organizationDiscountMinor?: number | null;
+  voucherDiscountMinor?: number | null;
+}): { organizationDiscountMinor?: number; voucherDiscountMinor?: number } {
   const minor = organizationDiscountOf(source);
-  return minor ? { organizationDiscountMinor: minor } : {};
+  const voucher = voucherDiscountOf(source);
+  return { ...(minor ? { organizationDiscountMinor: minor } : {}), ...(voucher ? { voucherDiscountMinor: voucher } : {}) };
 }
 
 export function isCheckoutReceipt(from: string | string[] | undefined): boolean {
@@ -81,6 +86,8 @@ export type ReceiptMoney = {
   serviceFeeRateBps: number | null;
   /** An approved organization's discount, already inside `totalMinor` (#166). */
   organizationDiscountMinor?: number;
+  /** A GRIDGO-funded voucher, already inside `totalMinor` (gridgo-api#204). */
+  voucherDiscountMinor?: number;
   totalMinor: number;
 };
 
@@ -103,6 +110,8 @@ export type ReceiptGroup = {
   totalMinor: number;
   /** This group's own organization discount, already out of `totalMinor`. */
   organizationDiscountMinor?: number;
+  /** This group's share of the voucher, already out of `totalMinor`. */
+  voucherDiscountMinor?: number;
   stopped?: string | null;
 };
 

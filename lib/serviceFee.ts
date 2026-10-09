@@ -96,12 +96,16 @@ export function orderPrintingMinor(order: {
   subtotalMinor?: number | null;
   serviceFeeMinor?: number | null;
   organizationDiscountMinor?: number | null;
+  voucherDiscountMinor?: number | null;
 }): number | null {
   if (order.totalMinor != null && order.deliveryFeeMinor != null) {
-    // An organization's discount is already out of the total; Printing is
-    // drawn before it, with the discount on its own line (#166).
+    // An organization's discount and a voucher are already out of the total;
+    // Printing is drawn before them, each on its own line (#166,
+    // gridgo-api#204). Delivery stays the gross charge, so Printing +
+    // Delivery − discount = Total.
     const discount = order.organizationDiscountMinor ?? 0;
-    return order.totalMinor - order.deliveryFeeMinor + (discount > 0 ? discount : 0);
+    const voucher = order.voucherDiscountMinor ?? 0;
+    return order.totalMinor - order.deliveryFeeMinor + (discount > 0 ? discount : 0) + (voucher > 0 ? voucher : 0);
   }
   if (order.subtotalMinor == null) return null;
   return printingMinor(order.subtotalMinor, order.serviceFeeMinor);
