@@ -11,6 +11,7 @@ import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DropoffConfirmationCard } from "@/components/DropoffConfirmationCard";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
+import { MissedCallNotice } from "@/components/call/MissedCallNotice";
 import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
 import { DeliveryHandoverCard } from "@/components/DeliveryHandoverCard";
@@ -44,6 +45,7 @@ import { formatPhp } from "@/lib/api";
 import { installmentStatusLabel, userFacingError } from "@/lib/copy";
 import { formatDeadline } from "@/lib/deadline";
 import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
+import { callWindowOpen, orderHasCalls } from "@/lib/orderCalls";
 import {
   collectsAtOffice,
   formatPriceRange,
@@ -444,6 +446,8 @@ export default function OrderDetailScreen() {
           hub's QR and code, or the code the rider also sees. An order made
           ready before the switch has none and keeps the old counter card.
         */}
+        {/* A call the client missed, with the way to call back, ahead of the map it is about. */}
+        {orderHasCalls(order) ? <MissedCallNotice order={order} /> : null}
         {handover === "error" && handoverKind(order) ? (
           <View className="gg-card gap-3">
             <Text className="text-body-lg font-medium text-text-primary">
@@ -470,7 +474,7 @@ export default function OrderDetailScreen() {
             {handover && handover !== "error" ? (
               <DeliveryHandoverCard orderId={order.id} handover={handover} />
             ) : null}
-            <DeliveryTrackingCard order={order} onOpenChat={openRiderChat} />
+            <DeliveryTrackingCard order={order} onOpenChat={openRiderChat} showCall={callWindowOpen(order)} />
           </>
         ) : null}
 

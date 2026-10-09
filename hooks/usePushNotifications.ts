@@ -17,6 +17,8 @@ import {
   SEASON_PUSH_TYPE,
 } from "@/lib/push";
 import { hasActiveSession } from "@/lib/sessionGuard";
+import { CALL_INCOMING_TYPE, callPushOrder } from "@/lib/orderCalls";
+import { useCall } from "@/store/call";
 import { useNotifications } from "@/store/notifications";
 import { useSeasonWindows } from "@/store/seasonWindows";
 import { getNotificationsNative, pushSupported, usePush } from "@/store/push";
@@ -138,6 +140,11 @@ export function usePushNotifications(): void {
       const target = pushTargetRoute(parsed);
       // Public and not tied to an account, so it need not wait for a session.
       if (parsed.type === SEASON_PUSH_TYPE) void useSeasonWindows.getState().reveal();
+      // An incoming call opens over its order, ringing only if it still is.
+      // A cold start rings from the order screen's own read once it mounts.
+      if (parsed.type === CALL_INCOMING_TYPE && parsed.orderId && hasActiveSession(useSession.getState().user)) {
+        useCall.getState().checkOrder(parsed.orderId);
+      }
       if (!hasActiveSession(useSession.getState().user) || !readyRef.current) {
         pending.current = {target, ownerId: useSession.getState().user?.id ?? null, sequence};
         return;
@@ -199,9 +206,12 @@ export function usePushNotifications(): void {
         });
 
       // A push landing in the foreground shows nothing (see the handler above);
-      // its whole effect is that the in-app list and its badge catch up.
-      const received = Notifications.addNotificationReceivedListener(() => {
+      // its whole effect is that the in-app list and its badge catch up — and
+      // an incoming call rings, in case the live stream missed its pointer.
+      const received = Notifications.addNotificationReceivedListener((notification) => {
         void useNotifications.getState().refresh();
+        const incoming = callPushOrder(notification.request.content.data);
+        if (incoming && hasActiveSession(useSession.getState().user)) useCall.getState().checkOrder(incoming);
       });
 
       // Firebase can reissue a token while the app is running. A stale one stops

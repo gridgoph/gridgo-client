@@ -3,6 +3,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
+import { CallRiderButton } from "@/components/call/CallRiderButton";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
 import { DeliveryMap } from "@/components/DeliveryMap";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -22,6 +23,8 @@ type Props = {
   order: Order;
   /** Opens the conversation with the rider; the row shows only while it is open. */
   onOpenChat?: () => void;
+  /** Offer a voice call beside the conversation (`lib/orderCalls.ts`). */
+  showCall?: boolean;
 };
 
 /** How often the card asks the platform for a newer position. */
@@ -36,7 +39,7 @@ const POLL_MS = 30_000;
  * ready-by promise. An out-of-date position is labelled as one, in words
  * as well as colour.
  */
-export function DeliveryTrackingCard({ order, onOpenChat }: Props) {
+export function DeliveryTrackingCard({ order, onOpenChat, showCall = false }: Props) {
   const [ping, setPing] = useState<RiderPing | null>(null);
   const [unavailable, setUnavailable] = useState(false);
 
@@ -147,8 +150,15 @@ export function DeliveryTrackingCard({ order, onOpenChat }: Props) {
       </View>
 
       {chatOpen && onOpenChat ? (
-        <View className="border-t border-outline-subtle px-4 py-2">
-          <DeliveryChatRow chat={chatOpen} onPress={onOpenChat} />
+        // Message and call side by side: the call window is the writable chat window.
+        <View className="flex-row items-center gap-2 border-t border-outline-subtle px-4 py-2">
+          <View className="flex-1">
+            <DeliveryChatRow chat={chatOpen} onPress={onOpenChat} />
+          </View>
+          {showCall ? (
+            <View className="self-stretch border-l border-outline-subtle" aria-hidden />
+          ) : null}
+          {showCall ? <CallRiderButton orderId={order.id} /> : null}
         </View>
       ) : null}
     </View>

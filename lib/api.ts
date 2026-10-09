@@ -8,6 +8,7 @@ import { adaptProductCategories, type ProductCategory } from "@/lib/productCateg
 import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
 import type { DevicePlatform } from "@/lib/push";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
+import { readCall, readCalls, type CallIceConfig, type CallSignal, type OrderCall } from "@/lib/orderCalls";
 import { parseSeasonWindows, type SeasonWindows } from "@/lib/seasonWindows";
 
 /**
@@ -3167,6 +3168,94 @@ export async function sendDeliveryMessage(
       ...(options?.attachmentFileIds?.length ? { attachmentFileIds: options.attachmentFileIds } : {}),
     }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Voice calls with the rider (`lib/orderCalls.ts`, gridgo-api `docs/CALLS_API.md`)
+// ---------------------------------------------------------------------------
+
+function callsPath(orderId: string, callId?: string, action?: string): string {
+  return `/orders/${encodeURIComponent(orderId)}/calls${callId ? `/${encodeURIComponent(callId)}` : ""}${action ? `/${action}` : ""}`;
+}
+
+function requireCall(raw: { call?: unknown }): OrderCall {
+  const call = readCall(raw?.call);
+  if (!call) throw new ApiError(502, { error: "invalid_call_response" });
+  return call;
+}
+
+/** This phone's calls on the order, live first then newest. */
+export async function listOrderCalls(orderId: string): Promise<OrderCall[]> {
+  const result = await request<{ calls?: unknown }>(callsPath(orderId));
+  return readCalls(result?.calls);
+}
+
+/** Start ringing the rider. `409 call_already_active` means a call is already live. */
+export async function startOrderCall(orderId: string): Promise<OrderCall> {
+  return requireCall(
+    await request<{ call?: unknown }>(callsPath(orderId), {
+      method: "POST",
+      body: JSON.stringify({ pair: "delivery" }),
+    }),
+  );
+}
+
+export async function getOrderCall(orderId: string, callId: string): Promise<OrderCall> {
+  return requireCall(await request<{ call?: unknown }>(callsPath(orderId, callId)));
+}
+
+export type OrderCallAction = "accept" | "decline" | "cancel" | "end" | "heartbeat";
+
+export async function actOnOrderCall(
+  orderId: string,
+  callId: string,
+  action: OrderCallAction,
+): Promise<OrderCall> {
+  return requireCall(
+    await request<{ call?: unknown }>(callsPath(orderId, callId, action), {
+      method: "POST",
+      body: "{}",
+    }),
+  );
+}
+
+/** Fresh STUN/TURN servers for this call. Never reused for another. */
+export async function getOrderCallIce(orderId: string, callId: string): Promise<CallIceConfig> {
+  const result = await request<Partial<CallIceConfig>>(callsPath(orderId, callId, "ice"));
+  return {
+    iceServers: Array.isArray(result?.iceServers) ? result.iceServers : [],
+    expiresAt: typeof result?.expiresAt === "string" ? result.expiresAt : null,
+    relayAvailable: result?.relayAvailable === true,
+  };
+}
+
+export type OutgoingCallSignal =
+  | { clientId: string; kind: "offer" | "answer"; sdp: string }
+  | { clientId: string; kind: "ice"; candidate: string; sdpMid: string | null; sdpMLineIndex: number | null };
+
+export async function sendOrderCallSignal(
+  orderId: string,
+  callId: string,
+  signal: OutgoingCallSignal,
+): Promise<{ id: number }> {
+  return request(callsPath(orderId, callId, "signals"), {
+    method: "POST",
+    body: JSON.stringify(signal),
+  });
+}
+
+/** The other side's signals after `after`, with the call's current state. */
+export async function listOrderCallSignals(
+  orderId: string,
+  callId: string,
+  after: number,
+): Promise<{ signals: CallSignal[]; cursor: number; call: OrderCall | null }> {
+  const result = await request<{ signals?: unknown; cursor?: unknown; call?: unknown }>(
+    `${callsPath(orderId, callId, "signals")}?after=${after}`,
+  );
+  const signals = Array.isArray(result?.signals) ? (result.signals as CallSignal[]) : [];
+  const cursor = typeof result?.cursor === "number" ? result.cursor : after;
+  return { signals, cursor, call: readCall(result?.call) };
 }
 
 /** Report a material issue while the order's issue window is open. */
