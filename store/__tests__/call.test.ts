@@ -213,4 +213,29 @@ describe("a sign-out", () => {
     expect(useCall.getState().callsByOrder).toEqual({});
     expect(audio.stopRinging).toHaveBeenCalled();
   });
+
+  it("does not ring or keep calls a read from the previous account brings back late", async () => {
+    supported();
+    let answer: (calls: OrderCall[]) => void = () => undefined;
+    jest.mocked(api.listOrderCalls).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const read = useCall.getState().refreshOrderCalls(ORDER);
+    useCall.getState().reset();
+    answer([call()]);
+    await expect(read).resolves.toBeNull();
+    expect(useCall.getState().session).toBeNull();
+    expect(useCall.getState().callsByOrder).toEqual({});
+    expect(audio.startRinging).not.toHaveBeenCalled();
+  });
+
+  it("does not start a call whose microphone check outlived the account", async () => {
+    supported();
+    let answer: (permission: string) => void = () => undefined;
+    mockMedia.readMicPermission.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const start = useCall.getState().startCall(ORDER);
+    useCall.getState().reset();
+    answer("granted");
+    await start;
+    expect(useCall.getState().session).toBeNull();
+    expect(engineApi.startOrderCall).not.toHaveBeenCalled();
+  });
 });

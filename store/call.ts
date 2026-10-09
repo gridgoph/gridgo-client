@@ -72,6 +72,9 @@ type CallStore = {
 let engine: CallEngine | null = null;
 let endTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSweep = 0;
+// Bumped by `reset`: a read or permission prompt that started under the
+// previous account must not write its calls back or ring for them.
+let generation = 0;
 const unsupportedRings = new Set<string>();
 const SWEEP_MIN_INTERVAL_MS = 10_000;
 
@@ -178,7 +181,9 @@ export const useCall = create<CallStore>((set, get) => {
         set({ prompt: { kind: "unsupported" } });
         return;
       }
+      const started = generation;
       const permission = await readMicPermission();
+      if (started !== generation) return;
       if (permission === "granted") return begin(orderId);
       set({ prompt: permission === "blocked" ? { kind: "mic-blocked" } : { kind: "mic-explainer", orderId } });
     },
@@ -187,7 +192,9 @@ export const useCall = create<CallStore>((set, get) => {
       const prompt = get().prompt;
       if (prompt?.kind !== "mic-explainer") return;
       set({ prompt: null });
+      const started = generation;
       const permission = await requestMicPermission();
+      if (started !== generation) return;
       if (permission === "granted") begin(prompt.orderId);
       else set({ prompt: { kind: "mic-blocked" } });
     },
@@ -199,7 +206,7 @@ export const useCall = create<CallStore>((set, get) => {
       const current = engine;
       if ((await readMicPermission()) !== "granted" && (await requestMicPermission()) !== "granted") {
         // Keep ringing: the client can still turn it on, or decline.
-        set({ micRefused: true });
+        if (engine === current) set({ micRefused: true });
         return;
       }
       if (engine !== current) return;
@@ -237,12 +244,14 @@ export const useCall = create<CallStore>((set, get) => {
     },
 
     refreshOrderCalls: async (orderId) => {
+      const started = generation;
       let calls: OrderCall[];
       try {
         calls = await api.listOrderCalls(orderId);
       } catch {
         return null;
       }
+      if (started !== generation) return null;
       set((state) => ({ callsByOrder: { ...state.callsByOrder, [orderId]: calls } }));
       const ringing = ringingIncoming(calls);
       if (ringing) ringFor(ringing);
@@ -259,12 +268,14 @@ export const useCall = create<CallStore>((set, get) => {
       const now = Date.now();
       if (now - lastSweep < SWEEP_MIN_INTERVAL_MS) return;
       lastSweep = now;
+      const started = generation;
       let orders: api.Order[];
       try {
         orders = await api.listOrders();
       } catch {
         return;
       }
+      if (started !== generation) return;
       await Promise.all(
         orders.filter((order) => callWindowOpen(order)).map((order) => get().refreshOrderCalls(order.id)),
       );
@@ -278,6 +289,7 @@ export const useCall = create<CallStore>((set, get) => {
     },
 
     reset: () => {
+      generation += 1;
       clearEndTimer();
       engine?.dispose();
       engine = null;
