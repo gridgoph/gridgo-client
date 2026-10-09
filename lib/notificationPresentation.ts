@@ -18,6 +18,7 @@ import {
   stagesForRail,
   type FulfilmentRailKind,
 } from "@/lib/orderStages";
+import { CALL_INCOMING_TYPE, isCallNotificationType } from "@/lib/orderCalls";
 
 /**
  * How one inbox row should read, independent of how the server first worded it.
@@ -225,6 +226,25 @@ function rateReminderCopy(): { title: string; body: string; hint: string } {
   };
 }
 
+/**
+ * Call rows (gridgo-api `docs/CALLS_API.md`). The server's incoming copy says
+ * "open to answer", which is false a minute later and forever after in the
+ * inbox, so both rows are worded as what happened.
+ */
+function callCopy(type: string): { title: string; body: string; hint: string } {
+  return type === CALL_INCOMING_TYPE
+    ? {
+        title: "Your rider called",
+        body: "Open the order to call back while they have the delivery. Your phone number stays private.",
+        hint: "Opens this job",
+      }
+    : {
+        title: "Missed call from your rider",
+        body: "Open the order to call back while they have the delivery. Your phone number stays private.",
+        hint: "Opens this job",
+      };
+}
+
 function receiptReadyCopy(showServiceFee: boolean): { title: string; body: string; hint: string } {
   return {
     title: "Your receipt is ready",
@@ -423,6 +443,8 @@ export function presentNotification(
       ? rateReminderCopy()
       : notification.type === "order_receipt_ready"
         ? receiptReadyCopy(showServiceFee)
+      : isCallNotificationType(notification.type)
+        ? callCopy(notification.type ?? "")
         : isHubType(notification.type) && notification.orderState === "awaiting_collection" && !hold
           ? hubCopy(notification)
         : isJobComplete(eventState)

@@ -1,6 +1,7 @@
 /** Silent refresh hints. Never contains domain data or grants access. */
 export const LIVE_RESOURCES = [
   "orders",
+  "calls",
   "jobs",
   "approvals",
   "escalations",
