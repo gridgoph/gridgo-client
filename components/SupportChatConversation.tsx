@@ -29,6 +29,7 @@ import { userFacingError } from "@/lib/copy";
 import { getDocumentPickerNative } from "@/lib/nativeModules";
 import { openSupportChatStream } from "@/lib/supportChatStream";
 import { useSupportChatStore } from "@/store/supportChat";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 
 const EMPTY_TITLE = "No messages yet";
 const EMPTY_BODY =
@@ -367,9 +368,12 @@ export function SupportChatConversation({
           )}
 
           {pending.length ? (
-            <Text className="text-caption text-text-muted">
-              {pending.length === 1 ? pending[0].name : `${pending.length} photos ready to send`}
-            </Text>
+            <View className="gap-1">
+              <Text className="text-caption text-text-muted">
+                {pending.length === 1 ? pending[0].name : `${pending.length} photos ready to send`}
+              </Text>
+              <WhyWeAsk>Only GRIDGO Operations see these photos, to help with what you asked.</WhyWeAsk>
+            </View>
           ) : null}
 
           <View className="flex-row items-end gap-2">

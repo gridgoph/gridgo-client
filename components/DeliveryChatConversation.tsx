@@ -38,6 +38,7 @@ import {
   type DeliveryChatUnavailable,
 } from "@/lib/deliveryChat";
 import { getDocumentPickerNative } from "@/lib/nativeModules";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 
 const EMPTY_TITLE = "No messages yet";
 const EMPTY_BODY =
@@ -326,6 +327,9 @@ export function DeliveryChatConversation({
                 <X size={16} color={colors.textMuted} strokeWidth={2} aria-hidden />
               </Pressable>
             </View>
+          ) : null}
+          {open && pending.length ? (
+            <WhyWeAsk>Your rider and GRIDGO Operations see these photos, to help with this delivery.</WhyWeAsk>
           ) : null}
 
           {open ? (

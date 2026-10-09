@@ -398,7 +398,11 @@ export default function OrderDetailScreen() {
                 onUpdated={applyOrderUpdate}
               />
             ) : actionZone === "correction" ? (
-              <CorrectionCard order={order} onUpdated={applyOrderUpdate} />
+              <CorrectionCard
+                order={order}
+                onUpdated={applyOrderUpdate}
+                onOpen={(href) => router.push(href)}
+              />
             ) : actionZone === "pay" && payable ? (
               <PaymentPanel
                 order={order}

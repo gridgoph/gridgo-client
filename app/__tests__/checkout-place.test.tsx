@@ -5,6 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import CheckoutScreen from "@/app/checkout";
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
 import { useCart } from "@/store/cart";
+import { agreeArtworkRights } from "@/test/legalGate";
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -177,6 +178,8 @@ function renderInSafeArea(ui: ReactElement) {
  */
 describe("placing the order", () => {
   it("places with the cart's existing service level and the QR receipt", async () => {
+    // The per-order artwork box, ticked by the client (one press per test).
+    agreeArtworkRights("cart:cart_1");
     api.getSettings.mockResolvedValue(SETTINGS);
     api.listAddresses.mockResolvedValue([]);
     api.getCart.mockResolvedValue(cart());
@@ -211,10 +214,16 @@ describe("placing the order", () => {
     await fireEvent.press(screen.getByLabelText("Place this order"));
 
     await waitFor(() =>
-      expect(api.checkoutCart).toHaveBeenCalledWith("cart_1", {
-        reference: "1234567890123",
-        proofFileId: "file_proof",
-      }),
+      expect(api.checkoutCart).toHaveBeenCalledWith(
+        "cart_1",
+        { reference: "1234567890123", proofFileId: "file_proof" },
+        // The per-order artwork statement, naming the version in effect.
+        expect.objectContaining({
+          accepted: true,
+          method: "checkbox",
+          versionIds: ["acceptable-use-1"],
+        }),
+      ),
     );
     expect(api.setCartFulfilment).not.toHaveBeenCalled();
     expect(mockDismissTo).toHaveBeenCalledWith("/(tabs)/orders");

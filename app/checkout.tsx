@@ -104,6 +104,8 @@ import { zoneLine } from "@/lib/distanceZone";
 import { hubFeeLabel, hubPickupEnabled } from "@/lib/hubPickup";
 import { fulfilmentSummary } from "@/lib/requestFulfilment";
 import { useBasketGroupTarget } from "@/store/basketGroup";
+import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
+import { artworkRightsPayload, cartRightsScope, useArtworkRights } from "@/store/artworkRights";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
@@ -138,6 +140,10 @@ export default function CheckoutScreen() {
 
   const cart = useCart((state) => state.cart);
   const cartId = useCart((state) => state.cartId);
+  const rightsScope = cartId ? cartRightsScope(cartId) : null;
+  const rightsAgreed = useArtworkRights((state) =>
+    rightsScope ? state.agreed[rightsScope] === true : false,
+  );
   const loading = useCart((state) => state.loading);
   const hydrated = useCart((state) => state.hydrated);
   const busy = useCart((state) => state.busy);
@@ -160,7 +166,7 @@ export default function CheckoutScreen() {
   const [removing, setRemoving] = useState<CartLineRecord | null>(null);
   const scrollRef = useRef<{ scrollTo?: (opts: { y: number; animated?: boolean }) => void }>(null);
   const contentRef = useRef<View>(null);
-  const fields = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference", View | null>>>({});
+  const fields = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference" | "rights", View | null>>>({});
 
   const proof = usePaymentProof(cartId);
   const setArtworkProblem = useDesignLink((state) => state.setProblem);
@@ -268,6 +274,7 @@ export default function CheckoutScreen() {
     referenceOk: ocrReading || referenceCheck.ok,
     hasProof: Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
+    rightsAgreed,
   });
 
   /** Every basket change goes through GRIDGO and stores what comes back. */
@@ -435,7 +442,9 @@ export default function CheckoutScreen() {
             ? "proof"
             : blocker === "reference"
               ? "reference"
-              : null;
+              : blocker === "rights"
+                ? "rights"
+                : null;
     if (!key) return;
     const content = contentRef.current;
     if (!content) return;
@@ -484,10 +493,15 @@ export default function CheckoutScreen() {
           return;
         }
       }
-      const { order, invoice, basket } = await api.checkoutCart(cartId, {
-        reference: reference.trim(),
-        proofFileId: proof.state.fileId,
-      });
+      const { order, invoice, basket } = await api.checkoutCart(
+        cartId,
+        {
+          reference: reference.trim(),
+          proofFileId: proof.state.fileId,
+        },
+        // Recorded by GRIDGO against every order this basket becomes.
+        await artworkRightsPayload(),
+      );
       // A multi-shop basket answers with one combined receipt; its order is
       // the first shop group, which the receipt and its "View order" open.
       // The basket beside it carries each group's date for the slip.
@@ -1159,6 +1173,29 @@ export default function CheckoutScreen() {
           </Text>
           <OrganizationSavingsNote source={cart?.clientQuote} />
         </Section>
+
+        {/*
+          The same box the Artwork step drew, bound to this basket: ticked
+          there, it is ticked here, and the client can still take it back
+          before the order is placed. Last, so it is the thing read just above
+          Place order.
+        */}
+        {rightsScope ? (
+          <Section title="YOUR ARTWORK">
+            <View collapsable={false} ref={(node) => { fields.current.rights = node; }}>
+              <ArtworkRightsBox
+                scope={rightsScope}
+                onOpen={(href) => router.push(href)}
+                disabled={placing}
+              />
+              {attempted && blockers.includes("rights") ? (
+                <Text className="text-caption text-error" accessibilityRole="alert">
+                  {blockerLine("rights")}
+                </Text>
+              ) : null}
+            </View>
+          </Section>
+        ) : null}
 
       </View>
 

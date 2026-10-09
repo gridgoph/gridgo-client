@@ -1,5 +1,6 @@
 import { Check, Trash2 } from "lucide-react-native";
 import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { usePaymentProof } from "@/hooks/usePaymentProof";
 
@@ -82,6 +83,8 @@ export function PaymentProofRow({
               ? "Tap the picture to view it."
               : (state.error ?? "That screenshot did not reach GRIDGO.")}
       </Text>
+
+      <WhyWeAsk>GRIDGO uses this screenshot only to match your payment to your order.</WhyWeAsk>
 
       <View className="flex-row gap-2">
         <Pressable

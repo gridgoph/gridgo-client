@@ -243,3 +243,28 @@ describe("shouldPreventAuthLeave", () => {
     expect(shouldPreventAuthLeave({ kind: "onboarding" }, true)).toBe(false);
   });
 });
+
+describe("terms waiting to be agreed", () => {
+  const base = { user: client, pendingClerkProfile: false, justProvisioned: false, ...ranked };
+
+  it("puts the agreement screen ahead of Home and onboarding", () => {
+    expect(authLanding({ ...base, legal: "blocked" })).toEqual({ kind: "legal_review" });
+    expect(authLanding({ ...base, hasRanked: false, legal: "blocked" })).toEqual({
+      kind: "legal_review",
+    });
+  });
+
+  it("draws nothing until the pending read answers, then goes on", () => {
+    expect(authLanding({ ...base, legal: "unknown" })).toEqual({ kind: "pending" });
+    expect(authLanding({ ...base, legal: "clear" })).toEqual({ kind: "home" });
+  });
+
+  it("still finishes an unenrolled identity first, and never blocks sign-out", () => {
+    expect(
+      authLanding({ ...base, user: null, pendingClerkProfile: true, legal: "unknown" }),
+    ).toEqual({ kind: "complete_profile" });
+    expect(authLanding({ ...base, signingOut: true, legal: "blocked" })).toEqual({
+      kind: "signed_out",
+    });
+  });
+});

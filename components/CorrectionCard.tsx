@@ -1,9 +1,11 @@
+import type { Href } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ErrorState } from "@/components/ErrorState";
+import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
 import { useArtworkUpload } from "@/hooks/useArtworkUpload";
 import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
@@ -11,10 +13,13 @@ import { isArtworkBusy } from "@/lib/artworkUpload";
 import { userFacingError } from "@/lib/copy";
 import { correctionReason } from "@/lib/orderHistory";
 import { formatTimelineStamp } from "@/lib/relativeTime";
+import { artworkRightsPayload, orderRightsScope, useArtworkRights } from "@/store/artworkRights";
 
 type Props = {
   order: Order;
   onUpdated: (order: Order) => void;
+  /** Opens a legal document, as `router.push`. */
+  onOpen: (href: Href) => void;
 };
 
 /**
@@ -25,7 +30,7 @@ type Props = {
  * again — its history, quote and any payment untouched. A new job is never
  * started behind the client's back.
  */
-export function CorrectionCard({ order, onUpdated }: Props) {
+export function CorrectionCard({ order, onUpdated, onOpen }: Props) {
   const artwork = useArtworkUpload();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +39,8 @@ export function CorrectionCard({ order, onUpdated }: Props) {
   const requestedAt = reason ? order.correction?.requestedAt : null;
   const replacementReady = artwork.state.phase === "stored";
   const uploadBusy = isArtworkBusy(artwork.state);
+  const rightsScope = orderRightsScope(order.id);
+  const rightsAgreed = useArtworkRights((state) => state.agreed[rightsScope] === true);
 
   const resubmit = async () => {
     setBusy(true);
@@ -41,7 +48,7 @@ export function CorrectionCard({ order, onUpdated }: Props) {
     try {
       // Attach first, then send — Operations must never reopen a job whose
       // artwork has not landed.
-      await artwork.attachTo(order.id);
+      await artwork.attachTo(order.id, await artworkRightsPayload());
       const next = await api.transitionOrder(order.id, "submitted", {
         note: "Corrected artwork sent",
       });
@@ -93,6 +100,8 @@ export function CorrectionCard({ order, onUpdated }: Props) {
         onCancel={artwork.cancel}
       />
 
+      {replacementReady ? <ArtworkRightsBox scope={rightsScope} onOpen={onOpen} disabled={busy} /> : null}
+
       {error ? <ErrorState label="Not sent" body={error} /> : null}
 
       <PrimaryButton
@@ -103,7 +112,7 @@ export function CorrectionCard({ order, onUpdated }: Props) {
               ? "Send back to Operations"
               : "Choose a corrected file"
         }
-        disabled={busy || uploadBusy}
+        disabled={busy || uploadBusy || (replacementReady && !rightsAgreed)}
         onPress={() => {
           if (replacementReady) {
             void resubmit();

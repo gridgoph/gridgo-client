@@ -1,4 +1,3 @@
-import { PrivacyPolicyButton } from "@/components/AccountPrivacy";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useUser } from "@clerk/expo";
 import { router, useFocusEffect } from "expo-router";
@@ -272,13 +271,24 @@ export default function AccountScreen() {
           </View>
 
           {/*
-            The policy is a button of its own. Deleting the account is not
-            here: it lives under Danger zone on Your details, behind a check
-            that it is really the account holder asking.
+            The documents GRIDGO works by, and what a client can ask about
+            their own data — read from the API, so a newly published version
+            is here without an app update. Deleting the account is one of the
+            asks on Your data, still behind a check that it is really the
+            account holder asking.
           */}
           <View className="gap-2">
             <Text className="text-overline text-text-muted">PRIVACY</Text>
-            <PrivacyPolicyButton />
+            <DestinationRow
+              title="Legal & Privacy"
+              detail="Terms of Service, Privacy Notice and the policies GRIDGO works by"
+              onPress={() => router.push("/legal")}
+            />
+            <DestinationRow
+              title="Your data"
+              detail="See, correct or delete the personal data GRIDGO holds about you"
+              onPress={() => router.push("/privacy")}
+            />
           </View>
 
           <View className="pt-2">

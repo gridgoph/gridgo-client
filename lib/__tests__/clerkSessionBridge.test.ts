@@ -184,3 +184,57 @@ describe("bridgeClerkToGridgo", () => {
     expect(result.message).toMatch(/cannot create a client profile/i);
   });
 });
+
+describe("enrolling only with the sign-up agreement", () => {
+  const unmapped = () =>
+    jest
+      .fn()
+      .mockRejectedValueOnce(new ApiError(401, { error: "unauthorized" }))
+      .mockResolvedValueOnce(client);
+  const body = {
+    accepted: true as const,
+    versionIds: ["terms-of-service-1", "privacy-notice-1"],
+    method: "checkbox" as const,
+    junior: false,
+    marketing: false,
+    app: "gridgo-client/test",
+    device: "client-test",
+  };
+
+  it("sends an identity with no agreement to Finish signing up instead of activating", async () => {
+    const activate = jest.fn();
+    await expect(
+      bridgeClerkToGridgo({ me: unmapped(), activate, consent: async () => null }),
+    ).resolves.toEqual({ kind: "needs_profile" });
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it("activates with the agreement the client ticked", async () => {
+    const activate = jest.fn().mockResolvedValue(client);
+    await bridgeClerkToGridgo({ me: unmapped(), activate, consent: async () => body });
+    expect(activate).toHaveBeenCalledWith({ legalConsent: body });
+  });
+
+  it("activates without consent fields against an API with no legal library", async () => {
+    const activate = jest.fn().mockResolvedValue(client);
+    await bridgeClerkToGridgo({ me: unmapped(), activate, consent: async () => "legacy" });
+    expect(activate).toHaveBeenCalledWith({});
+  });
+
+  it("asks again when GRIDGO refuses the agreement, rather than calling it the wrong app", async () => {
+    const activate = jest
+      .fn()
+      .mockRejectedValue(new ApiError(409, { error: "legal_version_changed" }));
+    await expect(
+      bridgeClerkToGridgo({ me: unmapped(), activate, consent: async () => body }),
+    ).resolves.toEqual({ kind: "needs_profile" });
+  });
+
+  it("never asks a mapped client for it", async () => {
+    const consent = jest.fn();
+    const activate = jest.fn();
+    await bridgeClerkToGridgo({ me: jest.fn().mockResolvedValue(client), activate, consent });
+    expect(consent).not.toHaveBeenCalled();
+    expect(activate).not.toHaveBeenCalled();
+  });
+});

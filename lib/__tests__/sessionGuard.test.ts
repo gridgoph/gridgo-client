@@ -4,6 +4,8 @@ import { join } from "node:path";
 import {
   AUTHENTICATED_ROOT_SCREENS,
   hasActiveSession,
+  LEGAL_GATE_ROOT_SCREENS,
+  LEGAL_OPEN_ROOT_SCREENS,
   SIGNED_OUT_ROOT_SCREENS,
 } from "@/lib/sessionGuard";
 
@@ -43,6 +45,8 @@ describe("sessionGuard", () => {
 
     expect(source).toContain("Stack.Protected");
     expect(source).toContain("hasActiveSession");
+    expect(source).toMatch(/guard=\{\s*isSignedIn\s*&&\s*!legalBlocked\s*\}/);
+    expect(source).toMatch(/guard=\{\s*isSignedIn\s*&&\s*legalBlocked\s*\}/);
     expect(source).toMatch(/guard=\{\s*isSignedIn\s*\}/);
     expect(source).toMatch(/guard=\{\s*!isSignedIn\s*\}/);
 
@@ -53,14 +57,28 @@ describe("sessionGuard", () => {
       expect(source).toContain(`name="${name}"`);
     }
 
-    // Authenticated screens must sit inside the isSignedIn Protected block,
-    // not only appear as free Stack.Screen entries.
-    const signedInBlock = source.match(
-      /Stack\.Protected\s+guard=\{\s*isSignedIn\s*\}[\s\S]*?<\/Stack\.Protected>/,
-    );
+    // Authenticated screens must sit inside a signed-in Protected block, not
+    // only appear as free Stack.Screen entries. The ordinary app also closes
+    // while terms wait to be agreed; documents, privacy and deletion do not.
+    const blockFor = (guard: string) =>
+      source.match(
+        new RegExp(`Stack\\.Protected\\s+guard=\\{\\s*${guard}\\s*\\}[\\s\\S]*?<\\/Stack\\.Protected>`),
+      );
+    const signedInBlock = blockFor("isSignedIn\\s*&&\\s*!legalBlocked");
     expect(signedInBlock).not.toBeNull();
     for (const name of AUTHENTICATED_ROOT_SCREENS) {
       expect(signedInBlock![0]).toContain(`name="${name}"`);
+    }
+    const openBlock = blockFor("isSignedIn");
+    expect(openBlock).not.toBeNull();
+    for (const name of LEGAL_OPEN_ROOT_SCREENS) {
+      expect(openBlock![0]).toContain(`name="${name}"`);
+      expect(signedInBlock![0]).not.toContain(`name="${name}"`);
+    }
+    const gateBlock = blockFor("isSignedIn\\s*&&\\s*legalBlocked");
+    expect(gateBlock).not.toBeNull();
+    for (const name of LEGAL_GATE_ROOT_SCREENS) {
+      expect(gateBlock![0]).toContain(`name="${name}"`);
     }
 
     const signedOutBlock = source.match(

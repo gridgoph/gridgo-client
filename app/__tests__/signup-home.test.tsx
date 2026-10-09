@@ -6,6 +6,7 @@ import SignupScreen from "@/app/(auth)/signup";
 import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
 import { useSignupFlow } from "@/store/signupFlow";
+import { clearLegalGate, holdLegalLibrary } from "@/test/legalGate";
 
 /**
  * Sign-up's whole point: Clerk finishing is not the end. Unless the completed
@@ -121,6 +122,7 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("SignupScreen finalize", () => {
   beforeEach(() => {
+    clearLegalGate();
     signUpState.status = "missing_requirements";
     signUpState.unverifiedFields = ["email_address"];
     signUpState.missingFields = [];
@@ -148,6 +150,9 @@ describe("SignupScreen finalize", () => {
       clerkSyncNonce: 0,
     });
     useSignupFlow.getState().reset();
+    // Ticked by the person in real life; preset here (one press per test).
+    useSignupFlow.getState().setConsent({ agreed: true, adult: true, guardian: false, marketing: false });
+    holdLegalLibrary();
   });
 
   it("shows the Home redirect after adopt even while the code step is still armed", async () => {

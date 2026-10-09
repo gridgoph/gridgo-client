@@ -18,6 +18,7 @@ import { HomeActionRow, HomeFinishedRow, HomeJobRow } from "@/components/HomeRow
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SeasonBanner } from "@/components/SeasonBanner";
+import { LegalNoticeBanner } from "@/components/legal/LegalNoticeBanner";
 import { SkeletonHomeDocket } from "@/components/Skeleton";
 import { TourTarget } from "@/components/TourTarget";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
@@ -361,6 +362,12 @@ export default function HomeScreen() {
               ))}
             </View>
           ) : null}
+
+          {/*
+            An editorial change to a legal document: read once, never asked to
+            agree to. It draws nothing once seen on this phone.
+          */}
+          <LegalNoticeBanner className="mt-8" />
 
           {showJobs && jobs.inProgress.length ? (
             <View className="mt-8 gap-3">

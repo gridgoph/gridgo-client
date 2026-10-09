@@ -25,6 +25,7 @@ jest.mock("@/hooks/useTheme", () => ({
 jest.mock("@/hooks/useAppFonts", () => ({ useAppFonts: jest.fn(() => true) }));
 jest.mock("@/hooks/useClerkApiSession", () => ({ useClerkApiSession: jest.fn() }));
 jest.mock("@/hooks/useClientPreferences", () => ({ useClientPreferences: jest.fn() }));
+jest.mock("@/hooks/useLegalGate", () => ({ useLegalGate: jest.fn() }));
 jest.mock("@/hooks/usePushNotifications", () => ({ usePushNotifications: jest.fn() }));
 jest.mock("@/hooks/useLiveNotifications", () => ({ useLiveNotifications: jest.fn() }));
 jest.mock("@/hooks/useSupportChatUnread", () => ({ useSupportChatUnread: jest.fn() }));

@@ -1,4 +1,3 @@
-import { PrivacyPolicyLink } from "@/components/AccountPrivacy";
 import { useAuth, useClerk, useSignUp } from "@clerk/expo";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useEffect, useState } from "react";
@@ -11,6 +10,7 @@ import { FormScreen } from "@/components/FormScreen";
 import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
+import { SignupConsentFields } from "@/components/legal/SignupConsentFields";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { shouldPreventAuthLeave, staysOnAuthScreen } from "@/lib/authLanding";
 import { signupVerifyCopy } from "@/lib/verifyCode";
@@ -28,6 +28,10 @@ import {
   releaseClerkSession,
 } from "@/lib/clerkSignIn";
 import { continuationAfterSignUp } from "@/lib/clerkSignUp";
+import { enrollmentConsentBody, signupConsentProblem, signupDocuments } from "@/lib/legal";
+import { legalContext } from "@/lib/legalContext";
+import { useEnrollmentConsent } from "@/store/enrollmentConsent";
+import { useLegalLibrary } from "@/store/legalLibrary";
 import { useSession } from "@/store/session";
 import { useSignupFlow } from "@/store/signupFlow";
 
@@ -44,12 +48,26 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const { step, code, enterEmailCode, setCode, reset: resetSignupFlow } = useSignupFlow();
+  const libraryStatus = useLegalLibrary((state) => state.status);
+  const documents = signupDocuments(useLegalLibrary((state) => state.documents));
+  const {
+    step,
+    code,
+    consent,
+    setConsent,
+    enterEmailCode,
+    setCode,
+    reset: resetSignupFlow,
+  } = useSignupFlow();
   const verifying = step === "emailCode";
 
   useEffect(() => {
+    void useLegalLibrary.getState().load();
     return () => {
       useSignupFlow.getState().reset();
+      // The boxes belonged to this form. A later Google sign-in on this phone
+      // agrees for itself on Finish signing up.
+      useEnrollmentConsent.getState().clear();
     };
   }, []);
 
@@ -64,6 +82,9 @@ export default function SignupScreen() {
   if (!staysOnAuthScreen(landing)) return <AuthLandingRedirect landing={landing} />;
 
   const busy = fetchStatus === "fetching" || adoptLoading;
+  // Versions to name, or an API with no legal library at all.
+  const consentReady = Boolean(documents) || libraryStatus === "unsupported";
+  const consentProblem = signupConsentProblem(consent);
   const verifyCopy = signupVerifyCopy(email);
   const signOutRetry = clerkSignOutRetryLabel(sessionError, error);
 
@@ -150,6 +171,24 @@ export default function SignupScreen() {
       setError(mismatch);
       return;
     }
+    if (consentProblem || !consentReady) {
+      setError(consentProblem ?? "GRIDGO's terms have not loaded yet. Try again in a moment.");
+      return;
+    }
+    // GRIDGO enrolls this account after Clerk's emailed code, from the shared
+    // bridge. What was ticked here waits for it, naming the exact versions.
+    useEnrollmentConsent.getState().hold(
+      documents
+        ? {
+            kind: "versioned",
+            body: enrollmentConsentBody(
+              documents.map((doc) => doc.id),
+              consent,
+              await legalContext(),
+            ),
+          }
+        : { kind: "legacy" },
+    );
 
     setError(null);
     useSession.getState().finishSigningOut();
@@ -293,7 +332,15 @@ export default function SignupScreen() {
               </FormField>
             </View>
 
-      <PrivacyPolicyLink />
+            <SignupConsentFields
+              consent={consent}
+              onChange={setConsent}
+              documents={documents}
+              status={libraryStatus}
+              onRetry={() => void useLegalLibrary.getState().load({ force: true })}
+              disabled={busy}
+            />
+
             {/* Clerk's smart bot protection mounts its challenge here only when needed. */}
             <View nativeID="clerk-captcha" />
 
@@ -306,6 +353,12 @@ export default function SignupScreen() {
               />
             ) : null}
 
+            {consentProblem && fullName.trim() && email.trim() && password && confirmPassword ? (
+              <Text className="text-caption text-text-secondary" accessibilityLiveRegion="polite">
+                {consentProblem}
+              </Text>
+            ) : null}
+
             <PrimaryButton
               label={busy ? "Creating account…" : "Sign Up"}
               disabled={
@@ -313,6 +366,8 @@ export default function SignupScreen() {
                 !email.trim() ||
                 !password ||
                 !confirmPassword ||
+                Boolean(consentProblem) ||
+                !consentReady ||
                 busy
               }
               onPress={() => void createAccount()}

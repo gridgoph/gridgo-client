@@ -8,7 +8,10 @@
  *
  * The ladder, in order:
  * - a client whose profile the app cannot read → complete profile;
- * - a Clerk identity GRIDGO has not mapped yet → complete profile;
+ * - a Clerk identity GRIDGO has not mapped yet → complete profile, which is
+ *   also where a Google sign-up agrees to the terms before GRIDGO enrolls it;
+ * - a client with terms still to agree to → the agreement screen, ahead of
+ *   everything else (`store/legalConsent.ts`); until that read answers, nothing;
  * - a client who has not ranked quality, speed, cost and distance → onboarding,
  *   whose last page is that ranking (gridgo-client#159);
  * - any other signed-in client → Home.
@@ -27,9 +30,12 @@
 
 import type { User } from "@/lib/api";
 import { needsClientProfile } from "@/lib/signup";
+import type { LegalGateStatus } from "@/lib/legal";
 
 export type AuthLanding =
   | { kind: "complete_profile" }
+  /** Terms to agree to before anything else opens. */
+  | { kind: "legal_review" }
   /** Unranked: the feature pages, the notification ask, then the ranking. */
   | { kind: "onboarding" }
   | { kind: "home" }
@@ -51,6 +57,11 @@ export type AuthLandingState = {
   prioritiesReady: boolean;
   /** All four ranked. Only meaningful once `prioritiesReady`. */
   hasRanked: boolean;
+  /**
+   * This account's terms, from `GET /me/legal/pending`. Omitted reads as
+   * clear, so a caller that does not track it keeps the old ladder.
+   */
+  legal?: LegalGateStatus;
   /** Local session is gone; Clerk sign-out may still be in flight. */
   signingOut?: boolean;
   /** Clerk → GRIDGO join is in flight (Google return, token wait). */
@@ -79,6 +90,8 @@ export function authLanding(state: AuthLandingState): AuthLanding {
   if (state.user && needsClientProfile(state.user)) return { kind: "complete_profile" };
   if (!state.user && state.pendingClerkProfile) return { kind: "complete_profile" };
   if (state.user) {
+    if (state.legal === "unknown") return { kind: "pending" };
+    if (state.legal === "blocked") return { kind: "legal_review" };
     if (!state.prioritiesReady) return { kind: "pending" };
     if (!state.hasRanked) return { kind: "onboarding" };
     return { kind: "home" };

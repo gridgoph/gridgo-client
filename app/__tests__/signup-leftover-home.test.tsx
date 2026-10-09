@@ -6,6 +6,7 @@ import SignupScreen from "@/app/(auth)/signup";
 import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
 import { useSignupFlow } from "@/store/signupFlow";
+import { clearLegalGate, holdLegalLibrary } from "@/test/legalGate";
 
 /**
  * Signing up on a phone Clerk still holds a session for. That leftover may
@@ -104,6 +105,7 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("SignupScreen with a leftover Clerk session", () => {
   beforeEach(() => {
+    clearLegalGate();
     mockPassword.mockReset().mockResolvedValue({ error: null });
     mockFinalize.mockReset().mockResolvedValue({ error: null });
     mockSendEmailCode.mockReset().mockResolvedValue({ error: null });
@@ -121,6 +123,9 @@ describe("SignupScreen with a leftover Clerk session", () => {
       clerkSyncNonce: 0,
     });
     useSignupFlow.getState().reset();
+    // Ticked by the person in real life; preset here (one press per test).
+    useSignupFlow.getState().setConsent({ agreed: true, adult: true, guardian: false, marketing: false });
+    holdLegalLibrary();
   });
 
   it("signs the leftover out and starts the typed sign-up instead of adopting it", async () => {

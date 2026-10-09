@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import ArtworkScreen from "@/app/request/artwork";
 import type { Cart, CartLineRecord, CatalogItem, DetectedArtwork } from "@/lib/api";
 import { useCart } from "@/store/cart";
+import { agreeArtworkRights } from "@/test/legalGate";
 
 const mockPick = jest.fn(async () => undefined);
 
@@ -163,6 +164,8 @@ function renderInSafeArea(ui: ReactElement) {
 }
 
 beforeEach(() => {
+  // The per-order artwork box, ticked by the client (one press per test).
+  agreeArtworkRights("cart:cart_1");
   // The screen measures the stored artwork to warn about a wrong-shaped file.
   // jest-expo still mocks the `ImageLoader` native module in the old callback
   // shape, and React Native 0.81 calls the promise one — so the real
