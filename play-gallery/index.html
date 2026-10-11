@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GRIDGO · Play Store gallery</title>
+  <style>
+    @font-face {
+      font-family: Satoshi;
+      src: url("../assets/fonts/Satoshi-Regular.otf") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: block;
+    }
+    @font-face {
+      font-family: Satoshi;
+      src: url("../assets/fonts/Satoshi-Medium.otf") format("opentype");
+      font-weight: 500;
+      font-style: normal;
+      font-display: block;
+    }
+    @font-face {
+      font-family: Satoshi;
+      src: url("../assets/fonts/Satoshi-Bold.otf") format("opentype");
+      font-weight: 700;
+      font-style: normal;
+      font-display: block;
+    }
+    @font-face {
+      font-family: Satoshi;
+      src: url("../assets/fonts/Satoshi-Black.otf") format("opentype");
+      font-weight: 900;
+      font-style: normal;
+      font-display: block;
+    }
+
+    :root {
+      --ink: #111111;
+      --paper: #ffffff;
+      --mute: #8a8a8a;
+      --token: #ffde58;
+      --s: 0.3;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--ink);
+      color: var(--paper);
+      font-family: Satoshi, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, a { font-family: inherit; }
+
+    .studio-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 32px;
+      align-items: flex-end;
+      padding: 36px 48px 8px;
+    }
+    .studio-head h2 {
+      margin: 8px 0 0;
+      font-size: 40px;
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      font-weight: 900;
+    }
+    .studio-copy { max-width: 680px; }
+    .eyebrow {
+      margin: 0;
+      color: var(--token);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .studio-copy p:last-child {
+      margin: 12px 0 0;
+      color: var(--mute);
+      font-size: 16px;
+      line-height: 1.45;
+      font-weight: 500;
+    }
+    .reel {
+      display: flex;
+      gap: 28px;
+      overflow-x: auto;
+      padding: 28px 48px 56px;
+      scroll-snap-type: x mandatory;
+      scroll-padding-left: 48px;
+    }
+    .reel::-webkit-scrollbar { height: 10px; }
+    .reel::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 99px; }
+    .cell { scroll-snap-align: start; flex: none; }
+    .cell button.open {
+      display: block;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 22px;
+      text-align: left;
+    }
+    .scaler {
+      width: calc(1080px * var(--s));
+      height: calc(1920px * var(--s));
+      overflow: hidden;
+      border-radius: 22px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    }
+    .cap {
+      display: flex;
+      justify-content: space-between;
+      margin: 12px 4px 0;
+      color: var(--mute);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .cap b { color: var(--paper); font-weight: 700; }
+
+    .solo {
+      position: fixed;
+      z-index: 8;
+      top: 16px;
+      left: 20px;
+      right: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .solo[hidden] { display: none; }
+    .solo a, .solo button {
+      appearance: none;
+      border: 0;
+      background: var(--token);
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+      border-radius: 999px;
+      padding: 10px 16px;
+      cursor: pointer;
+    }
+    .solo .ghost {
+      background: transparent;
+      color: var(--paper);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    .solo .mid { color: var(--mute); font-size: 13px; font-weight: 700; letter-spacing: 0.12em; }
+
+    body[data-mode="single"] .studio-head,
+    body[data-mode="export"] .studio-head,
+    body[data-mode="single"] .cap,
+    body[data-mode="export"] .cap,
+    body[data-mode="export"] .solo { display: none; }
+
+    body[data-mode="single"] .studio,
+    body[data-mode="export"] .studio { padding: 0; }
+    body[data-mode="export"] { overflow: hidden; width: 1080px; height: 1920px; }
+    body[data-mode="single"] .reel,
+    body[data-mode="export"] .reel {
+      min-height: 100vh;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    body[data-mode="export"] .reel { min-height: 0; height: 1920px; width: 1080px; }
+    body[data-mode="single"] .scaler,
+    body[data-mode="export"] .scaler {
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .board {
+      width: 1080px;
+      height: 1920px;
+      zoom: var(--s);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 36px 28px 24px;
+      color: var(--ink);
+      text-align: left;
+    }
+    .theme-paper { background: var(--paper); color: var(--ink); }
+    .theme-ink { background: var(--ink); color: var(--paper); }
+    .theme-token { background: var(--token); color: var(--ink); }
+
+    .crops {
+      position: absolute;
+      inset: 28px;
+      pointer-events: none;
+      z-index: 6;
+      background:
+        linear-gradient(currentColor, currentColor) left top / 26px 2px no-repeat,
+        linear-gradient(currentColor, currentColor) left top / 2px 26px no-repeat,
+        linear-gradient(currentColor, currentColor) right top / 26px 2px no-repeat,
+        linear-gradient(currentColor, currentColor) right top / 2px 26px no-repeat,
+        linear-gradient(currentColor, currentColor) left bottom / 26px 2px no-repeat,
+        linear-gradient(currentColor, currentColor) left bottom / 2px 26px no-repeat,
+        linear-gradient(currentColor, currentColor) right bottom / 26px 2px no-repeat,
+        linear-gradient(currentColor, currentColor) right bottom / 2px 26px no-repeat;
+    }
+    .theme-ink .crops { color: var(--token); }
+    .theme-paper .crops, .theme-token .crops { color: var(--ink); }
+
+    .halftone {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background-image: radial-gradient(rgba(17, 17, 17, 0.14) 1.2px, transparent 1.3px);
+      background-size: 16px 16px;
+      mask-image: linear-gradient(180deg, transparent, #000 28%, #000 72%, transparent);
+    }
+    .theme-ink .halftone {
+      background-image: radial-gradient(rgba(255, 222, 88, 0.16) 1.2px, transparent 1.3px);
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 5;
+    }
+    .lockup { display: flex; align-items: center; gap: 12px; }
+    .lockup svg { width: 48px; height: 48px; display: block; }
+    .lockup strong {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+    }
+    .frac { font-size: 22px; font-weight: 900; letter-spacing: -0.03em; }
+    .frac span { color: var(--mute); font-weight: 500; }
+    .theme-token .frac span { color: rgba(17, 17, 17, 0.45); }
+
+    .kicker {
+      position: relative;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-top: 28px;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .kicker i {
+      font-style: normal;
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--token);
+      color: var(--ink);
+      font-weight: 900;
+      font-size: 18px;
+      letter-spacing: -0.04em;
+    }
+    .theme-token .kicker i { background: var(--ink); color: var(--token); }
+
+    h1 {
+      position: relative;
+      z-index: 5;
+      margin: 12px 0 0;
+      font-size: 84px;
+      line-height: 0.88;
+      letter-spacing: -0.055em;
+      font-weight: 900;
+      max-width: 12ch;
+    }
+    .deck {
+      position: relative;
+      z-index: 5;
+      margin: 10px 0 0;
+      max-width: 22em;
+      font-size: 24px;
+      line-height: 1.3;
+      font-weight: 500;
+      color: var(--mute);
+    }
+    .theme-token .deck { color: rgba(17, 17, 17, 0.72); }
+
+    .stage {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      margin-top: 8px;
+      isolation: isolate;
+    }
+    .phone {
+      position: absolute;
+      z-index: 3;
+      width: 660px;
+      height: 1440px;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      background: var(--ink);
+      border-radius: 58px;
+      padding: 12px;
+      box-shadow: 0 30px 64px rgba(17, 17, 17, 0.22);
+    }
+    .theme-ink .phone {
+      background: var(--token);
+      box-shadow: 0 30px 64px rgba(0, 0, 0, 0.35);
+    }
+    .screen {
+      height: 100%;
+      border-radius: 48px;
+      overflow: hidden;
+      background: #111;
+    }
+    .screen img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center center;
+      display: block;
+    }
+    .art { position: absolute; z-index: 4; pointer-events: none; }
+    .sheets { left: -88px; bottom: 8px; width: 390px; }
+    .kinds { right: -110px; bottom: 80px; width: 400px; height: 720px; }
+    .kind {
+      position: absolute;
+      left: 0;
+      right: 28px;
+      height: 210px;
+      border-radius: 22px;
+      border: 5px solid var(--ink);
+      background: var(--paper);
+    }
+    .theme-ink .kind { border-color: var(--paper); background: transparent; }
+    .kind b {
+      position: absolute;
+      left: 22px;
+      bottom: 20px;
+      font-size: 42px;
+      letter-spacing: -0.04em;
+    }
+    .kind:nth-child(1) { top: 0; background: var(--token); color: var(--ink); transform: rotate(6deg); }
+    .kind:nth-child(2) { top: 230px; transform: rotate(-4deg); }
+    .kind:nth-child(3) { top: 460px; background: var(--ink); color: var(--token); transform: rotate(3deg); }
+    .theme-ink .kind:nth-child(2) { background: var(--paper); color: var(--ink); }
+    .theme-ink .kind:nth-child(3) { background: var(--token); color: var(--ink); border-color: var(--token); }
+    .merch { left: -155px; bottom: 64px; width: 360px; }
+    .daymedal {
+      left: -80px;
+      bottom: 260px;
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--token);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .theme-ink .daymedal { background: var(--token); color: var(--ink); }
+    .daymedal .mo {
+      font-size: 22px;
+      letter-spacing: 0.28em;
+      font-weight: 700;
+    }
+    .daymedal .dd {
+      font-size: 108px;
+      line-height: 0.8;
+      font-weight: 900;
+      letter-spacing: -0.07em;
+    }
+    .daymedal .yr { font-size: 22px; font-weight: 700; letter-spacing: 0.14em; }
+    .paths { left: -50px; top: 0; width: 380px; height: 720px; }
+    .pinhouse { right: -40px; bottom: 48px; width: 280px; height: 280px; }
+    .tickets { inset: 0; }
+    .ticket {
+      position: absolute;
+      width: 230px;
+      height: 280px;
+      border-radius: 24px;
+      display: flex;
+      align-items: flex-end;
+      padding: 24px;
+      font-size: 100px;
+      font-weight: 900;
+      letter-spacing: -0.06em;
+      line-height: 0.8;
+    }
+    .ticket.t1 { left: -72px; bottom: 500px; background: var(--token); color: var(--ink); transform: rotate(-8deg); }
+    .ticket.t2 { left: -40px; bottom: 270px; background: var(--paper); color: var(--ink); transform: rotate(4deg); }
+    .ticket.t3 { left: -64px; bottom: 40px; background: var(--mute); color: var(--paper); transform: rotate(-3deg); width: 190px; height: 220px; font-size: 80px; }
+    .theme-ink .ticket.t2 { color: var(--ink); }
+    .theme-token .ticket.t1 { background: var(--ink); color: var(--token); }
+    .grid9 { left: -48px; bottom: 28px; width: 230px; height: 230px; }
+    .cropsheet { right: -28px; bottom: 56px; width: 200px; height: 250px; }
+    .proofsheet {
+      left: -72px;
+      bottom: 110px;
+      width: 250px;
+      height: 320px;
+      background: var(--paper);
+      border: 5px solid var(--ink);
+      transform: rotate(-7deg);
+    }
+    .theme-ink .proofsheet { background: var(--paper); }
+    .proofsheet .block { margin: 22px 18px 0; height: 96px; background: var(--token); }
+    .proofsheet .ln { margin: 22px 28px 0; height: 14px; background: var(--mute); opacity: 0.55; }
+    .proofsheet .ln.short { width: 55%; }
+    .stamp {
+      position: absolute;
+      right: 24px;
+      bottom: 36px;
+      width: 108px;
+      height: 108px;
+      border: 6px solid var(--ink);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      font-size: 26px;
+      color: var(--ink);
+      transform: rotate(-12deg);
+    }
+    .routemap { left: -64px; top: 4px; width: 240px; height: 560px; }
+    .receipt {
+      right: -16px;
+      bottom: 48px;
+      width: 190px;
+      background: var(--paper);
+      color: var(--ink);
+      border-radius: 8px 8px 18px 18px;
+      padding: 16px 14px 14px;
+      transform: rotate(6deg);
+    }
+    .theme-token .receipt { border: 4px solid var(--ink); }
+    .receipt .brand { font-weight: 900; letter-spacing: -0.04em; font-size: 22px; }
+    .receipt .rowl {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 14px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--mute);
+      border-top: 1px dashed rgba(17, 17, 17, 0.25);
+      padding-top: 10px;
+    }
+    .receipt .tot { margin-top: 12px; font-size: 36px; font-weight: 900; letter-spacing: -0.04em; }
+    .receipt .held {
+      margin-top: 10px;
+      display: inline-block;
+      background: var(--token);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      padding: 6px 8px;
+    }
+    .spark { position: absolute; z-index: 4; pointer-events: none; }
+    .plusdisc {
+      right: 8px;
+      top: 0;
+      width: 190px;
+      height: 190px;
+      border-radius: 50%;
+      background: var(--token);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      font-size: 120px;
+      font-weight: 400;
+      line-height: 0.8;
+    }
+    .minicrops { left: -28px; top: 0; width: 270px; height: 200px; }
+    .lens { left: -36px; top: 0; width: 270px; height: 270px; }
+    .specks { right: 8px; top: 8px; width: 170px; height: 220px; }
+    .badges { left: -24px; top: 0; width: 320px; height: 230px; }
+    .badge-pin {
+      position: absolute;
+      width: 148px;
+      height: 148px;
+      border-radius: 50%;
+      border: 6px solid var(--ink);
+      background: var(--token);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      font-size: 28px;
+      letter-spacing: -0.04em;
+    }
+    .badge-pin.alt { left: 110px; top: 64px; background: var(--paper); }
+    .week {
+      right: 6px;
+      top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .week i {
+      width: 138px;
+      height: 56px;
+      border-radius: 10px;
+      border: 4px solid var(--ink);
+      background: var(--paper);
+      color: var(--ink);
+      font-style: normal;
+      font-weight: 900;
+      font-size: 22px;
+      letter-spacing: 0.08em;
+      display: grid;
+      place-items: center;
+    }
+    .week i.on { background: var(--token); }
+    .earliest {
+      left: -8px;
+      top: 8px;
+      background: var(--token);
+      color: var(--ink);
+      font-weight: 900;
+      font-size: 28px;
+      letter-spacing: 0.14em;
+      padding: 18px 22px;
+      transform: rotate(-8deg);
+    }
+    .parcel { right: -8px; top: 0; width: 240px; height: 240px; }
+    .freechip {
+      right: 16px;
+      top: 190px;
+      background: var(--token);
+      color: var(--ink);
+      font-weight: 900;
+      font-size: 26px;
+      letter-spacing: 0.12em;
+      padding: 14px 18px;
+      transform: rotate(8deg);
+    }
+    .slip {
+      left: -12px;
+      top: 10px;
+      width: 280px;
+      background: var(--ink);
+      color: var(--paper);
+      border-radius: 16px;
+      padding: 16px 16px 18px;
+      transform: rotate(-7deg);
+    }
+    .slip b { display: block; font-size: 18px; letter-spacing: 0.16em; color: var(--token); }
+    .slip u {
+      display: block;
+      text-decoration: none;
+      margin-top: 10px;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--paper);
+    }
+    .slip u.short { width: 62%; background: var(--mute); }
+    .radar { left: -16px; top: 0; width: 240px; height: 240px; }
+    .locard {
+      right: 4px;
+      top: 8px;
+      width: 230px;
+      background: var(--ink);
+      color: var(--paper);
+      border-radius: 16px;
+      padding: 14px 14px 16px;
+      transform: rotate(6deg);
+    }
+    .locard b { display: block; font-size: 13px; letter-spacing: 0.14em; color: var(--token); }
+    .locard strong { display: block; margin-top: 6px; font-size: 32px; letter-spacing: -0.04em; }
+    .rankpips {
+      left: 8px;
+      top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .rankpips i {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: var(--paper);
+      color: var(--ink);
+      font-style: normal;
+      font-weight: 900;
+      font-size: 28px;
+      display: grid;
+      place-items: center;
+    }
+    .rankpips i.on { background: var(--token); }
+    .fourdisc {
+      right: 18px;
+      top: 8px;
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      background: var(--token);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      font-size: 68px;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+    }
+    .ribbon {
+      left: -8px;
+      top: 16px;
+      background: var(--ink);
+      color: var(--token);
+      font-weight: 900;
+      font-size: 24px;
+      letter-spacing: 0.12em;
+      padding: 16px 22px;
+      transform: rotate(-8deg);
+    }
+    .theme-paper .ribbon, .theme-ink .ribbon { background: var(--token); color: var(--ink); }
+    .qtydisc {
+      left: -36px;
+      top: 8px;
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--token);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 96px;
+      font-weight: 900;
+      letter-spacing: -0.06em;
+      line-height: 0.8;
+    }
+    .qtydisc small {
+      margin-top: 6px;
+      font-size: 13px;
+      letter-spacing: 0.16em;
+      font-weight: 700;
+    }
+    .ruler { right: -8px; top: 4px; width: 280px; height: 128px; }
+    .files { left: -72px; top: 0; width: 320px; height: 260px; }
+    .filebit {
+      position: absolute;
+      width: 210px;
+      background: var(--paper);
+      color: var(--ink);
+      border: 5px solid var(--ink);
+      border-radius: 14px;
+      padding: 18px 20px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      font-size: 28px;
+    }
+    .filebit.second { left: 56px; top: 118px; background: var(--token); transform: rotate(7deg); }
+    .filebit.first { left: 48px; transform: rotate(-8deg); }
+    .linkchain { right: 4px; top: 8px; width: 210px; height: 88px; }
+    .qrmark {
+      left: -20px;
+      top: 8px;
+      width: 240px;
+      height: 240px;
+      background: var(--ink);
+      border-radius: 20px;
+      padding: 16px;
+      transform: rotate(-6deg);
+    }
+    .qrmark svg { width: 100%; height: 100%; display: block; }
+    .tokencoin {
+      right: 14px;
+      top: 12px;
+      width: 214px;
+      height: 214px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--token);
+      display: grid;
+      place-items: center;
+      font-size: 52px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+    }
+
+    .avatar {
+      position: absolute;
+      z-index: 5;
+      width: 380px;
+      height: 480px;
+      bottom: 340px;
+      object-fit: contain;
+      pointer-events: none;
+      filter: drop-shadow(0 16px 12px rgba(17, 17, 17, 0.24));
+    }
+    .avatar.side-l { left: calc(50% - 640px); object-position: right center; }
+    .avatar.side-r { left: calc(50% + 260px); object-position: left center; }
+    .avatar.drop { bottom: 36px; width: 470px; height: 590px; }
+    .avatar.side-r.drop { left: calc(50% + 230px); }
+    .avatar.low { bottom: 160px; }
+
+    .journey { position: relative; z-index: 5; margin-top: 18px; }
+    .journey ol {
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+    }
+    .journey li {
+      position: relative;
+      padding-top: 14px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--mute);
+      letter-spacing: -0.03em;
+      white-space: nowrap;
+    }
+    .journey li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 5px;
+      border-radius: 99px;
+      background: var(--mute);
+      opacity: 0.35;
+    }
+    .journey li.done::before,
+    .journey li.now::before {
+      opacity: 1;
+      background: var(--token);
+    }
+    .journey li.now { color: inherit; font-weight: 900; }
+    .theme-token .journey li.done::before,
+    .theme-token .journey li.now::before { background: var(--ink); }
+    .theme-token .journey li { color: rgba(17, 17, 17, 0.45); }
+    .theme-token .journey li.now { color: var(--ink); }
+
+    .pages { display: flex; gap: 8px; margin-top: 18px; }
+    .pages a {
+      color: var(--paper);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid #333;
+      border-radius: 999px;
+      padding: 8px 14px;
+    }
+    .pages a[aria-current="page"] {
+      background: var(--token);
+      color: var(--ink);
+      border-color: var(--token);
+    }
+  </style>
+</head>
+<body>
+  <header class="studio-head">
+    <div class="studio-copy">
+      <p class="eyebrow">Google Play gallery · 1080 × 1920</p>
+      <h2>Twelve frames, in job order.</h2>
+      <p>Home through checkout, in the order a client takes. Each phone is a real screen, with an unDraw character overlapping the side.</p>
+      <nav class="pages" aria-label="Gallery pages">
+        <a href="./index.html" aria-current="page">unDraw</a>
+        <a href="./storyset.html">Storyset</a>
+      </nav>
+    </div>
+    <div class="lockup" aria-label="GRIDGO">
+      <svg viewBox="0 0 100 100" width="42" height="42" aria-hidden="true">
+        <circle cx="15" cy="15" r="13" fill="#fff"/>
+        <circle cx="50" cy="15" r="13" fill="#fff"/>
+        <circle cx="85" cy="15" r="13" fill="#FFDE58"/>
+        <circle cx="15" cy="50" r="13" fill="#fff"/>
+        <circle cx="50" cy="50" r="13" fill="#fff"/>
+        <circle cx="85" cy="50" r="13" fill="#8A8A8A"/>
+        <circle cx="15" cy="85" r="13" fill="#fff"/>
+        <circle cx="50" cy="85" r="13" fill="#fff"/>
+        <circle cx="85" cy="85" r="13" fill="#8A8A8A"/>
+      </svg>
+      <strong>GRIDGO</strong>
+    </div>
+  </header>
+
+  <div class="solo" id="solo" hidden>
+    <a href="./index.html">All frames</a>
+    <div class="mid" data-now>01 / 12</div>
+    <div style="display:flex;gap:8px;">
+      <button type="button" id="prev" class="ghost">Previous</button>
+      <button type="button" id="next">Next</button>
+    </div>
+  </div>
+
+  <main class="studio">
+    <div class="reel" id="reel">
+
+      <section class="cell" data-slide="1">
+        <button class="open" type="button" data-open="1" aria-label="Open frame 1, Home">
+          <div class="scaler">
+            <article class="board theme-paper" data-slide="1">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-ink"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">01<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>01</i> Home</p>
+              <h1>Start a print.</h1>
+              <p class="deck">Search the catalog, or begin with what is on press today.</p>
+              <div class="stage">
+                <svg class="spark minicrops" viewBox="0 0 230 170" aria-hidden="true">
+                  <rect x="8" y="36" width="120" height="90" rx="8" fill="#FFDE58" stroke="#111" stroke-width="5" transform="rotate(-8 68 80)"/>
+                  <rect x="70" y="18" width="130" height="100" rx="8" fill="#fff" stroke="#111" stroke-width="5" transform="rotate(6 135 68)"/>
+                  <path d="M86 34 H108 M86 34 V56 M176 34 H198 M198 34 V56" fill="none" stroke="#111" stroke-width="3"/>
+                </svg>
+                <div class="spark plusdisc" aria-hidden="true">+</div>
+                <svg class="art sheets" viewBox="-10 -16 540 610" aria-hidden="true">
+                  <g transform="translate(40 80) rotate(-8 220 160)">
+                    <rect x="0" y="40" width="420" height="230" rx="10" fill="#FFDE58" stroke="#111" stroke-width="6"/>
+                    <circle cx="28" cy="68" r="9" fill="#111"/>
+                    <circle cx="392" cy="68" r="9" fill="#111"/>
+                    <circle cx="28" cy="242" r="9" fill="#111"/>
+                    <circle cx="392" cy="242" r="9" fill="#111"/>
+                  </g>
+                  <g transform="translate(250 10) rotate(8 90 100)">
+                    <path fill="#111" d="M62 28 L96 8 L132 28 L168 62 L146 78 L146 196 L46 196 L46 78 L24 62 Z"/>
+                    <path fill="#FFDE58" d="M78 46 h36 v18 h-36 z"/>
+                  </g>
+                  <g transform="translate(80 250) rotate(4 140 180)">
+                    <rect x="0" y="0" width="230" height="300" rx="6" fill="#fff" stroke="#111" stroke-width="6"/>
+                    <path d="M16 16 H40 M16 16 V40 M190 16 H214 M214 16 V40 M16 260 V284 M16 284 H40 M214 260 V284 M190 284 H214" fill="none" stroke="#111" stroke-width="3"/>
+                    <rect x="32" y="44" width="166" height="80" fill="#FFDE58"/>
+                    <rect x="32" y="146" width="140" height="12" fill="#8A8A8A"/>
+                    <rect x="32" y="170" width="110" height="12" fill="#8A8A8A" opacity="0.7"/>
+                    <rect x="32" y="194" width="150" height="12" fill="#111"/>
+                  </g>
+                </svg>
+                <img class="avatar side-r" src="avatars/friendly.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/1.jpg" alt="Home, with a search for what you are printing" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>01 Home</b><span>Paper</span></p>
+      </section>
+
+      <section class="cell" data-slide="2">
+        <button class="open" type="button" data-open="2" aria-label="Open frame 2, Category">
+          <div class="scaler">
+            <article class="board theme-ink" data-slide="2">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-paper"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">02<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>02</i> Category</p>
+              <h1>Choose a category.</h1>
+              <p class="deck">Marketing, merch, awards, prototyping, or documents.</p>
+              <div class="stage">
+                <svg class="spark lens" viewBox="0 0 190 190" aria-hidden="true">
+                  <circle cx="78" cy="78" r="52" fill="none" stroke="#FFDE58" stroke-width="10"/>
+                  <circle cx="78" cy="78" r="22" fill="#fff"/>
+                  <path d="M116 116 L164 164" stroke="#FFDE58" stroke-width="14" stroke-linecap="round"/>
+                </svg>
+                <svg class="spark specks" viewBox="0 0 120 160" aria-hidden="true">
+                  <circle cx="30" cy="28" r="16" fill="#FFDE58"/>
+                  <circle cx="78" cy="70" r="10" fill="#8A8A8A"/>
+                  <circle cx="40" cy="112" r="22" fill="#fff"/>
+                  <circle cx="96" cy="132" r="8" fill="#FFDE58"/>
+                </svg>
+                <div class="art kinds" aria-hidden="true">
+                  <div class="kind"><b>Merch</b></div>
+                  <div class="kind"><b>Awards</b></div>
+                  <div class="kind"><b>Marketing</b></div>
+                </div>
+                <img class="avatar side-l" src="avatars/male.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/2.jpg" alt="Category picker for what you are printing" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>02 Category</b><span>Ink</span></p>
+      </section>
+
+      <section class="cell" data-slide="3">
+        <button class="open" type="button" data-open="3" aria-label="Open frame 3, Catalog">
+          <div class="scaler">
+            <article class="board theme-token" data-slide="3">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-ink"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">03<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>03</i> Catalog</p>
+              <h1>See the merch.</h1>
+              <p class="deck">Lanyards, pins, and the rest quoted for the event.</p>
+              <div class="stage">
+                <div class="spark badges" aria-hidden="true">
+                  <div class="badge-pin">PIN</div>
+                  <div class="badge-pin alt">ID</div>
+                </div>
+                <svg class="spark ruler" viewBox="0 0 150 70" aria-hidden="true" style="top:8px">
+                  <rect x="4" y="18" width="142" height="36" rx="8" fill="#111"/>
+                  <path d="M18 18 V36 M40 18 V42 M62 18 V36 M84 18 V42 M106 18 V36 M128 18 V42" stroke="#FFDE58" stroke-width="4"/>
+                </svg>
+                <svg class="art merch" viewBox="0 0 200 220" aria-hidden="true">
+                  <path fill="#111" d="M62 28 L96 8 L132 28 L168 62 L146 78 L146 200 L46 200 L46 78 L24 62 Z"/>
+                  <path fill="#FFDE58" d="M78 48 h36 v20 h-36 z"/>
+                </svg>
+                <img class="avatar side-r drop" src="avatars/cool-girl.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/3.jpg" alt="Corporate and event merchandise catalog" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>03 Catalog</b><span>Token</span></p>
+      </section>
+
+      <section class="cell" data-slide="4">
+        <button class="open" type="button" data-open="4" aria-label="Open frame 4, Date">
+          <div class="scaler">
+            <article class="board theme-paper" data-slide="4">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-ink"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">04<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>04</i> Deadline</p>
+              <h1>Name the day.</h1>
+              <p class="deck">The earliest date GRIDGO can promise, or no rush.</p>
+              <div class="stage">
+                <div class="spark earliest" aria-hidden="true">EARLIEST</div>
+                <div class="spark week" aria-hidden="true">
+                  <i>MON</i><i>TUE</i><i>WED</i><i class="on">THU</i><i>FRI</i>
+                </div>
+                <div class="art daymedal" aria-hidden="true">
+                  <div class="mo">OCTOBER</div>
+                  <div class="dd">07</div>
+                  <div class="yr">2026</div>
+                </div>
+                <img class="avatar side-r" src="avatars/professor.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/4.jpg" alt="Calendar for when the print is needed" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>04 Date</b><span>Paper</span></p>
+      </section>
+
+      <section class="cell" data-slide="5">
+        <button class="open" type="button" data-open="5" aria-label="Open frame 5, Receive">
+          <div class="scaler">
+            <article class="board theme-ink" data-slide="5">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-paper"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">05<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>05</i> Receive</p>
+              <h1>Deliver, or collect.</h1>
+              <p class="deck">A delivery priced by zone, or free pickup at GRIDGO Office.</p>
+              <div class="stage">
+                <svg class="spark parcel" viewBox="0 0 170 170" aria-hidden="true">
+                  <rect x="28" y="48" width="114" height="90" rx="6" fill="#fff" stroke="#111" stroke-width="5"/>
+                  <path d="M28 78 H142" stroke="#FFDE58" stroke-width="10"/>
+                  <path d="M85 48 V138" stroke="#111" stroke-width="5"/>
+                  <rect x="70" y="28" width="30" height="22" rx="4" fill="#FFDE58" stroke="#111" stroke-width="4"/>
+                </svg>
+                <div class="spark freechip" aria-hidden="true">FREE</div>
+                <svg class="art paths" viewBox="0 0 220 480" aria-hidden="true">
+                  <path d="M110 70 C 40 160, 180 240, 110 340" fill="none" stroke="#FFDE58" stroke-width="6" stroke-dasharray="10 12"/>
+                  <circle cx="110" cy="70" r="52" fill="#FFDE58"/>
+                  <path d="M110 42 c-12 0-22 10-22 24 0 18 22 40 22 40 s22-22 22-40 c0-14-10-24-22-24z" fill="#111"/>
+                  <circle cx="110" cy="66" r="7" fill="#FFDE58"/>
+                  <circle cx="110" cy="360" r="52" fill="#fff"/>
+                  <rect x="86" y="340" width="48" height="34" rx="2" fill="none" stroke="#111" stroke-width="4"/>
+                  <path d="M86 340 L110 322 L134 340" fill="none" stroke="#111" stroke-width="4"/>
+                  <rect x="104" y="354" width="14" height="20" fill="#FFDE58" stroke="#111" stroke-width="3"/>
+                </svg>
+                <img class="avatar side-r" src="avatars/traveler.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/5.jpg" alt="Choose delivery or pickup" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>05 Receive</b><span>Ink</span></p>
+      </section>
+
+      <section class="cell" data-slide="6">
+        <button class="open" type="button" data-open="6" aria-label="Open frame 6, Address">
+          <div class="scaler">
+            <article class="board theme-token" data-slide="6">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-ink"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">06<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>06</i> Address</p>
+              <h1>Say where it goes.</h1>
+              <p class="deck">Deliver to me, with the address you already saved.</p>
+              <div class="stage">
+                <div class="spark slip" aria-hidden="true">
+                  <b>DELIVER TO</b>
+                  <u></u>
+                  <u class="short"></u>
+                </div>
+                <svg class="art pinhouse" viewBox="0 0 220 220" aria-hidden="true">
+                  <circle cx="110" cy="96" r="78" fill="#111"/>
+                  <path d="M110 48 c-18 0-32 14-32 34 0 26 32 58 32 58 s32-32 32-58 c0-20-14-34-32-34z" fill="#FFDE58"/>
+                  <circle cx="110" cy="82" r="10" fill="#111"/>
+                </svg>
+                <img class="avatar side-l" src="avatars/female.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/6.png" alt="Deliver to me, with a saved address" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>06 Address</b><span>Token</span></p>
+      </section>
+
+      <section class="cell" data-slide="7">
+        <button class="open" type="button" data-open="7" aria-label="Open frame 7, Pin">
+          <div class="scaler">
+            <article class="board theme-paper" data-slide="7">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-ink"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">07<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>07</i> Map</p>
+              <h1>Drop the pin.</h1>
+              <p class="deck">Search the street, then set where the job is going.</p>
+              <div class="stage">
+                <svg class="spark radar" viewBox="0 0 168 168" aria-hidden="true">
+                  <circle cx="84" cy="84" r="70" fill="none" stroke="#111" stroke-width="4"/>
+                  <circle cx="84" cy="84" r="44" fill="none" stroke="#111" stroke-width="4"/>
+                  <circle cx="84" cy="84" r="16" fill="#FFDE58" stroke="#111" stroke-width="4"/>
+                </svg>
+                <div class="spark locard" aria-hidden="true">
+                  <b>PIN</b>
+                  <strong>Davao</strong>
+                </div>
+                <svg class="art routemap" viewBox="0 0 220 620" aria-hidden="true">
+                  <path d="M70 40 C 160 80, 40 200, 120 280 S 190 400, 80 520" fill="none" stroke="#111" stroke-width="14" stroke-linecap="round"/>
+                  <circle cx="70" cy="40" r="14" fill="#8A8A8A"/>
+                  <circle cx="80" cy="520" r="22" fill="#111"/>
+                  <circle cx="80" cy="520" r="9" fill="#FFDE58"/>
+                </svg>
+                <img class="avatar side-r" src="avatars/woman.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/7.png" alt="Map pin for the delivery" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>07 Pin</b><span>Paper</span></p>
+      </section>
+
+      <section class="cell" data-slide="8">
+        <button class="open" type="button" data-open="8" aria-label="Open frame 8, Rank">
+          <div class="scaler">
+            <article class="board theme-ink" data-slide="8">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-paper"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">08<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>08</i> Rank</p>
+              <h1>Put them in order.</h1>
+              <p class="deck">Quality, then cost, then speed, and last distance.</p>
+              <div class="stage">
+                <div class="spark rankpips" aria-hidden="true"><i class="on">1</i><i>2</i><i>3</i><i>4</i></div>
+                <div class="spark fourdisc" aria-hidden="true">4</div>
+                <div class="art tickets" aria-hidden="true">
+                  <div class="ticket t1">1</div>
+                  <div class="ticket t2">2</div>
+                  <div class="ticket t3">3</div>
+                </div>
+                <img class="avatar side-r" src="avatars/businesswoman.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/8.jpg" alt="Priority ranking before the match" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>08 Rank</b><span>Ink</span></p>
+      </section>
+
+      <section class="cell" data-slide="9">
+        <button class="open" type="button" data-open="9" aria-label="Open frame 9, Match">
+          <div class="scaler">
+            <article class="board theme-token" data-slide="9">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-ink"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">09<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>09</i> Match</p>
+              <h1>Take the top pick.</h1>
+              <p class="deck">A GRIDGO-vetted supplier, ready for the date you set.</p>
+              <div class="stage">
+                <div class="spark ribbon" aria-hidden="true">TOP PICK</div>
+                <svg class="spark specks" viewBox="0 0 120 160" aria-hidden="true">
+                  <circle cx="86" cy="30" r="22" fill="#111"/>
+                  <circle cx="40" cy="78" r="12" fill="#111"/>
+                  <circle cx="96" cy="120" r="16" fill="#fff" stroke="#111" stroke-width="4"/>
+                </svg>
+                <svg class="art grid9" viewBox="0 0 300 300" aria-hidden="true">
+                  <g fill="#111">
+                    <circle cx="48" cy="48" r="28"/>
+                    <circle cx="150" cy="48" r="28"/>
+                    <circle cx="48" cy="150" r="28"/>
+                    <circle cx="150" cy="150" r="28"/>
+                    <circle cx="252" cy="48" r="28"/>
+                    <circle cx="252" cy="150" r="28"/>
+                    <circle cx="48" cy="252" r="28"/>
+                    <circle cx="150" cy="252" r="28"/>
+                    <circle cx="252" cy="252" r="36" fill="#FFFFFF"/>
+                  </g>
+                </svg>
+                <img class="avatar side-r" src="avatars/developer.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/9.jpg" alt="Top pick supplier for the listing" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>09 Match</b><span>Token</span></p>
+      </section>
+
+      <section class="cell" data-slide="10">
+        <button class="open" type="button" data-open="10" aria-label="Open frame 10, Listing">
+          <div class="scaler">
+            <article class="board theme-paper" data-slide="10">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-ink"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">10<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>10</i> Listing</p>
+              <h1>Size and quantity.</h1>
+              <p class="deck">Set the size, the count, and the print total.</p>
+              <div class="stage">
+                <div class="spark qtydisc" aria-hidden="true">10<small>PCS</small></div>
+                <svg class="spark ruler" viewBox="0 0 150 70" aria-hidden="true">
+                  <rect x="4" y="16" width="142" height="38" rx="8" fill="#111"/>
+                  <path d="M16 16 V34 M38 16 V40 M60 16 V34 M82 16 V40 M104 16 V34 M126 16 V40" stroke="#FFDE58" stroke-width="4"/>
+                </svg>
+                <svg class="art cropsheet" viewBox="0 0 240 320" aria-hidden="true">
+                  <rect x="8" y="8" width="224" height="304" rx="8" fill="#fff" stroke="#111" stroke-width="5"/>
+                  <path d="M28 28 H58 M28 28 V58 M182 28 H212 M212 28 V58 M28 262 V292 M28 292 H58 M212 262 V292 M182 292 H212" fill="none" stroke="#111" stroke-width="4"/>
+                  <rect x="40" y="78" width="160" height="90" fill="#FFDE58"/>
+                  <rect x="40" y="190" width="120" height="12" fill="#111"/>
+                  <rect x="40" y="214" width="90" height="12" fill="#8A8A8A"/>
+                </svg>
+                <img class="avatar side-l" src="avatars/chill.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/10.jpg" alt="Listing size and quantity" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>10 Listing</b><span>Paper</span></p>
+      </section>
+
+      <section class="cell" data-slide="11">
+        <button class="open" type="button" data-open="11" aria-label="Open frame 11, Artwork">
+          <div class="scaler">
+            <article class="board theme-ink" data-slide="11">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-paper"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">11<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>11</i> Artwork</p>
+              <h1>Add the artwork.</h1>
+              <p class="deck">Choose a file, or paste a link from your design tool.</p>
+              <div class="stage">
+                <div class="spark files" aria-hidden="true">
+                  <div class="filebit first">PDF</div>
+                  <div class="filebit second">LINK</div>
+                </div>
+                <svg class="spark linkchain" viewBox="0 0 150 64" aria-hidden="true">
+                  <rect x="4" y="16" width="62" height="32" rx="16" fill="none" stroke="#FFDE58" stroke-width="6"/>
+                  <rect x="78" y="16" width="62" height="32" rx="16" fill="none" stroke="#fff" stroke-width="6"/>
+                </svg>
+                <div class="art proofsheet" aria-hidden="true">
+                  <div class="block"></div>
+                  <div class="ln"></div>
+                  <div class="ln short"></div>
+                  <div class="ln"></div>
+                  <div class="stamp">OK</div>
+                </div>
+                <img class="avatar side-r" src="avatars/designer.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/11.jpg" alt="Upload artwork or a design link" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>11 Artwork</b><span>Ink</span></p>
+      </section>
+
+      <section class="cell" data-slide="12">
+        <button class="open" type="button" data-open="12" aria-label="Open frame 12, Pay">
+          <div class="scaler">
+            <article class="board theme-token" data-slide="12">
+              <div class="crops"></div>
+              <div class="halftone"></div>
+              <header class="top">
+                <div class="lockup">
+                  <svg viewBox="0 0 100 100" aria-hidden="true"><g class="mark-ink"></g></svg>
+                  <strong>GRIDGO</strong>
+                </div>
+                <div class="frac">12<span> / 12</span></div>
+              </header>
+              <p class="kicker"><i>12</i> Checkout</p>
+              <h1>Place the order.</h1>
+              <p class="deck">Review the job, then pay GRIDGO in full by QR.</p>
+              <div class="stage">
+                <div class="spark qrmark" aria-hidden="true">
+                  <svg viewBox="0 0 100 100">
+                    <rect x="6" y="6" width="30" height="30" fill="#FFDE58"/>
+                    <rect x="14" y="14" width="14" height="14" fill="#111"/>
+                    <rect x="64" y="6" width="30" height="30" fill="#fff"/>
+                    <rect x="72" y="14" width="14" height="14" fill="#111"/>
+                    <rect x="6" y="64" width="30" height="30" fill="#8A8A8A"/>
+                    <rect x="46" y="46" width="12" height="12" fill="#FFDE58"/>
+                    <rect x="66" y="62" width="16" height="16" fill="#FFDE58"/>
+                    <rect x="48" y="74" width="10" height="10" fill="#fff"/>
+                    <rect x="84" y="80" width="10" height="10" fill="#fff"/>
+                  </svg>
+                </div>
+                <div class="spark tokencoin" aria-hidden="true">QR</div>
+                <div class="art receipt" aria-hidden="true">
+                  <div class="brand">GRIDGO</div>
+                  <div class="rowl"><span>Lanyards · 10</span><span>₱725</span></div>
+                  <div class="rowl"><span>Delivery</span><span>incl.</span></div>
+                  <div class="tot">₱874</div>
+                  <div class="held">PAY IN FULL</div>
+                </div>
+                <img class="avatar side-l" src="avatars/indie.svg" alt="" />
+                <div class="phone">
+                  <div class="screen"><img src="Screenshots/12.jpg" alt="Checkout, ready to place the order" /></div>
+                </div>
+              </div>
+              <nav class="journey" aria-label="Job order"></nav>
+            </article>
+          </div>
+        </button>
+        <p class="cap"><b>12 Pay</b><span>Token</span></p>
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+    const MARK_INK = `
+      <circle cx="15" cy="15" r="13" fill="#111"/>
+      <circle cx="50" cy="15" r="13" fill="#111"/>
+      <circle cx="85" cy="15" r="13" fill="#FFDE58"/>
+      <circle cx="15" cy="50" r="13" fill="#111"/>
+      <circle cx="50" cy="50" r="13" fill="#111"/>
+      <circle cx="85" cy="50" r="13" fill="#8A8A8A"/>
+      <circle cx="15" cy="85" r="13" fill="#111"/>
+      <circle cx="50" cy="85" r="13" fill="#111"/>
+      <circle cx="85" cy="85" r="13" fill="#8A8A8A"/>`;
+    const MARK_PAPER = MARK_INK.replaceAll('fill="#111"', 'fill="#FFFFFF"');
+    document.querySelectorAll(".mark-ink").forEach((node) => { node.innerHTML = MARK_INK; });
+    document.querySelectorAll(".mark-paper").forEach((node) => { node.innerHTML = MARK_PAPER; });
+
+    const STEPS = ["Home", "Kind", "Merch", "Date", "Way", "Address", "Pin", "Rank", "Match", "Size", "Art", "Pay"];
+    const TOTAL = STEPS.length;
+    document.querySelectorAll(".board").forEach((board) => {
+      const n = Number(board.dataset.slide);
+      const ol = document.createElement("ol");
+      STEPS.forEach((name, i) => {
+        const li = document.createElement("li");
+        li.textContent = name;
+        if (i + 1 === n) li.className = "now";
+        else if (i + 1 < n) li.className = "done";
+        ol.appendChild(li);
+      });
+      board.querySelector(".journey").appendChild(ol);
+    });
+
+    const root = document.documentElement;
+    function fit() {
+      const s = Math.min((innerWidth - 24) / 1080, (innerHeight - 24) / 1920);
+      root.style.setProperty("--s", String(Math.max(0.2, s)));
+    }
+    function applyMode() {
+      const q = new URLSearchParams(location.search);
+      const slide = q.get("slide");
+      const exp = q.get("export");
+      const n = exp || slide;
+      if (exp) {
+        document.body.dataset.mode = "export";
+        root.style.setProperty("--s", "1");
+      } else if (slide) {
+        document.body.dataset.mode = "single";
+        fit();
+      } else {
+        delete document.body.dataset.mode;
+        root.style.setProperty("--s", "0.3");
+        document.body.style.background = "";
+      }
+      document.querySelectorAll(".cell").forEach((cell) => {
+        cell.hidden = Boolean(n) && cell.dataset.slide !== n;
+      });
+      const solo = document.getElementById("solo");
+      solo.hidden = !(slide && !exp);
+      if (slide && !exp) {
+        solo.querySelector("[data-now]").textContent = String(slide).padStart(2, "0") + " / " + String(TOTAL).padStart(2, "0");
+      }
+      if (exp) {
+        const board = document.querySelector('.board[data-slide="' + exp + '"]');
+        if (board) document.body.style.background = getComputedStyle(board).backgroundColor;
+      }
+    }
+    document.querySelectorAll("[data-open]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (document.body.dataset.mode) return;
+        history.pushState({}, "", "?slide=" + button.dataset.open);
+        applyMode();
+      });
+    });
+    document.getElementById("prev").addEventListener("click", () => step(-1));
+    document.getElementById("next").addEventListener("click", () => step(1));
+    function step(dir) {
+      const q = new URLSearchParams(location.search);
+      const current = Number(q.get("slide") || "1");
+      const next = Math.min(TOTAL, Math.max(1, current + dir));
+      history.pushState({}, "", "?slide=" + next);
+      applyMode();
+    }
+    addEventListener("popstate", applyMode);
+    addEventListener("resize", () => {
+      if (document.body.dataset.mode === "single") fit();
+    });
+    applyMode();
+  </script>
+</body>
+</html>
