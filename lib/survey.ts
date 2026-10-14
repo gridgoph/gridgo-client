@@ -273,8 +273,8 @@ export function rewardOffer(survey: Pick<OrderSurvey, "rewardEligible">): string
 export function noRewardLine(survey: Pick<OrderSurvey, "rewardEligible" | "nextRewardAt">): string | null {
   if (survey.rewardEligible) return null;
   return survey.nextRewardAt && Date.parse(survey.nextRewardAt) > 0
-    ? `You have had a survey voucher in the last 7 days, so this survey does not add another. One can come from a survey again from ${exactTime(survey.nextRewardAt)}.`
-    : "Survey vouchers are limited to one every 7 days, so this survey does not add another.";
+    ? `This survey does not come with a voucher: you had one in the last 7 days. Your next survey can earn one from ${exactTime(survey.nextRewardAt)}.`
+    : "This survey does not come with a voucher: survey vouchers are limited to one every 7 days.";
 }
 
 export type SurveyThanks = {

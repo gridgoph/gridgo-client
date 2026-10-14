@@ -16,32 +16,36 @@ export function VoucherCodeRow({ code }: { code: string }) {
   const [copied, setCopied] = useState<"yes" | "no" | null>(null);
   return (
     <View className="gap-1">
-      <View className="flex-row items-center gap-3 rounded-field bg-surface-variant py-1 pl-4 pr-1">
-        <View className="min-w-0 flex-1">
+      <View className="gap-1 rounded-field bg-surface-variant py-2 pl-4 pr-2">
+        <View className="flex-row items-center justify-between gap-3">
           <Text className="text-caption text-text-muted">Voucher code</Text>
-          <Text
-            selectable
-            className="text-body-lg font-bold text-text-primary"
-            style={{ fontVariant: ["tabular-nums"], letterSpacing: 1 }}
-            accessibilityLabel={`Voucher code ${code.split("").join(" ")}`}
+          <Pressable
+            onPress={() => void copyText(code).then((ok) => setCopied(ok ? "yes" : "no"))}
+            accessibilityRole="button"
+            accessibilityLabel={copied === "yes" ? "Code copied" : "Copy the voucher code"}
+            hitSlop={4}
+            className="gg-touch flex-row items-center justify-center gap-1.5 px-2"
+            style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
           >
-            {groupedCode(code)}
-          </Text>
+            {copied === "yes" ? (
+              <Check size={16} color={colors.success} strokeWidth={2.5} aria-hidden />
+            ) : (
+              <Copy size={16} color={colors.textPrimary} strokeWidth={2} aria-hidden />
+            )}
+            <Text className="text-button text-text-primary">{copied === "yes" ? "Copied" : "Copy"}</Text>
+          </Pressable>
         </View>
-        <Pressable
-          onPress={() => void copyText(code).then((ok) => setCopied(ok ? "yes" : "no"))}
-          accessibilityRole="button"
-          accessibilityLabel={copied === "yes" ? "Code copied" : "Copy the voucher code"}
-          className="gg-btn-secondary"
-          style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+        {/* Its own line, full width: a code broken across two lines gets typed back wrong. */}
+        <Text
+          selectable
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          className="text-body-lg font-bold text-text-primary"
+          style={{ fontVariant: ["tabular-nums"], letterSpacing: 1 }}
+          accessibilityLabel={`Voucher code ${code.split("").join(" ")}`}
         >
-          {copied === "yes" ? (
-            <Check size={16} color={colors.success} strokeWidth={2.5} aria-hidden />
-          ) : (
-            <Copy size={16} color={colors.textPrimary} strokeWidth={2} aria-hidden />
-          )}
-          <Text className="text-button text-text-primary">{copied === "yes" ? "Copied" : "Copy"}</Text>
-        </Pressable>
+          {groupedCode(code)}
+        </Text>
       </View>
       {copied === "no" ? (
         <Text className="text-caption text-text-muted" accessibilityRole="alert">

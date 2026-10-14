@@ -171,7 +171,7 @@ describe("words", () => {
   it("explains a missing reward instead of leaving it out silently", () => {
     expect(noRewardLine(survey())).toBeNull();
     expect(noRewardLine(survey({ rewardEligible: false, nextRewardAt: "2026-10-18T08:00:00.000Z" }))).toMatch(
-      /does not add another/,
+      /does not come with a voucher/,
     );
   });
 });

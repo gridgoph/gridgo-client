@@ -79,7 +79,7 @@ describe("the post-order survey", () => {
     serve(survey({ rewardEligible: false, nextRewardAt: new Date(Date.now() + 86_400_000).toISOString() }));
     await renderInSafeArea(<OrderSurveyScreen />);
 
-    expect(screen.getByText(/does not add another/)).toBeTruthy();
+    expect(screen.getByText(/does not come with a voucher/)).toBeTruthy();
     expect(screen.getByLabelText("0 of 3 answered.")).toBeTruthy();
   });
 
