@@ -19,7 +19,7 @@ import {
   walletTab,
   type WalletTab,
 } from "@/lib/vouchers";
-import { useCart } from "@/store/cart";
+import { cartIsOpen, useCart } from "@/store/cart";
 import { useVouchers } from "@/store/vouchers";
 
 /**
@@ -40,10 +40,15 @@ export default function VouchersScreen() {
   const load = useVouchers((state) => state.load);
   const addCode = useVouchers((state) => state.addCode);
   const cartId = useCart((state) => state.cartId);
+  const basketOpen = useCart(cartIsOpen);
+  const loadCart = useCart((state) => state.load);
   const [tab, setTab] = useState<WalletTab>("available");
   const now = useServerNow(30_000);
 
   const read = useCallback(() => void load(), [load]);
+  // "Use now" decides between checkout and a new job on what is in the basket,
+  // so read it fresh rather than trust a remembered id.
+  useFocusEffect(useCallback(() => void loadCart(), [loadCart]));
   useFocusEffect(read);
   useWalletOnResume(read);
   useLiveRefresh(["notifications"], load, { refreshOnFocus: false });
@@ -53,8 +58,9 @@ export default function VouchersScreen() {
     WALLET_TABS.map((name) => [name, list ? walletTab(list.vouchers, name, now).length : 0]),
   ) as Record<WalletTab, number>;
 
-  // A basket already started is where it comes off; otherwise start one.
-  const openOrder = () => router.push(cartId ? "/checkout" : "/request/category");
+  // A basket with something in it is where it comes off; otherwise start one.
+  // An empty or finished basket counts as none (gridgoph/gridgo-client#250).
+  const openOrder = () => router.push(basketOpen ? "/checkout" : "/request/category");
 
   return (
     <FormScreen>
