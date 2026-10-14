@@ -244,6 +244,29 @@ describe("presentNotification rating reminder", () => {
     expect(view.lane).toBe("need_you");
     expect(view.hint).toMatch(/rate/i);
   });
+
+  it("words the survey invitation as optional, with the reward and its limit (report 81CA4493)", () => {
+    const at = new Date(Date.now() - 3_600_000).toISOString();
+    const view = presentNotification(
+      note({
+        title: "How did your order go?",
+        body: "Share your experience in a short optional survey. Survey reward limits apply.",
+        type: "order_survey_available",
+        orderId: "ord_1",
+        orderTitle: "Flyers",
+        orderState: "completed",
+        fulfillmentMode: "delivery",
+        at,
+      }),
+    );
+
+    expect(view.title).toBe("How did your order go?");
+    expect(view.body).toMatch(/optional/);
+    // Optional, so it never sits with the things that are waiting on the client.
+    expect(view.lane).toBe("update");
+    expect(view.hint).toBe("Opens the survey");
+    expect(view.callout).toMatchObject({ tone: "info", icon: "ticket", detail: "One survey voucher every 7 days." });
+  });
 });
 
 describe("presentNotification receipt ready", () => {

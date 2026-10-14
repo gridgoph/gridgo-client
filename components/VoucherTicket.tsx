@@ -3,6 +3,7 @@ import { Pressable, Text, View, type LayoutChangeEvent } from "react-native";
 import Svg, { Line } from "react-native-svg";
 
 import { StatusChip, type StatusIconName, type StatusTone } from "@/components/StatusChip";
+import { VoucherCodeRow } from "@/components/VoucherCodeRow";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useServerNow } from "@/hooks/useVoucherClock";
 import { formatPhp, type Voucher } from "@/lib/api";
@@ -63,44 +64,53 @@ export function VoucherTicket({
 
   return (
     <View className="overflow-hidden rounded-card border border-outline bg-surface" testID={`voucher-${voucher.id}`}>
-      <View className="flex-row">
-        <View
-          onLayout={onStubLayout}
-          aria-hidden
-          className={`min-w-24 items-center justify-center px-4 py-5 ${live ? "bg-surface-variant" : "bg-surface"}`}
-        >
-          <Text
-            className={`text-h1 font-bold ${live ? "text-text-primary" : "text-text-muted"}`}
-            style={{ fontVariant: ["tabular-nums"] }}
+      <View className="overflow-hidden">
+        <View className="flex-row">
+          <View
+            onLayout={onStubLayout}
+            aria-hidden
+            className={`min-w-24 items-center justify-center px-4 py-5 ${live ? "bg-surface-variant" : "bg-surface"}`}
           >
-            {stubAmount(voucher.valueMinor)}
-          </Text>
-          <Text className="text-caption text-text-muted">voucher</Text>
-        </View>
-
-        <Perforation />
-
-        <View className="min-w-0 flex-1 gap-3 p-4">
-          <View className="gap-1" accessible accessibilityLabel={ticketLabel(voucher, title, state, remaining)}>
-            <Text className={`text-body-lg font-medium ${live ? "text-text-primary" : "text-text-secondary"}`}>{title}</Text>
-            {live ? (
-              <Text className="text-caption text-text-secondary">Expires {exactTime(voucher.expiresAt)}</Text>
-            ) : null}
-            <View className="mt-1 flex-row flex-wrap gap-2">
-              <StateChip state={state} tone={expiryTone(remaining)} remaining={remaining} />
-            </View>
-            {stateLine ? <Text className="mt-1 text-caption text-text-muted">{stateLine}</Text> : null}
+            <Text
+              className={`text-h1 font-bold ${live ? "text-text-primary" : "text-text-muted"}`}
+              style={{ fontVariant: ["tabular-nums"] }}
+            >
+              {stubAmount(voucher.valueMinor)}
+            </Text>
+            <Text className="text-caption text-text-muted">voucher</Text>
           </View>
-          {action && live ? action : null}
+
+          <Perforation />
+
+          <View className="min-w-0 flex-1 gap-3 p-4">
+            <View className="gap-1" accessible accessibilityLabel={ticketLabel(voucher, title, state, remaining)}>
+              <Text className={`text-body-lg font-medium ${live ? "text-text-primary" : "text-text-secondary"}`}>{title}</Text>
+              {live ? (
+                <Text className="text-caption text-text-secondary">Expires {exactTime(voucher.expiresAt)}</Text>
+              ) : null}
+              <View className="mt-1 flex-row flex-wrap gap-2">
+                <StateChip state={state} tone={expiryTone(remaining)} remaining={remaining} />
+              </View>
+              {stateLine ? <Text className="mt-1 text-caption text-text-muted">{stateLine}</Text> : null}
+            </View>
+            {action && live ? action : null}
+          </View>
         </View>
+
+        {/* The two half-circle bites where the stub tears off. */}
+        {stubWidth > 0 ? (
+          <>
+            <Notch left={stubWidth - NOTCH / 2} top={-NOTCH / 2} color={colors.canvas} />
+            <Notch left={stubWidth - NOTCH / 2} bottom={-NOTCH / 2} color={colors.canvas} />
+          </>
+        ) : null}
       </View>
 
-      {/* The two half-circle bites where the stub tears off. */}
-      {stubWidth > 0 ? (
-        <>
-          <Notch left={stubWidth - NOTCH / 2} top={-NOTCH / 2} color={colors.canvas} />
-          <Notch left={stubWidth - NOTCH / 2} bottom={-NOTCH / 2} color={colors.canvas} />
-        </>
+      {/* A survey reward carries its own code (gridgo-api SURVEY_API.md); copyable while it can be used. */}
+      {voucher.code && live ? (
+        <View className="border-t border-dashed border-outline p-3">
+          <VoucherCodeRow code={voucher.code} />
+        </View>
       ) : null}
     </View>
   );

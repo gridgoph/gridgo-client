@@ -33,6 +33,7 @@ import { ProofDecision } from "@/components/ProofDecision";
 import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
 import { RescheduleCard } from "@/components/RescheduleCard";
 import { ShopRecoveryCard } from "@/components/ShopRecoveryCard";
+import { SurveyCard } from "@/components/survey/SurveyCard";
 import { DeliveryTrackingScreen } from "@/components/tracking/DeliveryTrackingScreen";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ReadyTime } from "@/components/ReadyTime";
@@ -77,6 +78,8 @@ import { canRate } from "@/lib/rating";
 import { currentRefund, refundEntry } from "@/lib/refunds";
 import { rescheduleView } from "@/lib/reschedule";
 import { shopRecoveryView } from "@/lib/shopRecovery";
+import { canHaveSurvey } from "@/lib/survey";
+import { useSurvey } from "@/store/survey";
 import { orderPrintingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { describeQuantity } from "@/lib/quantity";
@@ -146,6 +149,9 @@ export default function OrderDetailScreen() {
         ? await api.getOrderHandover(current.id).catch(() => "error" as const)
         : null;
       if (sequence !== loadSequence.current) return;
+      // The post-order survey lives in its own store, read alongside the
+      // order so a completed hand-over, a skip or a send shows on return.
+      if (canHaveSurvey(current.state)) void useSurvey.getState().load(current.id);
       setHandover(credential);
       setBasket(group);
       setOrder(current);
@@ -447,6 +453,12 @@ export default function OrderDetailScreen() {
             )}
           </Animated.View>
         ) : null}
+
+        {/*
+          The post-order survey, under whatever the job still asks. It only
+          takes the yellow when nothing above it has.
+        */}
+        {canHaveSurvey(order.state) ? <SurveyCard orderId={order.id} primary={!actionZone} /> : null}
 
         {/*
           Two different endings, two different things to show.

@@ -426,6 +426,12 @@ function AppNavigation() {
                   a scrolling form under a pinned commit bar.
                 */}
                 <Stack.Screen name="order/rate" options={pushedScreenOptions("Rate this order")} />
+                {/*
+                  The post-order survey (report 81CA4493): the checkout's shape
+                  again — one scrolling page under a pinned bar that carries
+                  the reward meter and "Send".
+                */}
+                <Stack.Screen name="order/survey" options={pushedScreenOptions("Order survey")} />
                 <Stack.Screen
                   name="design-system"
                   options={pushedScreenOptions("Design system")}

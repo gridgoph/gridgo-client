@@ -22,6 +22,7 @@ import {
   summarizeIssueWindow,
   type IssueKind,
 } from "@/lib/issueWindow";
+import { useSurvey } from "@/store/survey";
 
 type Props = {
   order: Order;
@@ -47,7 +48,19 @@ export function IssueWindowCard({ order, onUpdated }: Props) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [windowHours, setWindowHours] = useState(DEFAULT_ISSUE_WINDOW_HOURS);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [opened, setOpened] = useState(false);
+  /*
+    The survey's "Report a problem with this order" lands here rather than on
+    a second form: the ask opens this one, and answering it — sending,
+    cancelling — clears the ask.
+  */
+  const reportAsked = useSurvey((state) => state.reportIntent === order.id);
+  const clearReport = useSurvey((state) => state.clearReport);
+  const open = opened || reportAsked;
+  const setOpen = (next: boolean) => {
+    setOpened(next);
+    if (!next) clearReport();
+  };
   const [kind, setKind] = useState<IssueKind>("material_quality");
   const [description, setDescription] = useState("");
   const [confirming, setConfirming] = useState(false);

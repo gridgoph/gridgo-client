@@ -41,6 +41,12 @@ describe("chat pushes (gridgo-client#231)", () => {
     expect(pushTargetRoute(push("support_message", "ord_1"))).toBe("/chat");
   });
 
+  it("opens the post-order survey invitation on that order's survey (report 81CA4493)", () => {
+    expect(pushTargetRoute(push("order_survey_available", "ord_1"))).toBe("/order/survey?orderId=ord_1");
+    // No order, no survey to open: the inbox explains itself.
+    expect(pushTargetRoute(push("order_survey_available"))).toBe("/(tabs)/notifications");
+  });
+
   it("sends a delivery message with no order to the inbox rather than an empty chat", () => {
     expect(pushTargetRoute(push("delivery_message"))).toBe("/(tabs)/notifications");
   });
