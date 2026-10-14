@@ -4,6 +4,7 @@ import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
 import { isApplicationNotification } from "@/lib/organization";
 import { refundNotificationCopy } from "@/lib/refunds";
+import { isSurveyNotification, surveyNotificationCallout, surveyNotificationCopy } from "@/lib/survey";
 import { exactTime, voucherNotificationCopy } from "@/lib/vouchers";
 import { formatTimelineStamp } from "@/lib/relativeTime";
 import { rescheduleNotificationCopy, rescheduleNotificationNeedsYou } from "@/lib/reschedule";
@@ -218,6 +219,11 @@ function deliveryStamp(state: string | undefined): string | null {
   if (state === "delivered" || state === "issue_window_open") return "AT YOUR DOOR";
   if (state === "ready_for_dispatch") return "TO YOUR DOOR";
   return null;
+}
+
+function surveyCallout(at: string): NotificationCallout | null {
+  const callout = surveyNotificationCallout(at);
+  return callout ? { tone: "info", icon: "ticket", ...callout } : null;
 }
 
 function rateReminderCopy(): { title: string; body: string; hint: string } {
@@ -446,6 +452,8 @@ export function presentNotification(
     ? { ...refund, hint: notification.orderId ? "Opens this job" : null }
     : notification.type === "order_rate_reminder"
       ? rateReminderCopy()
+      : isSurveyNotification(notification.type)
+        ? surveyNotificationCopy()
       : notification.type === "order_receipt_ready"
         ? receiptReadyCopy(showServiceFee)
       : isCallNotificationType(notification.type)
@@ -498,7 +506,11 @@ export function presentNotification(
     collectReady,
     lane: needsYou ? "need_you" : "update",
     hint: paymentPending ? "Opens current payment details" : overlay.hint,
-    callout: applicationAsk ? APPLICATION_SENT_BACK_CALLOUT : calloutFor(notification, hold, collectReady),
+    callout: applicationAsk
+      ? APPLICATION_SENT_BACK_CALLOUT
+      : isSurveyNotification(notification.type)
+        ? surveyCallout(notification.at)
+        : calloutFor(notification, hold, collectReady),
   };
 }
 

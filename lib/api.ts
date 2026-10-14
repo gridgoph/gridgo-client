@@ -2818,6 +2818,12 @@ export type Voucher = {
   fundedBy: "GRIDGO" | (string & {});
   transferable: false;
   cashValue: false;
+  /**
+   * The voucher's own code, private to its holder. Only a survey reward
+   * carries one (gridgo-api `docs/SURVEY_API.md`); typing it elsewhere finds
+   * this same voucher and never makes another.
+   */
+  code?: string | null;
 };
 
 /** The voucher as an order or invoice snapshotted it. */
@@ -2867,6 +2873,72 @@ export async function applyCartVoucher(
 /** `DELETE /me/carts/:id/voucher` — takes it off and stops GRIDGO picking it again for this basket. */
 export async function removeCartVoucher(cartId: string): Promise<CartVoucherResult> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/voucher`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Post-order survey — see docs/SURVEY_API.md in gridgo-api (report 81CA4493)
+// ---------------------------------------------------------------------------
+
+export type SurveyFulfillmentKind = "delivery" | "pickup";
+export type SurveyStatus = "open" | "expired" | "submitted" | (string & {});
+
+/** The allowlisted codes GRIDGO accepts. Labels are the app's (`lib/survey.ts`). */
+export type SurveyOptions = {
+  fulfillmentTags: Record<SurveyFulfillmentKind, string[]>;
+  easeTags: string[];
+  priceFeeling: string[];
+};
+
+export type SurveyAnswers = {
+  fulfillmentStars: number;
+  fulfillmentTags: string[];
+  easeStars: number;
+  easeTags: string[];
+  /** 1–5: very cheap, cheap, fair, expensive, very expensive. */
+  priceFeeling: number;
+  expectedPriceMinor: number | null;
+  qualityStars: number | null;
+  recommendScore: number | null;
+  improvementNote: string | null;
+};
+
+export type OrderSurvey = {
+  orderId: string;
+  status: SurveyStatus;
+  fulfillmentKind: SurveyFulfillmentKind;
+  openedAt: string;
+  expiresAt: string;
+  dismissedAt: string | null;
+  submittedAt: string | null;
+  answers: SurveyAnswers | null;
+  needsFollowUp: boolean;
+  rewardStatus: "issued" | "cooldown" | (string & {}) | null;
+  reward: Voucher | null;
+  /** A preview, not a reservation: another order's survey can use it first. */
+  rewardEligible: boolean;
+  nextRewardAt: string | null;
+  /** Only for a low star score while the issue window is open; re-read every time. */
+  reportProblem: { label: string; path: string; method: string } | null;
+};
+
+export type OrderSurveyRead = { serverTime: string; options?: SurveyOptions; survey: OrderSurvey | null };
+
+/** `GET /orders/:id/survey` — null when the order has no survey. */
+export async function getOrderSurvey(orderId: string): Promise<OrderSurveyRead> {
+  return request(`/orders/${encodeURIComponent(orderId)}/survey`);
+}
+
+/** `POST /orders/:id/survey/dismiss` — hides the automatic prompt; idempotent, answers stay possible. */
+export async function dismissOrderSurvey(orderId: string): Promise<OrderSurveyRead> {
+  return request(`/orders/${encodeURIComponent(orderId)}/survey/dismiss`, { method: "POST" });
+}
+
+/** `POST /orders/:id/survey` — the one final submission. A replay returns the original. */
+export async function submitOrderSurvey(orderId: string, answers: SurveyAnswers): Promise<OrderSurveyRead> {
+  return request(`/orders/${encodeURIComponent(orderId)}/survey`, {
+    method: "POST",
+    body: JSON.stringify(answers),
+  });
 }
 
 // ---------------------------------------------------------------------------

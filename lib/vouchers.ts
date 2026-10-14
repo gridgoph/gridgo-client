@@ -221,6 +221,11 @@ export function readyCount(list: VoucherList | null, serverNow: number): number 
    Codes
    -------------------------------------------------------------------------- */
 
+/** A voucher's own code, grouped in fours so it can be read aloud or typed back. */
+export function groupedCode(code: string): string {
+  return code.replace(/\s+/g, "").replace(/(.{4})(?=.)/g, "$1 ");
+}
+
 /** A code as GRIDGO compares it: trimmed and upper case. */
 export function normalizeCode(code: string): string {
   return code.trim().toUpperCase();
