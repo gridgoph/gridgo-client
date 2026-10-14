@@ -1,6 +1,7 @@
 import { ReceiptOcrHost } from "@/components/ReceiptOcrHost";
 import { useGridgoCharges } from "@/hooks/useGridgoCharges";
 import { useLiveNotifications } from "@/hooks/useLiveNotifications";
+import { useUpdateNudge } from "@/hooks/useUpdateNudge";
 import { useSupportChatUnread } from "@/hooks/useSupportChatUnread";
 import { ClerkProvider } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
@@ -117,6 +118,7 @@ function AppNavigation() {
   // permission — only a tap on `PushExplainerSheet` or `PushEnableCard` does.
   usePushNotifications();
   useLiveNotifications();
+  useUpdateNudge();
   useSupportChatUnread();
 
   // GRIDGO's charges, read as soon as a session exists: every price the app
@@ -437,6 +439,14 @@ function AppNavigation() {
                   options={pushedScreenOptions("Design system")}
                 />
                 <Stack.Screen name="settings" options={pushedScreenOptions("Settings")} />
+                {/*
+                  The inbox a pushed screen's bell opens, over that screen (#230).
+                  No bell of its own: it would only push the inbox again.
+                */}
+                <Stack.Screen
+                  name="inbox"
+                  options={pushedScreenOptions("Notifications", { bell: false })}
+                />
                 <Stack.Screen name="whats-new" options={pushedScreenOptions("What's new")} />
                 {/*
                   The account's own details. The band names the screen, so the

@@ -1,5 +1,7 @@
 import { Platform } from "react-native";
 
+import { HeaderNotificationBell } from "@/components/HeaderNotificationBell";
+import { PushedHeaderActions } from "@/components/PushedHeaderActions";
 import { PushedStackHeader } from "@/components/PushedStackHeader";
 import { HeaderThemeButton } from "@/components/HeaderThemeButton";
 
@@ -39,6 +41,13 @@ import { HeaderThemeButton } from "@/components/HeaderThemeButton";
  * Android also supplies HeaderThemeButton through headerRight so the control
  * belongs to the title row, outside the screen's scrolling content.
  *
+ * **4. Every pushed screen carries the notification bell (#230).**
+ * The tab bar holds the bell on tab screens; a pushed screen hides the tab
+ * bar, so its header carries `HeaderNotificationBell` instead — beside the
+ * theme control on Android, alone on iOS. It draws nothing signed out. The
+ * inbox it opens passes `{ bell: false }`: a bell on the inbox would only
+ * push the inbox again.
+ *
  * The title is a required argument rather than a spread-in default so the
  * omission cannot happen again: `pushedScreenOptions("")` does not compile,
  * and an all-whitespace title throws at startup.
@@ -59,7 +68,10 @@ export const androidEdgeToEdgeHeaderOptions = {
 /** A string literal type that rejects the empty string at compile time. */
 type NonEmptyTitle<T extends string> = T extends "" ? never : T;
 
-export function pushedScreenOptions<T extends string>(title: NonEmptyTitle<T>) {
+export function pushedScreenOptions<T extends string>(
+  title: NonEmptyTitle<T>,
+  { bell = true }: { bell?: boolean } = {},
+) {
   if (!title.trim()) {
     throw new Error(
       "A pushed screen needs a header title: the band is drawn either way, so an " +
@@ -72,6 +84,13 @@ export function pushedScreenOptions<T extends string>(title: NonEmptyTitle<T>) {
     headerBackButtonDisplayMode: "minimal" as const,
     ...androidEdgeToEdgeHeaderOptions,
     header: Platform.OS === "android" ? PushedStackHeader : undefined,
-    headerRight: Platform.OS === "android" ? HeaderThemeButton : undefined,
+    headerRight:
+      Platform.OS === "android"
+        ? bell
+          ? PushedHeaderActions
+          : HeaderThemeButton
+        : bell
+          ? HeaderNotificationBell
+          : undefined,
   };
 }

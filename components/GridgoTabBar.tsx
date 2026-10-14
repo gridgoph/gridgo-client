@@ -3,6 +3,7 @@ import { Bell, Building2, FileText, House, User, type LucideIcon } from "lucide-
 import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BellSwing } from "@/components/BellSwing";
 import { ACTION_TAB, TABS, type TabName } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useUnreadCount } from "@/store/notifications";
@@ -336,6 +337,9 @@ type TabItemProps = {
 function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
   const colors = useThemeColors();
   const Icon = ICONS[name];
+  const glyph = (
+    <Icon size={24} strokeWidth={2} color={focused ? colors.textPrimary : colors.textMuted} />
+  );
 
   return (
     <Pressable
@@ -363,11 +367,12 @@ function TabItem({ name, label, focused, onPress, badge = 0 }: TabItemProps) {
           */}
           <View className={pressed ? "opacity-60" : undefined}>
             <View className="relative">
-              <Icon
-                size={24}
-                strokeWidth={2}
-                color={focused ? colors.textPrimary : colors.textMuted}
-              />
+              {name === "notifications" ? (
+                // The bell on every tab screen, swung by each new update (#230).
+                <BellSwing size={24}>{glyph}</BellSwing>
+              ) : (
+                glyph
+              )}
               {badge > 0 ? (
                 <View
                   className="absolute -right-2 -top-1 min-h-4 min-w-4 items-center justify-center rounded-pill bg-error px-1"

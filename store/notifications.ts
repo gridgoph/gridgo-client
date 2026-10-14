@@ -4,6 +4,8 @@ import { create } from "zustand";
 import type { Notification } from "@/lib/api";
 import * as api from "@/lib/api";
 import { groupInbox, isGroupUnread } from "@/lib/notificationPresentation";
+import { freshUnread, nextBaseline, nudgeAnnouncement } from "@/lib/notificationNudge";
+import { useNotificationNudge } from "@/store/notificationNudge";
 
 let generation = 0;
 let readSequence = 0;
@@ -42,6 +44,16 @@ type NotificationsState = {
    */
   markManyRead: (ids: readonly string[]) => Promise<void>;
   markAllRead: () => Promise<void>;
+  /**
+   * Row ids this phone has read from the server since the app last came to
+   * the front, or null before that first read. A row outside it, unread,
+   * swings the bell (`lib/notificationNudge.ts`). Never cached: a baseline
+   * from an earlier launch would ring for everything that arrived while the
+   * app was closed.
+   */
+  seenIds: string[] | null;
+  /** The app left the front: the next read sets a new baseline and rings nothing. */
+  rebaseline: () => void;
 };
 
 /** Server truth, plus whatever this phone has already dismissed. */
@@ -85,6 +97,7 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
       snapshot: null,
       loading: false,
       error: null,
+      seenIds: null,
     });
     if (!ownerId) return;
     const currentGeneration = generation;
@@ -112,6 +125,8 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
   snapshot: null,
   loading: false,
   error: null,
+  seenIds: null,
+  rebaseline: () => set({ seenIds: null }),
   refresh: async () => {
     const currentGeneration = generation;
     const sequence = ++readSequence;
@@ -121,14 +136,22 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
       const result = await api.listNotifications();
       if (generation !== currentGeneration || sequence !== readSequence) return;
       appliedSequence++;
+      const readIds = pruneReadIds(result.notifications, get().readIds);
+      const { seenIds } = get();
+      const fresh = freshUnread(seenIds, result.notifications, (item) =>
+        isNotificationRead(item, readIds),
+      );
       set({
         items: result.notifications,
         snapshot: result.snapshot,
         loading: false,
         error: null,
-        readIds: pruneReadIds(result.notifications, get().readIds),
+        readIds,
+        seenIds: nextBaseline(seenIds, result.notifications),
       });
       saveCache(get());
+      // Once per read, however many arrived in it: one swing, one chime.
+      if (fresh.length) useNotificationNudge.getState().nudge(nudgeAnnouncement(fresh));
     } catch (e) {
       if (generation !== currentGeneration || sequence !== readSequence) return;
       set({

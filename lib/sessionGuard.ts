@@ -22,6 +22,7 @@ export const AUTHENTICATED_ROOT_SCREENS = [
   "design-system",
   "settings",
   "whats-new",
+  "inbox",
   "saved-places",
   "saved-place",
   "vouchers",

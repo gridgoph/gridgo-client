@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { Screen } from "@/components/Screen";
 
 import {
@@ -9,7 +9,10 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "@/hooks/useTheme";
+import { UPDATE_SOUND_COPY } from "@/lib/notificationNudge";
+import { previewUpdateChime } from "@/lib/updateChime";
 import { WHATS_NEW_HISTORY_COPY } from "@/lib/whatsNewHistory";
+import { useNotificationNudge } from "@/store/notificationNudge";
 import { useThemeStore } from "@/store/theme";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -22,7 +25,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
  * Settings — preferences and app help, not identity.
  *
  * Account keeps who is signed in, what GRIDGO matches on, and Sign out.
- * Theme, the What's new history and replaying onboarding live here — and only here. The match ranking
+ * Theme, the update sound, the What's new history and replaying onboarding live here — and only here. The match ranking
  * used to sit on both screens; two homes for one setting is two places to look
  * and one of them always showing the older answer.
  *
@@ -34,6 +37,14 @@ export default function SettingsScreen() {
   const scheme = useThemeName();
   const preference = useThemePreference();
   const setPreference = useThemeStore((s) => s.setPreference);
+  const muted = useNotificationNudge((s) => s.muted);
+  const setMuted = useNotificationNudge((s) => s.setMuted);
+  const toggleSound = () => {
+    const next = !muted;
+    setMuted(next);
+    // Turning it on plays it once, so the client hears what they chose.
+    if (!next) previewUpdateChime();
+  };
 
   return (
     /* Bottom only — the stack header above has already cleared the status bar. */
@@ -77,6 +88,46 @@ export default function SettingsScreen() {
               })}
             </View>
           </View>
+
+          {/*
+            The bell's chime (#230). The whole row is the switch, so the
+            target is the row and not a 51pt thumb at its edge; the Switch is
+            drawn for its shape and takes no touch of its own.
+          */}
+          <Pressable
+            onPress={toggleSound}
+            accessibilityRole="switch"
+            accessibilityLabel={UPDATE_SOUND_COPY.label}
+            accessibilityHint={UPDATE_SOUND_COPY.caption}
+            accessibilityState={{ checked: !muted }}
+            aria-checked={!muted}
+            className="gg-card gg-touch flex-row items-center gap-3"
+            style={({ pressed }) =>
+              pressed ? { backgroundColor: colors.surfaceVariant } : undefined
+            }
+          >
+            <View className="flex-1 gap-1">
+              <Text className="text-body-lg font-medium text-text-primary">
+                {UPDATE_SOUND_COPY.label}
+              </Text>
+              <Text className="text-body text-text-secondary">{UPDATE_SOUND_COPY.caption}</Text>
+            </View>
+            <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants">
+              {/*
+                Ink on, muted grey off — the theme chips' monochrome, never a
+                platform green. react-native-web colours an "on" thumb from
+                its own `activeThumbColor` (teal by default) and ignores
+                `thumbColor` there, so web is told the same colour by name.
+              */}
+              <Switch
+                value={!muted}
+                trackColor={{ false: colors.outline, true: colors.accent }}
+                thumbColor={muted ? colors.textMuted : colors.accentOn}
+                ios_backgroundColor={colors.outline}
+                {...(Platform.OS === "web" ? ({ activeThumbColor: colors.accentOn } as object) : {})}
+              />
+            </View>
+          </Pressable>
 
           <View className="gg-card-flush">
             <Pressable
