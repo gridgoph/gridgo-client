@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react-native";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info } from "lucide-react-native";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -15,7 +15,9 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { SeasonLevelTag, useSeasonTrackColour } from "@/components/SeasonLevelTag";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import {
+  chosenLabel,
   choiceLabel,
+  dayReasonLine,
   monthKeyOf,
   shiftMonth,
   shopClock,
@@ -134,6 +136,7 @@ export function DeadlineCalendar({
   canStepBack,
   canStepForward,
   seasons = [],
+  earliest = null,
 }: {
   /** Builds a month's cells. Called for the month either side as well. */
   daysFor: (month: Date) => CalendarDay[];
@@ -148,6 +151,8 @@ export function DeadlineCalendar({
    * marks from `daysFor`; this is only what the list names.
    */
   seasons?: SeasonWindow[];
+  /** GRIDGO's earliest possible promise, named when a too-soon day is tapped. */
+  earliest?: string | null;
 }) {
   const colors = useThemeColors();
   const light = useThemeName() !== "dark";
@@ -226,9 +231,19 @@ export function DeadlineCalendar({
         : [...current.ids, id],
     }));
   }, []);
+  /*
+    A day the client cannot have still answers a tap — with why, never with
+    a selection (gridgo-api#203). Without it a grey disc reads as broken, and
+    "too soon: review, printing and delivery take until Monday" is the line
+    that tells them where to look instead.
+  */
+  const [explained, setExplained] = useState<CalendarDay | null>(null);
+  const explainedHere =
+    explained && days.some((day) => day.dayKey === explained.dayKey) ? explained : null;
   const tapDay = useCallback(
     (day: CalendarDay) => {
       setSeasonDay(day.season ? day : null);
+      setExplained(!day.selectable && day.reason ? day : null);
       if (day.selectable) onSelectDay(day);
     },
     [onSelectDay],
@@ -447,6 +462,8 @@ export function DeadlineCalendar({
               cell={cell}
               disc={disc}
               selectedDayKey={selectedDayKey}
+              explainedDayKey={explainedHere?.dayKey ?? null}
+              earliest={earliest}
               onSelectDay={tapDay}
               interactive={entry.current}
             />
@@ -455,12 +472,33 @@ export function DeadlineCalendar({
         </View>
       </GestureDetector>
 
+      {explainedHere?.reason ? (
+        <View
+          className="gg-panel mt-3 flex-row gap-3"
+          accessible
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={`${chosenLabel(explainedHere.dayKey)}. ${dayReasonLine(explainedHere.reason, earliest)}`}
+          testID="day-reason"
+        >
+          <Info size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+          <View className="min-w-0 flex-1 gap-0.5">
+            <Text className="text-body font-medium text-text-primary">
+              {chosenLabel(explainedHere.dayKey)}
+            </Text>
+            <Text className="text-body text-text-secondary">
+              {dayReasonLine(explainedHere.reason, earliest)}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       {/*
         The key. Without words this is a grid of coloured circles, which is
-        the one thing a status in this product may never be.
+        the one thing a status in this product may never be. The quiet disc
+        is in it too, with the tap that explains one.
       */}
       <View className="mt-4 flex-row flex-wrap gap-x-5 gap-y-2">
-        {(["open", "tight"] as const).map((choice) => (
+        {(["open", "tight", "cannot"] as const).map((choice) => (
           <View key={choice} className="flex-row items-center gap-2">
             <View
               style={{
@@ -468,11 +506,15 @@ export function DeadlineCalendar({
                 height: 11,
                 borderRadius: 999,
                 backgroundColor: discColour(choice, light),
-                borderWidth: choice === "open" && light ? 1 : 0,
-                borderColor: colors.textPrimary,
+                // At this size the quiet disc needs its own edge, or in Dark it
+                // disappears into the canvas.
+                borderWidth: (choice === "open" && light) || choice === "cannot" ? 1 : 0,
+                borderColor: choice === "cannot" ? numeralColour(choice, light) : colors.textPrimary,
               }}
             />
-            <Text className="text-caption text-text-secondary">{choiceLabel(choice)}</Text>
+            <Text className="text-caption text-text-secondary">
+              {choice === "cannot" ? "Not possible, tap one for why" : choiceLabel(choice)}
+            </Text>
           </View>
         ))}
       </View>
@@ -593,6 +635,8 @@ const MonthPage = memo(function MonthPage({
   cell,
   disc,
   selectedDayKey,
+  explainedDayKey,
+  earliest,
   onSelectDay,
   interactive,
 }: {
@@ -601,6 +645,8 @@ const MonthPage = memo(function MonthPage({
   cell: number;
   disc: number;
   selectedDayKey: string | null;
+  explainedDayKey: string | null;
+  earliest: string | null;
   onSelectDay: (day: CalendarDay) => void;
   interactive: boolean;
 }) {
@@ -617,6 +663,8 @@ const MonthPage = memo(function MonthPage({
           cell={cell}
           disc={disc}
           selected={day.dayKey === selectedDayKey}
+          explained={day.dayKey === explainedDayKey}
+          earliest={earliest}
           // The day itself, not a closure over it: an arrow made here is a new
           // function every render and would defeat the cell's own memo.
           onSelect={onSelectDay}
@@ -659,12 +707,17 @@ const DayCell = memo(function DayCell({
   cell,
   disc,
   selected,
+  explained,
+  earliest,
   onSelect,
 }: {
   day: CalendarDay;
   cell: number;
   disc: number;
   selected: boolean;
+  /** The unreachable day whose reason is open under the month. */
+  explained: boolean;
+  earliest: string | null;
   onSelect: (day: CalendarDay) => void;
 }) {
   const colors = useThemeColors();
@@ -674,9 +727,10 @@ const DayCell = memo(function DayCell({
   const fill = discColour(day.choice, light);
   const ink = numeralColour(day.choice, light);
   const seasonText = day.season ? seasonAccessibilityText(day.season.windows) : null;
-  // A season day nobody can make still answers a tap — with its season's
-  // message, never with a selection.
-  const pressable = day.selectable || (day.inMonth && day.season !== null);
+  // A day nobody can make still answers a tap — with why, and with its
+  // season's message — never with a selection.
+  const pressable = day.selectable || (day.inMonth && (day.season !== null || day.reason !== null));
+  const reasonText = day.inMonth && day.reason ? dayReasonLine(day.reason, earliest) : null;
   // A white disc on a white page is not a disc. It becomes an outlined circle
   // there instead, which is what vacant looks like anyway.
   const needsEdge = day.choice === "open" && light;
@@ -688,7 +742,9 @@ const DayCell = memo(function DayCell({
       accessibilityRole="button"
       accessibilityState={{ selected, disabled: !day.selectable }}
       // The whole answer: a screen reader gets no colour and no shape.
-      accessibilityLabel={`${day.day}: ${choiceLabel(day.choice)}${seasonText ? `. ${seasonText}` : ""}`}
+      accessibilityLabel={[`${day.day}: ${choiceLabel(day.choice)}`, reasonText?.replace(/\.$/, ""), seasonText]
+        .filter(Boolean)
+        .join(". ")}
       style={({ pressed }) => ({
         width: cell,
         height: cell,
@@ -753,6 +809,25 @@ const DayCell = memo(function DayCell({
           this the one treatment that reads identically on a white day and a
           yellow one.
         */}
+        {/*
+          A tapped day nobody can make is marked the same way in a quieter
+          ink, so the reason under the month points back at one disc.
+        */}
+        {explained && !selected ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: 3,
+              left: 3,
+              right: 3,
+              bottom: 3,
+              borderRadius: 999,
+              borderWidth: 2,
+              borderColor: colors.textMuted,
+            }}
+          />
+        ) : null}
         {selected ? (
           <View
             pointerEvents="none"

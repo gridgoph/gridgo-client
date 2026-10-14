@@ -202,7 +202,39 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
 
     expect(await screen.findByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
-    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.getByText("Includes artwork review, jobs ahead and opening hours.")).toBeTruthy();
+  });
+
+  it("says when GRIDGO reviews the artwork when the order is placed out of hours", async () => {
+    const afterHours = cart({
+      checkoutNotice: {
+        code: "outside_operating_hours",
+        timeZone: "Asia/Manila",
+        isOpenNow: false,
+        reviewDelayed: false,
+        artworkReviewMinutes: 60,
+        // Saturday 8:00 AM in Davao, and GRIDGO's estimate counting it.
+        scheduledReviewAt: "2026-09-26T00:00:00.000Z",
+        reviewCompletesAt: "2026-09-26T01:00:00.000Z",
+        readyBy: "2026-09-30T06:00:00.000Z",
+      },
+    });
+    api.getCart.mockResolvedValue(afterHours);
+    useCart.setState({ cart: afterHours });
+    await renderInSafeArea(<CheckoutScreen />);
+
+    expect(await screen.findByText("GRIDGO is closed right now")).toBeTruthy();
+    expect(screen.getByText("Ready by, estimated")).toBeTruthy();
+    expect(screen.getByText("Wed, Sep 30, 2026 · 2:00 PM")).toBeTruthy();
+    // Being closed never holds the order back.
+    expect(screen.getByText(/You can still place your order and pay/)).toBeTruthy();
+  });
+
+  it("draws no review notice while GRIDGO is open", async () => {
+    await renderInSafeArea(<CheckoutScreen />);
+
+    expect(await screen.findByText("Your order")).toBeTruthy();
+    expect(screen.queryByTestId("review-schedule")).toBeNull();
   });
 
   it("groups the order as GRIDGO's print run, not a shop's", async () => {

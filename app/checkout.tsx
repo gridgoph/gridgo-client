@@ -30,6 +30,7 @@ import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { ShopGroupSection } from "@/components/ShopGroupSection";
 import { ReadyTime } from "@/components/ReadyTime";
+import { ReviewScheduleCard } from "@/components/ReviewScheduleCard";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
 import { StepTrail } from "@/components/StepTrail";
@@ -93,6 +94,7 @@ import {
 } from "@/lib/gridgoOffice";
 import { samplePhotoUri } from "@/lib/listing";
 import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
+import { checkoutNoticeView, openingHoursLines, upcomingClosures } from "@/lib/operatingHours";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { checkPaymentReference, DIGITAL_ONLY_NOTICE, FULL_PAYMENT_PERCENT, paymentPlanNote } from "@/lib/payment";
@@ -604,6 +606,9 @@ export default function CheckoutScreen() {
     />
   );
   const missingShown = attempted || referenceTouched;
+  // Out of hours: when GRIDGO reviews the artwork, and the estimate that
+  // counts it (gridgo-api#203). Never a reason to hold the order back.
+  const afterHours = checkoutNoticeView(cart?.checkoutNotice);
 
   return (
     <FormScreen
@@ -678,7 +683,9 @@ export default function CheckoutScreen() {
                           ? lineName(missingArtwork[0])
                           : undefined,
                     )
-                : "GRIDGO checks your file before the shop starts.")}
+                : afterHours?.reviewAt
+                  ? `GRIDGO checks your file ${afterHours.reviewAt}, before the shop starts.`
+                  : "GRIDGO checks your file before the shop starts.")}
           </Text>
         </TourTarget>
       }
@@ -740,6 +747,22 @@ export default function CheckoutScreen() {
         <StepTrail current="pay" onStep={goStep} canGo={(step) => step === "shop" || Boolean(lastLine)} />
 
         <Text className="mt-4 text-h1 text-text-primary">Your order</Text>
+
+        {/*
+          Said before anything is paid, where the client decides: an order
+          placed at 9 PM waits for the morning's review, and every date below
+          already counts that. Paying is not held back by it.
+        */}
+        {afterHours ? (
+          <View className="mt-4">
+            <ReviewScheduleCard
+              view={afterHours}
+              variant="checkout"
+              hours={openingHoursLines(settings)}
+              closures={afterHours.delayed ? upcomingClosures(settings?.operatingHours) : []}
+            />
+          </View>
+        ) : null}
 
         {/* ---- What is being printed ------------------------------------- */}
         <View className="mt-6 gap-6" collapsable={false} ref={(node) => { fields.current.artwork = node; }}>

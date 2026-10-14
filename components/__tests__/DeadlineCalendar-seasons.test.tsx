@@ -80,7 +80,7 @@ it("shows the message for a tapped season day nobody can make, without choosing 
   const onSelectDay = jest.fn();
   await renderCalendar(null, onSelectDay);
 
-  fireEvent.press(screen.getByLabelText("16: Not this day. Peak season, Graduation"));
+  fireEvent.press(screen.getByLabelText("16: Not this day. No printer can finish by this day. Peak season, Graduation"));
 
   expect(await screen.findByText(graduation.message)).toBeTruthy();
   expect(onSelectDay).not.toHaveBeenCalled();
