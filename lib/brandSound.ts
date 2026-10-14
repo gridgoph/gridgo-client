@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 
 import { audio } from "@/constants/audio";
+import { expoAudio, type AudioPlayer } from "@/lib/expoAudio";
 
 /**
  * The opening's two stings, or silence.
@@ -27,28 +28,6 @@ import { audio } from "@/constants/audio";
  * opens.
  */
 
-type AudioPlayer = {
-  play: () => void | Promise<void>;
-  remove: () => void;
-  isLoaded?: boolean;
-  muted?: boolean;
-  volume?: number;
-  seekTo?: (seconds: number) => void | Promise<void>;
-};
-
-type AudioModule = {
-  createAudioPlayer: (
-    source: number | string,
-    options?: { downloadFirst?: boolean; keepAudioSessionActive?: boolean },
-  ) => AudioPlayer;
-  setIsAudioActiveAsync?: (active: boolean) => Promise<void>;
-  setAudioModeAsync?: (mode: {
-    playsInSilentMode?: boolean;
-    interruptionMode?: "mixWithOthers" | "doNotMix" | "duckOthers";
-    shouldPlayInBackground?: boolean;
-  }) => Promise<void>;
-};
-
 export type BrandStings = {
   /** Rides the dots. Cued as the first one lights. */
   intro: () => void;
@@ -63,38 +42,6 @@ export type BrandStings = {
   /** Hands both players back. Safe to call twice; cues after it do nothing. */
   release: () => void;
 };
-
-/**
- * Whether this binary actually has the audio native module.
- *
- * Probing before requiring matters: a missing Expo module throws from the
- * package's own top level, and LogBox reports that as uncaught even from
- * inside a try/catch.
- */
-function nativeAudioPresent(): boolean {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { requireOptionalNativeModule } = require("expo-modules-core") as {
-      requireOptionalNativeModule: (name: string) => unknown;
-    };
-    return Boolean(requireOptionalNativeModule("ExpoAudio"));
-  } catch {
-    return false;
-  }
-}
-
-function audioModule(): AudioModule | null {
-  try {
-    // Web's player is JS. Probing ExpoAudio there always fails and used to
-    // silence the whole opening in Expo Go web. Native still probes so an
-    // older APK without the module does not crash the launch.
-    if (Platform.OS !== "web" && !nativeAudioPresent()) return null;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require("expo-audio") as AudioModule;
-  } catch {
-    return null;
-  }
-}
 
 function webGestureActive(): boolean {
   if (Platform.OS !== "web" || typeof navigator === "undefined") return true;
@@ -158,8 +105,8 @@ function waitUntilLoaded(player: AudioPlayer, timeoutMs: number): Promise<void> 
  * `play()`.
  */
 export function loadBrandStings(): BrandStings | null {
-  const expoAudio = audioModule();
-  if (!expoAudio) return null;
+  const audioModule = expoAudio();
+  if (!audioModule) return null;
 
   let intro: AudioPlayer | null = null;
   let outro: AudioPlayer | null = null;
@@ -187,8 +134,8 @@ export function loadBrandStings(): BrandStings | null {
   };
 
   const ready = (async () => {
-    await expoAudio.setIsAudioActiveAsync?.(true);
-    await expoAudio.setAudioModeAsync?.({
+    await audioModule.setIsAudioActiveAsync?.(true);
+    await audioModule.setAudioModeAsync?.({
       playsInSilentMode: true,
       interruptionMode: "mixWithOthers",
       shouldPlayInBackground: false,
@@ -196,11 +143,11 @@ export function loadBrandStings(): BrandStings | null {
     if (released) return;
     // Expo Go has no packed copy of the m4a; downloadFirst writes it to tmp
     // so the native player is not asked to stream the Metro URL.
-    intro = expoAudio.createAudioPlayer(audio.intro, {
+    intro = audioModule.createAudioPlayer(audio.intro, {
       downloadFirst: true,
       keepAudioSessionActive: true,
     });
-    outro = expoAudio.createAudioPlayer(audio.outro, {
+    outro = audioModule.createAudioPlayer(audio.outro, {
       downloadFirst: true,
       keepAudioSessionActive: true,
     });

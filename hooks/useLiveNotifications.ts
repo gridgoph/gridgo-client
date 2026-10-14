@@ -87,6 +87,10 @@ export function useLiveNotifications(): void {
         stream?.close();
         stream = null;
         connected = false;
+        // What arrives from here on reaches the phone as a push, with its own
+        // sound. The read on the way back sets a new baseline instead of
+        // ringing the bell for it a second time (#230).
+        useNotifications.getState().rebaseline();
       }
     });
     const fallback = setInterval(() => {

@@ -8,6 +8,7 @@ import type { AlertStreamHandlers } from "@/lib/alertStream";
 let mockHandlers: AlertStreamHandlers;
 const mockClose = jest.fn();
 const mockRefresh = jest.fn(async () => {});
+const mockRebaseline = jest.fn();
 jest.mock("@/lib/alertStream", () => ({
   openAlertStream: (handlers: AlertStreamHandlers) => {
     mockHandlers = handlers;
@@ -16,7 +17,7 @@ jest.mock("@/lib/alertStream", () => ({
 }));
 jest.mock("@/store/notifications", () => ({
   useNotifications: {
-    getState: () => ({ refresh: mockRefresh, setOwner: jest.fn() }),
+    getState: () => ({ refresh: mockRefresh, setOwner: jest.fn(), rebaseline: mockRebaseline }),
   },
 }));
 it("reconciles missed identity/resources on reconnect and stops background delivery", async () => {
@@ -52,6 +53,8 @@ it("reconciles missed identity/resources on reconnect and stops background deliv
     lifecycle("background");
   });
   expect(mockClose).toHaveBeenCalled();
+  // What arrives while away comes as a push; the next read only re-baselines (#230).
+  expect(mockRebaseline).toHaveBeenCalled();
   const count = listener.mock.calls.length;
   await view.unmount();
   await act(async () => {
