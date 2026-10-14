@@ -884,10 +884,12 @@ describe("OrderDetailScreen", () => {
 
     expect(await screen.findByText("Report a problem")).toBeTruthy();
     // The platform really expires the window under v2 and stamps the expiry on
-    // the order, so both halves of the clock are honest to show.
-    expect(
-      screen.getByText(/Delivered 1 hour ago · Closes in about 23 hours/),
-    ).toBeTruthy();
+    // the order, so the time left is honest to show — live, to the second
+    // (report 5A28D524) — beside how long ago it arrived.
+    expect(screen.getByText("Check window closes in")).toBeTruthy();
+    expect(screen.getByText(/^23:0\d:\d\d$/)).toBeTruthy();
+    expect(screen.getByText("Delivered 1 hour ago")).toBeTruthy();
+    expect(screen.getByText(/^Closes /)).toBeTruthy();
   });
 
   it("recovers from a failed load with a retry rather than a blank screen", async () => {
@@ -1033,8 +1035,10 @@ describe("OrderDetailScreen", () => {
       await waitFor(() =>
         expect(screen.getByText(/check window closed with nothing reported/)).toBeTruthy(),
       );
-      expect(screen.getByText("Closed, nothing reported")).toBeTruthy();
-      expect(screen.getByText("Paid in full, ₱1,125.00")).toBeTruthy();
+      expect(screen.getByText(/Your payment is settled in full/)).toBeTruthy();
+      // The fact rows repeat the sentence; the received view leaves them to
+      // View details' history and payment (report 5A28D524).
+      expect(screen.queryByText("Closed, nothing reported")).toBeNull();
       // The old one-liner and the "we will tell your phone" offer both belong
       // to a job that is still going.
       expect(screen.queryByText("This job is closed.")).toBeNull();
@@ -1075,9 +1079,7 @@ describe("OrderDetailScreen", () => {
 
       expect(await screen.findByText("Job complete")).toBeTruthy();
       expect(await screen.findByText(/collected at GRIDGO Office/)).toBeTruthy();
-      // The fact row and the timeline entry both say it; neither says delivered
-      // to a person who fetched the job themselves.
-      expect(screen.getAllByText("Collected").length).toBeGreaterThan(0);
+      // Nothing says delivered to a person who fetched the job themselves.
       expect(screen.queryByText(/was delivered/)).toBeNull();
     });
   });
