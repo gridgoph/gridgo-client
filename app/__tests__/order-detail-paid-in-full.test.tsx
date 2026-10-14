@@ -63,7 +63,7 @@ jest.mock("@/lib/api", () => {
     listZones: jest.fn(),
     listIssues: jest.fn(),
     getSettings: jest.fn(),
-    getRiderLocation: jest.fn(),
+    getRiderTracking: jest.fn(),
     getFileDownloadUrl: jest.fn(),
     submitPayment: jest.fn(),
   };
@@ -212,7 +212,7 @@ describe("OrderDetailScreen, paid in full", () => {
       serviceFeeRateBps: 0,
       deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
     });
-    api.getRiderLocation.mockResolvedValue(null);
+    api.getRiderTracking.mockResolvedValue({ ping: null, tracking: null });
     api.getFileDownloadUrl.mockRejectedValue(new Error("no file"));
     osrm.fetchRoute.mockResolvedValue({
       routed: true,

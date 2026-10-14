@@ -12,7 +12,6 @@ import { ErrorState } from "@/components/ErrorState";
 import { DropoffConfirmationCard } from "@/components/DropoffConfirmationCard";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
 import { MissedCallNotice } from "@/components/call/MissedCallNotice";
-import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
 import { DeliveryHandoverCard } from "@/components/DeliveryHandoverCard";
 import { HubClaimCard } from "@/components/HubClaimCard";
@@ -34,6 +33,7 @@ import { ProofDecision } from "@/components/ProofDecision";
 import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
 import { RescheduleCard } from "@/components/RescheduleCard";
 import { ShopRecoveryCard } from "@/components/ShopRecoveryCard";
+import { DeliveryTrackingScreen } from "@/components/tracking/DeliveryTrackingScreen";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ReadyTime } from "@/components/ReadyTime";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -163,6 +163,11 @@ export default function OrderDetailScreen() {
   }, [id]);
 
   useLiveRefresh(["orders", "dispatch", "claims", "payouts"], load, { refreshOnFocus: false });
+  // The delivery map's window opened or closed: only the order itself moved.
+  const reloadOrder = useCallback(() => {
+    if (!id) return;
+    void api.getOrder(id).then(applyOrderUpdate).catch(() => undefined);
+  }, [id, applyOrderUpdate]);
 
   useFocusEffect(
     useCallback(() => {
@@ -324,15 +329,20 @@ export default function OrderDetailScreen() {
   const openRiderChat = () => router.push(deliveryChatRoute(order.id));
   /** These zones say their own wait, and offer their own refund. */
   const shopDecision = actionZone === "refund" || actionZone === "recovery" || actionZone === "reschedule";
+  /*
+    While a rider is bringing it to them, the map is the screen and the order
+    rides in the panel under it (gridgo-client#232). A collected job is not
+    watched — the rider only moves it between two of GRIDGO's own places.
+  */
+  const delivering = !collectsAtOffice(order) && isTrackingState(order.state);
 
-  return (
-    /*
-      Two text inputs live inside this scroll: the payment reference in the
-      action zone, and the description on an issue report. FormScreen keeps the
-      caret above the keyboard for both.
-    */
-    <FormScreen overlay={headerEscape}>
-      <View className="gg-page gap-6 pb-16 pt-4">
+  const content = (
+      <View className={delivering ? "gap-6" : "gg-page gap-6 pb-16 pt-4"}>
+        {/* At the door, the code the rider also sees is the thing to find first. */}
+        {delivering && handover && handover !== "error" ? (
+          <DeliveryHandoverCard orderId={order.id} handover={handover} />
+        ) : null}
+
         <View className="gap-2">
           <Text className="text-h1 text-text-primary">{order.title}</Text>
           <OrderReference id={order.id} />
@@ -475,13 +485,6 @@ export default function OrderDetailScreen() {
               <PickupCounterCard order={order} />
             )
           ) : null
-        ) : isTrackingState(order.state) ? (
-          <>
-            {handover && handover !== "error" ? (
-              <DeliveryHandoverCard orderId={order.id} handover={handover} />
-            ) : null}
-            <DeliveryTrackingCard order={order} onOpenChat={openRiderChat} showCall={callWindowOpen(order)} />
-          </>
         ) : null}
 
         {/*
@@ -611,7 +614,30 @@ export default function OrderDetailScreen() {
           </Pressable>
         </View>
       </View>
-    </FormScreen>
+  );
+
+  if (delivering) {
+    return (
+      <DeliveryTrackingScreen
+        order={order}
+        overlay={headerEscape}
+        nextAction={nextAction?.title ?? null}
+        onOpenChat={openRiderChat}
+        showCall={callWindowOpen(order)}
+        onOrderChanged={reloadOrder}
+      >
+        {content}
+      </DeliveryTrackingScreen>
+    );
+  }
+
+  return (
+    /*
+      Two text inputs live inside this scroll: the payment reference in the
+      action zone, and the description on an issue report. FormScreen keeps the
+      caret above the keyboard for both.
+    */
+    <FormScreen overlay={headerEscape}>{content}</FormScreen>
   );
 }
 

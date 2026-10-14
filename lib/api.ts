@@ -239,6 +239,12 @@ export type Order = {
    * a day after delivery, absent otherwise. Read it through `deliveryChatOf`.
    */
   deliveryChat?: DeliveryChatSummary | null;
+  /**
+   * The rider's six delivery steps, always in order (gridgo-api#217): sent on
+   * every delivery order whether or not a position is shared. Absent on an
+   * older API — read through `deliveryMilestonesOf` (`lib/tracking.ts`).
+   */
+  deliveryMilestones?: DeliveryMilestone[] | null;
   paymentMethod: string | null;
   paymentStatus: string;
   /** When the client was told a supplier accepted. Payment is gated on it. */
@@ -405,6 +411,10 @@ export type PlatformSettings = {
   hubPickupEnabled?: boolean;
   /** The approved-organization discount on printing. Absent on an older API. */
   organizationDiscountRateBps?: number;
+  /** How often a delivery map asks for the rider's position (15–30 s). */
+  riderLocationRefreshIntervalSeconds?: number;
+  /** After this long without a fix the rider's position is out of date. */
+  riderLocationStaleAfterSeconds?: number;
 };
 
 /** One opening window in the hub's week. Weekday 0 is Sunday. */
@@ -526,7 +536,47 @@ export type LocationPing = {
   lat: number;
   lng: number;
   accuracy: number | null;
+  /** The phone's own GPS time for the fix, not when GRIDGO received it. */
   at: string;
+  leg?: "pickup" | "delivery" | (string & {}) | null;
+};
+
+/**
+ * `inactive` outside the sharing window (before pick-up, after delivery),
+ * `waiting` from pick-up until the first fix, `live`, and `stale` once the
+ * newest fix is older than `staleAfterSeconds`.
+ */
+export type RiderTrackingStatus = "inactive" | "waiting" | "live" | "stale" | (string & {});
+
+/** How GRIDGO judges the position it returned (gridgo-api#217). */
+export type RiderTracking = {
+  status: RiderTrackingStatus;
+  /** How often to ask again. Super Admin sets it, 15–30 seconds. */
+  refreshIntervalSeconds: number;
+  staleAfterSeconds: number;
+  settingsVersion?: number | null;
+  lastUpdatedAt: string | null;
+  /** Age of the fix when the server answered, by the server's clock. */
+  ageSeconds: number | null;
+  stale: boolean;
+  message?: string | null;
+};
+
+/** One of the rider's six delivery steps. */
+export type DeliveryMilestone = {
+  code:
+    | "rider_assigned"
+    | "heading_to_shop"
+    | "at_shop"
+    | "picked_up"
+    | "on_the_way"
+    | "arrived"
+    | (string & {});
+  label: string;
+  /** `passed`: a later step happened but this one was never recorded. */
+  status: "pending" | "completed" | "passed" | (string & {});
+  /** Null when the time is unknown — never invented. */
+  at: string | null;
 };
 
 export type Issue = {
@@ -3266,10 +3316,18 @@ export async function refundReschedule(
 // Tracking and issues
 // ---------------------------------------------------------------------------
 
-/** Newest visible rider position. `null` also covers a rider outside the client reveal distance. */
-export async function getRiderLocation(orderId: string): Promise<LocationPing | null> {
-  const result = await request<{ ping: LocationPing | null }>(`/dispatch/${orderId}/location`);
-  return result.ping;
+/**
+ * The rider's newest position the client may see, and GRIDGO's judgement of
+ * it. `ping` is null before pick-up and after delivery; `tracking` is null on
+ * an API from before gridgo-api#217.
+ */
+export async function getRiderTracking(
+  orderId: string,
+): Promise<{ ping: LocationPing | null; tracking: RiderTracking | null }> {
+  const result = await request<{ ping: LocationPing | null; tracking?: RiderTracking | null }>(
+    `/dispatch/${encodeURIComponent(orderId)}/location`,
+  );
+  return { ping: result.ping ?? null, tracking: result.tracking ?? null };
 }
 
 /** The conversation with this order's rider (`lib/deliveryChat.ts`). */

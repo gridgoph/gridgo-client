@@ -200,7 +200,7 @@ Every GRIDGO app runs **one** map stack: **Leaflet over OpenStreetMap tiles insi
 - `lib/osrm.ts` uses the free, keyless, rate-limited public OSRM demo. **Treat failure as normal** — it falls back to a straight line and says so. Nothing on a tracking surface may block on it.
 - OSRM path order is `lon,lat`. Reversed, Davao lands in the ocean. `lib/tracking.ts` owns the conversion; convert only at the network/HTML boundary.
 - OSRM also returns a travel time. The client deliberately does **not** show it: GRIDGO publishes no ETA, and a routing engine's guess next to a delivery reads as a promise nobody made.
-- `components/DeliveryMap.tsx` is the web fallback. `react-native-webview` has no web build and renders its own red "does not support this platform" string — an internal message that must never reach a client.
+- `components/DeliveryMap.tsx` is the web build's map: the same Leaflet document in a sandboxed `iframe`. Never render `react-native-webview` on web — it has no web build and draws its own red "does not support this platform" string, an internal message that must never reach a client.
 
 ### Sheets and modals
 

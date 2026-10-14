@@ -1,4 +1,10 @@
-import { buildMapHtml, externalPinScript, type MapModel } from "@/lib/mapHtml";
+import {
+  buildMapHtml,
+  deliveryMapModel,
+  externalPinScript,
+  parseMapMessage,
+  type MapModel,
+} from "@/lib/mapHtml";
 
 const model: MapModel = {
   theme: "light",
@@ -81,5 +87,39 @@ describe("buildMapHtml", () => {
     expect(html).toContain("iconAnchor: [17, 45]");
     expect(html).toContain("pin-tip");
     expect(html).not.toMatch(/\.pin-dropoff \.pin-mark/);
+  });
+});
+
+describe("delivery map model", () => {
+  it("keeps pins clear of the panel and names the counter, never a shop", () => {
+    const model = deliveryMapModel({
+      theme: "light",
+      pickup: null,
+      dropoff: { lat: 7.07, lng: 125.61 },
+      rider: { lat: 7.08, lng: 125.61 },
+      stale: true,
+      route: [],
+      routed: false,
+      routeColor: "#FFDE58",
+      pickupLabel: "GRIDGO Office",
+      padTop: 90,
+      padBottom: 240,
+    });
+    expect(model).toMatchObject({ padTop: 90, padBottom: 240, riderStale: true, pickupMark: "GRIDGO" });
+    expect(model.dropoffLabel).toBe("Your delivery address");
+    expect(model.routeUnavailable).toBe(false);
+  });
+
+  it("reads only its own messages back from the page", () => {
+    expect(parseMapMessage(JSON.stringify({ type: "moved" }))).toEqual({ type: "moved" });
+    expect(parseMapMessage(JSON.stringify({ type: "pin", lat: 7, lng: 125 }))).toEqual({ type: "pin", lat: 7, lng: 125 });
+    expect(parseMapMessage("not json")).toBeNull();
+    expect(parseMapMessage({ type: "moved" })).toBeNull();
+  });
+
+  it("labels an old rider position on the map in words", () => {
+    const html = buildMapHtml(model);
+    expect(html).toContain("Last known position");
+    expect(html).toContain("paddingBottomRight");
   });
 });

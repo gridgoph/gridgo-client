@@ -74,7 +74,7 @@ jest.mock("@/lib/api", () => {
     listZones: jest.fn(),
     listIssues: jest.fn(),
     getSettings: jest.fn(),
-    getRiderLocation: jest.fn(),
+    getRiderTracking: jest.fn(),
     getFileDownloadUrl: jest.fn(),
     submitPayment: jest.fn(),
   };
@@ -82,6 +82,18 @@ jest.mock("@/lib/api", () => {
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
+
+/** GRIDGO's judgement of a fresh fix (gridgo-api#217). */
+const liveTracking = {
+  status: "live",
+  refreshIntervalSeconds: 20,
+  staleAfterSeconds: 120,
+  settingsVersion: 3,
+  lastUpdatedAt: new Date().toISOString(),
+  ageSeconds: 4,
+  stale: false,
+  message: null,
+};
 
 const baseOrder: Order = {
   id: "ord_demo_1",
@@ -208,7 +220,7 @@ describe("OrderDetailScreen", () => {
       ...baseOrder,
       state: "downpayment_review",
     }));
-    api.getRiderLocation.mockResolvedValue(null);
+    api.getRiderTracking.mockResolvedValue({ ping: null, tracking: null });
     api.getFileDownloadUrl.mockRejectedValue(new Error("no file"));
     osrm.fetchRoute.mockResolvedValue({
       routed: true,
@@ -760,19 +772,23 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText("Waiting for a progress photo")).toBeNull();
   });
 
-  it("shows delivery progress while the rider location is hidden", async () => {
+  it("explains before pick-up that the live location has not started", async () => {
     setOrder({
-      state: "out_for_delivery",
+      state: "rider_assigned",
       riderId: "user_rider",
       dropoff: { lat: 7.0853, lng: 125.6137, label: "Bajada, Davao City" },
-      // Client-facing: GRIDGO withholds the press's own pin and sends its own.
-      pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
+    });
+    api.getRiderTracking.mockResolvedValue({
+      ping: null,
+      tracking: { ...liveTracking, status: "inactive", ageSeconds: null, lastUpdatedAt: null },
     });
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText("Your rider is on the way.")).toBeTruthy();
-    expect(screen.getByText(/closer to your drop-off/i)).toBeTruthy();
-    expect(screen.queryByText("No location shared")).toBeNull();
+    expect(await screen.findByText("Live location starts at pick-up")).toBeTruthy();
+    expect(screen.getAllByText("Rider assigned").length).toBeGreaterThan(0);
+    expect(screen.getByText("Next: Heading to the shop")).toBeTruthy();
+    // The order still rides under the map.
+    expect(screen.getByText("Specifications")).toBeTruthy();
   });
 
   it("reports road distance from the rider, and never an ETA", async () => {
@@ -783,14 +799,17 @@ describe("OrderDetailScreen", () => {
       // Client-facing: GRIDGO withholds the press's own pin and sends its own.
       pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
     });
-    api.getRiderLocation.mockResolvedValue({
-      id: "ping_1",
-      orderId: "ord_demo_1",
-      riderId: "user_rider",
-      lat: 7.07,
-      lng: 125.611,
-      accuracy: null,
-      at: new Date().toISOString(),
+    api.getRiderTracking.mockResolvedValue({
+      ping: {
+        id: "ping_1",
+        orderId: "ord_demo_1",
+        riderId: "user_rider",
+        lat: 7.07,
+        lng: 125.611,
+        accuracy: null,
+        at: new Date().toISOString(),
+      },
+      tracking: liveTracking,
     });
 
     await renderInSafeArea(<OrderDetailScreen />);
@@ -798,9 +817,11 @@ describe("OrderDetailScreen", () => {
     expect(
       await screen.findByText(/4\.2 km from your drop-off by road/),
     ).toBeTruthy();
+    expect(screen.getByText("Live location")).toBeTruthy();
+    expect(screen.getByText("Last updated just now")).toBeTruthy();
     // OSRM returns a travel time; presenting it would read as a promise.
-    expect(screen.queryByText(/10 min|arriv/i)).toBeNull();
-    expect(screen.getByText(/does not publish a live ETA/i)).toBeTruthy();
+    expect(screen.queryByText(/10 min|arriv(es|ing|al)/i)).toBeNull();
+    expect(screen.queryByText(/\bETA\b/)).toBeNull();
   });
 
   it("still draws the delivery when OSRM cannot be reached", async () => {
@@ -811,14 +832,17 @@ describe("OrderDetailScreen", () => {
       // Client-facing: GRIDGO withholds the press's own pin and sends its own.
       pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
     });
-    api.getRiderLocation.mockResolvedValue({
-      id: "ping_1",
-      orderId: "ord_demo_1",
-      riderId: "user_rider",
-      lat: 7.07,
-      lng: 125.611,
-      accuracy: null,
-      at: new Date().toISOString(),
+    api.getRiderTracking.mockResolvedValue({
+      ping: {
+        id: "ping_1",
+        orderId: "ord_demo_1",
+        riderId: "user_rider",
+        lat: 7.07,
+        lng: 125.611,
+        accuracy: null,
+        at: new Date().toISOString(),
+      },
+      tracking: liveTracking,
     });
     osrm.fetchRoute.mockResolvedValue(
       jest
@@ -833,7 +857,7 @@ describe("OrderDetailScreen", () => {
 
     // Falls back to the straight line, and says which one the client reads.
     expect(await screen.findByText(/in a straight line/i)).toBeTruthy();
-    expect(screen.getByLabelText(/Map showing GRIDGO/)).toBeTruthy();
+    expect(screen.getByLabelText(/Map showing your delivery address/)).toBeTruthy();
     expect(screen.queryByLabelText(/print shop/i)).toBeNull();
   });
 
@@ -930,7 +954,7 @@ describe("OrderDetailScreen", () => {
     it("shows no rider while it is being carried to the office", async () => {
       setOrder({ ...collecting, state: "out_for_delivery", payments: settled });
       // Call history carries across tests in this file; only this render counts.
-      api.getRiderLocation.mockClear();
+      api.getRiderTracking.mockClear();
 
       await renderInSafeArea(<OrderDetailScreen />);
 
@@ -939,7 +963,7 @@ describe("OrderDetailScreen", () => {
       ).toBeTruthy();
       expect(screen.queryByText(/out for delivery/i)).toBeNull();
       // Nothing asks the platform where the rider is, so nothing can draw them.
-      expect(api.getRiderLocation).not.toHaveBeenCalled();
+      expect(api.getRiderTracking).not.toHaveBeenCalled();
     });
 
     it("gives the counter and the address once it is on the shelf", async () => {
