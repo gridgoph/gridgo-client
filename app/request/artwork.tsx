@@ -22,6 +22,7 @@ import {
   isWordDocument,
   needsManualPageTotal,
 } from "@/lib/artworkUpload";
+import { formatRefusal } from "@/lib/artworkFormats";
 import { artworkSizeNote } from "@/lib/artworkSize";
 import {
   measuredSizeMilli,
@@ -46,7 +47,6 @@ import {
   formatSentence,
   linkFormats,
   pickerMimeTypes,
-  uploadLimitLine,
 } from "@/lib/listing";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
@@ -120,10 +120,14 @@ export default function ArtworkScreen() {
     return {
       accept: pickerMimeTypes(item),
       check: (fileName, mimeType) => fileMatchesFormats(item, fileName, mimeType),
-      rejection: (fileName) =>
-        `${item.name} takes ${formatSentence(uploads)}` +
-        `${links.length ? `, or ${designLinkPhrase(links)} in the Design link field` : ""}. ` +
-        `${fileName} is none of those — export it and pick it again.`,
+      rejection: (fileName, mimeType) =>
+        formatRefusal({
+          productName: item.name,
+          fileName,
+          mimeType,
+          formats: uploads,
+          links: links.length ? designLinkPhrase(links) : null,
+        }),
     };
   }, [item]);
 
@@ -165,11 +169,23 @@ export default function ArtworkScreen() {
         );
         adopt(updated);
       } catch (error) {
+        // GRIDGO read the bytes as a type this listing does not take — a file
+        // renamed to .pdf, say. Said in the same words as a refused pick.
+        const formatRefused =
+          error instanceof api.ApiError &&
+          (error.body as { error?: string } | null)?.error === "artwork_file_format_not_accepted";
         setSaveError(
-          userFacingError(
-            error,
-            "Your file reached GRIDGO but did not go onto this item. Try again in a moment.",
-          ),
+          formatRefused && item
+            ? formatRefusal({
+                productName: item.name,
+                fileName: upload.state.fileName || "This file",
+                mimeType: upload.state.contentType,
+                formats: fileFormats(item),
+              })
+            : userFacingError(
+                error,
+                "Your file reached GRIDGO but did not go onto this item. Try again in a moment.",
+              ),
         );
       } finally {
         setSaving(false);
@@ -344,7 +360,8 @@ export default function ArtworkScreen() {
   const totalDirty = manualTotal && totalText.trim() !== savedTotal;
   const totalError = totalDirty ? pageTotalError(totalText) : null;
   const pagesMissing = item?.pricingUnit === "per_page" && !documentPages;
-  const unreadPages = pagesMissing && !wordNeedsTotal
+  // Only about a file GRIDGO holds: before one is picked there is nothing unread.
+  const unreadPages = pagesMissing && !wordNeedsTotal && line.artworkFileId
     ? "Upload a document with a readable page count. If needed, export it as a PDF and upload it again."
     : null;
 
@@ -434,7 +451,8 @@ export default function ArtworkScreen() {
               emphasis={hasArtwork ? "quiet" : "primary"}
               resolution={resolution}
               resolutionQuiet={sizeNote != null}
-              accepts={uploads.length ? uploadLimitLine(uploads) : undefined}
+              formats={uploads.length ? uploads : undefined}
+              productName={name}
             />
           </TourTarget>
         ) : null}
@@ -509,7 +527,7 @@ export default function ArtworkScreen() {
           </View>
         ) : null}
 
-        {asksPages ? (
+        {asksPages && (manualTotal || documentPages || unreadPages) ? (
           <View className="mt-4 gap-3">
             <Text className="text-overline text-text-muted">DOCUMENT PAGES</Text>
             {/*

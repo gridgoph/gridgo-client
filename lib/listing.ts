@@ -404,7 +404,7 @@ export function fileMatchesFormats(
 }
 
 /** Word files are held to their own, smaller limit (gridgo-api#198). */
-function isWordFormat(format: AcceptedFormat): boolean {
+export function isWordFormat(format: AcceptedFormat): boolean {
   return format.code === "docx" || format.mimeTypes.includes(DOCX_CONTENT_TYPE);
 }
 
