@@ -57,6 +57,29 @@ export type MapModel = {
    * back to the host as `{ type: "pin", lat, lng }`.
    */
   pickable?: boolean;
+  /**
+   * Screen space covered by something drawn over the map — the delivery
+   * screen's panel at the bottom, its status card at the top — so fitting the
+   * view keeps every pin in the part a person can actually see.
+   */
+  padTop?: number;
+  padBottom?: number;
+  /**
+   * Where the zoom buttons and the attribution sit above the bottom edge, when
+   * that differs from `padBottom` — a panel pulled up over the map leaves only
+   * a strip, and the attribution (a licence condition) moves into it.
+   */
+  controlsBottom?: number;
+  /** Hide the zoom buttons where there is no room for them. */
+  hideZoom?: boolean;
+  /**
+   * Bumped by the host to bring the view back to the delivery after the
+   * client panned or zoomed away. Until then, a newer position moves the
+   * rider without yanking the map out from under their finger.
+   */
+  recenterKey?: number;
+  /** No pulse around the live rider. */
+  reduceMotion?: boolean;
 };
 
 const LIGHT_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -148,13 +171,30 @@ export function buildMapHtml(model: MapModel): string {
     .dark-attr .pin-tip { background: rgba(0,0,0,0.6); }
     .pin-rider {
       position: relative;
-      width: 16px; height: 16px;
+      width: 20px; height: 20px;
+      display: flex; flex-direction: column; align-items: center;
     }
     .pin-rider .pin-mark {
-      width: 16px; height: 16px; border-radius: 999px;
+      position: relative; z-index: 2;
+      width: 20px; height: 20px; border-radius: 999px; box-sizing: border-box;
       background: #1565C0; border: 3px solid #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
     }
-    .pin-rider.is-stale { opacity: 0.4; }
+    /* Live, the rider breathes; the pill above the map says "Live" in words. */
+    .pin-rider .pin-halo {
+      position: absolute; z-index: 1; left: 50%; top: 50%;
+      width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 999px;
+      background: rgba(21,101,192,0.35);
+      animation: halo 2s ease-out infinite;
+    }
+    @keyframes halo {
+      from { transform: scale(1); opacity: 0.9; }
+      to { transform: scale(3.2); opacity: 0; }
+    }
+    .pin-rider.is-still .pin-halo { display: none; }
+    .pin-rider.is-stale .pin-mark { background: #7A7A7A; opacity: 0.75; }
+    .pin-rider.is-stale .pin-halo { display: none; }
+    .pin-rider .pin-label { position: absolute; top: 22px; }
     /* Names a place, never an address — the street lines are on the form. */
     .pin-label {
       margin-top: 6px; padding: 3px 7px;
@@ -193,6 +233,29 @@ export function buildMapHtml(model: MapModel): string {
     var tileLayer = null;
     var routeLayer = null;
     var markers = [];
+    // The client moved the map themselves; stop fitting it until they ask.
+    // Read from their input, not from Leaflet's move events: a refit fires
+    // those too, and would look like the client's own pan.
+    var userMoved = false;
+    var recenterKey = null;
+
+    function userMove() {
+      if (userMoved) return;
+      userMoved = true;
+      notify({ type: 'moved' });
+    }
+
+    function notify(message) {
+      var text = JSON.stringify(message);
+      if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(text);
+      else if (window.parent && window.parent !== window) window.parent.postMessage(text, '*');
+    }
+
+    function fitOptions(m) {
+      var top = 36 + (m.padTop || 0);
+      var bottom = 36 + (m.padBottom || 0);
+      return { paddingTopLeft: [36, top], paddingBottomRight: [36, bottom], maxZoom: 17 };
+    }
 
     function clearMarkers() {
       markers.forEach(function (m) { map.removeLayer(m); });
@@ -245,12 +308,14 @@ export function buildMapHtml(model: MapModel): string {
 
     function pinIcon(kind, shortLabel, stale, longLabel) {
       if (kind === 'rider') {
-        var cls = 'pin pin-rider' + (stale ? ' is-stale' : '');
+        var cls = 'pin pin-rider' + (stale ? ' is-stale' : '') + (MODEL.reduceMotion ? ' is-still' : '');
+        // An old position says so on the map itself, not only by fading.
+        var known = stale ? '<div class="pin-label">Last known position</div>' : '';
         return L.divIcon({
           className: '',
-          html: '<div class="' + cls + '"><div class="pin-mark"></div></div>',
-          iconSize: [16, 16],
-          iconAnchor: [8, 8]
+          html: '<div class="' + cls + '"><div class="pin-halo"></div><div class="pin-mark"></div>' + known + '</div>',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
         });
       }
 
@@ -278,11 +343,31 @@ export function buildMapHtml(model: MapModel): string {
       document.body.className = isDark ? 'dark-attr' : '';
       document.getElementById('route-banner').className =
         'route-banner' + (m.routeUnavailable ? ' show' : '');
+      document.getElementById('route-banner').style.top = (8 + (m.padTop || 0)) + 'px';
 
       if (!map) {
         map = L.map('map', { zoomControl: false, attributionControl: true });
         L.control.zoom({ position: 'bottomright' }).addTo(map);
+        map.on('dragstart', userMove);
+        map.on('dblclick', userMove);
+        var surface = map.getContainer();
+        surface.addEventListener('wheel', userMove, { passive: true });
+        surface.addEventListener('touchstart', function (e) {
+          if (e.touches && e.touches.length > 1) userMove();
+        }, { passive: true });
+        var zoomButtons = surface.querySelectorAll('.leaflet-control-zoom a');
+        for (var i = 0; i < zoomButtons.length; i++) zoomButtons[i].addEventListener('click', userMove);
       }
+      if (m.recenterKey != null && m.recenterKey !== recenterKey) {
+        if (recenterKey !== null) userMoved = false;
+        recenterKey = m.recenterKey;
+      }
+      // The zoom buttons sit above the panel, not under it.
+      var controlsBottom = (m.controlsBottom != null ? m.controlsBottom : m.padBottom) || 0;
+      var cornerBox = document.querySelector('.leaflet-bottom.leaflet-right');
+      if (cornerBox) cornerBox.style.marginBottom = controlsBottom + 'px';
+      var zoomControl = document.querySelector('.leaflet-control-zoom');
+      if (zoomControl) zoomControl.style.display = m.hideZoom ? 'none' : '';
 
       var url = isDark ? ${JSON.stringify(cartoDarkTileUrl())} : ${JSON.stringify(LIGHT_TILES)};
       var attr = isDark
@@ -338,13 +423,15 @@ export function buildMapHtml(model: MapModel): string {
       if (m.pickable && map.__ggPicked) {
         return;
       }
+      if (userMoved) return;
       if (routeLayer) {
-        try { map.fitBounds(routeLayer.getBounds().pad(0.15)); }
+        try { map.fitBounds(routeLayer.getBounds(), fitOptions(m)); }
         catch (e) { /* keep previous view */ }
       } else if (bounds.length >= 2) {
-        map.fitBounds(bounds, { padding: [36, 36] });
+        map.fitBounds(bounds, fitOptions(m));
       } else if (bounds.length === 1) {
-        map.setView(bounds[0], 15);
+        var only = L.latLngBounds([bounds[0], bounds[0]]);
+        map.fitBounds(only, Object.assign(fitOptions(m), { maxZoom: 15 }));
       } else {
         // Davao City centre fallback so an empty model still shows a map.
         map.setView([7.1907, 125.4553], 12);
@@ -362,9 +449,7 @@ export function buildMapHtml(model: MapModel): string {
         MODEL.dropoff = { lat: point.lat, lng: point.lng };
         map.__ggPicked = true;
         applyModel(MODEL);
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(point));
-        }
+        notify(point);
       });
     }
 
@@ -386,9 +471,75 @@ export function buildMapHtml(model: MapModel): string {
       try { applyModel(JSON.parse(e.data)); } catch (err) {}
     });
     window.addEventListener('message', function (e) {
+      // In a browser frame, only the page that drew this map may redraw it.
+      if (window.parent !== window && e.source !== window.parent) return;
       try { applyModel(JSON.parse(e.data)); } catch (err) {}
     });
   </script>
 </body>
 </html>`;
+}
+
+/** What the delivery screen hands its map; see `components/DeliveryMap.tsx`. */
+export type DeliveryMapInput = {
+  theme: MapTheme;
+  pickup: GeoPoint | null;
+  dropoff: GeoPoint | null;
+  rider: GeoPoint | null;
+  stale: boolean;
+  route: LonLat[];
+  routed: boolean;
+  routeColor: string;
+  /** The origin pin's caption: GRIDGO's counter, never a shop. */
+  pickupLabel: string;
+  padTop?: number;
+  padBottom?: number;
+  controlsBottom?: number;
+  hideZoom?: boolean;
+  recenterKey?: number;
+  reduceMotion?: boolean;
+};
+
+/**
+ * The model both map hosts push into the page — the WebView on a phone and
+ * the iframe on the web — so the two can never draw a delivery differently.
+ */
+export function deliveryMapModel(input: DeliveryMapInput): MapModel {
+  return {
+    theme: input.theme,
+    pickup: input.pickup,
+    dropoff: input.dropoff,
+    pickupLabel: input.pickup?.label || input.pickupLabel,
+    pickupMark: "GRIDGO",
+    dropoffLabel: input.dropoff?.label || "Your delivery address",
+    routeCoordinates: input.route,
+    routeColor: input.routeColor,
+    rider: input.rider,
+    riderStale: input.stale,
+    // Only worth saying once the app actually tried to route.
+    routeUnavailable: input.route.length >= 2 && !input.routed,
+    padTop: input.padTop ?? 0,
+    padBottom: input.padBottom ?? 0,
+    controlsBottom: input.controlsBottom,
+    hideZoom: input.hideZoom ?? false,
+    recenterKey: input.recenterKey ?? 0,
+    reduceMotion: input.reduceMotion ?? false,
+  };
+}
+
+/** A message the map page posts back: a tap that set a pin, or the client moving the view. */
+export type MapMessage = { type: "pin"; lat: number; lng: number } | { type: "moved" };
+
+export function parseMapMessage(data: unknown): MapMessage | null {
+  if (typeof data !== "string") return null;
+  try {
+    const value = JSON.parse(data) as { type?: unknown; lat?: unknown; lng?: unknown };
+    if (value.type === "moved") return { type: "moved" };
+    if (value.type === "pin" && typeof value.lat === "number" && typeof value.lng === "number") {
+      return { type: "pin", lat: value.lat, lng: value.lng };
+    }
+  } catch {
+    // Anything else on the channel is not ours.
+  }
+  return null;
 }
