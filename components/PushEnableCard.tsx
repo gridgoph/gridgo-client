@@ -36,7 +36,8 @@ import { useSession } from "@/store/session";
  * Refusal is a first-class outcome. Nothing is blocked, no screen changes, and
  * the in-app list keeps every update: the card simply becomes a pointer to the
  * phone's own settings, which is the only place a blocked permission can be
- * taken back.
+ * taken back. The same goes for a granted phone whose GRIDGO channel was set
+ * to Silent: the card stays until the sound is back (gridgo-client#231).
  *
  * A `SecondaryButton`, never the yellow one: the primary action on any screen
  * this appears on belongs to the job, not to a notification setting.
@@ -68,9 +69,17 @@ export function PushEnableCard({ spacing }: Props) {
   const error = usePush((s) => s.error);
   const enable = usePush((s) => s.enable);
   const registerIfGranted = usePush((s) => s.registerIfGranted);
+  const channelSilent = usePush((s) => s.channelSilent);
+  const openChannelSettings = usePush((s) => s.openChannelSettings);
   const signedIn = hasActiveSession(useSession((s) => s.user));
 
-  const offer = pushOffer({ supported, signedIn, permission, failed: Boolean(error) });
+  const offer = pushOffer({
+    supported,
+    signedIn,
+    permission,
+    failed: Boolean(error),
+    silent: channelSilent,
+  });
   if (offer === "hidden") return null;
 
   const copy = pushOfferCopy(offer, signedIn);
@@ -88,6 +97,12 @@ export function PushEnableCard({ spacing }: Props) {
         label={busy ? "Asking…" : copy.action}
         disabled={busy}
         onPress={() => {
+          if (offer === "sound") {
+            // Android owns a channel once it exists; only its settings page can
+            // give GRIDGO its sound back. Coming back re-reads it (`resume`).
+            void openChannelSettings();
+            return;
+          }
           if (offer === "settings") {
             // Only the OS can undo a blocked permission, so this is an honest
             // handover rather than a dialog the app cannot actually raise.

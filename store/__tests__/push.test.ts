@@ -1,10 +1,11 @@
 import { waitFor } from "@testing-library/react-native";
 
+import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 
 import * as api from "@/lib/api";
-import { PUSH_CHANNEL_ID } from "@/lib/push";
+import { ANDROID_IMPORTANCE_AUDIBLE, PUSH_CHANNEL_ID } from "@/lib/push";
 import { usePush, pushSupported, serializeDeviceMutation } from "@/store/push";
 import { useSession } from "@/store/session";
 
@@ -42,6 +43,7 @@ beforeEach(() => {
     permission: "unknown",
     token: null,
     claimed: false,
+    channelSilent: false,
     busy: false,
     error: null,
   });
@@ -98,7 +100,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().claimed).toBe(true);
     expect(usePush.getState().error).toBeNull();
@@ -119,7 +121,7 @@ describe("registerIfGranted", () => {
     usePush.setState({ permission: "granted" });
     const claim = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
     await usePush.getState().registerIfGranted();
-    expect(claim).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
+    expect(claim).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
     expect(usePush.getState().claimed).toBe(true);
     claim.mockRestore();
     api.setTokenProvider(null);
@@ -136,7 +138,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
     expect(claimed).not.toHaveBeenCalled();
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().claimed).toBe(false);
@@ -151,7 +153,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
     expect(usePush.getState().claimed).toBe(true);
     claimed.mockRestore();
   });
@@ -220,6 +222,77 @@ describe("registerIfGranted", () => {
   });
 });
 
+describe("the notification channel (gridgo-client#231)", () => {
+  const channel = (importance: number, sound: string | null) =>
+    ({ id: PUSH_CHANNEL_ID, importance, sound }) as never;
+
+  it("is created audible: high importance, vibration, and Android's default sound", async () => {
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+
+    await usePush.getState().registerIfGranted();
+
+    const options = mocked.setNotificationChannelAsync.mock.calls[0][1];
+    expect(options.importance).toBe(Notifications.AndroidImportance.HIGH);
+    expect(options.enableVibrate).toBe(true);
+    // No `sound` key is Android's default sound; `null` would be silence and
+    // any string is read as a custom file that does not exist.
+    expect(options).not.toHaveProperty("sound");
+  });
+
+  it("uses Expo's own number for the lowest audible importance", () => {
+    const actual = jest.requireActual<typeof import("expo-notifications/build/NotificationChannelManager.types")>(
+      "expo-notifications/build/NotificationChannelManager.types",
+    );
+    expect(ANDROID_IMPORTANCE_AUDIBLE).toBe(actual.AndroidImportance.DEFAULT);
+  });
+
+  it.each([
+    ["set to Silent", channel(4, "default")],
+    ["blocked", channel(2, "default")],
+    ["left with no sound", channel(6, null)],
+  ])("notices a channel the person has %s", async (_case, existing) => {
+    mocked.getNotificationChannelAsync.mockResolvedValueOnce(existing);
+    await usePush.getState().syncPermission();
+    expect(usePush.getState().channelSilent).toBe(true);
+  });
+
+  it("trusts a channel that still sounds", async () => {
+    usePush.setState({ channelSilent: true });
+    mocked.getNotificationChannelAsync.mockResolvedValueOnce(channel(6, "default"));
+    await usePush.getState().syncPermission();
+    expect(usePush.getState().channelSilent).toBe(false);
+  });
+
+  it("opens the channel's own settings page", async () => {
+    const config = Constants.expoConfig!;
+    config.android = { package: "ph.gridgo.client" };
+    const send = jest.spyOn(Linking, "sendIntent").mockResolvedValue(undefined);
+    await usePush.getState().openChannelSettings();
+    delete config.android;
+    expect(send).toHaveBeenCalledWith("android.settings.CHANNEL_NOTIFICATION_SETTINGS", [
+      { key: "android.provider.extra.APP_PACKAGE", value: "ph.gridgo.client" },
+      { key: "android.provider.extra.CHANNEL_ID", value: PUSH_CHANNEL_ID },
+    ]);
+    send.mockRestore();
+  });
+
+  it("registers an iOS token as APNs, which is what Expo returns there", async () => {
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    mocked.getDevicePushTokenAsync.mockResolvedValueOnce({ type: "ios", data: "a".repeat(64) } as never);
+    const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+    Object.defineProperty(Platform, "OS", { value: "ios", configurable: true });
+    try {
+      await usePush.getState().registerIfGranted();
+    } finally {
+      Object.defineProperty(Platform, "OS", { value: "android", configurable: true });
+    }
+
+    expect(register).toHaveBeenCalledWith("a".repeat(64), "ios", expect.any(AbortSignal), "apns");
+    register.mockRestore();
+  });
+});
+
 describe("enable", () => {
   it("raises the dialog and registers when the person says yes", async () => {
     mocked.requestPermissionsAsync.mockResolvedValue(granted as never);
@@ -229,7 +302,7 @@ describe("enable", () => {
     await expect(usePush.getState().enable()).resolves.toBe(true);
 
     expect(mocked.requestPermissionsAsync).toHaveBeenCalled();
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
     register.mockRestore();
   });
 
@@ -257,7 +330,7 @@ describe("resume", () => {
     await usePush.getState().resume();
 
     expect(usePush.getState().permission).toBe("granted");
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.anything());
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.anything(), "fcm");
     expect(mocked.requestPermissionsAsync).not.toHaveBeenCalled();
   });
 
@@ -302,7 +375,7 @@ describe("adoptToken", () => {
 
     await usePush.getState().adoptToken("rotated-token");
 
-    expect(register).toHaveBeenCalledWith("rotated-token", "android", expect.any(AbortSignal));
+    expect(register).toHaveBeenCalledWith("rotated-token", "android", expect.any(AbortSignal), "fcm");
     register.mockRestore();
   });
 
@@ -379,7 +452,7 @@ describe("signing out", () => {
 
     await usePush.getState().release();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal));
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
     expect(usePush.getState().claimed).toBe(false);
     unclaimed.mockRestore();
   });

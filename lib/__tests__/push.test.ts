@@ -1,6 +1,10 @@
 import {
+  chatNotificationRoute,
   devicePlatform,
   isExpoGoRuntime,
+  pushChannelSilent,
+  pushTapKey,
+  pushTokenProvider,
   parsePushData,
   PUSH_CHANNEL_ID,
   PUSH_EXPLAINER_COPY,
@@ -19,6 +23,65 @@ describe("the channel the server names", () => {
     // and Android 8+ drops or downgrades one naming a channel that does not
     // exist. All three GRIDGO apps must use this exact string.
     expect(PUSH_CHANNEL_ID).toBe("gridgo_default");
+  });
+});
+
+describe("chat pushes (gridgo-client#231)", () => {
+  const THREAD = "0f8b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d";
+  const push = (type: string, orderId: string | null = null) =>
+    parsePushData({ notificationId: "n1", type, ...(orderId ? { orderId } : {}), at: "2026-10-14T02:00:00Z" });
+
+  it("opens a rider's message in that delivery's chat", () => {
+    expect(pushTargetRoute(push("delivery_message", "ord 7"))).toBe("/order/delivery-chat?orderId=ord%207");
+  });
+
+  it("opens an Operations message in chat history until its thread is read back", () => {
+    // The push names no thread, and the newest thread may be another conversation.
+    expect(pushTargetRoute(push("support_message"))).toBe("/chat");
+    expect(pushTargetRoute(push("support_message", "ord_1"))).toBe("/chat");
+  });
+
+  it("sends a delivery message with no order to the inbox rather than an empty chat", () => {
+    expect(pushTargetRoute(push("delivery_message"))).toBe("/(tabs)/notifications");
+  });
+
+  it("opens an inbox row about a conversation in that conversation", () => {
+    expect(chatNotificationRoute({ type: "support_message", threadId: THREAD })).toBe(`/chat/${THREAD}`);
+    expect(chatNotificationRoute({ type: "support_message", threadId: "not-a-thread" })).toBe("/chat");
+    expect(chatNotificationRoute({ type: "support_message" })).toBe("/chat");
+    expect(chatNotificationRoute({ type: "delivery_message", orderId: "ord_1" })).toBe(
+      "/order/delivery-chat?orderId=ord_1",
+    );
+    expect(chatNotificationRoute({ type: "payment_confirmed", orderId: "ord_1" })).toBeNull();
+  });
+
+  it("remembers a tap by its notification, whatever native identifier carries it", () => {
+    expect(pushTapKey("cold-launch", push("delivery_message", "o"))).toBe(
+      pushTapKey("live-listener", push("delivery_message", "o")),
+    );
+    expect(pushTapKey("a", parsePushData({}))).not.toBe(pushTapKey("b", parsePushData({})));
+  });
+});
+
+describe("the channel's sound", () => {
+  it("is silent when the person turned it to Silent, blocked it, or took its sound away", () => {
+    expect(pushChannelSilent({ importance: 4, sound: "default" })).toBe(true);
+    expect(pushChannelSilent({ importance: 2, sound: "default" })).toBe(true);
+    expect(pushChannelSilent({ importance: 6, sound: null })).toBe(true);
+  });
+
+  it("sounds at default importance or above with a sound, and assumes so when unread", () => {
+    expect(pushChannelSilent({ importance: 6, sound: "default" })).toBe(false);
+    expect(pushChannelSilent({ importance: 5, sound: "custom" })).toBe(false);
+    expect(pushChannelSilent(null)).toBe(false);
+  });
+});
+
+describe("pushTokenProvider", () => {
+  it("files Expo's iOS token as native APNs and Android's as FCM", () => {
+    expect(pushTokenProvider("ios")).toBe("apns");
+    expect(pushTokenProvider("android")).toBe("fcm");
+    expect(pushTokenProvider(undefined)).toBe("fcm");
   });
 });
 
@@ -222,6 +285,15 @@ describe("pushOffer", () => {
     // Expo Go and web never resolve one. Drawing an ask that cannot be
     // answered would be the app promising something it cannot do.
     expect(pushOffer({ ...base, permission: "unknown" })).toBe("hidden");
+  });
+
+  it("points a granted phone with a silenced channel at the channel's settings", () => {
+    expect(pushOffer({ ...base, permission: "granted", silent: true })).toBe("sound");
+    expect(pushOffer({ ...base, permission: "granted", silent: false })).toBe("hidden");
+    // A failed registration says so first; a signed-out phone is never told.
+    expect(pushOffer({ ...base, permission: "granted", silent: true, failed: true })).toBe("retry");
+    expect(pushOffer({ ...base, signedIn: false, permission: "granted", silent: true })).toBe("hidden");
+    expect(pushOfferCopy("sound").action).toMatch(/settings/i);
   });
 });
 

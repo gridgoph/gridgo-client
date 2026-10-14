@@ -6,7 +6,7 @@ import { Platform } from "react-native";
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
 import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
-import type { DevicePlatform } from "@/lib/push";
+import type { DevicePlatform, PushTokenProvider } from "@/lib/push";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
 import { readCall, readCalls, type CallIceConfig, type CallSignal, type OrderCall } from "@/lib/orderCalls";
 import { parseSeasonWindows, type SeasonWindows } from "@/lib/seasonWindows";
@@ -571,6 +571,8 @@ export type Notification = {
   at: string;
   /** The wallet item a voucher notice is about (gridgo-api#204). */
   voucherId?: string;
+  /** The support thread a `support_message` notice is about. Never in push data. */
+  threadId?: string;
   /** Organization reminders and notices (gridgo-client#165). */
   organizationUserId?: string;
   officerId?: string | null;
@@ -1041,11 +1043,12 @@ export async function registerDevice(
   token: string,
   platform: DevicePlatform,
   signal?: AbortSignal,
+  tokenProvider: PushTokenProvider = "fcm",
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
     signal,
-    body: JSON.stringify({ token, platform, appRole: "client" }),
+    body: JSON.stringify({ token, platform, appRole: "client", tokenProvider }),
   });
 }
 
@@ -1079,12 +1082,13 @@ export async function registerDeviceUnclaimed(
   token: string,
   platform: DevicePlatform,
   signal?: AbortSignal,
+  tokenProvider: PushTokenProvider = "fcm",
 ): Promise<void> {
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
     signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ token, platform, appRole: "client" }),
+    body: JSON.stringify({ token, platform, appRole: "client", tokenProvider }),
   });
   if (!res.ok) {
     const text = await res.text();
