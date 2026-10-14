@@ -1,162 +1,114 @@
-import type { CatalogItem, CatalogPhoto, ShopBoard } from "@/lib/api";
-import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { pagePadding } from "@/constants/theme";
 import {
   SAMPLE_GAP,
   SAMPLE_PEEK,
+  featuredPrintsFrom,
   homeSampleCardWidth,
   homeSamplePhotoHeight,
-  pickHomeSamples,
 } from "@/lib/homeSamples";
 
-function photo(): CatalogPhoto {
+/** One card as gridgo-api's `GET /featured-prints` sends it. */
+function card(id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    fileId: "file_1",
-    sortOrder: 0,
-    altText: "A printed sample",
-    url: "/catalog/media/file_1",
-    downloadUrl: "https://storage.example/file_1",
-  };
-}
-
-function item(
-  subcategoryCode: string,
-  fromPriceMinor: number,
-  photos: CatalogPhoto[] = [],
-): CatalogItem {
-  return {
-    id: `sci_${subcategoryCode}_${fromPriceMinor}`,
-    supplierId: "user_shop",
-    supplierServiceId: "svc",
+    id,
+    name: "Flyers",
     categoryCode: "marketing_collateral",
-    subcategoryCode,
-    name: subcategoryCode,
-    description: null,
-    basePriceMinor: fromPriceMinor,
-    fromPriceMinor,
-    effectivePriceMinor: null,
+    subcategoryCode: "flyers",
+    clientFromPriceMinor: 1100,
     pricingUnit: "per_unit",
     packageQty: null,
-    measurementKind: "none",
     measureUnit: null,
-    minimumWidthMilli: null,
-    minimumHeightMilli: null,
-    minimumLengthMilli: null,
     minimumOrderQuantity: null,
-    priceTiers: [],
-    speedTiers: [],
-    pricingBasis: "per_unit",
-    turnaroundMode: "override",
-    turnaroundHours: 48,
-    rush: null,
-    acceptedFormats: [],
-    photos,
-    prepSteps: [],
-    optionGroups: [],
-    version: 1,
-    serviceVersion: 1,
-  };
-}
-
-function board(items: CatalogItem[]): ShopBoard {
-  return {
-    supplierId: "user_shop",
-    shopName: "Shop",
-    shop: null,
-    media: [],
-    categories: ["marketing_collateral"],
-    services: [
+    photos: [
       {
-        id: "svc",
-        version: 1,
-        categoryCode: "marketing_collateral",
-        pricingBasis: "per_unit",
-        turnaroundHours: 48,
-        acceptedFormats: [],
-        items,
+        fileId: "file_sample",
+        sortOrder: 0,
+        url: "/catalog/media/file_sample",
+        downloadUrl: "https://storage.example/signed-sample",
+        downloadUrlExpiresAt: "2026-10-15T00:05:00.000Z",
       },
     ],
+    ...overrides,
   };
 }
 
-describe("pickHomeSamples", () => {
-  /**
-   * The strip exists to tell a brand-new client what GRIDGO makes. Five cards
-   * from one family says "GRIDGO prints flyers", which is the opposite.
-   */
-  it("gives every family a turn before any family gets a second card", () => {
-    const boards = [
-      board([
-        item("flyers", 10_000),
-        item("brochures", 11_000),
-        item("business_cards", 12_000),
-        item("custom_apparel", 50_000),
-        item("certificates_diplomas", 30_000),
-      ]),
-    ];
+/**
+ * FEATURED PRINTS is GRIDGO's curated list, drawn as sent. Nothing here may
+ * add to it, reorder it, or reach for a shop.
+ */
+describe("featuredPrintsFrom", () => {
+  it("keeps the staff order and GRIDGO's own price", () => {
+    const read = featuredPrintsFrom({
+      title: "FEATURED PRINTS",
+      items: [card("sci_card", { name: "Calling cards", clientFromPriceMinor: 44_000 }), card("sci_flyer")],
+      emptyState: null,
+    });
 
-    const picked = pickHomeSamples(PRODUCT_CATEGORY_SEED, boards, 4);
-    const families = picked.map((entry) => entry.category.code);
-
-    expect(families.slice(0, 3)).toEqual([
-      "marketing_collateral",
-      "corporate_event_merch",
-      "recognition_awards_signage",
-    ]);
-    // Only marketing has anything left, so the fourth card is its second.
-    expect(families[3]).toBe("marketing_collateral");
+    expect(read.map((entry) => entry.id)).toEqual(["sci_card", "sci_flyer"]);
+    expect(read[0]).toMatchObject({ name: "Calling cards", clientFromPriceMinor: 44_000 });
+    expect(read[1].photos[0].downloadUrl).toBe("https://storage.example/signed-sample");
   });
 
-  /**
-   * These are sample cards. A listing with no photograph draws a grey plate,
-   * so within a family the cheapest one that has a sample wins — and the price
-   * on the card is that listing's own, never one listing's photo over
-   * another's number.
-   */
-  it("prefers a listing that has a sample photo over a cheaper blank one", () => {
-    const boards = [board([item("flyers", 4_000), item("flyers", 9_000, [photo()])])];
-
-    const picked = pickHomeSamples(PRODUCT_CATEGORY_SEED, boards, 1);
-
-    expect(picked).toHaveLength(1);
-    expect(picked[0].listing.fromPriceMinor).toBe(9_000);
-    expect(picked[0].subcategory.name).toBe("Flyers");
+  /** The contract's empty answer is no row; Home keeps its start board. */
+  it("is empty for the contract's empty state and for a body it cannot read", () => {
+    expect(
+      featuredPrintsFrom({
+        title: "FEATURED PRINTS",
+        items: [],
+        emptyState: { action: "browse_catalog", message: "Explore print products to start your first print." },
+      }),
+    ).toEqual([]);
+    expect(featuredPrintsFrom(null)).toEqual([]);
+    expect(featuredPrintsFrom({ items: "nope" })).toEqual([]);
   });
 
-  it("falls back to a blank listing when no shop has photographed one", () => {
-    const boards = [board([item("flyers", 4_000)])];
+  it("drops a card it cannot start or price, and a repeat", () => {
+    const read = featuredPrintsFrom({
+      items: [
+        card("sci_flyer"),
+        card("sci_flyer"),
+        card("sci_free", { clientFromPriceMinor: null }),
+        card("sci_half", { clientFromPriceMinor: 10.5 }),
+        card("sci_lost", { subcategoryCode: "" }),
+        "not a card",
+      ],
+    });
 
-    expect(pickHomeSamples(PRODUCT_CATEGORY_SEED, boards, 1)[0].listing.fromPriceMinor).toBe(
-      4_000,
+    expect(read.map((entry) => entry.id)).toEqual(["sci_flyer"]);
+  });
+
+  /** Signing can be down: the card stays and draws the neutral sample plate. */
+  it("keeps a card whose photo link is not signed", () => {
+    const read = featuredPrintsFrom({
+      items: [card("sci_flyer", { photos: [{ fileId: "file_sample", sortOrder: 0, url: "/catalog/media/file_sample" }] })],
+    });
+
+    expect(read).toHaveLength(1);
+    expect(read[0].photos[0].downloadUrl).toBeUndefined();
+  });
+
+  /** An allowlist card in, an allowlist card out: nothing extra rides along. */
+  it("carries no shop field even when one is sent", () => {
+    const [read] = featuredPrintsFrom({
+      items: [card("sci_flyer", { supplierId: "user_shop", shopName: "A press", fromPriceMinor: 1000 })],
+    });
+
+    expect(Object.keys(read).sort()).toEqual(
+      [
+        "categoryCode",
+        "clientFromPriceMinor",
+        "id",
+        "measureUnit",
+        "minimumOrderQuantity",
+        "name",
+        "packageQty",
+        "photos",
+        "pricingUnit",
+        "subcategoryCode",
+      ].sort(),
     );
   });
-
-  it("stops at the limit", () => {
-    const boards = [
-      board([item("flyers", 10_000), item("brochures", 11_000), item("custom_apparel", 50_000)]),
-    ];
-
-    expect(pickHomeSamples(PRODUCT_CATEGORY_SEED, boards, 2)).toHaveLength(2);
-    expect(pickHomeSamples(PRODUCT_CATEGORY_SEED, boards, 0)).toEqual([]);
-  });
-
-  /** No boards is no strip — Home draws nothing rather than an empty shelf. */
-  it("has nothing to show when no shop lists anything", () => {
-    expect(pickHomeSamples(PRODUCT_CATEGORY_SEED, [])).toEqual([]);
-    expect(pickHomeSamples(PRODUCT_CATEGORY_SEED, [board([])])).toEqual([]);
-  });
-
-  /** A family the API added that this app has no listings for contributes none. */
-  it("skips a category no shop prints", () => {
-    const boards = [board([item("flyers", 10_000)])];
-
-    const picked = pickHomeSamples(PRODUCT_CATEGORY_SEED, boards);
-
-    expect(picked).toHaveLength(1);
-    expect(picked[0].category.code).toBe("marketing_collateral");
-  });
 });
-
 
 /**
  * A strip that ends flush with the screen edge reads as the whole shelf. The

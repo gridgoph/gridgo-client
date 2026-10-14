@@ -3,7 +3,7 @@ import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { spacing, typography } from "@/constants/theme";
-import type { CatalogItem } from "@/lib/api";
+import type { CatalogItem, CatalogPhoto } from "@/lib/api";
 import { printTimeLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import type { ProductSubcategory } from "@/lib/productCategories";
 import { useServiceFeeRateBps } from "@/store/platformSettings";
@@ -16,7 +16,21 @@ type Props = {
   onStalePhoto?: () => Promise<unknown> | void;
 };
 
-type CardProps = Props & {
+/**
+ * What the sample tile reads, and nothing more. A shop listing fits it, and so
+ * does a curated Home card (`FeaturedPrint`), which carries GRIDGO's price but
+ * no shop figure and no alt text.
+ */
+export type SampleListing = Pick<CatalogItem, "pricingUnit" | "packageQty" | "measureUnit"> & {
+  fromPriceMinor?: number | null;
+  clientFromPriceMinor?: number | null;
+  photos: readonly Partial<CatalogPhoto>[];
+};
+
+type CardProps = Omit<Props, "subcategory" | "listing"> & {
+  /** What the tile is called, and the contents line under it. */
+  subcategory: Pick<ProductSubcategory, "name"> & Partial<ProductSubcategory>;
+  listing: SampleListing | null;
   /** Square on the wall, where the card is the page. Wide in a strip. */
   photoRatio?: "square" | "wide";
   /**
@@ -34,19 +48,19 @@ type CardProps = Props & {
  * waits for the rate rather than showing the shop's own.
  */
 function moneyLine(
-  listing: CatalogItem | null,
+  listing: SampleListing | null,
   rate: number | null,
-): { clientMinor: number | null; supplierMinor: number; spoken: string; unit: string } | null {
+): { clientMinor: number | null; supplierMinor: number | null; spoken: string; unit: string } | null {
   if (!listing) return null;
   return {
     clientMinor: listing.clientFromPriceMinor ?? null,
-    supplierMinor: listing.fromPriceMinor,
+    supplierMinor: listing.fromPriceMinor ?? null,
     spoken: `from ${gridgoPriceLabel(listing.fromPriceMinor, rate, listing.clientFromPriceMinor)}`,
     unit: unitLine(listing),
   };
 }
 
-function sampleUrl(listing: CatalogItem | null): string | null {
+function sampleUrl(listing: SampleListing | null): string | null {
   return listing ? samplePhotoUri(listing.photos[0]) : null;
 }
 

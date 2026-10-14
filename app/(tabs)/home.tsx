@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronRight } from "lucide-react-native";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -29,12 +29,10 @@ import { useTourAutoStart, useTourScreen } from "@/hooks/useTourScreen";
 import { useVisibleTourStep } from "@/hooks/useTourStep";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
-import { pickHomeSamples } from "@/lib/homeSamples";
+import { featuredPrintsFrom, type HomeSample } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
-import { boardListings } from "@/lib/photoLinks";
 import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
 import { type ProductCategory } from "@/lib/productCategories";
-import { HOME_BOARDS, loadCategoryBoards } from "@/lib/shopBoards";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useNotifications } from "@/store/notifications";
@@ -91,47 +89,50 @@ export default function HomeScreen() {
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [boards, setBoards] = useState<api.ShopBoard[] | null>(null);
-  const [boardsLoading, setBoardsLoading] = useState(false);
+  const [samples, setSamples] = useState<HomeSample[] | null>(null);
+  const [samplesLoading, setSamplesLoading] = useState(false);
 
   /**
-   * The shops' boards, read only for a client with nothing on press.
+   * FEATURED PRINTS, read only for a client with nothing on press.
    *
    * A returning client's Home is already answering a question, so it does not
-   * spend a phone's data on a browse strip nobody asked for. A failed read
-   * leaves the strip out rather than showing an empty shelf: the start board
-   * under it answers everything the strip does, one tap further along.
+   * spend a phone's data on a browse strip nobody asked for. The list is the
+   * one GRIDGO's staff curated (`GET /featured-prints`); an empty or failed
+   * read leaves the row out rather than showing an empty shelf, and never
+   * falls back to anything else — the start board under it answers
+   * everything the row does, one tap further along.
    */
   const loadSequence = useRef(0);
   const loadSamples = useCallback(async (sequence: number) => {
-    setBoardsLoading(true);
+    setSamplesLoading(true);
     try {
-      const read = await loadCategoryBoards("", { maxBoards: HOME_BOARDS });
-      if (sequence === loadSequence.current) setBoards(read.boards);
+      const read = featuredPrintsFrom(await api.getFeaturedPrints());
+      if (sequence === loadSequence.current) setSamples(read);
     } catch {
-      if (sequence === loadSequence.current) setBoards([]);
+      if (sequence === loadSequence.current) setSamples([]);
     } finally {
-      if (sequence === loadSequence.current) setBoardsLoading(false);
+      if (sequence === loadSequence.current) setSamplesLoading(false);
     }
   }, []);
 
   /**
-   * The strip's photo links are signed for five minutes and Home can sit in the
-   * background for hours. Resuming onto an old read re-reads the boards, and a
-   * tile failing on an expired link re-reads them past the cache — the photos
-   * come back rather than turning into "This photo will not load".
+   * The row's photo links are signed for five minutes and Home can sit in the
+   * background for hours. Resuming onto an old read re-reads the list, and a
+   * tile failing on an expired link re-reads it — the server does not cache
+   * it, so the photos come back rather than turning into "This photo will not
+   * load".
    */
-  const heldListings = useMemo(() => (boards?.length ? boardListings(boards) : null), [boards]);
-  const rereadSamples = useCallback(async ({ force }: { force: boolean }) => {
-    const read = await loadCategoryBoards("", { maxBoards: HOME_BOARDS, force });
-    setBoards(read.boards);
-    return boardListings(read.boards);
+  const heldSamples = samples?.length ? samples : null;
+  const rereadSamples = useCallback(async () => {
+    const read = featuredPrintsFrom(await api.getFeaturedPrints());
+    setSamples(read);
+    return read;
   }, []);
-  const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadSamples);
+  const onStalePhoto = usePhotoLinkRefresh(heldSamples, rereadSamples);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
-    setBoardsLoading(false);
+    setSamplesLoading(false);
     try {
       const list = await api.listOrders();
       if (sequence !== loadSequence.current) return;
@@ -189,11 +190,8 @@ export default function HomeScreen() {
   // Nothing on press: the one moment Home has room to introduce the platform
   // rather than report on it.
   const welcoming = !loading && !error && orders.length === 0;
-  const samples = useMemo(
-    () => (boards ? pickHomeSamples(categories, boards) : []),
-    [boards, categories],
-  );
-  const showSamples = welcoming && (boardsLoading || samples.length > 0);
+  const shownSamples = samples ?? [];
+  const showSamples = welcoming && (samplesLoading || shownSamples.length > 0);
 
   /*
     The first-order tour starts here, once, for a client with nothing on
@@ -271,7 +269,7 @@ export default function HomeScreen() {
             <View className="mt-6">
               <Text className="text-h1 text-text-primary">{greeting(user?.name)}</Text>
               <Text className="mt-2 text-body text-text-secondary">
-                Nothing on press yet. Choose what you need and GRIDGO finds the printer.
+                Choose what you need and GRIDGO finds the printer.
               </Text>
             </View>
           ) : null}
@@ -427,15 +425,17 @@ export default function HomeScreen() {
             Real work, before the menu that describes it. A first screen that
             only lists families never shows a client one thing GRIDGO makes,
             and a photograph of a printed tarpaulin at a real starting price
-            does more for that than any amount of copy.
+            does more for that than any amount of copy. FEATURED PRINTS is
+            GRIDGO's own curated list — never what other clients are printing —
+            so its heading is the same quiet SectionHead as the board below it.
           */}
           {showSamples ? (
             <View className="mt-8 gap-3">
-              <SectionHead label="ON PRESS TODAY" />
+              <SectionHead label="FEATURED PRINTS" />
               <HomeSampleStrip
-                samples={samples}
-                loading={boardsLoading && samples.length === 0}
-                onPick={(sample) => startJob(sample.category.code, sample.subcategory.code)}
+                samples={shownSamples}
+                loading={samplesLoading && shownSamples.length === 0}
+                onPick={(sample) => startJob(sample.categoryCode, sample.subcategoryCode)}
                 onStalePhoto={onStalePhoto}
               />
             </View>

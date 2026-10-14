@@ -12,7 +12,7 @@ import {
 
 type Props = {
   samples: HomeSample[];
-  /** True while the boards are still being read. Draws placeholder cards. */
+  /** True while the curated list is still being read. Draws placeholder cards. */
   loading: boolean;
   onPick: (sample: HomeSample) => void;
   /** Home's re-read for an expired photo link (`SamplePhoto.onStale`). */
@@ -20,14 +20,14 @@ type Props = {
 };
 
 /**
- * Work GRIDGO has actually printed, on a client's first screen.
+ * FEATURED PRINTS: the products GRIDGO's staff chose, on a client's first screen.
  *
  * A Home with nothing on press was a category menu and a search bar: it asked
  * a brand-new client what they wanted without ever showing them one thing the
- * platform makes. This is the answer to that — the shops' own sample
- * photographs at their real starting prices, which is also the fastest route
- * into an order, since a tap goes straight to the job rather than through two
- * levels of menu.
+ * platform makes. This is the answer to that — curated sample photographs at
+ * GRIDGO's own starting prices, which is also the fastest route into an order,
+ * since a tap goes straight to the job rather than through two levels of menu.
+ * The list is curated, never live work (`lib/homeSamples.ts`).
  *
  * It is the same `CategorySampleCard` the category screen draws, deliberately:
  * a client who taps into a family should recognise the cards there as the ones
@@ -55,7 +55,7 @@ export function HomeSampleStrip({ samples, loading, onPick, onStalePhoto }: Prop
   const { width, fontScale } = useWindowDimensions();
   const cardWidth = homeSampleCardWidth(width);
   // A placeholder shaped like the card it becomes. A wrong height here is the
-  // jump a client sees when the boards land.
+  // jump a client sees when the list lands.
   // The crop-mark frame's gutter sits outside the photo, so the photo is cut
   // from what is left of the card's width.
   const placeholderHeight =
@@ -86,10 +86,10 @@ export function HomeSampleStrip({ samples, loading, onPick, onStalePhoto }: Prop
             </View>
           ))
         : samples.map((sample) => (
-            <View key={sample.listing.id} style={{ width: cardWidth }}>
+            <View key={sample.id} style={{ width: cardWidth }}>
               <CategorySampleCard
-                subcategory={sample.subcategory}
-                listing={sample.listing}
+                subcategory={{ name: sample.name }}
+                listing={sample}
                 photoRatio="wide"
                 showExamples={false}
                 onPress={() => onPick(sample)}
