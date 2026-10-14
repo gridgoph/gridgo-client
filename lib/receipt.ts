@@ -33,6 +33,18 @@ export const RECEIPT_BLURB =
 
 /** How checkout lands on the receipt so Back cannot reopen the request. */
 export const RECEIPT_FROM_CHECKOUT = "checkout";
+/**
+ * How "Your receipt is ready" opens it — the inbox row or its push. GRIDGO
+ * writes that notice once, at checkout, so opening it is the receipt being
+ * issued, and it prints the way checkout's does (#229). Order detail's link is
+ * the reference copy and stays still.
+ */
+export const RECEIPT_FROM_NOTICE = "notice";
+
+/** The receipt-ready notice's route, shared by the inbox and the push. */
+export function receiptNoticeHref(orderId: string): string {
+  return `/order/receipt?orderId=${encodeURIComponent(orderId)}&from=${RECEIPT_FROM_NOTICE}`;
+}
 export const ORDERS_TAB = "/(tabs)/orders";
 export const HOME_TAB = "/(tabs)/home";
 
@@ -71,6 +83,11 @@ function discountField(source: {
 
 export function isCheckoutReceipt(from: string | string[] | undefined): boolean {
   return from === RECEIPT_FROM_CHECKOUT;
+}
+
+/** Whether this opening of the receipt is its issue, and so prints. */
+export function isPrintedReceipt(from: string | string[] | undefined): boolean {
+  return from === RECEIPT_FROM_CHECKOUT || from === RECEIPT_FROM_NOTICE;
 }
 
 export type ReceiptMoney = {

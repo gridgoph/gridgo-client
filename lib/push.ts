@@ -20,6 +20,7 @@ import { Platform } from "react-native";
 import { CHAT_LIST_ROUTE, isChatThreadId } from "@/lib/chatThreads";
 import { DELIVERY_CHAT_ROUTE } from "@/lib/deliveryChat";
 import { APPLICATION_ROUTE, isApplicationNotification } from "@/lib/organization";
+import { receiptNoticeHref } from "@/lib/receipt";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { isVoucherNotification, VOUCHERS_ROUTE } from "@/lib/vouchers";
 
@@ -225,9 +226,8 @@ export function pushTargetRoute(data: PushData): string {
   if (!data.orderId) return "/(tabs)/notifications";
   // The post-order survey invitation opens that order's survey (report 81CA4493).
   if (isSurveyNotification(data.type)) return surveyRoute(data.orderId);
-  if (data.type === "order_receipt_ready") {
-    return `/order/receipt?orderId=${encodeURIComponent(data.orderId)}`;
-  }
+  // Opening the notice is the receipt being issued, so it prints (#229).
+  if (data.type === "order_receipt_ready") return receiptNoticeHref(data.orderId);
   return `/order/${data.orderId}`;
 }
 

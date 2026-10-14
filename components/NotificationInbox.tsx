@@ -13,6 +13,7 @@ import { businessApplicationSentBack } from "@/lib/accountProfile";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { isVoucherNotification, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { chatNotificationRoute } from "@/lib/push";
+import { RECEIPT_FROM_NOTICE } from "@/lib/receipt";
 import { userFacingError } from "@/lib/copy";
 import {
   APPLICATION_ROUTE,
@@ -110,9 +111,10 @@ export function NotificationInbox() {
                   return;
                 }
                 if (notification.type === "order_receipt_ready") {
+                  // Opening the notice is the receipt being issued: it prints (#229).
                   router.push({
                     pathname: "/order/receipt",
-                    params: { orderId: notification.orderId },
+                    params: { orderId: notification.orderId, from: RECEIPT_FROM_NOTICE },
                   });
                   return;
                 }

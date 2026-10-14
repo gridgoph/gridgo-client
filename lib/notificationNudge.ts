@@ -87,10 +87,3 @@ export const NUDGE_QUIET_MS = 4000;
 
 /** One beat. Six of them is under three quarters of a second. */
 export const BELL_SWING_BEAT_MS = 110;
-
-/** Settings > the chime's switch. */
-export const UPDATE_SOUND_COPY = {
-  label: "Sound for updates",
-  caption:
-    "A short chime when one of your orders moves while GRIDGO is open. Your phone's silent mode still mutes it.",
-} as const;

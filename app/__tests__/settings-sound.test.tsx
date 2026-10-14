@@ -28,8 +28,8 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-/** Settings > Sound for updates (#230). One press per test — see AGENTS.md. */
-describe("Settings sound for updates", () => {
+/** Settings > App sounds: the chime (#230) and the receipt print (#229). One press per test — see AGENTS.md. */
+describe("Settings app sounds", () => {
   beforeEach(() => {
     mockPreview.mockClear();
     useThemeStore.setState({ preference: "system", hydrated: true });
@@ -39,9 +39,9 @@ describe("Settings sound for updates", () => {
     useNotificationNudge.setState({ muted: false });
     await renderInSafeArea(<SettingsScreen />);
 
-    const row = screen.getByRole("switch", { name: "Sound for updates" });
+    const row = screen.getByRole("switch", { name: "App sounds" });
     expect(row.props.accessibilityState).toEqual({ checked: true });
-    expect(screen.getByText(/silent mode still mutes it/)).toBeTruthy();
+    expect(screen.getByText(/silent mode still mutes them/)).toBeTruthy();
 
     fireEvent.press(row);
     expect(useNotificationNudge.getState().muted).toBe(true);
@@ -52,7 +52,7 @@ describe("Settings sound for updates", () => {
     useNotificationNudge.setState({ muted: true });
     await renderInSafeArea(<SettingsScreen />);
 
-    fireEvent.press(screen.getByRole("switch", { name: "Sound for updates" }));
+    fireEvent.press(screen.getByRole("switch", { name: "App sounds" }));
     expect(useNotificationNudge.getState().muted).toBe(false);
     expect(mockPreview).toHaveBeenCalledTimes(1);
   });

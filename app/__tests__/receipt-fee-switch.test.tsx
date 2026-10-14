@@ -20,6 +20,7 @@ jest.mock("@/hooks/useReducedMotion", () => ({ useReducedMotion: () => true }));
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn(), dismissTo: jest.fn() }),
   useLocalSearchParams: () => mockParams,
+  useNavigation: () => ({ addListener: () => () => undefined }),
   useFocusEffect: (effect: () => void) => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useEffect } = require("react");

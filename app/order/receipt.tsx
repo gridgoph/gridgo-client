@@ -18,6 +18,8 @@ import { GroupPlate } from "@/components/ShopGroupSection";
 import { groupDateLine } from "@/lib/basketGroups";
 import { SkeletonLine, SkeletonList } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
+import { useReceiptPrintSound } from "@/hooks/useReceiptPrintSound";
+import { useScreenShown } from "@/hooks/useScreenShown";
 import { useThemeColors } from "@/hooks/useTheme";
 import { FILE_CHECK_AFTER_PAYMENT } from "@/lib/checkout";
 import * as api from "@/lib/api";
@@ -28,6 +30,7 @@ import { canRate } from "@/lib/rating";
 import {
   HOME_TAB,
   isCheckoutReceipt,
+  isPrintedReceipt,
   ORDERS_TAB,
   placedReceiptFor,
   RECEIPT_BLURB,
@@ -54,6 +57,11 @@ export default function OrderReceiptScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const fromCheckout = isCheckoutReceipt(from);
+  // Checkout and the receipt-ready notice are the receipt being issued: both
+  // print it, with its sound. Order detail opens the reference copy, still.
+  const printed = isPrintedReceipt(from);
+  const shown = useScreenShown();
+  const playPrintSound = useReceiptPrintSound();
   const settings = usePlatformSettings((state) => state.settings);
   const loadSettings = usePlatformSettings((state) => state.load);
 
@@ -164,19 +172,35 @@ export default function OrderReceiptScreen() {
     );
   }
 
-  if (fromCheckout) {
+  if (printed) {
     return (
       <Screen edges={["bottom"]}>
         {headerEscape}
         <PrintedReceipt
           view={withFeeRate(view, order?.serviceFeeRateBps ?? settings?.serviceFeeRateBps)}
           showServiceFee={serviceFeeVisibleToClient(settings)}
-          thanks={<OrderPlacedThanks />}
+          shown={shown}
+          onPrint={playPrintSound}
+          thanks={fromCheckout ? <OrderPlacedThanks /> : null}
           actions={
-            <>
-              <PrimaryButton label="View order" onPress={openOrder} />
-              <SecondaryButton label="Back to Home" onPress={() => setLeaving(HOME_TAB)} />
-            </>
+            fromCheckout ? (
+              <>
+                <PrimaryButton label="View order" onPress={openOrder} />
+                <SecondaryButton label="Back to Home" onPress={() => setLeaving(HOME_TAB)} />
+              </>
+            ) : (
+              <>
+                <PrimaryButton label="View order" onPress={openOrder} />
+                {orderId && physicalInvoice ? (
+                  <SecondaryButton
+                    label={physicalInvoice.label}
+                    onPress={() =>
+                      router.push({ pathname: "/order/physical-invoice", params: { orderId } })
+                    }
+                  />
+                ) : null}
+              </>
+            )
           }
         />
       </Screen>

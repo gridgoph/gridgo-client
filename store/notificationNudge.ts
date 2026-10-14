@@ -8,8 +8,10 @@ const STORAGE_KEY = "gridgo-update-sound";
 
 type NotificationNudgeStore = {
   /**
-   * Settings > Sound for updates, off. Per phone rather than per account: it
-   * is about the room the phone is in, not who is signed in.
+   * Settings > App sounds, off. It mutes every in-app sound — this chime and
+   * the receipt's print (#229) — and lives here because the chime came first.
+   * Per phone rather than per account: it is about the room the phone is in,
+   * not who is signed in.
    */
   muted: boolean;
   setMuted: (muted: boolean) => void;
