@@ -1,7 +1,7 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppUpdateNotices } from "@/components/AppUpdateNotices";
@@ -15,6 +15,7 @@ import { PushEnableCard } from "@/components/PushEnableCard";
 import { SkeletonList } from "@/components/Skeleton";
 import { businessApplicationSentBack } from "@/lib/accountProfile";
 import { isVoucherNotification, VOUCHERS_ROUTE } from "@/lib/vouchers";
+import { chatNotificationRoute } from "@/lib/push";
 import { userFacingError } from "@/lib/copy";
 import {
   APPLICATION_ROUTE,
@@ -71,6 +72,8 @@ export default function NotificationsScreen() {
   function renderRow(group: NotificationGroup) {
     const notification = group.latest;
     const markGroupRead = () => void markManyRead(group.items.map((item) => item.id));
+    // A message opens its conversation, as its push does (#231).
+    const chatRoute = chatNotificationRoute(notification);
     return (
       <NotificationCard
         key={group.key}
@@ -95,6 +98,12 @@ export default function NotificationsScreen() {
                 // Sent back: the application opens with what was sent filled in.
                 markGroupRead();
                 router.push(APPLICATION_ROUTE);
+              }
+            : chatRoute
+            ? () => {
+                markGroupRead();
+                // A route this app declares, built at runtime.
+                router.push(chatRoute as Href);
               }
             : notification.orderId
             ? () => {
