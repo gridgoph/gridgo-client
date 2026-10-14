@@ -4,6 +4,15 @@ import { Pressable, Text, View } from "react-native";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
+import type { AcceptedFormat } from "@/lib/api";
+import {
+  WORD_TO_PDF_STEPS,
+  acceptedFormatNames,
+  showsWordToPdfSteps,
+  uploadSizeLine,
+  wordFormatNote,
+} from "@/lib/artworkFormats";
+import { uploadLimitLine } from "@/lib/listing";
 import type { PrintResolution } from "@/lib/printResolution";
 import {
   ARTWORK_ACCEPTED,
@@ -50,10 +59,12 @@ type Props = {
    */
   resolutionQuiet?: boolean;
   /**
-   * What this listing takes and how large, in its own terms ("PDF or Word
-   * document, up to …"). Omitted where no listing narrows it.
+   * The file types this listing takes. Listed on the empty card, so a client
+   * knows before the picker opens; omitted where no listing narrows it.
    */
-  accepts?: string;
+  formats?: AcceptedFormat[];
+  /** The product's name, for the Word note ("Flyers does not take Word files"). */
+  productName?: string;
 };
 
 /**
@@ -79,12 +90,18 @@ export function ArtworkUploadCard({
   emphasis = "quiet",
   resolution = null,
   resolutionQuiet = false,
-  accepts,
+  formats,
+  productName = "This item",
 }: Props) {
   const colors = useThemeColors();
   const chip = artworkChip(state);
   const busy = isArtworkBusy(state);
-  const acceptLine = accepts || `${ARTWORK_ACCEPTED}, up to ${ARTWORK_MAX_MIB} MB`;
+  const listed = formats?.length ? formats : null;
+  const wordNote = listed ? wordFormatNote(productName, listed) : null;
+  const acceptLine = listed ? uploadLimitLine(listed) : `${ARTWORK_ACCEPTED}, up to ${ARTWORK_MAX_MIB} MB`;
+  // Refused on this phone for its type: nothing was sent, so only another file helps.
+  const refused = state.phase === "failed" && state.refusal === "format";
+  const pdfSteps = refused && listed != null && showsWordToPdfSteps(listed, state.fileName, state.refusedMimeType);
   const wordFile = isWordDocument(state.contentType, state.fileName);
   const facts = describeArtworkFile({
     originalFilename: state.fileName || null,
@@ -100,7 +117,7 @@ export function ArtworkUploadCard({
   */
   const thinFile =
     !resolution && facts.some((fact) => fact.id === "size" && fact.tone === "warn");
-  const showFacts = facts.length > 0 || Boolean(resolution) || thinFile;
+  const showFacts = !refused && (facts.length > 0 || Boolean(resolution) || thinFile);
 
   // Empty and idle is the only state where tapping the card has one obvious
   // meaning. Once a file is on it the card is a report with its own controls,
@@ -114,7 +131,9 @@ export function ArtworkUploadCard({
         <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
       </View>
 
-      {state.phase === "empty" ? (
+      {state.phase === "empty" && listed ? (
+        <AcceptedFiles formats={listed} note={wordNote} />
+      ) : state.phase === "empty" ? (
         <Text className="text-body text-text-secondary">
           Send the file you want printed — {acceptLine}.
         </Text>
@@ -142,6 +161,8 @@ export function ArtworkUploadCard({
       )}
 
       {state.phase === "sending" ? <ProgressBar fraction={state.progress} /> : null}
+
+      {pdfSteps ? <WordToPdfSteps /> : null}
 
       {showFacts ? (
         <View className="gg-panel gap-2">
@@ -210,7 +231,7 @@ export function ArtworkUploadCard({
         <View className="gap-3">
           {busy ? (
             <SecondaryButton label="Cancel upload" onPress={onCancel} />
-          ) : state.phase === "failed" && state.fileCheck?.status === "failed" ? (
+          ) : refused || (state.phase === "failed" && state.fileCheck?.status === "failed") ? (
             // The same bytes would fail the same check: only a new export helps.
             <SecondaryButton label="Choose a different file" onPress={onPick} />
           ) : state.phase === "failed" ? (
@@ -239,12 +260,62 @@ export function ArtworkUploadCard({
       onPress={onPick}
       accessibilityRole="button"
       accessibilityLabel="Choose your artwork file"
-      accessibilityHint={acceptLine}
+      accessibilityHint={wordNote ? `${acceptLine}. ${wordNote}` : acceptLine}
       className="gg-card gg-touch gap-4"
       style={({ pressed }) => (pressed ? { opacity: 0.9 } : undefined)}
     >
       {body}
     </Pressable>
+  );
+}
+
+/**
+ * What the listing takes, before anything is picked: the shop's own format
+ * names, the size limits, and one line about Word files.
+ *
+ * Plain filled tags rather than outlined chips — outlined chips read as
+ * filters to tap, and these are facts. The card around them is the button.
+ */
+function AcceptedFiles({ formats, note }: { formats: AcceptedFormat[]; note: string | null }) {
+  const colors = useThemeColors();
+  return (
+    <View className="gap-3">
+      <Text className="text-body text-text-secondary">Send the file you want printed.</Text>
+      <View className="gap-2">
+        <Text className="text-caption text-text-muted">Accepted files</Text>
+        <View className="flex-row flex-wrap gap-2">
+          {acceptedFormatNames(formats).map((name) => (
+            <View key={name} className="rounded-pill bg-surface-variant px-3 py-1">
+              <Text className="text-caption font-medium text-text-primary">{name}</Text>
+            </View>
+          ))}
+        </View>
+        <Text className="text-caption text-text-muted">{uploadSizeLine(formats)}</Text>
+      </View>
+      {note ? (
+        <View className="flex-row items-start gap-2">
+          <View className="pt-0.5">
+            <FileText size={14} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+          </View>
+          <Text className="min-w-0 flex-1 text-caption text-text-secondary">{note}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** The fix for a Word file on a product that takes PDF. A real sequence, so numbered. */
+function WordToPdfSteps() {
+  return (
+    <View className="gg-panel gap-2" accessible accessibilityLabel={`Save it as a PDF. ${WORD_TO_PDF_STEPS.join(" ")}`}>
+      <Text className="text-body font-medium text-text-primary">Save it as a PDF</Text>
+      {WORD_TO_PDF_STEPS.map((step, index) => (
+        <View key={step} className="flex-row items-start gap-2">
+          <Text className="w-4 text-caption font-medium text-text-muted">{index + 1}</Text>
+          <Text className="min-w-0 flex-1 text-caption text-text-secondary">{step}</Text>
+        </View>
+      ))}
+    </View>
   );
 }
 

@@ -51,6 +51,13 @@ export type ArtworkUploadState = {
    * already on a line from before is flagged to be replaced.
    */
   fileCheck?: ArtworkFileCheck | null;
+  /**
+   * `format` when the file was refused on this phone for not being a type the
+   * listing takes. Nothing was sent, so sending it again cannot help.
+   */
+  refusal?: "format" | null;
+  /** The picker's type for that refused file, so the card can tell a Word file. */
+  refusedMimeType?: string | null;
 };
 
 /**

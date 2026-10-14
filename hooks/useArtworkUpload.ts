@@ -42,7 +42,7 @@ const PICKER_TYPES = ["application/pdf", DOCX_CONTENT_TYPE, "image/*"];
 export type FormatGuard = {
   accept: string[];
   check: (fileName: string, mimeType?: string | null) => boolean;
-  rejection: (fileName: string) => string;
+  rejection: (fileName: string, mimeType?: string | null) => string;
 };
 
 export type ArtworkUploadController = {
@@ -233,7 +233,9 @@ export function useArtworkUpload(
         ...EMPTY_ARTWORK,
         phase: "failed",
         fileName: chosenName,
-        error: guard.rejection(chosenName),
+        error: guard.rejection(chosenName, asset.mimeType ?? null),
+        refusal: "format",
+        refusedMimeType: asset.mimeType ?? null,
       });
       return;
     }

@@ -68,6 +68,12 @@ it("narrows the picker to PDF and Word, and says so on the card", async () => {
     "Mark Document Printing takes PDF or Word document. photo.jpg is none of those — export it and pick it again.",
   );
   expect(screen.getByLabelText("Choose your artwork file").props.accessibilityHint).toBe(
-    "PDF or Word document, up to 200 MB (Word documents up to 16 MB)",
+    "PDF or Word document, up to 200 MB (Word documents up to 16 MB). " +
+      "Word documents are printed as you send them, not converted to PDF. GRIDGO checks every file before it prints.",
   );
+  // Listed on the card before the picker opens, not only inside the picker.
+  expect(screen.getByText("Accepted files")).toBeTruthy();
+  expect(screen.getByText("PDF")).toBeTruthy();
+  expect(screen.getByText("Word document")).toBeTruthy();
+  expect(screen.getByText("Up to 200 MB. Word documents up to 16 MB.")).toBeTruthy();
 });
