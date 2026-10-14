@@ -1714,6 +1714,36 @@ export async function getCatalogItem(
   return result.item;
 }
 
+/**
+ * One product GRIDGO's staff chose for the client Home's FEATURED PRINTS row
+ * (gridgo-api `docs/FEATURED_PRINTS_API.md`).
+ *
+ * An allowlist card: no shop, no shop figure, no description. The price is
+ * already GRIDGO's (`clientFromPriceMinor`, fee inside) and the photo is a
+ * signed sample link on the usual five-minute expiry.
+ */
+export type FeaturedPrint = {
+  id: string;
+  name: string;
+  categoryCode: string;
+  subcategoryCode: string;
+  clientFromPriceMinor: number;
+  pricingUnit: CatalogPricingUnit;
+  packageQty: number | null;
+  measureUnit: MeasureUnit | null;
+  minimumOrderQuantity: number | null;
+  photos: Pick<CatalogPhoto, "fileId" | "sortOrder" | "url" | "downloadUrl" | "downloadUrlExpiresAt">[];
+};
+
+/**
+ * The curated Home row, in staff order. Public and uncached on the server.
+ * The body is read through `featuredPrintsFrom` (`lib/homeSamples.ts`), so a
+ * malformed card is dropped rather than drawn.
+ */
+export async function getFeaturedPrints(): Promise<unknown> {
+  return request<unknown>("/featured-prints");
+}
+
 export async function listCatalog(): Promise<CatalogProduct[]> {
   const result = await request<{ catalog: CatalogProduct[] }>("/catalog");
   return result.catalog;

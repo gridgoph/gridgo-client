@@ -36,7 +36,7 @@ export type ListingSelection = Record<string, string>;
  * SamplePhoto yields an empty crop-mark plate.
  */
 export function samplePhotoUri(
-  photo: CatalogPhoto | null | undefined,
+  photo: Partial<CatalogPhoto> | null | undefined,
 ): string | null {
   return photo?.downloadUrl ?? null;
 }
