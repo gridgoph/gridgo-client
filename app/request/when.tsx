@@ -20,6 +20,7 @@ import {
 import { clearMatchPrefetch, prefetchMatch } from "@/lib/matchPrefetch";
 import { fulfilmentStepFor } from "@/lib/requestFulfilment";
 import { userFacingError } from "@/lib/copy";
+import { closedNowLine } from "@/lib/operatingHours";
 import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import { useBasketGroupTarget } from "@/store/basketGroup";
@@ -119,6 +120,7 @@ export default function WhenScreen() {
   useTourScreen("when");
   const [availability, setAvailability] = useState<api.DeadlineDay[] | null>(null);
   const [earliest, setEarliest] = useState<string | null>(null);
+  const [operatingStatus, setOperatingStatus] = useState<api.OperatingStatus | null>(null);
   const [availabilityFailed, setAvailabilityFailed] = useState(false);
   const [month, setMonth] = useState(() => new Date());
   // Opened on a month that has something in it. A job whose soonest date is
@@ -144,6 +146,7 @@ export default function WhenScreen() {
         if (!alive) return;
         setAvailability(answer.days);
         setEarliest(answer.earliest);
+        setOperatingStatus(answer.operatingStatus ?? null);
         if (!monthPinned) setMonth(openingMonth(answer.days, new Date()));
       })
       .catch(() => {
@@ -321,6 +324,14 @@ export default function WhenScreen() {
             {earliestReadyLine(earliest)}
           </Text>
         ) : null}
+        {/*
+          Why the earliest is later than a client expects at 9 PM: nothing is
+          reviewed until GRIDGO opens, and every date here already counts it
+          (gridgo-api#203).
+        */}
+        {availability && !availabilityFailed && closedNowLine(operatingStatus) ? (
+          <Text className="mt-1 text-caption text-text-muted">{closedNowLine(operatingStatus)}</Text>
+        ) : null}
 
         {inOrder.length > 0 ? (
           <DatesInOrder dates={inOrder} chosen={chosen} pickable={pickable} onPick={pickInOrder} />
@@ -342,6 +353,7 @@ export default function WhenScreen() {
             canStepBack={canStep(month, -1, availability ?? [], new Date())}
             canStepForward={canStep(month, 1, availability ?? [], new Date())}
             seasons={seasons}
+            earliest={availability ? earliest : null}
           />
           ) : (
             <DeadlineCalendarSkeleton />

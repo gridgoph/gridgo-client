@@ -10,11 +10,18 @@
  * hints at who is behind a date — the same rule the match card follows.
  */
 
-import type { DeadlineDay } from "@/lib/api";
+import type { DeadlineDay, DeadlineDayReason } from "@/lib/api";
 import { MAX_LEAD_DAYS, parseDeadline } from "@/lib/deadline";
 import { busiestLevel, seasonsOn, type DemandLevel, type SeasonWindow } from "@/lib/seasonWindows";
 
 export type DayChoice = "cannot" | "tight" | "open" | "past";
+
+/**
+ * Why a day in the month cannot be had (gridgo-api#203). Never about shops:
+ * the reason is the time the work takes, or that nothing prints this yet —
+ * not how many presses are busy.
+ */
+export type DayReason = "too_soon" | "no_listing" | "not_checked" | "unavailable";
 
 /**
  * A day inside one or more season windows.
@@ -39,6 +46,8 @@ export type CalendarDay = {
   choice: DayChoice;
   /** Whether a client may pick this day at all. Never decided by a season. */
   selectable: boolean;
+  /** Why a future `cannot` day is one; null on every other day. */
+  reason: DayReason | null;
   /** The season windows over this day, or null outside every season. */
   season: SeasonMark | null;
 };
@@ -74,7 +83,7 @@ export function monthGrid({
   /** Season windows to shade. Awareness only: they never touch `selectable`. */
   seasons?: SeasonWindow[];
 }): CalendarDay[] {
-  const states = new Map(availability.map((entry) => [entry.day, entry.state]));
+  const states = new Map(availability.map((entry) => [entry.day, entry]));
   const todayKey = dayKeyOf(now);
 
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -93,7 +102,7 @@ export function monthGrid({
     // rather than a guess drawn as a choice.
     const known = states.get(dayKey);
     const choice: DayChoice =
-      dayKey < todayKey ? "past" : known === undefined ? "cannot" : known;
+      dayKey < todayKey ? "past" : known === undefined ? "cannot" : known.state;
 
     cells.push({
       dayKey,
@@ -102,6 +111,7 @@ export function monthGrid({
       isToday: dayKey === todayKey,
       choice,
       selectable: inMonth && (choice === "open" || choice === "tight"),
+      reason: choice === "cannot" ? dayReasonOf(known?.reason, known !== undefined) : null,
       season: null,
     });
   }
@@ -128,6 +138,37 @@ function withSeasons(cells: CalendarDay[], seasons: SeasonWindow[]): CalendarDay
       },
     };
   });
+}
+
+export function dayReasonOf(
+  reason: DeadlineDayReason | null | undefined,
+  answered: boolean,
+): DayReason {
+  if (!answered) return "not_checked";
+  if (reason === "review_production_delivery_exceeds_deadline") return "too_soon";
+  if (reason === "no_eligible_listing") return "no_listing";
+  return "unavailable";
+}
+
+/**
+ * The reason, said when a client taps a day they cannot have. A grey disc on
+ * its own reads as "broken"; a sentence turns it into a plan.
+ */
+export function dayReasonLine(reason: DayReason, earliest: string | null): string {
+  switch (reason) {
+    case "too_soon": {
+      const day = formatEarliestDay(earliest);
+      return day
+        ? `Too soon. Artwork review, printing and delivery take until ${day}.`
+        : "Too soon. Artwork review, printing and delivery take longer than this.";
+    }
+    case "no_listing":
+      return "No printer on GRIDGO offers this yet, so no date can be promised.";
+    case "not_checked":
+      return "Too far ahead to check yet. Pick a nearer date, or choose No rush.";
+    case "unavailable":
+      return "No printer can finish by this day.";
+  }
 }
 
 /**

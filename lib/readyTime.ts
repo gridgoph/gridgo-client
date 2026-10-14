@@ -1,6 +1,6 @@
 import { parseDeadline } from "@/lib/deadline";
 
-export const READY_TIME_EXPLANATION = "Includes jobs ahead and shop opening hours.";
+export const READY_TIME_EXPLANATION = "Includes artwork review, jobs ahead and opening hours.";
 
 /** Only the API's client promise belongs here, never press time or a requested deadline. */
 export function readyByDate(promiseBy: string | null | undefined): string | null {

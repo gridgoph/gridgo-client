@@ -285,6 +285,12 @@ export type Order = {
    * (gridgo-api#122). `pending` from checkout until Operations passes it.
    */
   fileCheck?: OrderFileCheck | null;
+  /**
+   * When GRIDGO reviews the artwork, while that review is still pending
+   * (gridgo-api#203, `docs/OPERATING_HOURS_API.md`). Absent once the check is
+   * done, and on an order from before operating hours.
+   */
+  review?: OrderReview | null;
   /** True while a refund request is open: work and new payments are paused. */
   refundHold?: boolean;
   /** `cancelled | fulfilled_with_refund` once a refund was settled. */
@@ -415,6 +421,54 @@ export type PlatformSettings = {
   riderLocationRefreshIntervalSeconds?: number;
   /** After this long without a fix the rider's position is out of date. */
   riderLocationStaleAfterSeconds?: number;
+  /** GRIDGO's opening hours (gridgo-api#203). Absent on an older API. */
+  operatingHours?: OperatingHours;
+};
+
+/**
+ * GRIDGO's own opening hours (gridgo-api#203). Artwork is reviewed only
+ * while GRIDGO is open; Super Admin edits the week, the closures and the
+ * review time without a release. Same calendar shape as the hub's.
+ */
+export type OperatingHours = {
+  timeZone: string;
+  schedule: HubSchedule;
+  /** Working minutes an artwork review takes. */
+  artworkReviewMinutes: number;
+};
+
+/**
+ * Where artwork review stands at the moment GRIDGO answered: open now or
+ * not, and when a review started now would begin and finish. Every instant
+ * is GRIDGO's own — the phone never works these out.
+ */
+export type OperatingStatus = {
+  timeZone: string;
+  isOpenNow: boolean;
+  artworkReviewMinutes: number;
+  scheduledReviewAt: string;
+  reviewCompletesAt: string;
+  /** A closure pushes the review later than an ordinary week would. */
+  reviewDelayed: boolean;
+};
+
+/** A cart's notice while GRIDGO is closed: review timing plus the latest ready-by. */
+export type CheckoutNotice = OperatingStatus & {
+  code: "outside_operating_hours" | (string & {});
+  /** Latest group promise; null while any group cannot be estimated. */
+  readyBy: string | null;
+};
+
+/** A placed order's pending review, as the client may see it. */
+export type OrderReview = OperatingStatus & {
+  status: "waiting_for_review" | (string & {});
+  /** "Waiting for review" — GRIDGO's own words for the chip. */
+  label: string;
+  originallyScheduledReviewAt?: string | null;
+  /** `outside_operating_hours` while GRIDGO is closed, else null. */
+  outsideHoursNotice?: string | null;
+  /** The order's client promise; review delays never move it. */
+  readyBy?: string | null;
 };
 
 /** One opening window in the hub's week. Weekday 0 is Sunday. */
@@ -1966,6 +2020,8 @@ export type MatchedListingFields = {
   deliveryFeeMinor?: number | null;
   /** On a pick-up match: the hub fee, the same amount as `deliveryFeeMinor`. */
   pickupFeeMinor?: number | null;
+  /** When the artwork would be reviewed, already counted inside `readyBy`. */
+  review?: OperatingStatus | null;
 };
 
 /** A listing on the Top Pick's own board, as the match returns it. */
@@ -2045,6 +2101,8 @@ export type MatchResult = {
   listings: MatchListing[];
   /** Echoed when the match was asked with a fulfilment choice (gridgo-api#148). */
   requestFulfillment?: RequestFulfilment | null;
+  /** Artwork review timing behind every `readyBy` here (gridgo-api#203). */
+  operatingStatus?: OperatingStatus | null;
   /** On a pick-up match: the hub's point, hours and fee as they stand now. */
   hubPickup?: HubPickup | null;
   /** How many other shops could have printed it. */
@@ -2191,6 +2249,8 @@ export type CartGroup = {
   organizationDiscountMinor?: number;
   /** This group's share of the voucher, already out of `totalMinor` (gridgo-api#204). */
   voucherDiscountMinor?: number;
+  /** The group's client promise; null when GRIDGO cannot estimate it yet. */
+  readyBy?: string | null;
 };
 
 export type Cart = {
@@ -2213,6 +2273,10 @@ export type Cart = {
   hubPickup?: HubPickup | null;
   /** GRIDGO's figures for this draft. Null once checked out; absent on an older API. */
   clientQuote?: CartQuote | null;
+  /** Artwork review timing right now (gridgo-api#203). */
+  operatingStatus?: OperatingStatus | null;
+  /** Set while GRIDGO is closed: when review happens and the estimate. Null while open. */
+  checkoutNotice?: CheckoutNotice | null;
   lines: CartLineRecord[];
   /**
    * One per shop and date, in the order they were first added
@@ -2644,6 +2708,24 @@ export type DeadlineDay = {
    * Never a count. A client is not told how many shops print something.
    */
   state: "cannot" | "tight" | "open";
+  /**
+   * Why a `cannot` day cannot (gridgo-api#203): review, printing and delivery
+   * run past it, or nobody offers this at all. Null when reachable; absent on
+   * an older API.
+   */
+  reason?: DeadlineDayReason | null;
+};
+
+export type DeadlineDayReason =
+  | "review_production_delivery_exceeds_deadline"
+  | "no_eligible_listing"
+  | (string & {});
+
+export type DeadlineDays = {
+  days: DeadlineDay[];
+  earliest: string | null;
+  /** Artwork review timing the days were counted from. */
+  operatingStatus?: OperatingStatus | null;
 };
 
 /**
@@ -2658,9 +2740,9 @@ export async function deadlineDays(
   // and a shorter window reads to a client as GRIDGO refusing the date rather
   // than the calendar simply stopping.
   days = 120,
-): Promise<{ days: DeadlineDay[]; earliest: string | null }> {
+): Promise<DeadlineDays> {
   const query = `?subcategoryCode=${encodeURIComponent(subcategoryCode)}&days=${days}`;
-  return request<{ days: DeadlineDay[]; earliest: string | null }>(`/me/deadline-days${query}`);
+  return request<DeadlineDays>(`/me/deadline-days${query}`);
 }
 
 /**

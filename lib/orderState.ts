@@ -22,6 +22,7 @@ import {
   paymentInstallment,
   paysInFull,
 } from "@/lib/payment";
+import { orderReviewView, reviewWaitingLine, waitingForReviewLabel } from "@/lib/operatingHours";
 import { rescheduleNextAction, rescheduleView, rescheduleWaitingOn } from "@/lib/reschedule";
 import { shopRecoveryNextAction, shopRecoveryView, shopRecoveryWaitingOn } from "@/lib/shopRecovery";
 import { orderPrintingMinor } from "@/lib/serviceFee";
@@ -125,11 +126,16 @@ export function getOrderStateMeta(
 /** An order's own chip: its state, its route, and its payment plan. */
 export function orderStateMeta(
   order: Pick<Order, "state" | "fulfillmentMode" | "payments"> &
-    Partial<Pick<Order, "balanceMinor" | "downpaymentPercent" | "shopRecovery" | "rescheduleRequest">>,
+    Partial<Pick<Order, "balanceMinor" | "downpaymentPercent" | "shopRecovery" | "rescheduleRequest" | "review">>,
 ): OrderStateMeta {
   // The state is still "In production" on the server while the shop question
   // is open, but nothing is being printed; the chip must not say otherwise.
   if (shopChangeStopsJob(order)) return PAUSED_META;
+  // Placed out of hours, or held by a closure: nothing moves until GRIDGO
+  // opens, and the chip says so in GRIDGO's own words (gridgo-api#203).
+  if (orderReviewView(order)) {
+    return { label: waitingForReviewLabel(order.review), tone: "info", icon: "clock" };
+  }
   return getOrderStateMeta(order.state, order.fulfillmentMode, paysInFull(order));
 }
 
@@ -378,6 +384,10 @@ export function orderWaitingOn(order: Order): string | null {
   }
   const shopChange = shopRecoveryWaitingOn(order) ?? rescheduleWaitingOn(order);
   if (shopChange) return shopChange;
+  // Ahead of the payment check, so the line under a "Waiting for review" chip
+  // says what it is waiting for: GRIDGO opening.
+  const reviewWait = orderReviewView(order);
+  if (reviewWait) return reviewWaitingLine(reviewWait);
   const underReview = installmentUnderReview(order);
   const inFull = paysInFull(order);
   if (underReview === "downpayment" && inFull) {

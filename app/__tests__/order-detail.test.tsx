@@ -242,7 +242,7 @@ describe("OrderDetailScreen", () => {
       />,
     );
     expect(screen.getByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
-    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.getByText("Includes artwork review, jobs ahead and opening hours.")).toBeTruthy();
   });
 
   it.each(["production", "out_for_delivery"])("uses only the client promise in %s", async (state) => {
@@ -253,7 +253,7 @@ describe("OrderDetailScreen", () => {
     });
     await renderInSafeArea(<OrderDetailScreen />);
     expect(await screen.findByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
-    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.getByText("Includes artwork review, jobs ahead and opening hours.")).toBeTruthy();
     expect(screen.queryByText(/Supplier promised|Promised by/)).toBeNull();
   });
 
@@ -714,6 +714,34 @@ describe("OrderDetailScreen", () => {
     expect(screen.getByText("GCASH-ABC123")).toBeTruthy();
     // Submitting a reference is not paying. Nothing here may say it is.
     expect(screen.queryByText(/paid in full/i)).toBeNull();
+  });
+
+  it("reads Waiting for review out of hours, and says when GRIDGO looks at the artwork", async () => {
+    setOrder({
+      state: "needs_qa",
+      promiseBy: "2026-09-30T06:00:00.000Z",
+      review: {
+        status: "waiting_for_review",
+        label: "Waiting for review",
+        timeZone: "Asia/Manila",
+        isOpenNow: false,
+        reviewDelayed: false,
+        artworkReviewMinutes: 60,
+        scheduledReviewAt: "2026-09-26T00:00:00.000Z",
+        reviewCompletesAt: "2026-09-26T01:00:00.000Z",
+        originallyScheduledReviewAt: "2026-09-26T00:00:00.000Z",
+        outsideHoursNotice: "outside_operating_hours",
+        readyBy: "2026-09-30T06:00:00.000Z",
+      },
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Waiting for review")).toBeTruthy();
+    expect(screen.getByText("When GRIDGO reviews your artwork")).toBeTruthy();
+    expect(screen.getByText(/nothing more is needed from you/)).toBeTruthy();
+    // Placed, the date is the promise, not an estimate.
+    expect(screen.queryByText("Ready by, estimated")).toBeNull();
+    expect(screen.queryByText("Review delayed")).toBeNull();
   });
 
   it("never reads the shop's payout stages, and says nothing of photos to an older API", async () => {

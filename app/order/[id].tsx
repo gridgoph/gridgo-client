@@ -38,6 +38,7 @@ import { SurveyCard } from "@/components/survey/SurveyCard";
 import { DeliveryTrackingScreen } from "@/components/tracking/DeliveryTrackingScreen";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ReadyTime } from "@/components/ReadyTime";
+import { ReviewScheduleCard } from "@/components/ReviewScheduleCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonLine, SkeletonList, SkeletonPill } from "@/components/Skeleton";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
@@ -90,6 +91,7 @@ import { canHaveSurvey } from "@/lib/survey";
 import { useSurvey } from "@/store/survey";
 import { orderPrintingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
+import { openingHoursLines, orderReviewView, upcomingClosures } from "@/lib/operatingHours";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
@@ -134,6 +136,7 @@ export default function OrderDetailScreen() {
 
   const loadSequence = useRef(0);
   const loadSettings = usePlatformSettings((state) => state.load);
+  const platformSettings = usePlatformSettings((state) => state.settings);
   const applyOrderUpdate = useCallback((updated: api.Order) => {
     loadSequence.current++;
     setOrder(updated);
@@ -267,6 +270,9 @@ export default function OrderDetailScreen() {
 
   const nextAction = orderNextAction(order);
   const waitingOn = orderWaitingOn(order);
+  // Out of hours, or held by a closure: the card under the docket says when
+  // GRIDGO reviews the artwork, so the docket does not say it twice.
+  const reviewWait = orderReviewView(order);
   const unit = order.unit || product?.unit || "";
   const family = product?.family ?? null;
   const materialLabel = taxonomyLabel(taxonomy, order.material);
@@ -399,7 +405,7 @@ export default function OrderDetailScreen() {
     <LatestProgressCard
       order={order}
       note={
-        !nextAction && !underReview && !finished && !shopDecision && !groupStopped
+        !nextAction && !underReview && !finished && !shopDecision && !groupStopped && !reviewWait
           ? (waitingOn ?? "This job is in progress.")
           : null
       }
@@ -671,6 +677,15 @@ export default function OrderDetailScreen() {
         {basketGroups}
 
         {latestProgress}
+
+        {reviewWait && !order.refundHold && !shopDecision ? (
+          <ReviewScheduleCard
+            view={reviewWait}
+            variant="order"
+            hours={openingHoursLines(platformSettings)}
+            closures={reviewWait.delayed ? upcomingClosures(platformSettings?.operatingHours) : []}
+          />
+        ) : null}
 
         <DropoffConfirmationCard key={order.id} order={order} onUpdated={applyOrderUpdate} onRefresh={() => void load()} />
 
