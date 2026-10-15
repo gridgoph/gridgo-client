@@ -39,7 +39,9 @@ fi`,
     // real tool does.
     executable(join(bin, "keytool"), `cat >/dev/null\necho "SHA256: AA"`);
     executable(join(bin, "unzip"), `printf '%s' "\${FAKE_BUNDLE_CONTENT:-}"`);
+    executable(join(bin, "jarsigner"), `echo "\${FAKE_JARSIGNER_OUT:-jar verified.}"`);
     writeFileSync(join(fixtureRoot, "fake.apk"), "fixture");
+    writeFileSync(join(fixtureRoot, "fake.aab"), "fixture");
     writeFileSync(join(fixtureRoot, "release.jks"), "fixture");
   });
 
@@ -120,5 +122,51 @@ fi`,
       "the CARTO basemap key is not in assets/index.android.bundle",
     );
     expect(result.stderr).not.toContain("fixture-carto-key");
+  });
+
+  const goodBundle =
+    "https://api.fixture.invalid pk_live_fixture_value https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=fixture-carto-key";
+
+  function verify(artifact: string, extra: Record<string, string> = {}) {
+    return spawnSync("bash", [verifyScript, join(fixtureRoot, artifact)], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${join(fixtureRoot, "bin")}${delimiter}${process.env.PATH ?? ""}`,
+        ANDROID_HOME: join(fixtureRoot, "missing-android-sdk"),
+        ANDROID_SDK_ROOT: join(fixtureRoot, "missing-android-sdk"),
+        ANDROID_KEYSTORE_PATH: join(fixtureRoot, "release.jks"),
+        ANDROID_KEYSTORE_PASSWORD: "fixture-password",
+        ANDROID_KEY_ALIAS: "fixture-alias",
+        EXPO_PUBLIC_API_URL: "https://api.fixture.invalid",
+        EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_live_fixture_value",
+        EXPO_PUBLIC_CARTO_API_KEY: "fixture-carto-key",
+        FAKE_BUNDLE_CONTENT: goodBundle,
+        ...extra,
+      },
+    });
+  }
+
+  it("passes a Play bundle signed by the keystore alias", () => {
+    const result = verify("fake.aab");
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("OK: signed by alias 'fixture-alias'");
+    expect(result.stdout).toContain("base/assets/index.android.bundle");
+    expect(result.stdout).toContain("OK: fake.aab is a real signed release build");
+  });
+
+  it("fails an unsigned Play bundle, which jarsigner does not treat as an error", () => {
+    const result = verify("fake.aab", { FAKE_JARSIGNER_OUT: "jar is unsigned." });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("the AAB is not signed");
+  });
+
+  it("fails when the distribution flag was read at runtime instead of inlined", () => {
+    const result = verify("fake.apk", {
+      FAKE_BUNDLE_CONTENT: `${goodBundle} process.env.EXPO_PUBLIC_APP_DISTRIBUTION`,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("EXPO_PUBLIC_APP_DISTRIBUTION survives");
   });
 });
