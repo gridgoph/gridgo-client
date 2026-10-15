@@ -572,6 +572,32 @@ export type StoredFile = {
    * has to be replaced. Absent on an older API and on non-artwork files.
    */
   artworkCheck?: ArtworkFileCheck | null;
+  /**
+   * The artwork's visual-proof picture (gridgo-api#232). Only artwork has one;
+   * absent on an older API and on every other purpose. Read through
+   * `lib/artworkPreview.ts`.
+   */
+  preview?: ArtworkFilePreview | null;
+};
+
+export type ArtworkFilePreview = {
+  /** `pending` is rendered on first read; it is not "unsupported". */
+  status: "pending" | "ready" | "failed" | "unsupported" | (string & {});
+  /** Resolver paths, not image URLs: each answers a signed `url`. */
+  downloadUrlPath?: string;
+  retryPath?: string;
+  /** A stable code; `preview_word_not_available` for every Word file. */
+  error?: string | null;
+};
+
+/** A signed link to the preview picture: PNG for a PDF's page 1, the original for an image. */
+export type ArtworkPreviewLink = {
+  fileId: string;
+  contentType: string;
+  page: number;
+  url: string;
+  expiresAt: string;
+  expiresInSeconds: number;
 };
 
 export type ArtworkFileCheck = {
@@ -3207,6 +3233,38 @@ export async function getFileDownloadUrl(
   fileId: string,
 ): Promise<{ fileId: string; url: string; expiresAt: string; expiresInSeconds: number }> {
   return request(`/files/${fileId}/download-url`);
+}
+
+/**
+ * Resolve the artwork's preview picture, rendering it first if GRIDGO has not
+ * yet (`GET /files/:fileId/preview-url`). `path` is the file's own
+ * `preview.downloadUrlPath` when it sent one.
+ */
+export async function getFilePreviewUrl(fileId: string, path?: string | null): Promise<ArtworkPreviewLink> {
+  return request(path || `/files/${encodeURIComponent(fileId)}/preview-url`);
+}
+
+/**
+ * Retry a failed preview (`POST /files/:fileId/preview`). Refused with
+ * `429` inside the 30-second cooldown and `503 preview_busy` while another
+ * file renders.
+ */
+export async function retryFilePreview(fileId: string, path?: string | null): Promise<ArtworkPreviewLink> {
+  return request(path || `/files/${encodeURIComponent(fileId)}/preview`, { method: "POST", body: "{}" });
+}
+
+/**
+ * Tell GRIDGO the phone could not draw a signed preview: storage reads go
+ * straight to MinIO, so the API never sees that failure otherwise. Codes only.
+ */
+export async function reportFilePreviewFailure(
+  fileId: string,
+  reason: "image_load_failed" | "download_failed",
+): Promise<void> {
+  await request(`/files/${encodeURIComponent(fileId)}/preview-failure`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export async function getFile(fileId: string): Promise<StoredFile> {
