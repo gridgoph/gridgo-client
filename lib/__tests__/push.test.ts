@@ -171,10 +171,10 @@ describe("pushTargetRoute", () => {
     expect(pushTargetRoute(parsePushData({ orderId: "ord_demo_1" }))).toBe("/order/ord_demo_1");
   });
 
-  it("opens the receipt when that is what the update is about", () => {
+  it("opens the receipt, to print, when that is what the update is about", () => {
     expect(
       pushTargetRoute(parsePushData({ type: "order_receipt_ready", orderId: "ord_demo_1" })),
-    ).toBe("/order/receipt?orderId=ord_demo_1");
+    ).toBe("/order/receipt?orderId=ord_demo_1&from=notice");
   });
 
   it.each(["shop_recovery", "order_reschedule_requested", "order_reschedule_declined"])(

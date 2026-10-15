@@ -9,7 +9,7 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "@/hooks/useTheme";
-import { UPDATE_SOUND_COPY } from "@/lib/notificationNudge";
+import { APP_SOUND_COPY } from "@/lib/appSound";
 import { previewUpdateChime } from "@/lib/updateChime";
 import { WHATS_NEW_HISTORY_COPY } from "@/lib/whatsNewHistory";
 import { useNotificationNudge } from "@/store/notificationNudge";
@@ -25,7 +25,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
  * Settings — preferences and app help, not identity.
  *
  * Account keeps who is signed in, what GRIDGO matches on, and Sign out.
- * Theme, the update sound, the What's new history and replaying onboarding live here — and only here. The match ranking
+ * Theme, app sounds, the What's new history and replaying onboarding live here — and only here. The match ranking
  * used to sit on both screens; two homes for one setting is two places to look
  * and one of them always showing the older answer.
  *
@@ -90,15 +90,16 @@ export default function SettingsScreen() {
           </View>
 
           {/*
-            The bell's chime (#230). The whole row is the switch, so the
+            Every in-app sound: the bell's chime (#230) and the receipt's
+            print (#229). The whole row is the switch, so the
             target is the row and not a 51pt thumb at its edge; the Switch is
             drawn for its shape and takes no touch of its own.
           */}
           <Pressable
             onPress={toggleSound}
             accessibilityRole="switch"
-            accessibilityLabel={UPDATE_SOUND_COPY.label}
-            accessibilityHint={UPDATE_SOUND_COPY.caption}
+            accessibilityLabel={APP_SOUND_COPY.label}
+            accessibilityHint={APP_SOUND_COPY.caption}
             accessibilityState={{ checked: !muted }}
             aria-checked={!muted}
             className="gg-card gg-touch flex-row items-center gap-3"
@@ -108,9 +109,9 @@ export default function SettingsScreen() {
           >
             <View className="flex-1 gap-1">
               <Text className="text-body-lg font-medium text-text-primary">
-                {UPDATE_SOUND_COPY.label}
+                {APP_SOUND_COPY.label}
               </Text>
-              <Text className="text-body text-text-secondary">{UPDATE_SOUND_COPY.caption}</Text>
+              <Text className="text-body text-text-secondary">{APP_SOUND_COPY.caption}</Text>
             </View>
             <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants">
               {/*

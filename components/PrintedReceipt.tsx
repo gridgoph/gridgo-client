@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -37,6 +37,16 @@ type Props = {
   thanks: ReactNode;
   /** The screen's actions. On screen from the first frame and never animated. */
   actions: ReactNode;
+  /**
+   * Whether the screen is on display yet. The print waits for it, so it never
+   * plays out under the push transition. Defaults to now.
+   */
+  shown?: boolean;
+  /**
+   * Called once, as the slip starts to print — or, with reduce motion, as it
+   * first shows at rest. The print sound rides on it.
+   */
+  onPrint?: () => void;
 };
 
 /** A paper feed: quick out of the slot, slowing as the slip comes free. */
@@ -55,12 +65,24 @@ const FEED_EASING = Easing.bezier(0.22, 0.61, 0.36, 1);
  * the slip: a slip with a few lines is taller than a phone, and a thank-you
  * below the fold is a moment that never visibly ends.
  *
+ * It starts once the slip has been measured and the screen has finished
+ * sliding in (`shown`): started on mount, the feed ran under the push and a
+ * slow phone showed it already at rest (#229). `onPrint` fires at that same
+ * beat, under reduce motion too, so the sound is never the only thing missing.
+ *
  * None of it carries state or holds the client up. The slip's words are all
  * there from the first frame for a screen reader; any touch on the slip
  * finishes the print at once; reduce motion shows the slip already in place.
  * The actions are on screen from the first frame and are never animated.
  */
-export function PrintedReceipt({ view, showServiceFee, thanks, actions }: Props) {
+export function PrintedReceipt({
+  view,
+  showServiceFee,
+  thanks,
+  actions,
+  shown = true,
+  onPrint,
+}: Props) {
   const reducedMotion = useReducedMotion();
   const colors = useThemeColors();
   const theme = useThemeName();
@@ -75,25 +97,48 @@ export function PrintedReceipt({ view, showServiceFee, thanks, actions }: Props)
     settled.current = true;
     cancelAnimation(slipOffset);
     cancelAnimation(thanksOpacity);
-    slipOffset.value = PRINT_END_FRAME.slipOffset;
-    thanksOpacity.value = PRINT_END_FRAME.thanksOpacity;
+    slipOffset.set(PRINT_END_FRAME.slipOffset);
+    thanksOpacity.set(PRINT_END_FRAME.thanksOpacity);
   };
 
-  const onSlipLayout = (event: LayoutChangeEvent) => {
+  // The slip's height, once laid out; the feed starts from it.
+  const slipHeight = useRef<number | null>(null);
+  // Set once the print's beat has come, whether or not the paper moved.
+  const printed = useRef(false);
+
+  const print = useCallback(() => {
+    if (printed.current || slipHeight.current == null || !shown) return;
+    printed.current = true;
+    onPrint?.();
+    // Reduce motion, or a touch that already landed it: the slip is at rest.
     if (settled.current) return;
     settled.current = true;
     const timing = { easing: FEED_EASING, reduceMotion: ReduceMotion.System };
-    slipOffset.value = slipFeedFrom(event.nativeEvent.layout.height);
-    slipOffset.value = withSequence(
-      withTiming(PRINT_OVERSHOOT_PX, { ...timing, duration: PRINT_FEED_MS }),
-      withTiming(0, { ...timing, duration: PRINT_SETTLE_MS }),
+    slipOffset.set(slipFeedFrom(slipHeight.current));
+    slipOffset.set(
+      withSequence(
+        withTiming(PRINT_OVERSHOOT_PX, { ...timing, duration: PRINT_FEED_MS }),
+        withTiming(0, { ...timing, duration: PRINT_SETTLE_MS }),
+      ),
     );
-    thanksOpacity.value = withDelay(
-      THANKS_DELAY_MS,
-      withTiming(1, { ...timing, duration: THANKS_FADE_MS }),
-      ReduceMotion.System,
+    thanksOpacity.set(
+      withDelay(
+        THANKS_DELAY_MS,
+        withTiming(1, { ...timing, duration: THANKS_FADE_MS }),
+        ReduceMotion.System,
+      ),
     );
+  }, [shown, onPrint, slipOffset, thanksOpacity]);
+
+  const onSlipLayout = (event: LayoutChangeEvent) => {
+    if (slipHeight.current == null) slipHeight.current = event.nativeEvent.layout.height;
+    print();
   };
+
+  // The screen finishing its push is the other half of the cue.
+  useEffect(() => {
+    print();
+  }, [print]);
 
   // The platform answers "reduce motion?" asynchronously, so a phone that asks
   // for it can start with the print already running. Land it the moment it does.
@@ -102,8 +147,8 @@ export function PrintedReceipt({ view, showServiceFee, thanks, actions }: Props)
     settled.current = true;
     cancelAnimation(slipOffset);
     cancelAnimation(thanksOpacity);
-    slipOffset.value = PRINT_END_FRAME.slipOffset;
-    thanksOpacity.value = PRINT_END_FRAME.thanksOpacity;
+    slipOffset.set(PRINT_END_FRAME.slipOffset);
+    thanksOpacity.set(PRINT_END_FRAME.thanksOpacity);
   }, [reducedMotion, slipOffset, thanksOpacity]);
 
   const slipStyle = useAnimatedStyle(() => ({

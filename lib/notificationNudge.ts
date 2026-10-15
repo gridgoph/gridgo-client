@@ -48,11 +48,14 @@ export function nextBaseline(
 export function shouldChime({
   muted,
   appState,
+  hushed = false,
 }: {
   muted: boolean;
   appState: string | null | undefined;
+  /** A louder moment owns the sound right now — the receipt's print (#229). */
+  hushed?: boolean;
 }): boolean {
-  if (muted) return false;
+  if (muted || hushed) return false;
   return appState === "active" || appState == null;
 }
 
@@ -87,10 +90,3 @@ export const NUDGE_QUIET_MS = 4000;
 
 /** One beat. Six of them is under three quarters of a second. */
 export const BELL_SWING_BEAT_MS = 110;
-
-/** Settings > the chime's switch. */
-export const UPDATE_SOUND_COPY = {
-  label: "Sound for updates",
-  caption:
-    "A short chime when one of your orders moves while GRIDGO is open. Your phone's silent mode still mutes it.",
-} as const;

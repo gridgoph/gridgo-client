@@ -39,6 +39,10 @@ describe("shouldChime", () => {
     expect(shouldChime({ muted: true, appState: "active" })).toBe(false);
   });
 
+  it("keeps quiet while the receipt's print owns the sound (#229)", () => {
+    expect(shouldChime({ muted: false, appState: "active", hushed: true })).toBe(false);
+  });
+
   it("plays only while the app is on screen", () => {
     expect(shouldChime({ muted: false, appState: "active" })).toBe(true);
     expect(shouldChime({ muted: false, appState: "background" })).toBe(false);

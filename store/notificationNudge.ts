@@ -8,8 +8,10 @@ const STORAGE_KEY = "gridgo-update-sound";
 
 type NotificationNudgeStore = {
   /**
-   * Settings > Sound for updates, off. Per phone rather than per account: it
-   * is about the room the phone is in, not who is signed in.
+   * Settings > App sounds, off. It mutes every in-app sound — this chime and
+   * the receipt's print (#229) — and lives here because the chime came first.
+   * Per phone rather than per account: it is about the room the phone is in,
+   * not who is signed in.
    */
   muted: boolean;
   setMuted: (muted: boolean) => void;
@@ -28,6 +30,14 @@ type NotificationNudgeStore = {
    * nothing: a burst of rows is one moment, one swing, one chime.
    */
   nudge: (announcement: string, now?: number) => void;
+  /**
+   * Until when the chime stays quiet while the bell still swings. Checkout and
+   * the receipt's print set it (#229): the notices a client's own order writes
+   * land while the receipt prints, and the print is already the sound for
+   * that moment. Not persisted.
+   */
+  hushedUntil: number;
+  hush: (ms: number, now?: number) => void;
 };
 
 /** The bell's moment, and whether it makes a sound (#230). */
@@ -45,6 +55,9 @@ export const useNotificationNudge = create<NotificationNudgeStore>()(
             ? state
             : { seq: state.seq + 1, announcement, lastAt: now },
         ),
+      hushedUntil: 0,
+      hush: (ms, now = Date.now()) =>
+        set((state) => ({ hushedUntil: Math.max(state.hushedUntil, now + ms) })),
     }),
     {
       name: STORAGE_KEY,

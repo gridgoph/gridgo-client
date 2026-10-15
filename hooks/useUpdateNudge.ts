@@ -26,7 +26,8 @@ export function useUpdateNudge(): void {
     const chime = loadUpdateChime();
     const unsubscribe = useNotificationNudge.subscribe((state, previous) => {
       if (state.seq === previous.seq) return;
-      if (shouldChime({ muted: state.muted, appState: AppState.currentState })) chime?.play();
+      const hushed = Date.now() < state.hushedUntil;
+      if (shouldChime({ muted: state.muted, appState: AppState.currentState, hushed })) chime?.play();
       if (state.announcement) AccessibilityInfo.announceForAccessibility(state.announcement);
     });
     return () => {

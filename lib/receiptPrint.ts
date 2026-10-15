@@ -29,6 +29,17 @@ export const RECEIPT_PRINT_TOTAL_MS = Math.max(
 );
 
 /**
+ * How long the update chime stays quiet once the print plays, and from the
+ * Place order tap until it does (#229). Placing an order writes its own
+ * notices — "Your receipt is ready" among them — which reach the phone while
+ * the slip prints; a chime on top of the print is two sounds for one moment.
+ * The bell still swings. Placing gets the longer window because the network
+ * sits between the tap and the print.
+ */
+export const PRINT_HUSH_MS = 3000;
+export const PLACE_HUSH_MS = 15000;
+
+/**
  * Where the slip waits before it has been measured: far above the slot, so
  * nothing shows until the feed knows how long the paper is.
  */

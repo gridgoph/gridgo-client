@@ -137,4 +137,13 @@ describe("notification nudge", () => {
     // A nudge still swings the bell; only the chime listens to `muted`.
     expect(useNotificationNudge.getState().seq).toBe(1);
   });
+
+  it("hushes the chime for a window, never shortening one already set (#229)", () => {
+    const nudge = useNotificationNudge.getState();
+    nudge.hush(15000, 1_000);
+    nudge.hush(3000, 2_000);
+    expect(useNotificationNudge.getState().hushedUntil).toBe(16_000);
+    nudge.hush(3000, 20_000);
+    expect(useNotificationNudge.getState().hushedUntil).toBe(23_000);
+  });
 });
