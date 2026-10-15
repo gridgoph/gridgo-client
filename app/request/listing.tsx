@@ -13,6 +13,7 @@ import { ListingGallery } from "@/components/ListingGallery";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
+import { SpecialInstructionsField } from "@/components/SpecialInstructionsField";
 import { StepTrailBar } from "@/components/StepTrail";
 import { TourTarget } from "@/components/TourTarget";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
@@ -63,6 +64,7 @@ import {
   matchSelectionFor,
 } from "@/lib/matchSelection";
 import { orderFlowNow } from "@/lib/orderFlow";
+import { specialInstructionsProblem } from "@/lib/orderChanges";
 import {
   printerCapFeet,
   printerCapLine,
@@ -130,6 +132,8 @@ export default function ListingScreen() {
   // How big it is. Only three of the six pricing units ask for this, and the
   // listing itself decides which — a client ordering flyers never sees it.
   const [measured, setMeasured] = useState<MeasurementDraft>(EMPTY_MEASUREMENT);
+  // What the options cannot say, one note per item (report F9FCD485).
+  const [note, setNote] = useState("");
   const [showMissing, setShowMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -213,6 +217,7 @@ export default function ListingScreen() {
       setSelection(restored);
       setQuantity(editing.quantity);
       setMeasured(toDraft(editing.measurement));
+      setNote(editing.specialInstructions ?? "");
     } else if (item) {
       // A fresh sheet opens at the least the shop will run. Opening at one
       // with a note underneath let a quantity GRIDGO cannot price into the
@@ -369,6 +374,8 @@ export default function ListingScreen() {
       finish: boundValue(item, selection, "finish"),
     },
     measurement,
+    // Only when written: an API from before notes is never sent the field.
+    ...(note.trim() ? { specialInstructions: note.trim() } : {}),
   });
 
   // The pick ran out or no longer fits — the token's fifteen minutes are up,
@@ -400,10 +407,18 @@ export default function ListingScreen() {
         setSaveError(tooWide.short);
         return;
       }
+      const noteProblem = specialInstructionsProblem(note);
+      if (noteProblem) {
+        setSaveError(noteProblem);
+        return;
+      }
       const { optionIds, structuredSpec } = lineInput();
       if (editing) {
+        // Empty clears a note the line had; a line that never had one is left alone.
+        const noteChange =
+          note.trim() !== (editing.specialInstructions ?? "") ? { specialInstructions: note.trim() } : {};
         const updated = await run((cartId) =>
-          api.updateCartLine(cartId, editing.id, { optionIds, quantity, structuredSpec, measurement }),
+          api.updateCartLine(cartId, editing.id, { optionIds, quantity, structuredSpec, measurement, ...noteChange }),
         );
         setBusy(false);
         adopt(updated);
@@ -554,6 +569,11 @@ export default function ListingScreen() {
               />
             </View>
           ))}
+
+          {/* Right under the choices it explains: what the options cannot say. */}
+          <View className="mt-8">
+            <SpecialInstructionsField value={note} onChange={setNote} disabled={busy} />
+          </View>
 
           {/* A width read from a size option rather than typed. A measured
               listing says this under its own fields instead. */}

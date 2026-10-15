@@ -143,6 +143,23 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "That clashed with an earlier attempt. Try again.";
       case "invalid_delivery_pin_request":
         return "Keep the notes to 500 characters and the receiver's name to 120.";
+      // ---- special instructions and the shop's change requests (report F9FCD485) ----
+      case "invalid_special_instructions":
+        return "Keep special instructions to 300 characters.";
+      case "change_request_stale":
+        return "This change request was updated a moment ago. It has been reloaded — read it again before you answer.";
+      case "change_request_not_pending":
+        return "This change request is not waiting for your answer any more. Pull down to see where it stands.";
+      case "change_request_window_closed":
+        return "Printing has finished, so this change can no longer be approved or paid for. Your order stays as you placed it.";
+      case "change_request_supplier_changed":
+        return "Another shop now has this job, so this change no longer applies. Your order stays as you placed it.";
+      case "change_payment_unavailable":
+        return "This change is not waiting for a payment any more. Pull down to refresh.";
+      case "change_payment_pending":
+        return "Operations is still checking the payment for your change. Wait for their answer first.";
+      case "change_request_idempotency_conflict":
+        return "That clashed with an earlier attempt. Try again.";
       case "transition_not_allowed":
       case "invalid_state":
         return "This order is not ready for that action yet. Pull to refresh, or check the timeline.";

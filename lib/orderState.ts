@@ -25,6 +25,7 @@ import {
 import { orderReviewView, reviewWaitingLine, waitingForReviewLabel } from "@/lib/operatingHours";
 import { rescheduleNextAction, rescheduleView, rescheduleWaitingOn } from "@/lib/reschedule";
 import { deliveryPinNextAction } from "@/lib/deliveryPin";
+import { changeNextAction, changeWaitingOn } from "@/lib/orderChanges";
 import { shopRecoveryNextAction, shopRecoveryView, shopRecoveryWaitingOn } from "@/lib/shopRecovery";
 import { orderPrintingMinor } from "@/lib/serviceFee";
 
@@ -308,6 +309,9 @@ export function orderNextAction(order: Order): OrderNextAction | null {
       icon: "wallet",
     };
   }
+  // The shop asked to change the job (report F9FCD485): only open while it prints.
+  const change = changeNextAction(order);
+  if (change) return change;
   if (collectsAtOffice(order)) return COLLECT_STATE_ACTIONS[order.state] ?? STATE_ACTIONS[order.state] ?? null;
   return deliveryPinNextAction(order) ?? STATE_ACTIONS[order.state] ?? null;
 }
@@ -384,7 +388,7 @@ export function orderWaitingOn(order: Order): string | null {
       ? "This part of your order was cancelled. Its share is refunded on its own; the rest of the order carries on."
       : WAITING_ON.cancelled;
   }
-  const shopChange = shopRecoveryWaitingOn(order) ?? rescheduleWaitingOn(order);
+  const shopChange = shopRecoveryWaitingOn(order) ?? rescheduleWaitingOn(order) ?? changeWaitingOn(order);
   if (shopChange) return shopChange;
   // Ahead of the payment check, so the line under a "Waiting for review" chip
   // says what it is waiting for: GRIDGO opening.
@@ -443,12 +447,14 @@ export function orderItemsMinor(
  * What the client owes in total, in PHP minor units, or null before a supplier
  * has accepted and the exact price exists. The server's own total when it
  * sends one; otherwise items at GRIDGO's price plus delivery. An applied
- * delivery-pin change moves it (`effectiveTotalMinor`); the receipt keeps the
- * checkout figure.
+ * delivery-pin change moves it (`effectiveTotalMinor`), and so do approved
+ * change requests the client paid for (`supplementalTotalMinor`); the receipt
+ * keeps the checkout figure.
  */
 export function orderTotalMinor(order: Order): number | null {
-  if (order.effectiveTotalMinor != null) return order.effectiveTotalMinor;
-  if (order.totalMinor != null) return order.totalMinor;
+  const changes = order.supplementalTotalMinor ?? 0;
+  if (order.effectiveTotalMinor != null) return order.effectiveTotalMinor + changes;
+  if (order.totalMinor != null) return order.totalMinor + changes;
   const items = orderItemsMinor(order);
   if (items == null) return null;
   return items + (order.deliveryFeeMinor ?? 0);

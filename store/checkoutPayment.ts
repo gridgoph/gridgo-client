@@ -108,3 +108,7 @@ export const useCheckoutPayment = createPaymentDraft();
 export const useOrderPayment = createPaymentDraft();
 /** A higher-fee delivery pin's one surcharge transfer. */
 export const usePinPayment = createPaymentDraft();
+/** An approved order change's QR top-up (report F9FCD485). */
+export const useChangePayment = createPaymentDraft();
+
+export type PaymentDraftStore = typeof useCheckoutPayment;

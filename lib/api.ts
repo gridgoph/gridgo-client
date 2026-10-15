@@ -148,6 +148,64 @@ export type ProductionItem = {
   mockupFileId: string | null;
   /** Design links snapshotted at checkout; absent on an API from before them. */
   artworkLinks?: ArtworkLink[];
+  /**
+   * The client's note for this item, masked and frozen at checkout (gridgo-api
+   * `docs/ORDER_CHANGES_API.md`). Empty when they wrote none; absent on an API
+   * from before notes.
+   */
+  specialInstructions?: string;
+  /** The latest change the client approved (and paid for) on this item. */
+  agreedChange?: { id: string; proposedSpec: string; appliedAt: string } | null;
+};
+
+/**
+ * A shop's formal request to change an order after it took the job
+ * (gridgo-api `docs/ORDER_CHANGES_API.md`, report F9FCD485). The client
+ * projection carries one fee-inclusive `totalMinor` and never the shop's
+ * extra or GRIDGO's fee. Statuses are open strings: `pending` (asks the
+ * client), `pending_payment` (approved, not paid), `pending_confirmation`
+ * (transfer with Operations), `applied`, `declined`, `closed`.
+ */
+export type OrderChangePayment = {
+  proofFileId: string;
+  reference: string;
+  submittedAt: string;
+  confirmedAt?: string;
+  rejectedAt?: string;
+  reason?: string;
+};
+
+export type OrderChangeRequest = {
+  id: string;
+  orderId: string;
+  lineItemId: string | null;
+  status: string;
+  version: number;
+  /** What the client pays for the change, GRIDGO's fee inside. Zero is free. */
+  totalMinor: number;
+  createdAt: string;
+  reason: string;
+  /** Masked amendment to the specification; empty on a time-only request. */
+  proposedSpec?: string | null;
+  /** The new client promise a time change would set. */
+  proposedPromiseBy?: string | null;
+  /** The note the item carried when the shop asked. */
+  originalInstructions?: string;
+  answeredAt?: string;
+  appliedAt?: string;
+  closedAt?: string;
+  closureReason?: string;
+  payment?: OrderChangePayment | null;
+  paymentHistory?: OrderChangePayment[];
+  /** Operations' reason, after a transfer they could not match. */
+  rejectionReason?: string | null;
+};
+
+/** The shop's tick that it read the notes, as the client may see it. */
+export type SpecialInstructionsAcknowledgement = {
+  at: string;
+  lines?: { lineItemId: string; text: string }[];
+  text?: string;
 };
 
 export type DropoffConfirmation =
@@ -344,6 +402,16 @@ export type Order = {
   effectiveDeliveryFeeMinor?: number;
   /** The checkout total plus an applied pin change's difference. */
   effectiveTotalMinor?: number;
+  /** Every change request on this order, settled ones included. */
+  changeRequests?: OrderChangeRequest[];
+  /** A legacy order-level note, from before notes were per item. */
+  specialInstructions?: string;
+  /** Present once the shop ticked that it read the notes. */
+  specialInstructionsAcknowledgement?: SpecialInstructionsAcknowledgement | null;
+  /** What the client paid for approved changes, on top of checkout. */
+  supplementalTotalMinor?: number;
+  /** Checkout plus approved changes (an applied pin change is reported apart). */
+  totalIncludingSupplementsMinor?: number;
   /** The choice made before matching, snapshotted at checkout (gridgo-api#148). */
   requestFulfillment?: RequestFulfilment | null;
   /** A pick-up order's hub hours and fee as they stood at checkout. */
@@ -2338,6 +2406,8 @@ export type CartLineRecord = {
   mockupFileId: string | null;
   /** Design links on this line. Absent on an API from before them — see `lineArtworkLinks`. */
   artworkLinks?: ArtworkLink[];
+  /** The client's note for this item, as GRIDGO stored it (contacts masked). */
+  specialInstructions?: string;
   /** This line's own drop-off, for a run split across several addresses. */
   dropoff: OrderPoint | null;
   sortOrder: number;
@@ -2779,6 +2849,8 @@ export async function addCartLine(
     artworkFileId?: string | null;
     /** Replaces the line's links; `[]` clears them. Omit to keep them. */
     artworkLinks?: ArtworkLink[];
+    /** Up to 300 characters; GRIDGO masks contact details before saving. */
+    specialInstructions?: string;
     dropoff?: OrderPoint | null;
   },
 ): Promise<Cart> {
@@ -2801,6 +2873,8 @@ export async function updateCartLine(
     artworkFileId?: string | null;
     /** Replaces the line's links; `[]` clears them. Omit to keep them. */
     artworkLinks?: ArtworkLink[];
+    /** Empty clears the note; omit to keep it. */
+    specialInstructions?: string;
     dropoff?: OrderPoint | null;
     /**
      * Move this product to another date (gridgo-client#189). GRIDGO rechecks
@@ -4243,6 +4317,39 @@ export async function submitDeliveryPinPayment(
     body: JSON.stringify(input),
   });
   return result.deliveryPin;
+}
+
+const changePath = (orderId: string, changeId: string, action: string) =>
+  `/orders/${encodeURIComponent(orderId)}/change-requests/${encodeURIComponent(changeId)}/${action}`;
+
+/** Approve or decline a shop's change. A priced approval still has to be paid. */
+export async function answerOrderChange(
+  orderId: string,
+  changeId: string,
+  input: { expectedVersion: number; answer: "accept" | "decline" },
+  idempotencyKey: string,
+): Promise<OrderChangeRequest> {
+  const result = await request<{ changeRequest: OrderChangeRequest }>(changePath(orderId, changeId, "answer"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.changeRequest;
+}
+
+/** Hand over the QR top-up for an approved change. Operations still has to confirm it. */
+export async function submitOrderChangePayment(
+  orderId: string,
+  changeId: string,
+  input: { expectedVersion: number; proofFileId: string; reference: string },
+  idempotencyKey: string,
+): Promise<OrderChangeRequest> {
+  const result = await request<{ changeRequest: OrderChangeRequest }>(changePath(orderId, changeId, "payment"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.changeRequest;
 }
 
 // ---------------------------------------------------------------------------

@@ -11,6 +11,8 @@ import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DropoffConfirmationCard } from "@/components/DropoffConfirmationCard";
 import { DeliveryPinCard } from "@/components/deliveryPin/DeliveryPinCard";
+import { ChangeHistory } from "@/components/orderChange/ChangeHistory";
+import { ChangeRequestCard } from "@/components/orderChange/ChangeRequestCard";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
 import { MissedCallNotice } from "@/components/call/MissedCallNotice";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
@@ -30,7 +32,7 @@ import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { DesignLinkRow } from "@/components/DesignLinkRow";
 import { FoldSection } from "@/components/FoldSection";
 import { LatestProgressCard } from "@/components/LatestProgressCard";
-import { ProductionSpecifications } from "@/components/ProductionSpecifications";
+import { NoteRow, ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
 import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
 import { RescheduleCard } from "@/components/RescheduleCard";
@@ -87,6 +89,7 @@ import {
 import { canRate } from "@/lib/rating";
 import { currentRefund, refundEntry } from "@/lib/refunds";
 import { appliedChangeLine, deliveryPinNeedsClient } from "@/lib/deliveryPin";
+import { changeItemName, changeNeedsClient, changeRequestView, paidChanges } from "@/lib/orderChanges";
 import { rescheduleView } from "@/lib/reschedule";
 import { shopRecoveryView } from "@/lib/shopRecovery";
 import { canHaveSurvey } from "@/lib/survey";
@@ -317,6 +320,8 @@ export default function OrderDetailScreen() {
   */
   const recovery = shopRecoveryView(order);
   const reschedule = recovery ? null : rescheduleView(order);
+  // The shop asked to change the job while printing it (report F9FCD485).
+  const changeView = changeRequestView(order);
   const actionZone = order.refundHold && existingRefund
     ? "refund"
     : order.refundHold
@@ -331,6 +336,8 @@ export default function OrderDetailScreen() {
       ? "correction"
       : payable
         ? "pay"
+        : changeView
+          ? "change"
         : deliveryPinNeedsClient(order)
           ? "pin"
         : underReview
@@ -409,7 +416,7 @@ export default function OrderDetailScreen() {
     <LatestProgressCard
       order={order}
       note={
-        !nextAction && !underReview && !finished && !shopDecision && !groupStopped && !reviewWait
+        !nextAction && !underReview && !finished && !shopDecision && !groupStopped && !reviewWait && !changeView
           ? (waitingOn ?? "This job is in progress.")
           : null
       }
@@ -426,7 +433,7 @@ export default function OrderDetailScreen() {
   // The pin card draws itself (below the progress docket); here it only takes the yellow.
   const actionZoneView = actionZone && actionZone !== "pin" ? (
     <Animated.View
-      key={`${order.state}:${actionZone}:${recovery?.kind ?? reschedule?.kind ?? ""}`}
+      key={`${order.state}:${actionZone}:${recovery?.kind ?? reschedule?.kind ?? changeView?.kind ?? ""}`}
       entering={reducedMotion ? undefined : FadeIn.duration(200)}
     >
       {actionZone === "refund" && existingRefund ? (
@@ -435,6 +442,13 @@ export default function OrderDetailScreen() {
         <ShopRecoveryCard order={order} view={recovery} onChanged={() => void load()} />
       ) : actionZone === "reschedule" && reschedule ? (
         <RescheduleCard order={order} view={reschedule} onChanged={() => void load()} />
+      ) : actionZone === "change" && changeView ? (
+        <ChangeRequestCard
+          order={order}
+          view={changeView}
+          primary={changeNeedsClient(order)}
+          onChanged={() => void load()}
+        />
       ) : actionZone === "proof" ? (
         <ProofDecision
           order={order}
@@ -525,6 +539,14 @@ export default function OrderDetailScreen() {
             {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
           </>
         )}
+        {/* A note from before notes were per item rides on the order itself. */}
+        {order.specialInstructions?.trim() ? (
+          <NoteRow
+            label="Special instructions"
+            text={order.specialInstructions}
+            readAt={order.specialInstructionsAcknowledgement?.at ?? null}
+          />
+        ) : null}
         <SpecRow label="Deadline" value={formatDeadline(order.deadline)} />
         {/* A collected job is not going to the address they shopped with.
             Naming that address here is how a client ends up waiting at home
@@ -538,6 +560,7 @@ export default function OrderDetailScreen() {
         <View className="pt-3">
           <ReadyTime promiseBy={order.promiseBy} />
         </View>
+        <ChangeHistory order={order} />
       </FoldSection>
 
       <FoldSection
@@ -880,6 +903,8 @@ function MoneyDetails({
       ? order.deliveryPin.change
       : null;
   const checkoutTotal = order.totalMinor ?? total;
+  // Approved changes the client paid for by QR, on top of checkout (report F9FCD485).
+  const changes = paidChanges(order);
   const pickupFee =
     order.fulfillmentMode === "pickup" && (order.deliveryFeeMinor ?? 0) > 0
       ? (order.deliveryFeeMinor as number)
@@ -910,6 +935,13 @@ function MoneyDetails({
             value={`${pinChange.feeDifferenceMinor > 0 ? "+" : "−"}${formatPhp(Math.abs(pinChange.feeDifferenceMinor))}`}
           />
         ) : null}
+        {changes.map((change) => (
+          <SpecRow
+            key={change.id}
+            label={`Change${changeItemName(order, change.lineItemId) ? ` to ${changeItemName(order, change.lineItemId)}` : ""} · paid by QR`}
+            value={`+${formatPhp(change.totalMinor)}`}
+          />
+        ))}
         {showFee ? (
           <ServiceFeeRow explainOnly rateBps={order.serviceFeeRateBps ?? null} />
         ) : null}
@@ -936,6 +968,10 @@ function MoneyDetails({
         {pinChange ? (
           <Text className="text-caption text-text-muted">
             {appliedChangeLine(pinChange)}. The checkout total was {formatPhp(checkoutTotal)}; the receipt keeps the checkout figures.
+          </Text>
+        ) : changes.length ? (
+          <Text className="text-caption text-text-muted">
+            The checkout total was {formatPhp(checkoutTotal)}; the receipt keeps the checkout figures.
           </Text>
         ) : null}
       </View>
