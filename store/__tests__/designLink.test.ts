@@ -1,5 +1,6 @@
 import * as api from "@/lib/api";
 import type { ArtworkLinkCheck, Cart, CartLineRecord, CatalogItem } from "@/lib/api";
+import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
 import { artworkSignature, checkKey, currentProblem, useDesignLink } from "@/store/designLink";
 
@@ -34,6 +35,7 @@ function line(overrides: Partial<CartLineRecord> = {}): CartLineRecord {
     structuredSpec: {},
     artworkFileId: null,
     artworkLinks: [],
+    artworkAttachments: [],
     mockupFileId: null,
     dropoff: null,
     sortOrder: 0,
@@ -75,42 +77,95 @@ beforeEach(() => {
   checkArtworkLink.mockReset();
   updateCartLine.mockReset();
   useDesignLink.getState().reset();
+  useArtworkAttachments.getState().reset();
   useCart.setState({ cartId: "cart_1", cart: cart([line()]), loading: false, busy: false, error: null });
-  updateCartLine.mockImplementation(async (_cartId, _lineId, input) =>
-    cart([line({ artworkLinks: input.artworkLinks ?? [] })]),
-  );
+  // GRIDGO keeps the list it was sent, and the legacy links beside it.
+  updateCartLine.mockImplementation(async (_cartId, _lineId, input) => {
+    const entries = input.artworkAttachments ?? [];
+    return cart([
+      line({
+        artworkAttachments: entries,
+        artworkLinks: entries.flatMap((entry) => (entry.kind === "link" ? [{ formatCode: entry.formatCode, url: entry.url }] : [])),
+      }),
+    ]);
+  });
 });
 
+const FILE = { kind: "file" as const, fileId: "file_front", label: "Front" };
+
 describe("design link store", () => {
-  it("keeps a public link on the line", async () => {
+  it("adds a public link after what the item already holds, and empties the field", async () => {
+    useCart.setState({ cart: cart([line({ artworkFileId: "file_front", artworkAttachments: [FILE] })]) });
+    useDesignLink.getState().setDraft("cline_1", URL_OK);
     checkArtworkLink.mockResolvedValue(checked({ ok: true, access: "public_view" }));
 
     await useDesignLink.getState().commit(URL_OK, "cline_1");
 
     expect(checkArtworkLink).toHaveBeenCalledWith(LINK);
-    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [LINK] });
+    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", {
+      artworkAttachments: [FILE, { kind: "link", ...LINK }],
+    });
     expect(useCart.getState().cart?.lines[0].artworkLinks).toEqual([LINK]);
+    // The link is on the item, where its row says so: the field is free again.
+    expect(useDesignLink.getState().drafts.cline_1).toBe("");
   });
 
-  it("does not keep an inconclusive link: checkout would refuse it (gridgo-api#122)", async () => {
-    useCart.setState({ cart: cart([line({ artworkLinks: [LINK] })]) });
+  it("files a link in the old fields on a GRIDGO from before the list", async () => {
+    const { artworkAttachments: _none, ...older } = line({ artworkFileId: "file_front" });
+    useCart.setState({ cart: cart([older as CartLineRecord]) });
+    updateCartLine.mockImplementation(async (_cartId, _lineId, input) =>
+      cart([{ ...older, artworkLinks: input.artworkLinks ?? [] } as CartLineRecord]),
+    );
+    checkArtworkLink.mockResolvedValue(checked({ ok: true, access: "public_view" }));
+
+    await useDesignLink.getState().commit(URL_OK, "cline_1");
+
+    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", {
+      artworkFileId: "file_front",
+      artworkLinks: [LINK],
+    });
+    expect(useDesignLink.getState().saveError.cline_1).toBeNull();
+  });
+
+  it("does not add an inconclusive link: checkout would refuse it (gridgo-api#122)", async () => {
     checkArtworkLink.mockResolvedValue(checked({ access: "unknown" }));
 
-    await useDesignLink.getState().commit(URL_OK, "cline_1", { recheck: true });
+    await useDesignLink.getState().commit(URL_OK, "cline_1");
 
-    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [] });
+    expect(updateCartLine).not.toHaveBeenCalled();
   });
 
-  it("does not keep a link that asks people to sign in, and drops the one it replaces", async () => {
-    useCart.setState({
-      cart: cart([line({ artworkLinks: [{ formatCode: "canva_link", url: "https://www.canva.com/design/OLD/view" }] })]),
-    });
+  it("does not add a link that asks people to sign in, and leaves the others alone", async () => {
+    const old = { kind: "link" as const, formatCode: "canva_link", url: "https://www.canva.com/design/OLD/view" };
+    useCart.setState({ cart: cart([line({ artworkAttachments: [old] })]) });
     checkArtworkLink.mockResolvedValue(checked({ access: "sign_in_required" }));
 
     await useDesignLink.getState().commit(URL_OK, "cline_1");
 
-    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [] });
+    expect(updateCartLine).not.toHaveBeenCalled();
+    expect(useCart.getState().cart?.lines[0].artworkAttachments).toEqual([old]);
     expect(useDesignLink.getState().checks[checkKey(LINK)]).toMatchObject({ phase: "checked" });
+  });
+
+  it("does not add the same link twice", async () => {
+    useCart.setState({ cart: cart([line({ artworkAttachments: [{ kind: "link", ...LINK }] })]) });
+    checkArtworkLink.mockResolvedValue(checked({ ok: true, access: "public_view" }));
+
+    await useDesignLink.getState().commit(URL_OK, "cline_1");
+
+    expect(updateCartLine).not.toHaveBeenCalled();
+    expect(useDesignLink.getState().saveError.cline_1).toBe("That link is already on this item.");
+  });
+
+  it("refuses an eleventh file or link, before asking GRIDGO", async () => {
+    const ten = Array.from({ length: 10 }, (_, index) => ({ kind: "file" as const, fileId: `file_${index}` }));
+    useCart.setState({ cart: cart([line({ artworkAttachments: ten })]) });
+    checkArtworkLink.mockResolvedValue(checked({ ok: true, access: "public_view" }));
+
+    await useDesignLink.getState().commit(URL_OK, "cline_1");
+
+    expect(updateCartLine).not.toHaveBeenCalled();
+    expect(useDesignLink.getState().saveError.cline_1).toMatch(/10 files and design links at most/);
   });
 
   it("keeps the full design address a Canva short link resolved to", async () => {
@@ -123,7 +178,7 @@ describe("design link store", () => {
 
     expect(checkArtworkLink).toHaveBeenCalledWith({ formatCode: "canva_link", url: "https://canva.link/abc123" });
     expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", {
-      artworkLinks: [{ formatCode: "canva_link", url: full }],
+      artworkAttachments: [{ kind: "link", formatCode: "canva_link", url: full }],
     });
   });
 
@@ -133,16 +188,15 @@ describe("design link store", () => {
     await useDesignLink.getState().commit(URL_OK, "cline_1");
 
     expect(useDesignLink.getState().checks[checkKey(LINK)]).toEqual({ phase: "unavailable" });
-    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [LINK] });
+    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkAttachments: [{ kind: "link", ...LINK }] });
     expect(useDesignLink.getState().saveError.cline_1).toBeNull();
   });
 
   it("says so when an older API drops the link it was sent", async () => {
     checkArtworkLink.mockResolvedValue(null);
-    updateCartLine.mockImplementation(async () => {
-      const { artworkLinks: _dropped, ...old } = line();
-      return cart([old as CartLineRecord]);
-    });
+    const { artworkLinks: _links, artworkAttachments: _list, ...old } = line();
+    useCart.setState({ cart: cart([old as CartLineRecord]) });
+    updateCartLine.mockImplementation(async () => cart([old as CartLineRecord]));
 
     await useDesignLink.getState().commit(URL_OK, "cline_1");
 
@@ -199,7 +253,7 @@ describe("design link store", () => {
   });
 
   it("keeps checkout's refusal against the artwork it was about", () => {
-    const refused = line({ artworkLinks: [LINK] });
+    const refused = line({ artworkLinks: [LINK], artworkAttachments: [{ kind: "link", ...LINK }] });
     useDesignLink.getState().setProblem("cline_1", {
       code: "artwork_link_check_failed",
       message: "Make the design viewable by anyone with the link.",
@@ -208,15 +262,25 @@ describe("design link store", () => {
 
     expect(currentProblem(useDesignLink.getState().problems, refused)?.message).toMatch(/viewable/);
     // A new link (or a file instead) is new artwork: the old refusal is moot.
-    expect(currentProblem(useDesignLink.getState().problems, line({ artworkFileId: "file_2" }))).toBeNull();
+    expect(
+      currentProblem(useDesignLink.getState().problems, line({ artworkAttachments: [{ kind: "file", fileId: "file_2" }] })),
+    ).toBeNull();
   });
 
-  it("clears the line when the field is emptied", async () => {
-    useCart.setState({ cart: cart([line({ artworkLinks: [LINK] })]) });
+  it("leaves the item alone when the field is emptied: links come off by their own Remove", async () => {
+    useCart.setState({ cart: cart([line({ artworkAttachments: [{ kind: "link", ...LINK }] })]) });
 
     await useDesignLink.getState().commit("", "cline_1");
 
     expect(checkArtworkLink).not.toHaveBeenCalled();
-    expect(updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [] });
+    expect(updateCartLine).not.toHaveBeenCalled();
+  });
+
+  it("checks a saved link again when asked, even after it passed", async () => {
+    checkArtworkLink.mockResolvedValue(checked({ ok: true, access: "public_view" }));
+    await useDesignLink.getState().verify(LINK);
+    await useDesignLink.getState().verify(LINK, { force: true });
+
+    expect(checkArtworkLink).toHaveBeenCalledTimes(2);
   });
 });

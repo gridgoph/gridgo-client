@@ -46,4 +46,22 @@ describe("design links on the order", () => {
     expect(screen.queryByText("Canva link")).toBeNull();
     expect(screen.getByText("Flyers")).toBeTruthy();
   });
+
+  it("names a link by the client's own label, where they gave one", async () => {
+    await render(
+      <ProductionSpecifications
+        order={order([
+          {
+            ...ITEM,
+            artworkAttachments: [
+              { kind: "file", fileId: "file_front" },
+              { kind: "link", formatCode: "canva_link", url: "https://www.canva.com/design/DAF1/view", label: "Logo design" },
+            ],
+          },
+        ])}
+      />,
+    );
+
+    expect(screen.getByText("Logo design · Canva link")).toBeTruthy();
+  });
 });

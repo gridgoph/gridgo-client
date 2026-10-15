@@ -1,19 +1,30 @@
 import type { Order, StoredFile } from "@/lib/api";
+import { cleanLabel, lineAttachments } from "@/lib/artworkAttachments";
 import { isWordDocument } from "@/lib/artworkUpload";
 
-export type ArtworkReference = { fileId: string; kind: "artwork" | "mockup"; itemName?: string };
+export type ArtworkReference = {
+  fileId: string;
+  kind: "artwork" | "mockup";
+  itemName?: string;
+  /** The client's own name for it ("Front", "Logo PDF"), when they gave one. */
+  label?: string;
+};
 
 /** Only production artwork/reference pictures; never receipts or private evidence. */
 export function orderArtwork(order: Pick<Order, "artworkFileIds" | "mockupFileIds" | "productionItems">): ArtworkReference[] {
   const files: ArtworkReference[] = [];
   const seen = new Set<string>();
-  function add(fileId: string | null | undefined, kind: ArtworkReference["kind"], itemName?: string) {
+  function add(fileId: string | null | undefined, kind: ArtworkReference["kind"], itemName?: string, label?: string) {
     if (!fileId || seen.has(fileId)) return;
     seen.add(fileId);
-    files.push({ fileId, kind, ...(itemName ? { itemName } : {}) });
+    const named = cleanLabel(label);
+    files.push({ fileId, kind, ...(itemName ? { itemName } : {}), ...(named ? { label: named } : {}) });
   }
+  // Each item's files in the client's own order, labels kept (gridgo-api#243).
   for (const item of order.productionItems ?? []) {
-    add(item.artworkFileId, "artwork", item.itemName);
+    for (const entry of lineAttachments(item)) {
+      if (entry.kind === "file") add(entry.fileId, "artwork", item.itemName, entry.label);
+    }
     add(item.mockupFileId, "mockup", item.itemName);
   }
   for (const id of order.artworkFileIds ?? []) add(id, "artwork");

@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react-native";
+import { fireEvent, screen } from "@testing-library/react-native";
 import { Image } from "react-native";
 
 import ArtworkScreen from "@/app/request/artwork";
@@ -12,6 +12,7 @@ import {
   PDF_FORMAT,
   documentCart,
   documentLine,
+  captureGuards,
   renderInSafeArea,
   uploadMock,
 } from "../../test/artworkPagesFixtures";
@@ -32,15 +33,6 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ lineId: "cline_1" }),
 }));
 
-jest.mock("@/hooks/useArtworkUpload", () => ({
-  useArtworkUpload: (initial: { fileId?: string | null } | undefined, guard?: FormatGuard) => {
-    mockGuards.push(guard);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { uploadHookState } = require("../../test/artworkPagesFixtures");
-    return uploadHookState(initial);
-  },
-}));
-
 jest.mock("@/lib/api", () => ({
   ...jest.requireActual("@/lib/api"),
   getFileDownloadUrl: jest.fn(async () => ({ url: "https://example.test/art" })),
@@ -50,6 +42,8 @@ jest.mock("@/lib/api", () => ({
 
 beforeEach(() => {
   jest.spyOn(Image, "getSize").mockImplementation(() => undefined);
+  // The picker filter is handed over when the client chooses files.
+  captureGuards(mockGuards);
   uploadMock.fileId = null;
   uploadMock.detected = null;
   uploadMock.contentType = null;
@@ -76,6 +70,7 @@ it("lists the accepted types and says Word is not one of them before the picker 
     screen.getByText("Flyers does not take Word files. Save your document as a PDF first, then choose the PDF."),
   ).toBeTruthy();
 
+  fireEvent.press(screen.getByLabelText("Choose files"));
   const guard = mockGuards.at(-1);
   expect(guard?.accept).toEqual(["image/jpeg", "application/pdf", "image/png"]);
   expect(guard?.check("thesis.docx", DOCX_TYPE)).toBe(false);

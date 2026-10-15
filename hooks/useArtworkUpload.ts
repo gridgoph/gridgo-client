@@ -3,13 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "@/lib/api";
 import {
   ARTWORK_ACCEPTED,
-  ARTWORK_MAX_BYTES,
-  ARTWORK_MAX_MIB,
   DOCX_CONTENT_TYPE,
-  DOCX_MAX_BYTES,
-  DOCX_MAX_MIB,
   EMPTY_ARTWORK,
   artworkCheckFailure,
+  artworkPickRefusal,
   artworkErrorMessage,
   artworkStateFromStoredFile,
   normalizeFileName,
@@ -225,40 +222,13 @@ export function useArtworkUpload(
       return;
     }
 
-    // Some pickers ignore the type filter, so the choice is checked here too.
-    // Said before the bytes move, in the shop's own terms.
     const chosenName = normalizeFileName(asset.name);
-    if (guard && !guard.check(chosenName, asset.mimeType ?? null)) {
-      setState({
-        ...EMPTY_ARTWORK,
-        phase: "failed",
-        fileName: chosenName,
-        error: guard.rejection(chosenName, asset.mimeType ?? null),
-        refusal: "format",
-        refusedMimeType: asset.mimeType ?? null,
-      });
-      return;
-    }
-
-    // Say the limit before spending a client's data on a doomed upload.
-    if (typeof asset.size === "number" && asset.size > ARTWORK_MAX_BYTES) {
-      setState({
-        ...EMPTY_ARTWORK,
-        phase: "failed",
-        fileName: chosenName,
-        error: `Artwork has to be under ${ARTWORK_MAX_MIB} MB, and this file is larger. Flatten the layers or export at a lower resolution, then pick it again.`,
-      });
-      return;
-    }
-
-    const docx = chosenName.toLowerCase().endsWith(".docx") || asset.mimeType === DOCX_CONTENT_TYPE;
-    if (docx && typeof asset.size === "number" && asset.size > DOCX_MAX_BYTES) {
-      setState({
-        ...EMPTY_ARTWORK,
-        phase: "failed",
-        fileName: chosenName,
-        error: `Word documents have to be under ${DOCX_MAX_MIB} MB, and this file is larger. Save it as a PDF, or make the pictures in it smaller, then pick it again.`,
-      });
+    const refused = artworkPickRefusal(
+      { name: chosenName, mimeType: asset.mimeType ?? null, size: asset.size },
+      guard,
+    );
+    if (refused) {
+      setState({ ...EMPTY_ARTWORK, phase: "failed", fileName: chosenName, ...refused });
       return;
     }
 

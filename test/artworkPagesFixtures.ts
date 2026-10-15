@@ -2,7 +2,9 @@ import { render } from "@testing-library/react-native";
 import { createElement, type ReactElement, type ReactNode } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import type { AcceptedFormat, Cart, CartLineRecord, CatalogItem, DetectedArtwork } from "@/lib/api";
+import type { AcceptedFormat, Cart, CartLineRecord, CatalogItem, DetectedArtwork, StoredFile } from "@/lib/api";
+import type { FormatGuard } from "@/hooks/useArtworkUpload";
+import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
 
 export const uploadMock: {
@@ -166,35 +168,60 @@ export function mockUpdateCartLine(api: { updateCartLine: jest.Mock }) {
   });
 }
 
-export function uploadHookState(initial?: { fileId?: string | null }) {
-  const fileId = uploadMock.fileId ?? initial?.fileId ?? null;
+/** The storage record of the file `uploadMock` describes, as GRIDGO answers it. */
+export function uploadedFile(): StoredFile {
+  const fileId = uploadMock.fileId ?? "file_upload";
   return {
-    state: fileId
-      ? {
-          phase: "stored" as const,
-          fileId,
-          fileName: uploadMock.fileName ?? "thesis.pdf",
-          progress: null,
-          error: null,
-          size: 48_000,
-          contentType: uploadMock.contentType ?? "application/pdf",
-          detected: uploadMock.detected,
-        }
-      : {
-          phase: "empty" as const,
-          fileId: null,
-          fileName: "",
-          progress: null,
-          error: null,
-          size: null,
-          contentType: null,
-          detected: null,
-        },
-    pick: jest.fn(),
-    retry: jest.fn(),
-    cancel: jest.fn(),
-    attachTo: jest.fn(),
-    reset: jest.fn(),
-    adopt: jest.fn(),
+    fileId,
+    purpose: "artwork",
+    originalFilename: uploadMock.fileName ?? "thesis.pdf",
+    declaredContentType: uploadMock.contentType,
+    detectedContentType: uploadMock.contentType ?? "application/pdf",
+    size: 48_000,
+    ownerId: "user_client",
+    state: "ready",
+    createdAt: "2026-08-24T00:00:00.000Z",
+    readyAt: "2026-08-24T00:00:00.000Z",
+    references: [],
+    ...(uploadMock.detected ? { detected: uploadMock.detected } : {}),
+    artworkCheck: { status: "passed" },
   };
+}
+
+/**
+ * Put `uploadMock`'s file in the attachments store, as if the screen had
+ * already read its storage record — the main file's size and pages come from it.
+ */
+export function holdUploadedFile(): void {
+  const file = uploadedFile();
+  useArtworkAttachments.setState((state) => ({ files: { ...state.files, [file.fileId]: file } }));
+}
+
+/** A picker that hands back `uploadMock`'s file, and an upload that stores it. */
+export function mockPickedUpload(api: { uploadFile: jest.Mock }): void {
+  api.uploadFile.mockImplementation(() => ({ done: Promise.resolve(uploadedFile()), cancel: jest.fn() }));
+}
+
+export const pickerModule = {
+  FILE_PICKER_NEEDS_REBUILD: "rebuild",
+  getDocumentPickerNative: () => ({
+    getDocumentAsync: async () => ({
+      canceled: false,
+      assets: [{
+        uri: "file:///picked",
+        name: uploadMock.fileName ?? "thesis.pdf",
+        mimeType: uploadMock.contentType ?? "application/pdf",
+        size: 48_000,
+      }],
+    }),
+  }),
+};
+
+/** Record the picker filter the screen hands over when "Choose files" is pressed. */
+export function captureGuards(into: (FormatGuard | undefined)[]): void {
+  useArtworkAttachments.setState({
+    pick: async (_lineId: string, guard?: FormatGuard) => {
+      into.push(guard);
+    },
+  });
 }

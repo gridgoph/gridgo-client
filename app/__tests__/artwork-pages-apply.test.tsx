@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { Image } from "react-native";
 
 import ArtworkScreen from "@/app/request/artwork";
@@ -6,6 +6,7 @@ import { useCart } from "@/store/cart";
 
 import {
   documentCart,
+  mockPickedUpload,
   mockUpdateCartLine,
   pdfDetected,
   renderInSafeArea,
@@ -24,13 +25,11 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ lineId: "cline_1" }),
 }));
 
-jest.mock("@/hooks/useArtworkUpload", () => ({
-  useArtworkUpload: (initial?: { fileId?: string | null }) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { uploadHookState } = require("../../test/artworkPagesFixtures");
-    return uploadHookState(initial);
-  },
-}));
+// The picker is native: it hands back the file `uploadMock` describes.
+jest.mock("@/lib/nativeModules", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("../../test/artworkPagesFixtures").pickerModule;
+});
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
@@ -44,6 +43,7 @@ jest.mock("@/lib/api", () => {
       size: 48_000,
     })),
     updateCartLine: jest.fn(),
+    uploadFile: jest.fn(),
   };
 });
 
@@ -56,11 +56,13 @@ beforeEach(() => {
   uploadMock.detected = pdfDetected({ pageCount: 30 });
   uploadMock.contentType = "application/pdf";
   mockUpdateCartLine(api);
+  mockPickedUpload(api);
   useCart.setState({ cartId: "cart_1", cart: documentCart(), loading: false, busy: false, error: null });
 });
 
 it("writes a 30-page PDF onto a per-page line without tapping Use 30 pages", async () => {
   await renderInSafeArea(<ArtworkScreen />);
+  fireEvent.press(screen.getByLabelText("Choose files"));
 
   await waitFor(() => {
     expect(api.updateCartLine).toHaveBeenCalledWith(

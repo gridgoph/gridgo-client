@@ -267,7 +267,7 @@ describe("artwork GRIDGO cannot use (gridgo-api#122)", () => {
   });
 
   it("puts checkout's refusal ahead of a passing check, until the artwork changes", () => {
-    const signature = `|${LINK.formatCode} ${LINK.url}`;
+    const signature = `link ${LINK.formatCode} ${LINK.url}`;
     const problems = { cline_1: { code: "artwork_link_check_failed", message: "Make it public.", signature } };
     expect(lineArtworkStatus(line, {}, problems)).toEqual({ kind: "problem", text: "Make it public." });
     expect(lineArtworkStatus({ ...line, artworkFileId: "file_2", artworkLinks: [] }, {}, problems)).toBeNull();
