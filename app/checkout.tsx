@@ -381,12 +381,12 @@ export default function CheckoutScreen() {
   const lastLine = lines.at(-1) ?? null;
 
   /**
-   * "Add more from Shop A for Fri 12 Oct": the next product is matched to that
-   * group's shop on that group's date, so it rides in the same delivery.
+   * "Add more from Shop A for Fri 12 Oct": the products that group's shop can
+   * still make by that date, so the next one rides in the same delivery (#267).
    */
   const addToGroup = (groupId: string, label: string, deadline: string | null) => {
     useBasketGroupTarget.getState().set(groupId, label, deadline);
-    router.push({ pathname: "/request/category", params: { forGroup: "1" } });
+    router.push("/request/add-more");
   };
 
   /** Move one group's products to another date — or give a "no rush" group one. */

@@ -55,7 +55,7 @@ afterEach(async () => {
 });
 
 // One press per file: see "Running and testing" in AGENTS.md.
-it("adds more to one group by matching that group's shop on that group's date", async () => {
+it("adds more to one group by opening that group's own products", async () => {
   const cart = datedCart();
   api.getSettings.mockResolvedValue(MULTI_SETTINGS);
   api.getCart.mockResolvedValue(cart);
@@ -68,5 +68,5 @@ it("adds more to one group by matching that group's shop on that group's date", 
   await fireEvent.press(await screen.findByLabelText("Add more from Shop B for Fri 16 Oct. No extra delivery fee."));
 
   expect(useBasketGroupTarget.getState()).toMatchObject({ groupId: "cline_1", label: "Shop B", deadline: DATE_MID });
-  expect(mockPush).toHaveBeenCalledWith({ pathname: "/request/category", params: { forGroup: "1" } });
+  expect(mockPush).toHaveBeenCalledWith("/request/add-more");
 });
