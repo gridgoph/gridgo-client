@@ -20,7 +20,7 @@ type Props = {
 /**
  * How the file sits on the paper (gridgo-client#245).
  *
- * Drawn as one more step of the shop's order sheet, with the same circle a
+ * Drawn as one more step of the shop's order form, with the same circle a
  * required answer gets, because that is what it is: the shop needs it before
  * it can print a drawing at the right scale. Nothing is ticked until the
  * client ticks it.
@@ -102,8 +102,8 @@ function Marker({ selected }: { selected: boolean }) {
 }
 
 /**
- * The placement in miniature: a sheet of paper and the page on it. Fit fills
- * the sheet; the two actual-size layouts keep a smaller page in the middle or
+ * The placement in miniature: the paper and the page on it. Fit fills
+ * the paper; the two actual-size layouts keep a smaller page in the middle or
  * at the top-left corner.
  */
 function LayoutGlyph({ layout, selected }: { layout: KnownLayout; selected: boolean }) {
