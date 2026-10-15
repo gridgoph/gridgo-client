@@ -1,3 +1,4 @@
+import { buildDistribution } from "@/lib/buildDistribution";
 import { releasePushDownloadUrl } from "@/lib/releasePush";
 import { accountHold } from "@/lib/accountHold";
 import { getOrder, getSupportChatThread, markNotificationRead } from "@/lib/api";
@@ -168,7 +169,7 @@ export function usePushNotifications(): void {
       if (routed.current.has(key)) return;
       routed.current.add(key);
       const sequence = ++tapSequence.current;
-      const download = releasePushDownloadUrl(data, title);
+      const download = releasePushDownloadUrl(data, title, buildDistribution());
       if (download) {
         pending.current = null;
         // An update is public and can rescue a signed-out install too.

@@ -5,9 +5,11 @@ import { AppState, Platform } from "react-native";
 import {
   describeInstalledBuild,
   installedBuild,
+  offersSideloadUpdates,
   parseForcedVersionCode,
   type AppBuild,
 } from "@/lib/appUpdate";
+import { buildDistribution } from "@/lib/buildDistribution";
 import { isExpoGoRuntime } from "@/lib/push";
 import { logUpdateCheck, useAppUpdate } from "@/store/appUpdate";
 
@@ -40,7 +42,8 @@ export function readInstalledBuild(): AppBuild | null {
  * Looks for a newer GRIDGO release on launch and whenever the app comes back
  * to the foreground, at most once per `APP_UPDATE_CHECK_INTERVAL_MS`. A cold
  * launch always asks again; a return to the foreground brings a put-off
- * prompt back once that interval has passed. Mounted
+ * prompt back once that interval has passed. A Google Play build records its
+ * version and does nothing else. Mounted
  * once in the root layout. It draws nothing: `AppUpdateSheet` reads the store.
  */
 export function useAppUpdateCheck(): void {
@@ -49,7 +52,13 @@ export function useAppUpdateCheck(): void {
   useEffect(() => {
     if (!hydrated) return;
     const { start, check } = useAppUpdate.getState();
-    start(readInstalledBuild());
+    // A Google Play build never offers the side-load APK (Play policy).
+    const offersUpdates = offersSideloadUpdates(buildDistribution());
+    start(readInstalledBuild(), Date.now(), offersUpdates);
+    if (!offersUpdates) {
+      logUpdateCheck("off: a Google Play build, and Play installs its own updates");
+      return;
+    }
     void check();
 
     const subscription = AppState.addEventListener("change", (state) => {

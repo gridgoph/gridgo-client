@@ -42,6 +42,11 @@ type AppUpdateStore = {
 
   /** This launch's build; `null` where the check does not run (Expo Go, dev). */
   installed: AppBuild | null;
+  /**
+   * False in a Google Play build (`offersSideloadUpdates`): nothing is read,
+   * offered, confirmed or pinned, because Play installs the updates. In memory.
+   */
+  offersUpdates: boolean;
   /** Whether the update sheet is up. */
   promptOpen: boolean;
   /** "Later" or "Update now" this launch. In memory only: a cold launch asks again. */
@@ -53,7 +58,7 @@ type AppUpdateStore = {
   checking: boolean;
 
   /** Once per launch, after hydration: records the build and spots an upgrade. */
-  start: (installed: AppBuild | null, now?: number) => void;
+  start: (installed: AppBuild | null, now?: number, offersUpdates?: boolean) => void;
   /** Reads the latest release unless one was read within the interval. */
   check: (now?: number, fetchImpl?: typeof fetch) => Promise<void>;
   /** Back in the foreground: bring a put-off prompt back if it is due, then check. */
@@ -71,6 +76,7 @@ const initial = {
   latest: null,
   updatedNotice: null,
   installed: null,
+  offersUpdates: true,
   promptOpen: false,
   dismissed: null,
   completed: null,
@@ -79,8 +85,10 @@ const initial = {
 };
 
 /** The newer release waiting for this phone, or `null`. Drives the Notifications card. */
-export function selectAvailableUpdate(state: Pick<AppUpdateStore, "installed" | "latest">) {
-  return newerRelease(state.installed, state.latest);
+export function selectAvailableUpdate(
+  state: Pick<AppUpdateStore, "installed" | "latest" | "offersUpdates">,
+) {
+  return state.offersUpdates ? newerRelease(state.installed, state.latest) : null;
 }
 
 /**
@@ -92,8 +100,8 @@ export const useAppUpdate = create<AppUpdateStore>()(
   persist(
     (set, get) => {
       const promptDue = (now: number) => {
-        const { installed, latest, dismissed } = get();
-        return shouldShowUpdatePrompt({ installed, latest, dismissed, now });
+        const { installed, latest, dismissed, offersUpdates } = get();
+        return offersUpdates && shouldShowUpdatePrompt({ installed, latest, dismissed, now });
       };
 
       const putAway = (now: number) => {
@@ -108,15 +116,23 @@ export const useAppUpdate = create<AppUpdateStore>()(
         hydrated: false,
         ...initial,
 
-        start: (installed, now = Date.now()) => {
+        start: (installed, now = Date.now(), offersUpdates = true) => {
           if (!installed) {
-            set({ installed: null, promptOpen: false });
+            set({ installed: null, offersUpdates, promptOpen: false });
+            return;
+          }
+          if (!offersUpdates) {
+            // A Play build keeps its version for Settings > What's new, and
+            // says nothing about updates: Play installs them and tells nobody
+            // through this app.
+            set({ installed, offersUpdates, promptOpen: false, completed: null, updatedNotice: null });
             return;
           }
           const { lastSeenVersionCode, updatedNotice } = get();
           const upgraded = justUpdated(installed, lastSeenVersionCode);
           set({
             installed,
+            offersUpdates,
             completed: upgraded ? installed : null,
             updatedNotice: upgraded ? { build: installed, at: now } : updatedNotice,
             // Never lowered: a downgrade is not an update, and must not make the
@@ -129,8 +145,8 @@ export const useAppUpdate = create<AppUpdateStore>()(
         },
 
         check: async (now = Date.now(), fetchImpl = fetch) => {
-          const { installed, checking, lastCheckedAt } = get();
-          if (!installed || checking) return;
+          const { installed, offersUpdates, checking, lastCheckedAt } = get();
+          if (!installed || !offersUpdates || checking) return;
           if (!shouldCheckForUpdate(lastCheckedAt, now)) {
             logUpdateCheck("skipped: the latest release was read less than 4 hours ago");
             return;
