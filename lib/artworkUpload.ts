@@ -418,3 +418,45 @@ export function needsManualPageTotal(
   if (!isWordDocument(contentType)) return false;
   return detectedPageQuantity(detected ?? null) == null;
 }
+
+/** A file the picker handed back, before any byte has moved. */
+export type PickedArtwork = { name: string; mimeType?: string | null; size?: number | null };
+
+/** The listing's own narrowing of the picker (see `FormatGuard` in `hooks/useArtworkUpload`). */
+export type ArtworkFormatCheck = {
+  check: (fileName: string, mimeType?: string | null) => boolean;
+  rejection: (fileName: string, mimeType?: string | null) => string;
+};
+
+/**
+ * Why a picked file is refused on this phone, or null to send it.
+ *
+ * Some pickers ignore the type filter, so the choice is checked here too, in
+ * the shop's own words; and the size limits are said before a client spends
+ * their data on an upload GRIDGO would refuse.
+ */
+export function artworkPickRefusal(
+  picked: PickedArtwork,
+  guard?: ArtworkFormatCheck,
+): Pick<ArtworkUploadState, "error" | "refusal" | "refusedMimeType"> | null {
+  const name = normalizeFileName(picked.name);
+  if (guard && !guard.check(name, picked.mimeType ?? null)) {
+    return {
+      error: guard.rejection(name, picked.mimeType ?? null),
+      refusal: "format",
+      refusedMimeType: picked.mimeType ?? null,
+    };
+  }
+  if (typeof picked.size === "number" && picked.size > ARTWORK_MAX_BYTES) {
+    return {
+      error: `Artwork has to be under ${ARTWORK_MAX_MIB} MB, and this file is larger. Flatten the layers or export at a lower resolution, then pick it again.`,
+    };
+  }
+  const docx = name.toLowerCase().endsWith(".docx") || picked.mimeType === DOCX_CONTENT_TYPE;
+  if (docx && typeof picked.size === "number" && picked.size > DOCX_MAX_BYTES) {
+    return {
+      error: `Word documents have to be under ${DOCX_MAX_MIB} MB, and this file is larger. Save it as a PDF, or make the pictures in it smaller, then pick it again.`,
+    };
+  }
+  return null;
+}

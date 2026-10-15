@@ -149,6 +149,12 @@ export type ProductionItem = {
   /** Design links snapshotted at checkout; absent on an API from before them. */
   artworkLinks?: ArtworkLink[];
   /**
+   * Every file and link on this item, in the client's order, with labels
+   * (gridgo-api#243). Absent on an API from before — read it through
+   * `lineAttachments`.
+   */
+  artworkAttachments?: ArtworkAttachment[];
+  /**
    * The client's note for this item, masked and frozen at checkout (gridgo-api
    * `docs/ORDER_CHANGES_API.md`). Empty when they wrote none; absent on an API
    * from before notes.
@@ -1513,6 +1519,26 @@ export type AcceptedFormat = {
 export type ArtworkLink = { formatCode: string; url: string };
 
 /**
+ * One file or design link on an item (gridgo-api `docs/ORDER_MATCH_API.md`
+ * "Multiple artwork attachments"). A file read back carries a short-lived
+ * signed `downloadUrl`; it is never sent back.
+ */
+export type ArtworkAttachment =
+  | {
+      kind: "file";
+      fileId: string;
+      label?: string;
+      downloadUrl?: string;
+      downloadUrlExpiresAt?: string;
+    }
+  | { kind: "link"; formatCode: string; url: string; label?: string };
+
+/** What a write sends: the list in order, with nothing GRIDGO signed. */
+export type ArtworkAttachmentInput =
+  | { kind: "file"; fileId: string; label?: string }
+  | { kind: "link"; formatCode: string; url: string; label?: string };
+
+/**
  * What `POST /artwork/link-check` found. Advisory: `ok` is true only with real
  * evidence of public access, and `message` is display text never to branch on.
  */
@@ -2406,6 +2432,10 @@ export type CartLineRecord = {
   mockupFileId: string | null;
   /** Design links on this line. Absent on an API from before them — see `lineArtworkLinks`. */
   artworkLinks?: ArtworkLink[];
+  /** Files and links in display order (gridgo-api#243); read through `lineAttachments`. */
+  artworkAttachments?: ArtworkAttachment[];
+  /** The first ready image or PDF among them: the preview's source. */
+  artworkPreviewFileId?: string | null;
   /** The client's note for this item, as GRIDGO stored it (contacts masked). */
   specialInstructions?: string;
   /** This line's own drop-off, for a run split across several addresses. */
@@ -2576,6 +2606,7 @@ export type InvoiceLine = {
   artworkFileId: string | null;
   mockupFileId: string | null;
   artworkLinks?: ArtworkLink[];
+  artworkAttachments?: ArtworkAttachment[];
   dropoff: OrderPoint | null;
 };
 
@@ -2901,6 +2932,11 @@ export async function updateCartLine(
     artworkFileId?: string | null;
     /** Replaces the line's links; `[]` clears them. Omit to keep them. */
     artworkLinks?: ArtworkLink[];
+    /**
+     * Replaces every file and link, in this order (at most 10). Never sent
+     * with `artworkFileId` or `artworkLinks`: GRIDGO refuses the mix.
+     */
+    artworkAttachments?: ArtworkAttachmentInput[];
     /** Empty clears the note; omit to keep it. */
     specialInstructions?: string;
     dropoff?: OrderPoint | null;

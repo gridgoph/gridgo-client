@@ -8,7 +8,6 @@ import type { ArtworkLinkCheck, Cart, CartLineRecord, CatalogItem } from "@/lib/
 import { useCart } from "@/store/cart";
 import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
 
-const mockPick = jest.fn(async () => undefined);
 
 jest.mock("expo-router", () => ({
   // The first-order tour registers its screen on focus (`useTourScreen`).
@@ -20,50 +19,6 @@ jest.mock("expo-router", () => ({
     back: jest.fn(),
   }),
   useLocalSearchParams: () => ({ lineId: "cline_1" }),
-}));
-
-// The picker itself is native. What matters here is that the card reaches it.
-jest.mock("@/hooks/useArtworkUpload", () => ({
-  useArtworkUpload: (initial?: { fileId?: string | null }) => ({
-    state: initial?.fileId
-      ? {
-          phase: "stored",
-          fileId: initial.fileId,
-          fileName: "WorkHard.png",
-          progress: null,
-          error: null,
-          size: 492_000,
-          contentType: "image/png",
-          detected: {
-            kind: "raster",
-            pageCount: 1,
-            pixelWidth: 720,
-            pixelHeight: 1600,
-            dpi: 96,
-            measureUnit: "mm",
-            widthMilli: 190_500,
-            heightMilli: 423_300,
-            pageSize: null,
-            orientation: "portrait",
-          },
-        }
-      : {
-          phase: "empty",
-          fileId: null,
-          fileName: "",
-          progress: null,
-          error: null,
-          size: null,
-          contentType: null,
-          detected: null,
-        },
-    pick: mockPick,
-    retry: jest.fn(),
-    cancel: jest.fn(),
-    attachTo: jest.fn(),
-    reset: jest.fn(),
-    adopt: jest.fn(),
-  }),
 }));
 
 jest.mock("@/lib/api", () => {
@@ -180,10 +135,14 @@ function check(overrides: Partial<ArtworkLinkCheck>): ArtworkLinkCheck {
 }
 
 /** A link already committed and checked: the screen is drawn from the stores alone. */
+/**
+ * A link the check has answered: on the item, where its row carries the
+ * answer, or still in the field, which keeps one that did not pass.
+ */
 function withCheck(result: ArtworkLinkCheck | null, onLine: boolean) {
   useCart.setState({ cart: cart({ lines: [line({ artworkLinks: onLine ? [LINK] : [] })] }) });
   useDesignLink.setState({
-    committed: { cline_1: URL },
+    ...(onLine ? {} : { committed: { cline_1: URL }, drafts: { cline_1: URL } }),
     checks: { [checkKey(LINK)]: result ? { phase: "checked", check: result } : { phase: "unavailable" } },
   });
 }
@@ -204,10 +163,10 @@ describe("ArtworkScreen design link", () => {
     await renderInSafeArea(<ArtworkScreen />);
 
     expect(screen.getByLabelText("Design link")).toBeTruthy();
-    expect(screen.getByLabelText("Choose your artwork file")).toBeTruthy();
-    expect(screen.getByText("Upload the file, or paste a Canva link. Either one is enough.")).toBeTruthy();
+    expect(screen.getByLabelText("Choose files")).toBeTruthy();
+    expect(screen.getByText(/^Upload files, paste a Canva link, or both\./)).toBeTruthy();
     expect(screen.getByLabelText("How to share from Canva")).toBeTruthy();
-    expect(screen.getByText("GRIDGO needs the file or a design link before it can print this.")).toBeTruthy();
+    expect(screen.getByText("GRIDGO needs at least one file or design link before it can print this.")).toBeTruthy();
   });
 
   it("draws no link field where the listing takes files only", async () => {
@@ -266,14 +225,15 @@ describe("ArtworkScreen design link", () => {
       screen.getByText("Set sharing to Anyone with the link, then check it again. Or upload the file instead."),
     ).toBeTruthy();
     expect(screen.getByLabelText("Go to checkout").props.accessibilityState).toMatchObject({ disabled: true });
-    expect(screen.getByText(/Fix the link's sharing, or clear it/)).toBeTruthy();
+    expect(screen.getByText("Fix the sharing of the link marked above, or remove it.")).toBeTruthy();
   });
 
   it("says the link is being checked, and holds checkout until it answers", async () => {
     useCart.setState({ cart: cart({ lines: [line({ artworkLinks: [LINK] })] }) });
-    useDesignLink.setState({ committed: { cline_1: URL }, checks: { [checkKey(LINK)]: { phase: "checking" } } });
+    useDesignLink.setState({ checks: { [checkKey(LINK)]: { phase: "checking" } } });
     await renderInSafeArea(<ArtworkScreen />);
 
+    expect(screen.getByText("Checking who can open this link…")).toBeTruthy();
     expect(screen.getByText("Checking your link…")).toBeTruthy();
     expect(screen.getByLabelText("Go to checkout").props.accessibilityState).toMatchObject({ disabled: true });
   });
@@ -282,7 +242,6 @@ describe("ArtworkScreen design link", () => {
     const refused = line({ artworkLinks: [LINK] });
     useCart.setState({ cart: cart({ lines: [refused] }) });
     useDesignLink.setState({
-      committed: { cline_1: URL },
       checks: { [checkKey(LINK)]: { phase: "checked", check: check({ ok: true, access: "public_view" }) } },
       problems: {
         cline_1: {
@@ -304,6 +263,7 @@ describe("ArtworkScreen design link", () => {
 
     expect(screen.queryByText("Anyone with the link can view it")).toBeNull();
     expect(screen.queryByText("We couldn't open this link")).toBeNull();
+    expect(screen.getByText("Saved with this item")).toBeTruthy();
     expect(screen.getByLabelText("Go to checkout")).toBeTruthy();
   });
 

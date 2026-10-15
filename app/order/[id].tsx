@@ -76,6 +76,7 @@ import {
   paysInFull,
 } from "@/lib/payment";
 import { physicalInvoiceEntry, physicalInvoiceRequestsEnabled } from "@/lib/physicalInvoice";
+import { cleanLabel, lineAttachments } from "@/lib/artworkAttachments";
 import { orderArtwork } from "@/lib/orderArtwork";
 import { orderReference } from "@/lib/orderReference";
 import {
@@ -353,11 +354,15 @@ export default function OrderDetailScreen() {
     so they are listed with the files rather than inside the specification.
   */
   const designLinks = (order.productionItems ?? []).flatMap((item) =>
-    (item.artworkLinks ?? []).map((link) => ({ link, itemName: item.itemName })),
+    lineAttachments(item).flatMap((entry) =>
+      entry.kind === "link"
+        ? [{ link: { formatCode: entry.formatCode, url: entry.url }, label: cleanLabel(entry.label), itemName: item.itemName }]
+        : [],
+    ),
   );
   const artworkFiles = orderArtwork(order);
-  const designLinkRows = designLinks.map(({ link, itemName }) => (
-    <DesignLinkRow key={`${itemName}:${link.formatCode}:${link.url}`} link={link} />
+  const designLinkRows = designLinks.map(({ link, label, itemName }) => (
+    <DesignLinkRow key={`${itemName}:${link.formatCode}:${link.url}`} link={link} name={label} />
   ));
   const openChat = () => router.push("/chat");
   // While the rider has the job the tracking card carries the way in; once it

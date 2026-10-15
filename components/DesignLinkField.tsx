@@ -52,6 +52,8 @@ const PASTE_JUMP = 8;
 const PASTE_SETTLE_MS = 700;
 
 type Props = {
+  /** The card's heading: "Add a design link" once the item already holds something. */
+  title?: string;
   value: string;
   onChangeText: (text: string) => void;
   /** Paste, leaving the field, or the keyboard's Done. */
@@ -85,6 +87,7 @@ type Props = {
  * them by a sign-in answer.
  */
 export function DesignLinkField({
+  title = "Design link",
   value,
   onChangeText,
   onCommit,
@@ -126,7 +129,7 @@ export function DesignLinkField({
           <ProviderIcon size={20} color={colors.textPrimary} strokeWidth={2} />
         </View>
         <View className="min-w-0 flex-1">
-          <Text className="text-body-lg font-medium text-text-primary">Design link</Text>
+          <Text className="text-body-lg font-medium text-text-primary">{title}</Text>
           <Text className="text-caption text-text-secondary">
             {provider && provider !== "other"
               ? `${providerName(provider)} design`

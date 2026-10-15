@@ -276,7 +276,7 @@ export function ArtworkUploadCard({
  * Plain filled tags rather than outlined chips — outlined chips read as
  * filters to tap, and these are facts. The card around them is the button.
  */
-function AcceptedFiles({ formats, note }: { formats: AcceptedFormat[]; note: string | null }) {
+export function AcceptedFiles({ formats, note }: { formats: AcceptedFormat[]; note: string | null }) {
   const colors = useThemeColors();
   return (
     <View className="gap-3">
@@ -323,7 +323,7 @@ function WordToPdfSteps() {
  * Transfer progress only. Monochrome on purpose — yellow is reserved for the
  * action the client can take, and a progress bar is not one.
  */
-function ProgressBar({ fraction }: { fraction: number | null }) {
+export function ProgressBar({ fraction }: { fraction: number | null }) {
   const percent = fraction == null ? null : Math.round(Math.min(1, Math.max(0, fraction)) * 100);
 
   return (

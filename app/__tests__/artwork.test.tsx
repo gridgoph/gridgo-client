@@ -5,6 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import ArtworkScreen from "@/app/request/artwork";
 import type { Cart, CartLineRecord, CatalogItem, DetectedArtwork } from "@/lib/api";
+import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
 import { agreeArtworkRights } from "@/test/legalGate";
 
@@ -25,6 +26,28 @@ const SCREENSHOT: DetectedArtwork = {
 };
 let mockDetected: DetectedArtwork = SCREENSHOT;
 
+/** The stored file's record, as the screen reads it for the main file. */
+function holdFile() {
+  useArtworkAttachments.setState({
+    files: {
+      file_art: {
+        fileId: "file_art",
+        purpose: "artwork",
+        originalFilename: "WorkHard.png",
+        declaredContentType: "image/png",
+        detectedContentType: "image/png",
+        size: 492_000,
+        ownerId: "user_client",
+        state: "ready",
+        createdAt: "2026-08-24T00:00:00.000Z",
+        readyAt: "2026-08-24T00:00:00.000Z",
+        references: [],
+        detected: mockDetected,
+      },
+    },
+  });
+}
+
 jest.mock("expo-router", () => ({
   // The first-order tour registers its screen on focus (`useTourScreen`).
   useFocusEffect: () => undefined,
@@ -37,38 +60,6 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ lineId: "cline_1" }),
 }));
 
-// The picker itself is native. What matters here is that the card reaches it.
-jest.mock("@/hooks/useArtworkUpload", () => ({
-  useArtworkUpload: (initial?: { fileId?: string | null }) => ({
-    state: initial?.fileId
-      ? {
-          phase: "stored",
-          fileId: initial.fileId,
-          fileName: "WorkHard.png",
-          progress: null,
-          error: null,
-          size: 492_000,
-          contentType: "image/png",
-          detected: mockDetected,
-        }
-      : {
-          phase: "empty",
-          fileId: null,
-          fileName: "",
-          progress: null,
-          error: null,
-          size: null,
-          contentType: null,
-          detected: null,
-        },
-    pick: mockPick,
-    retry: jest.fn(),
-    cancel: jest.fn(),
-    attachTo: jest.fn(),
-    reset: jest.fn(),
-    adopt: jest.fn(),
-  }),
-}));
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
@@ -175,6 +166,9 @@ beforeEach(() => {
   jest.spyOn(Image, "getSize").mockImplementation(() => undefined);
   mockPick.mockClear();
   mockDetected = SCREENSHOT;
+  holdFile();
+  // The picker itself is native. What matters here is that the list reaches it.
+  useArtworkAttachments.setState({ pick: mockPick });
   useCart.setState({ cartId: "cart_1", cart: cart(), loading: false, busy: false, error: null });
 });
 
@@ -203,8 +197,9 @@ describe("ArtworkScreen", () => {
     await renderInSafeArea(<ArtworkScreen />);
 
     expect(screen.getByLabelText("Go to checkout")).toBeTruthy();
-    // And the card stops being the button, because it is now a report.
-    expect(screen.queryByLabelText("Choose your artwork file")).toBeNull();
+    // And choosing files stops being the screen's yellow: it is "Add more files" now.
+    expect(screen.queryByLabelText("Choose files")).toBeNull();
+    expect(screen.getByLabelText("Add more files")).toBeTruthy();
   });
 
   // Adding another product is checkout's, beside the whole basket. Here it
@@ -242,8 +237,7 @@ describe("ArtworkScreen", () => {
     });
     await renderInSafeArea(<ArtworkScreen />);
 
-    expect(screen.getByText("Size")).toBeTruthy();
-    expect(screen.getByText("480 KB")).toBeTruthy();
+    expect(screen.getByText("PNG · 480 KB")).toBeTruthy();
     expect(screen.getByText(/We read this as 720 × 1600 pixels/)).toBeTruthy();
     expect(screen.getByText("This file does not match the print size")).toBeTruthy();
     expect(screen.getByText("Standard · 50.8 × 88.9 mm · about 600 × 1050 pixels")).toBeTruthy();
@@ -264,6 +258,7 @@ describe("ArtworkScreen", () => {
       widthMilli: 874_900,
       heightMilli: 1_237_500,
     };
+    holdFile();
     useCart.setState({ cart: cart({ lines: [line({ artworkFileId: "file_art" })] }) });
     await renderInSafeArea(<ArtworkScreen />);
 
@@ -273,6 +268,7 @@ describe("ArtworkScreen", () => {
 
   it("gives both sizes when an image is too small for A4", async () => {
     mockDetected = { ...SCREENSHOT, pixelWidth: 595, pixelHeight: 842, dpi: null, widthMilli: null, heightMilli: null };
+    holdFile();
     useCart.setState({ cart: cart({ lines: [line({ artworkFileId: "file_art" })] }) });
     await renderInSafeArea(<ArtworkScreen />);
 
@@ -281,10 +277,10 @@ describe("ArtworkScreen", () => {
     expect(screen.getByText("595 × 842 pixels")).toBeTruthy();
   });
 
-  it("opens the picker from the card itself", async () => {
+  it("opens the picker from the list itself", async () => {
     await renderInSafeArea(<ArtworkScreen />);
 
-    fireEvent.press(screen.getByLabelText("Choose your artwork file"));
+    fireEvent.press(screen.getByLabelText("Choose files"));
     expect(mockPick).toHaveBeenCalledTimes(1);
   });
 });

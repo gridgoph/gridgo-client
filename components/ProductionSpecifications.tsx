@@ -5,6 +5,7 @@ import { DesignLinkRow } from "@/components/DesignLinkRow";
 import { SpecRow } from "@/components/SpecRow";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { Order } from "@/lib/api";
+import { cleanLabel, lineAttachments } from "@/lib/artworkAttachments";
 import { itemNote } from "@/lib/orderChanges";
 import { orderProductionItems, productionSpecRows } from "@/lib/productionSpecs";
 import { formatTimelineStamp } from "@/lib/relativeTime";
@@ -36,7 +37,13 @@ export function ProductionSpecifications({ order, taxonomy = EMPTY_TAXONOMY, bar
           {productionSpecRows(item, (value) => taxonomyLabel(taxonomy, value)).map((row, index) => <SpecRow key={`${row.label}:${index}`} label={row.label} value={row.value} />)}
           {note ? <NoteRow label="Special instructions" text={note} readAt={readAt} /> : null}
           {agreed ? <NoteRow label="Agreed change" text={agreed} /> : null}
-          {showLinks ? (item.artworkLinks ?? []).map((link) => <DesignLinkRow key={`${link.formatCode}:${link.url}`} link={link} />) : null}
+          {showLinks
+            ? lineAttachments(item).flatMap((entry) =>
+                entry.kind === "link"
+                  ? [<DesignLinkRow key={`${entry.formatCode}:${entry.url}`} link={entry} name={cleanLabel(entry.label)} />]
+                  : [],
+              )
+            : null}
         </View>
       </View>
     );

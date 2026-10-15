@@ -1,5 +1,5 @@
 import { CircleAlert, FileCheck } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -7,22 +7,32 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ArtworkSizeNote } from "@/components/ArtworkSizeNote";
-import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
+import { ArtworkAttachmentList } from "@/components/ArtworkAttachmentList";
 import { DesignLinkField } from "@/components/DesignLinkField";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { ProductPreview } from "@/components/ProductPreview";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { TourTarget } from "@/components/TourTarget";
-import { useArtworkUpload, type FormatGuard } from "@/hooks/useArtworkUpload";
+import type { FormatGuard } from "@/hooks/useArtworkUpload";
 import {
+  EMPTY_ARTWORK,
   artworkCheckFailure,
+  artworkStateFromStoredFile,
   detectedProportions,
   detectedSummary,
   isWordDocument,
   needsManualPageTotal,
 } from "@/lib/artworkUpload";
-import { formatRefusal } from "@/lib/artworkFormats";
+import { formatRefusal, wordFormatNote } from "@/lib/artworkFormats";
+import {
+  attachmentFileIds,
+  attachmentLinks,
+  keepsAttachmentList,
+  lineAttachments,
+  mainFileId,
+  slotsLeft,
+} from "@/lib/artworkAttachments";
 import { artworkSizeNote } from "@/lib/artworkSize";
 import {
   measuredSizeMilli,
@@ -34,6 +44,7 @@ import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { documentPagesSummary, pageRangeError, pageTotalError } from "@/lib/documentPages";
 import { userFacingError } from "@/lib/copy";
+import { THIN_FILE_NOTE, describeArtworkFile } from "@/lib/requestValidation";
 import {
   designLinkFormats,
   designLinkPhrase,
@@ -53,6 +64,7 @@ import { type OrderStepId } from "@/lib/orderSteps";
 import { MOCKUP_LABEL } from "@/lib/productPreview";
 import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
 import { cartRightsScope, useArtworkRights } from "@/store/artworkRights";
+import { useArtworkAttachments, type PendingUpload } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
 import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
 
@@ -64,12 +76,16 @@ import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
  * client who chooses a Photoshop file finds out here, in the shop's own words,
  * rather than after sending 180 MB over mobile data.
  *
- * A listing that takes a design link (Canva, Drive) gets a field for it beside
- * the upload, and either one is artwork. The link is checked as it is pasted —
- * can anyone with it open the design — and a link that plainly cannot be
- * opened is not kept. An inconclusive check is a warning the client may pass:
- * a Canva page tells nobody outside a browser who may see it, and Operations
- * opens every design before it prints.
+ * An item takes up to ten files and design links together (report C6625C57):
+ * a shirt's front and back, a separate high-resolution logo. Each has an
+ * optional label and its own status, and their order is the client's — the
+ * first file is the main one GRIDGO prices pages from and previews. Any one
+ * file or link is enough to go on.
+ *
+ * A listing that takes a design link (Canva, Drive) gets a field that adds
+ * them. A link is checked as it is pasted — can anyone with it open the
+ * design — and only one proven public goes onto the item; checkout refuses
+ * anything less, so the field says so here, with the fix.
  *
  * An image is shown on the product. A PDF, a Word file or a link is not:
  * nothing on this phone can rasterise a PDF or lay out a Word file, and a
@@ -82,6 +98,9 @@ import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
  * a shop can trim; the far commoner case is a phone screenshot sent for a
  * flyer, and that is worth one sentence before it is printed rather than after.
  */
+/** One shared empty list, so an item with nothing in flight never re-renders the screen. */
+const NO_UPLOADS: PendingUpload[] = [];
+
 export default function ArtworkScreen() {
   const router = useRouter();
   const colors = useThemeColors();
@@ -109,10 +128,10 @@ export default function ArtworkScreen() {
   const [totalDraft, setTotalDraft] = useState<{ fileId: string; text: string } | null>(null);
 
   /**
-   * The picker filter and its refusal, in the shop's words. Rebuilt only when
-   * the listing changes; the upload hook holds on to it across renders.
+   * The picker filter and its refusal, in the shop's words, handed to the
+   * picker each time it opens.
    */
-  const guard: FormatGuard | undefined = useMemo(() => {
+  const guard: FormatGuard | undefined = (() => {
     if (!item) return undefined;
     const uploads = fileFormats(item);
     const links = designLinkFormats(item.acceptedFormats);
@@ -129,69 +148,46 @@ export default function ArtworkScreen() {
           links: links.length ? designLinkPhrase(links) : null,
         }),
     };
-  }, [item]);
+  })();
 
-  const upload = useArtworkUpload({ fileId: line?.artworkFileId }, guard);
+  // Everything on the item, in order, and what is still on its way to it.
+  const entries = lineAttachments(line);
+  const fileIds = attachmentFileIds(entries);
+  const savedLinks = attachmentLinks(entries);
+  const primaryId = mainFileId(entries);
+  const uploads = useArtworkAttachments((state) => (line ? state.uploads[line.id] : undefined)) ?? NO_UPLOADS;
+  const files = useArtworkAttachments((state) => state.files);
+  const listSaving = useArtworkAttachments((state) => (line ? state.saving[line.id] === true : false));
+  const listError = useArtworkAttachments((state) => (line ? state.saveError[line.id] ?? null : null));
+  const notice = useArtworkAttachments((state) => (line ? state.notice[line.id] ?? null : null));
+  const attachments = useArtworkAttachments.getState();
+  useEffect(() => {
+    for (const fileId of fileIds) void useArtworkAttachments.getState().readFile(fileId);
+  }, [fileIds.join(" ")]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The design link: the field's text is local while typing, and everything
-  // that arrives after a round trip lives in the store.
-  const savedLinks = Array.isArray(line?.artworkLinks) ? line.artworkLinks : [];
-  const savedUrl = savedLinks[0]?.url ?? "";
-  const [linkDraft, setLinkDraft] = useState<string | null>(null);
-  const linkText = linkDraft ?? savedUrl;
+  // The main file, as the size and page checks below read it.
+  const primaryFile = primaryId ? files[primaryId] : undefined;
+  const primaryBase = primaryId ? { ...EMPTY_ARTWORK, phase: "stored" as const, fileId: primaryId } : EMPTY_ARTWORK;
+  const primary = primaryFile ? artworkStateFromStoredFile(primaryFile, primaryBase) : primaryBase;
+
+  // The link field adds links: its text and every check's answer live in the store.
+  const linkText = useDesignLink((state) => (line ? state.drafts[line.id] ?? "" : ""));
+  const setLinkDraft = useDesignLink((state) => state.setDraft);
   const committedLink = useDesignLink((state) => (line ? state.committed[line.id] : undefined));
   const linkChecks = useDesignLink((state) => state.checks);
   const linkSaving = useDesignLink((state) => (line ? state.saving[line.id] === true : false));
   const linkSaveError = useDesignLink((state) => (line ? state.saveError[line.id] ?? null : null));
   const commitLink = useDesignLink((state) => state.commit);
-  const seedLink = useDesignLink((state) => state.seed);
   const verifyLink = useDesignLink((state) => state.verify);
   const artworkProblems = useDesignLink((state) => state.problems);
+  const linkKeys = savedLinks.map(checkKey).join("\n");
   useEffect(() => {
-    if (line && savedUrl) seedLink(line.id, savedUrl);
     // A link kept on an earlier visit meets the same check a new paste does,
     // so its answer is on screen before the client heads for checkout.
-    if (savedLinks[0]) void verifyLink(savedLinks[0]);
-  }, [line?.id, savedUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+    for (const link of savedLinks) void verifyLink(link);
+  }, [linkKeys]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Saving the file lets GRIDGO derive its page count and reset any old range.
-  const stored = upload.state.fileId;
-  useEffect(() => {
-    if (!line || !stored || stored === line.artworkFileId || saving) return;
-    void (async () => {
-      setSaving(true);
-      setSaveError(null);
-      try {
-        const updated = await run((cartId) =>
-          api.updateCartLine(cartId, line.id, {
-            artworkFileId: stored,
-          }),
-        );
-        adopt(updated);
-      } catch (error) {
-        // GRIDGO read the bytes as a type this listing does not take — a file
-        // renamed to .pdf, say. Said in the same words as a refused pick.
-        const formatRefused =
-          error instanceof api.ApiError &&
-          (error.body as { error?: string } | null)?.error === "artwork_file_format_not_accepted";
-        setSaveError(
-          formatRefused && item
-            ? formatRefusal({
-                productName: item.name,
-                fileName: upload.state.fileName || "This file",
-                mimeType: upload.state.contentType,
-                formats: fileFormats(item),
-              })
-            : userFacingError(
-                error,
-                "Your file reached GRIDGO but did not go onto this item. Try again in a moment.",
-              ),
-        );
-      } finally {
-        setSaving(false);
-      }
-    })();
-  }, [stored, upload.state.detected, line?.id, line?.artworkFileId, item?.pricingUnit]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stored = primaryId;
 
   /** Save the selection; GRIDGO returns the normalized range and updated price. */
   const savePageRange = useCallback(
@@ -256,7 +252,7 @@ export default function ArtworkScreen() {
    * cannot answer — a raster that declared no density. Its pixels still settle
    * a proportion even though they settle no physical size.
    */
-  const detected = upload.state.detected;
+  const detected = primary.detected;
   const measured = detectedProportions(detected);
 
   const measure = useCallback((fileId: string | null) => {
@@ -274,7 +270,7 @@ export default function ArtworkScreen() {
   }, []);
 
   // A Word file has no shape to measure, and Image cannot open one.
-  const wordFile = detected?.kind === "document" || isWordDocument(upload.state.contentType);
+  const wordFile = detected?.kind === "document" || isWordDocument(primary.contentType);
   useEffect(() => {
     if (!measured && !wordFile) measure(stored ?? null);
   }, [stored, measure, measured, wordFile]);
@@ -319,6 +315,12 @@ export default function ArtworkScreen() {
 
   const size = typeof line.structuredSpec.size === "string" ? line.structuredSpec.size : "";
   const summary = detectedSummary(detected);
+  // The byte count is a proxy, said only while there is no measured resolution.
+  const thinFile = describeArtworkFile({
+    originalFilename: primary.fileName || null,
+    detectedContentType: primary.contentType,
+    size: primary.size,
+  }).some((fact) => fact.id === "size" && fact.tone === "warn");
 
   /*
     The one thing this screen has been unable to answer.
@@ -352,20 +354,20 @@ export default function ArtworkScreen() {
   const rangeText = rangeDraft?.fileId === line.artworkFileId ? rangeDraft.text : documentPages?.range ?? "";
   const rangeDirty = rangeText !== (documentPages?.range ?? "");
   const rangeError = documentPages ? pageRangeError(rangeText, documentPages.total) : null;
-  const wordNeedsTotal = needsManualPageTotal(detected, upload.state.contentType, item?.pricingUnit);
-  // Asked only once the file is the line's: the count belongs to the file GRIDGO holds.
-  const manualTotal = wordNeedsTotal && stored === line.artworkFileId;
+  const wordNeedsTotal = needsManualPageTotal(detected, primary.contentType, item?.pricingUnit);
+  // The count belongs to the main file GRIDGO holds.
+  const manualTotal = wordNeedsTotal && Boolean(primaryId);
   const savedTotal = documentPages ? String(documentPages.total) : "";
   const totalText = totalDraft?.fileId === line.artworkFileId ? totalDraft.text : savedTotal;
   const totalDirty = manualTotal && totalText.trim() !== savedTotal;
   const totalError = totalDirty ? pageTotalError(totalText) : null;
   const pagesMissing = item?.pricingUnit === "per_page" && !documentPages;
   // Only about a file GRIDGO holds: before one is picked there is nothing unread.
-  const unreadPages = pagesMissing && !wordNeedsTotal && line.artworkFileId
+  const unreadPages = pagesMissing && !wordNeedsTotal && primaryId
     ? "Upload a document with a readable page count. If needed, export it as a PDF and upload it again."
     : null;
 
-  const onLine = Boolean(line.artworkFileId);
+  const onLine = fileIds.length > 0;
   const acceptedFormats = item?.acceptedFormats ?? [];
   const parsedLink = committedLink ? parseDesignLink(committedLink, acceptedFormats) : null;
   const linkState = parsedLink?.ok ? linkChecks[checkKey(parsedLink.link)] : undefined;
@@ -375,20 +377,39 @@ export default function ArtworkScreen() {
   // Link formats the cart cannot keep yet (Drive, Dropbox, WeTransfer filed
   // under their own codes): named, never offered as a field that cannot save.
   const otherLinks = item ? linkFormats(item).filter((format) => !links.includes(format)) : [];
-  const uploads = item ? fileFormats(item) : [];
-  const verdict = linkVerdict(linkState, { canUpload: uploads.length > 0 });
-  const linkOnLine = savedLinks.length > 0;
-  const hasArtwork = onLine || linkOnLine;
-  // Checkout refuses a line whose link fails, even beside a good file, and a
-  // file that failed GRIDGO's own check (gridgo-api#122). Both stop here first.
-  const linkBlocked = linkOnLine && Boolean(verdict?.blocks);
-  const fileProblem = onLine ? artworkCheckFailure(upload.state.fileCheck) : null;
+  const uploadFormats = item ? fileFormats(item) : [];
+  // A listing that names no formats at all still takes a file; the server judges it.
+  const takesFiles = uploadFormats.length > 0 || !links.length;
+  const verdict = linkVerdict(linkState, { canUpload: uploadFormats.length > 0 });
+  const hasArtwork = entries.length > 0;
+  const inFlight = uploads.filter((entry) => entry.phase !== "failed").length;
+  const roomLeft = slotsLeft(entries.length + inFlight);
+  // Checkout refuses a line if any one of its links fails, even beside a good
+  // file, and any file that failed GRIDGO's own check (gridgo-api#122). Both
+  // stop here first, on the row they are about.
+  const savedLinkChecking = savedLinks.some((link) => linkChecks[checkKey(link)]?.phase === "checking");
+  const linkBlocked = savedLinks.some(
+    (link) => linkVerdict(linkChecks[checkKey(link)], { canUpload: uploadFormats.length > 0 })?.blocks,
+  );
+  const fileProblem = fileIds.some((fileId) => artworkCheckFailure(files[fileId]?.artworkCheck));
   const checkoutProblem = currentProblem(artworkProblems, line);
   const canCheckout =
     hasArtwork &&
-    rightsAgreed && (!asksPages || (stored === line.artworkFileId && !saveError)) && !saving && !linkSaving && !linkChecking && !pagesMissing && !totalDirty && !rangeDirty && !rangeError && !linkBlocked && !fileProblem;
+    rightsAgreed &&
+    (!asksPages || (primaryFile !== undefined && !saveError)) &&
+    !saving &&
+    !listSaving &&
+    inFlight === 0 &&
+    !linkSaving &&
+    !savedLinkChecking &&
+    !pagesMissing &&
+    !totalDirty &&
+    !rangeDirty &&
+    !rangeError &&
+    !linkBlocked &&
+    !fileProblem;
   const name = item?.name ?? "this item";
-  /** Check the link and, unless it plainly cannot be opened, keep it on the line. */
+  /** Check the link and, once it is proven public, add it to the item. */
   const commitLinkText = (text: string, options?: { recheck?: boolean }) =>
     void commitLink(text, line.id, options);
   const takesCanva = takesCanvaLinks(links);
@@ -429,79 +450,94 @@ export default function ArtworkScreen() {
           {size ? ` · ${size}` : ""}.
         </Text>
 
-        {uploads.length && links.length ? (
-          <Text className="mt-1 text-body text-text-secondary">
-            Upload the file, or paste {designLinkPhrase(links)}. Either one is enough.
-          </Text>
-        ) : null}
+        <Text className="mt-1 text-body text-text-secondary">
+          {takesFiles && links.length
+            ? `Upload files, paste ${designLinkPhrase(links)}, or both.`
+            : links.length
+              ? `Paste ${designLinkPhrase(links)}.`
+              : "Upload the files you want printed."}{" "}
+          Add a front and a back, or a separate logo, each with its own label.
+        </Text>
 
-        {uploads.length || !links.length ? (
+        {takesFiles || links.length ? (
           <TourTarget step="artwork" className="mt-6">
             {/*
-              Until there is artwork this card is the one thing on the screen a
-              client can act on, so it carries the screen's yellow and takes
-              the tap itself. Once a file or a link is on the line it goes
-              quiet and the yellow moves to "Go to checkout" below.
+              Until there is artwork the list's "Choose files" is the one thing
+              on the screen a client can act on, so it carries the screen's
+              yellow. Once anything is on the item it goes quiet and the yellow
+              moves to "Go to checkout" below.
             */}
-            <ArtworkUploadCard
-              state={upload.state}
-              onPick={() => void upload.pick()}
-              onRetry={() => void upload.retry()}
-              onCancel={upload.cancel}
-              emphasis={hasArtwork ? "quiet" : "primary"}
-              resolution={resolution}
-              resolutionQuiet={sizeNote != null}
-              formats={uploads.length ? uploads : undefined}
-              productName={name}
+            <ArtworkAttachmentList
+              entries={entries}
+              uploads={uploads}
+              files={files}
+              linkChecks={linkChecks}
+              takesFiles={takesFiles}
+              formats={uploadFormats}
+              wordNote={uploadFormats.length ? wordFormatNote(name, uploadFormats) : null}
+              ordered={keepsAttachmentList(line)}
+              saving={listSaving}
+              saveError={listError}
+              notice={notice}
+              onPick={() => void attachments.pick(line.id, guard)}
+              onRemove={(key) => void attachments.remove(line.id, key)}
+              onMove={(key, by) => void attachments.move(line.id, key, by)}
+              onRelabel={(key, label) => void attachments.relabel(line.id, key, label)}
+              onRecheck={(link) => void verifyLink(link, { force: true })}
+              onRetryUpload={(key) => void attachments.retry(line.id, key)}
+              onDismissUpload={(key) => attachments.dismiss(line.id, key)}
             />
           </TourTarget>
         ) : null}
 
+        {links.length && roomLeft > 0 ? (
+          <View className="mt-4">
+            <DesignLinkField
+              title={hasArtwork ? "Add a design link" : "Design link"}
+              value={linkText}
+              onChangeText={(text) => setLinkDraft(line.id, text)}
+              onCommit={(text) => commitLinkText(text)}
+              onClear={() => {
+                setLinkDraft(line.id, "");
+                commitLinkText("");
+              }}
+              onRecheck={() => commitLinkText(linkText, { recheck: true })}
+              phrase={designLinkPhrase(links)}
+              takesCanva={takesCanva}
+              checking={linkChecking}
+              saving={linkSaving}
+              verdict={verdict}
+              inputError={parsedLink && !parsedLink.ok ? parsedLink.message : null}
+              saveError={linkSaveError}
+              savedUnchecked={false}
+            />
+          </View>
+        ) : null}
+
         {/*
-          Under the file it is about. A warning, never a block: a file of the
-          wrong size can still be printed scaled, and the client decides.
+          About the main file: what it will print at, at the size chosen. A
+          warning, never a block — a file of the wrong size can still be
+          printed scaled, and the client decides.
         */}
+        {primaryId && fileIds.length > 1 && (sizeNote || summary || resolution || thinFile) ? (
+          <Text className="mt-6 text-overline text-text-muted">MAIN FILE</Text>
+        ) : null}
         {sizeNote ? <ArtworkSizeNote note={sizeNote} /> : null}
+        {resolution ? (
+          <Text
+            className={
+              resolution.verdict === "low" && !sizeNote
+                ? "mt-3 text-caption text-warning"
+                : "mt-3 text-caption text-text-muted"
+            }
+          >
+            {resolution.message}
+          </Text>
+        ) : thinFile ? (
+          <Text className="mt-3 text-caption text-warning">{THIN_FILE_NOTE}</Text>
+        ) : null}
 
         {saveError ? <Text className="mt-3 text-body text-error">{saveError}</Text> : null}
-        {fileProblem ? (
-          <Text className="mt-3 text-body text-error" accessibilityRole="alert">
-            {fileProblem}
-          </Text>
-        ) : null}
-
-        {links.length ? (
-          <>
-            {uploads.length ? (
-              <View className="mt-5 flex-row items-center gap-3" aria-hidden>
-                <View className="h-px flex-1 bg-outline" />
-                <Text className="text-body text-text-muted">or</Text>
-                <View className="h-px flex-1 bg-outline" />
-              </View>
-            ) : null}
-            <View className="mt-5">
-              <DesignLinkField
-                value={linkText}
-                onChangeText={setLinkDraft}
-                onCommit={(text) => commitLinkText(text)}
-                onClear={() => {
-                  setLinkDraft("");
-                  commitLinkText("");
-                }}
-                onRecheck={() => commitLinkText(linkText, { recheck: true })}
-                phrase={designLinkPhrase(links)}
-                takesCanva={takesCanva}
-                checking={linkChecking}
-                saving={linkSaving}
-                verdict={verdict}
-                inputError={parsedLink && !parsedLink.ok ? parsedLink.message : null}
-                saveError={linkSaveError}
-                savedUnchecked={linkOnLine && !linkState && committedLink === savedUrl}
-                keptAs={parsedLink?.ok && savedUrl && savedUrl !== parsedLink.link.url ? savedUrl : null}
-              />
-            </View>
-          </>
-        ) : null}
 
         {/*
           What the file itself says it is. This is a verification line, not a
@@ -605,8 +641,8 @@ export default function ArtworkScreen() {
             <Text className="text-overline text-text-muted">HOW IT WOULD LOOK</Text>
             <ProductPreview
               subcategoryCode={item?.subcategoryCode}
-              artworkFileId={line.artworkFileId}
-              artworkName={upload.state.fileName || name}
+              artworkFileId={line.artworkPreviewFileId ?? primaryId}
+              artworkName={primary.fileName || name}
               productName={name}
               size={size || null}
             />
@@ -653,21 +689,27 @@ export default function ArtworkScreen() {
             style={({ pressed }) => (pressed && canCheckout ? { opacity: 0.9 } : undefined)}
           >
             <Text className="text-button text-action-yellow-on">
-              {saving ? "Saving…" : linkChecking ? "Checking your link…" : "Go to checkout"}
+              {saving || listSaving ? "Saving…" : linkChecking || savedLinkChecking ? "Checking your link…" : "Go to checkout"}
             </Text>
           </Pressable>
         ) : null}
-        {hasArtwork && linkBlocked ? (
+        {hasArtwork && (linkBlocked || fileProblem) ? (
           <Text className="mt-2 text-center text-caption text-error">
-            {"Fix the link's sharing, or clear it to go on with"} {onLine ? "your file" : "an upload"}.
+            {linkBlocked
+              ? "Fix the sharing of the link marked above, or remove it."
+              : "Remove the file GRIDGO cannot print from, or upload a new export."}
+          </Text>
+        ) : hasArtwork && inFlight > 0 ? (
+          <Text className="mt-2 text-center text-caption text-text-muted">
+            Checkout opens when every upload has finished.
           </Text>
         ) : null}
 
         {!hasArtwork ? (
           <Text className="mt-4 text-center text-caption text-text-muted">
             {links.length
-              ? uploads.length
-                ? "GRIDGO needs the file or a design link before it can print this."
+              ? uploadFormats.length
+                ? "GRIDGO needs at least one file or design link before it can print this."
                 : "GRIDGO needs the design link before it can print this."
               : "GRIDGO needs the file before it can print this."}
           </Text>

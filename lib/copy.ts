@@ -189,6 +189,13 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "That short link did not lead to a design. Open the design and copy its full address.";
       case "artwork_link_format_not_accepted":
         return "This shop does not take that kind of link. Paste a different one, or upload the file.";
+      // ---- artwork: several files and links on one item (gridgo-api#243) ----
+      case "artwork_attachment_limit_exceeded":
+        return "An item can have 10 files and design links at most. Remove one, then add this again.";
+      case "invalid_artwork_attachments":
+        return "GRIDGO could not keep that list of files and links. Check each label is one short line, then try again.";
+      case "artwork_file_format_not_accepted":
+        return "GRIDGO read this file as a type this item does not take. Export it as one of the accepted types and upload it again.";
       // ---- basket: the shop's minimum run ----
       case "below_minimum_quantity": {
         const minimum =
