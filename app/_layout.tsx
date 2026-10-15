@@ -359,6 +359,14 @@ function AppNavigation() {
                   name="request/match"
                   options={pushedScreenOptions("Choose a supplier")}
                 />
+                {/*
+                  Checkout's "Add more from Shop A": what that shop group can
+                  still take, instead of the category picker (#267).
+                */}
+                <Stack.Screen
+                  name="request/add-more"
+                  options={pushedScreenOptions("Add more")}
+                />
                 <Stack.Screen
                   name="request/listing"
                   options={pushedScreenOptions("Listing")}

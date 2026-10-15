@@ -2781,6 +2781,34 @@ export async function matchNextShop(
   });
 }
 
+/** Why a shop group has nothing more to offer. Open: a newer reason must not crash. */
+export type CartGroupEmptyReason = "no_orderable_listings" | "deadline_not_met" | (string & {});
+
+/**
+ * What one shop group of the basket can still take (gridgo-api#244), for
+ * "Add more from Shop A". The same anonymous card as another shop's listing on
+ * the match — no shop, no address, no ids that say whose — and no
+ * `selectToken`: a pick is matched to the group to get one.
+ */
+export type CartGroupListings = {
+  groupId: string;
+  /** GRIDGO's label for the group, the same as the basket's ("Shop A"). */
+  label: string;
+  deadline: string | null;
+  listings: OtherListing[];
+  /** Null whenever `listings` has something in it. */
+  emptyReason: CartGroupEmptyReason | null;
+};
+
+export async function getCartGroupListings(
+  cartId: string,
+  groupId: string,
+): Promise<CartGroupListings> {
+  return request<CartGroupListings>(
+    `/me/carts/${encodeURIComponent(cartId)}/groups/${encodeURIComponent(groupId)}/listings`,
+  );
+}
+
 export type CartFulfilment = {
   fulfillmentMode?: FulfilmentMode;
   serviceLevel?: ServiceLevel;

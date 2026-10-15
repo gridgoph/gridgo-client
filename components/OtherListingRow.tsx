@@ -21,6 +21,12 @@ type Props = {
   listing: PickableListing;
   onPress: () => void;
   onStalePhoto?: () => Promise<unknown> | void;
+  /**
+   * The place in line, large, down the left edge. Off where every row is the
+   * same shop's ("Add more from Shop A"): one queue, so the column would say
+   * the same number on every row and compare nothing.
+   */
+  showPlace?: boolean;
 };
 
 /**
@@ -35,7 +41,7 @@ type Props = {
  * Nothing on the row says whose it is. The API sends these listings with no
  * shop on them at all, and the row would not draw one if it did.
  */
-export function OtherListingRow({ listing, onPress, onStalePhoto }: Props) {
+export function OtherListingRow({ listing, onPress, onStalePhoto, showPlace = true }: Props) {
   const colors = useThemeColors();
   const rate = useServiceFeeRateBps();
   const photo = listing.photos[0];
@@ -48,7 +54,7 @@ export function OtherListingRow({ listing, onPress, onStalePhoto }: Props) {
     listing.name,
     `${from.toLowerCase()}${gridgoPriceLabel(listing.fromPriceMinor, rate, listing.clientFromPriceMinor)} ${unitLine(listing)}`,
     readyIn,
-    placeLabel(listing.placeInLine),
+    showPlace ? placeLabel(listing.placeInLine) : null,
     cap?.toLowerCase(),
     zoneLine(listing.distanceZone, listing.distanceKm),
     ratingLabel(listing.rating),
@@ -65,16 +71,18 @@ export function OtherListingRow({ listing, onPress, onStalePhoto }: Props) {
     >
       {({ pressed }) => (
         <>
-          <View className="w-16 items-center" aria-hidden>
-            <Text
-              className="text-h1 text-text-primary"
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {place ?? "—"}
-            </Text>
-            <Text className="text-caption font-bold text-text-primary">IN LINE</Text>
-          </View>
+          {showPlace ? (
+            <View className="w-16 items-center" aria-hidden>
+              <Text
+                className="text-h1 text-text-primary"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {place ?? "—"}
+              </Text>
+              <Text className="text-caption font-bold text-text-primary">IN LINE</Text>
+            </View>
+          ) : null}
 
           <View className="gg-card-flush min-w-0 flex-1 flex-row items-center gap-3 p-3">
             <View className="w-20">
