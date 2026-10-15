@@ -25,6 +25,7 @@
  */
 
 import type { CartLineRecord } from "@/lib/api";
+import { SHOP_PAUSED_LINE, shopPaused } from "@/lib/shopHours";
 // Compatibility exports for existing consumers; all markup lives in one helper.
 export {
   clientAmountMinor as gridgoPriceMinor,
@@ -41,6 +42,8 @@ export {
  * the line again.
  */
 export function unpricedLineReason(line: CartLineRecord): string {
+  // GRIDGO stops pricing a line once its shop is closed for now.
+  if (shopPaused(line.listing?.shopHours)) return SHOP_PAUSED_LINE;
   const minimum = line.listing?.minimumOrderQuantity ?? null;
   if (minimum != null && line.quantity < minimum) {
     return `No price at this quantity — this shop takes orders of ${minimum} and up.`;

@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ShopHoursLine } from "@/components/ShopHoursLine";
 import { ZoneRatingLine } from "@/components/ZoneRatingLine";
 import { useThemeColors } from "@/hooks/useTheme";
 import { ratingLabel, zoneLine } from "@/lib/distanceZone";
@@ -15,6 +16,7 @@ import {
   type PickableListing,
 } from "@/lib/match";
 import { printerCapLine } from "@/lib/printerWidth";
+import { shopHoursSpoken, shopHoursView } from "@/lib/shopHours";
 import { useServiceFeeRateBps } from "@/store/platformSettings";
 
 type Props = {
@@ -49,11 +51,15 @@ export function OtherListingRow({ listing, onPress, onStalePhoto, showPlace = tr
   const place = placeOrdinal(listing.placeInLine);
   const readyIn = readyInLine(listing.readyBy);
   const cap = printerCapLine(listing);
+  // Drawn only when GRIDGO sends it: another shop's listing travels without
+  // its shop, and the hours arrive once the listing itself is opened.
+  const hours = shopHoursView(listing.shopHours);
 
   const label = [
     listing.name,
     `${from.toLowerCase()}${gridgoPriceLabel(listing.fromPriceMinor, rate, listing.clientFromPriceMinor)} ${unitLine(listing)}`,
     readyIn,
+    hours ? shopHoursSpoken(hours) : null,
     showPlace ? placeLabel(listing.placeInLine) : null,
     cap?.toLowerCase(),
     zoneLine(listing.distanceZone, listing.distanceKm),
@@ -106,6 +112,7 @@ export function OtherListingRow({ listing, onPress, onStalePhoto, showPlace = tr
               />
               {readyIn ? <Text className="text-caption text-text-muted">{readyIn}</Text> : null}
               {cap ? <Text className="text-caption text-text-muted">{cap}</Text> : null}
+              <ShopHoursLine view={hours} />
               <ZoneRatingLine
                 zone={listing.distanceZone}
                 distanceKm={listing.distanceKm}

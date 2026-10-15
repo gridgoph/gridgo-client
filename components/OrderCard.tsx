@@ -10,7 +10,7 @@ import { groupTag } from "@/lib/basketGroups";
 import { paymentStatusLabel } from "@/lib/copy";
 import { paysInFull } from "@/lib/payment";
 import { orderReferenceSpoken } from "@/lib/orderReference";
-import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
+import { readyByDate, readyEarlyLabel, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 import {
   formatPriceRange,
   orderStateMeta,
@@ -66,7 +66,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${order.title}, ${order.groupLabel ? `${groupTag(order)}, part of a larger order, ` : ""}${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
+        accessibilityLabel={`${order.title}, ${order.groupLabel ? `${groupTag(order)}, part of a larger order, ` : ""}${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyEarlyLabel(order) ? `. ${readyEarlyLabel(order)}` : ""}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
         accessibilityHint={orderWaitingOn(order) ?? undefined}
         className="p-4"
       >
@@ -96,7 +96,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
             </Text>
             {readyBy ? (
               <View className="mt-3">
-                <ReadyTime promiseBy={order.promiseBy} />
+                <ReadyTime promiseBy={order.promiseBy} early={readyEarlyLabel(order)} />
               </View>
             ) : null}
             <View className="mt-3 flex-row items-baseline justify-between gap-3">

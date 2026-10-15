@@ -25,6 +25,7 @@ import {
   orderableSubcategories,
   pickListingFor,
 } from "@/lib/shopBoards";
+import { subcategoryHoursView } from "@/lib/shopHours";
 
 /**
  * One category, as a wall of samples or a list of quotes.
@@ -202,6 +203,7 @@ export default function CategoryScreen() {
                         <CategorySampleCard
                           subcategory={subcategory}
                           listing={pickListingFor(boards, subcategory.code)}
+                          hours={subcategoryHoursView(boards, subcategory.code)}
                           onPress={() => startJob(category.code, subcategory.code)}
                           onStalePhoto={onStalePhoto}
                         />
@@ -210,6 +212,7 @@ export default function CategoryScreen() {
                       <CategorySampleCard
                         subcategory={subcategory}
                         listing={pickListingFor(boards, subcategory.code)}
+                        hours={subcategoryHoursView(boards, subcategory.code)}
                         onPress={() => startJob(category.code, subcategory.code)}
                         onStalePhoto={onStalePhoto}
                       />
@@ -225,6 +228,7 @@ export default function CategoryScreen() {
                       key={subcategory.code}
                       subcategory={subcategory}
                       listing={pickListingFor(boards, subcategory.code)}
+                      hours={subcategoryHoursView(boards, subcategory.code)}
                       onPress={() => startJob(category.code, subcategory.code)}
                       onStalePhoto={onStalePhoto}
                     />

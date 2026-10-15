@@ -12,6 +12,7 @@ import { GridgoPrice } from "@/components/GridgoPrice";
 import { ListingGallery } from "@/components/ListingGallery";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { ShopHoursLine } from "@/components/ShopHoursLine";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { SpecialInstructionsField } from "@/components/SpecialInstructionsField";
 import { StepTrailBar } from "@/components/StepTrail";
@@ -74,6 +75,7 @@ import {
 } from "@/lib/printerWidth";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { designLinkPhrase } from "@/lib/designLink";
+import { SHOP_PAUSED_LINE, SHOP_PAUSED_MESSAGE, shopHoursView, shopPaused } from "@/lib/shopHours";
 import { FULFILMENT_LOCK_MESSAGE, isFulfilmentLockRefusal, needsFreshBasket } from "@/lib/requestFulfilment";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
@@ -341,6 +343,11 @@ export default function ListingScreen() {
   const links = linkFormats(item);
   const pressTime = printTimeLine(item);
   const capLine = printerCapLine(item);
+  const hours = shopHoursView(item.shopHours);
+  // Closed for now takes no new orders: GRIDGO would refuse the line at
+  // checkout, so the sheet says so before the tap rather than after it.
+  const paused = shopPaused(item.shopHours);
+  const blocked = busy || paused;
   const sizeValue = boundValue(item, selection, "size");
   // Said before the tap, because GRIDGO refuses the line otherwise
   // (`printer_cap_exceeded`) and the client would learn it from an error.
@@ -389,7 +396,7 @@ export default function ListingScreen() {
   };
 
   const add = async () => {
-    if (busy) return;
+    if (busy || paused) return;
     if (!complete || !sized) {
       setShowMissing(true);
       return;
@@ -522,6 +529,13 @@ export default function ListingScreen() {
               facts about the press a client plans the job around. */}
           {capLine ? (
             <Text className="mt-1 text-body text-text-secondary">{capLine}</Text>
+          ) : null}
+          {/* Whether the shop is open, from GRIDGO's read. Closed tonight still
+              takes the order — the ready-by waits for it to open. */}
+          {hours ? (
+            <View className="mt-2">
+              <ShopHoursLine view={hours} />
+            </View>
           ) : null}
 
           {item.description ? (
@@ -731,12 +745,12 @@ export default function ListingScreen() {
 
         <Pressable
           onPress={() => void add()}
-          disabled={busy}
+          disabled={blocked}
           accessibilityRole="button"
           accessibilityLabel={editing ? "Save this change" : "Add to my order"}
-          accessibilityState={{ disabled: busy }}
-          className={busy ? "gg-btn-primary gg-disabled mt-3" : "gg-btn-primary mt-3"}
-          style={({ pressed }) => (pressed && !busy ? { opacity: 0.9 } : undefined)}
+          accessibilityState={{ disabled: blocked }}
+          className={blocked ? "gg-btn-primary gg-disabled mt-3" : "gg-btn-primary mt-3"}
+          style={({ pressed }) => (pressed && !blocked ? { opacity: 0.9 } : undefined)}
         >
           <Text className="text-button text-action-yellow-on">
             {busy ? "Saving…" : editing ? "Save this change" : "Add to my order"}
@@ -747,11 +761,17 @@ export default function ListingScreen() {
           className={
             saveError
               ? "mt-2 text-center text-caption text-error"
-              : "mt-2 text-center text-caption text-text-muted"
+              : paused
+                ? "mt-2 text-center text-caption text-warning"
+                : "mt-2 text-center text-caption text-text-muted"
           }
         >
           {saveError
             ? saveError
+            : paused
+              ? editing
+                ? SHOP_PAUSED_LINE
+                : SHOP_PAUSED_MESSAGE
             : showMissing && missing
               ? `Pick a ${missing.name.toLowerCase()} first.`
               : pickingUp

@@ -211,6 +211,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "Your order goes out in more than one part, so every item needs a date. Choose one for any item with no set date and try again.";
       case "basket_deadline_mismatch":
         return "GRIDGO looked again with this item's date — pick from the new answer.";
+      case "shop_unavailable":
+        return "A shop in your order is closed for now and is not taking new orders. Remove its items, then place your order.";
       case "deadline_not_met":
         return "A shop in your order can no longer make one of your dates. Choose a later date for that item, or remove it.";
       case "cart_group_not_found":
