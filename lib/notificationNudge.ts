@@ -48,11 +48,14 @@ export function nextBaseline(
 export function shouldChime({
   muted,
   appState,
+  hushed = false,
 }: {
   muted: boolean;
   appState: string | null | undefined;
+  /** A louder moment owns the sound right now — the receipt's print (#229). */
+  hushed?: boolean;
 }): boolean {
-  if (muted) return false;
+  if (muted || hushed) return false;
   return appState === "active" || appState == null;
 }
 

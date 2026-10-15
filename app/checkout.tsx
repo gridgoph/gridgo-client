@@ -64,6 +64,7 @@ import {
 import { unpricedLineReason } from "@/lib/clientPrice";
 import { lineArtworkLinks, lineArtworkSummary, lineHasArtwork } from "@/lib/designLink";
 import { holdPlacedReceipt, openReceiptAfterCheckout, receiptFromCheckout, withBasket } from "@/lib/receipt";
+import { PLACE_HUSH_MS } from "@/lib/receiptPrint";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
 import { clearOrderFlow } from "@/lib/orderFlow";
 import {
@@ -112,6 +113,7 @@ import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
 import { useIsApprovedOrganization } from "@/store/organization";
+import { useNotificationNudge } from "@/store/notificationNudge";
 import { useVouchers } from "@/store/vouchers";
 import { voucherDiscountOf, voucherErrorMessage } from "@/lib/vouchers";
 import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
@@ -495,6 +497,8 @@ export default function CheckoutScreen() {
           return;
         }
       }
+      // The order's own notices land while its receipt prints: no chime over the print.
+      useNotificationNudge.getState().hush(PLACE_HUSH_MS);
       const { order, invoice, basket } = await api.checkoutCart(
         cartId,
         {

@@ -5,6 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import CheckoutScreen from "@/app/checkout";
 import type { Cart, CartLineRecord, PlatformSettings } from "@/lib/api";
 import { useCart } from "@/store/cart";
+import { useNotificationNudge } from "@/store/notificationNudge";
 import { agreeArtworkRights } from "@/test/legalGate";
 
 const mockPush = jest.fn();
@@ -226,6 +227,8 @@ describe("placing the order", () => {
       ),
     );
     expect(api.setCartFulfilment).not.toHaveBeenCalled();
+    // The order's own notices land while its receipt prints: no chime over it (#229).
+    expect(useNotificationNudge.getState().hushedUntil).toBeGreaterThan(Date.now());
     expect(mockDismissTo).toHaveBeenCalledWith("/(tabs)/orders");
     expect(mockPush).toHaveBeenCalledWith({
       pathname: "/order/receipt",

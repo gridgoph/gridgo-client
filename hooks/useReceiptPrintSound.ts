@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { audio } from "@/constants/audio";
 import { loadAppSound, type AppSound } from "@/lib/appSound";
+import { PRINT_HUSH_MS } from "@/lib/receiptPrint";
 import { useNotificationNudge } from "@/store/notificationNudge";
 
 /**
@@ -11,6 +12,8 @@ import { useNotificationNudge } from "@/store/notificationNudge";
  * Returns the call that plays it. Settings > App sounds off plays nothing — the
  * mute is read at the moment of the print, so switching it never needs a
  * remount — and `lib/appSound.ts` keeps it under the phone's silent mode.
+ * The update chime keeps quiet around it, so the order's own notices landing
+ * at the same moment do not ring over the print.
  */
 export function useReceiptPrintSound(): () => void {
   const sound = useRef<AppSound | null>(null);
@@ -24,7 +27,9 @@ export function useReceiptPrintSound(): () => void {
   }, []);
 
   return useCallback(() => {
-    if (useNotificationNudge.getState().muted) return;
+    const nudge = useNotificationNudge.getState();
+    nudge.hush(PRINT_HUSH_MS);
+    if (nudge.muted) return;
     sound.current?.play();
   }, []);
 }

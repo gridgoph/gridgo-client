@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OrderReceiptScreen from "@/app/order/receipt";
-import type { Invoice, Order } from "@/lib/api";
+import type { Invoice, MatchedOrder } from "@/lib/api";
 import { holdPlacedReceipt, receiptFromCheckout } from "@/lib/receipt";
 import { useNotificationNudge } from "@/store/notificationNudge";
 
@@ -107,7 +107,7 @@ const order = {
     downpaymentStatus: "pending_confirmation",
     downpaymentPercent: 100,
   },
-} as unknown as Order;
+} as unknown as MatchedOrder;
 
 const wrap = (node: ReactElement) => (
   <SafeAreaProvider
@@ -137,7 +137,7 @@ beforeEach(() => {
   mockReducedMotion = false;
   mockShown = true;
   mockParams = { orderId: ORDER_ID, from: "checkout" };
-  useNotificationNudge.setState({ muted: false });
+  useNotificationNudge.setState({ muted: false, hushedUntil: 0 });
   // Checkout's handoff paints at once; the screen's own reads never answer.
   api.getInvoice.mockReturnValue(new Promise(() => undefined));
   api.getOrder.mockReturnValue(new Promise(() => undefined));
@@ -153,6 +153,8 @@ describe("the receipt's print sound", () => {
     await laySlipOut();
 
     expect(mockPlay).toHaveBeenCalledTimes(1);
+    // The order's own notices land now: the bell swings but does not chime over it.
+    expect(useNotificationNudge.getState().hushedUntil).toBeGreaterThan(Date.now());
     // The paper is on its way out of the slot, not parked above it.
     expect(screen.getByTestId("receipt-slip-feed")).not.toHaveAnimatedStyle({
       transform: [{ translateY: -4000 }],
