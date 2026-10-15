@@ -1,6 +1,6 @@
 import type { DetectedArtwork } from "@/lib/api";
 import { artworkSizeNote } from "@/lib/artworkSize";
-import { physicalSizeMilli } from "@/lib/printResolution";
+import { physicalSizeMilli } from "@/lib/printSize";
 
 function image(pixelWidth: number, pixelHeight: number, dpi: number | null = null): DetectedArtwork {
   const milli = (pixels: number) => (dpi ? Math.round((pixels / dpi) * 25.4 * 1000) : null);
@@ -34,7 +34,7 @@ function pdf(widthMilli: number, heightMilli: number): DetectedArtwork {
 }
 
 const note = (detected: DetectedArtwork | null, label: string, pixels?: { width: number; height: number }) =>
-  artworkSizeNote({ detected, pixels, sizeMilli: physicalSizeMilli(label), label });
+  artworkSizeNote({ detected, pixels, sizeMilli: physicalSizeMilli(label), label, minimumDpi: 300 });
 
 describe("an image that matches the chosen size", () => {
   it("says nothing about an A4 file exported at A4", () => {
@@ -50,10 +50,15 @@ describe("an image that matches the chosen size", () => {
     expect(note(image(3508, 2480), "A4")).toBeNull();
   });
 
-  it("allows for bleed and a file that is only a little soft", () => {
+  it("allows for bleed", () => {
     // A 3 mm bleed on A5 moves the shape by about 2%.
     expect(note(image(1819, 2551), "A5")).toBeNull();
-    // 150 DPI on A4 prints a little soft; the upload card says so quietly.
+  });
+
+  it("leaves resolution to GRIDGO's warning, however few the pixels", () => {
+    // Too few pixels in the right shape is GRIDGO's low_resolution warning,
+    // judged per product type; a second note about it here would disagree.
+    expect(note(image(595, 842), "A4")).toBeNull();
     expect(note(image(1240, 1754), "A4")).toBeNull();
   });
 });
@@ -70,22 +75,13 @@ describe("an image that does not match", () => {
     });
   });
 
-  it("says when the shape is right but there are too few pixels", () => {
-    const result = note(image(595, 842), "A4");
-    expect(result?.needs).toBe("A4 · 210 × 297 mm · about 2480 × 3508 pixels");
-    expect(result?.file).toBe("595 × 842 pixels");
-    expect(result?.message).toContain("too few pixels for this size");
-    expect(result?.message).toContain("print blurry");
-    expect(result?.message).not.toContain("different shape");
-  });
-
-  it("names both problems when the file has both", () => {
-    const result = note(image(320, 320), "A4");
-    expect(result?.message).toContain("different shape and has too few pixels");
+  it("states the pixels only where GRIDGO gave a target", () => {
+    const result = artworkSizeNote({ detected: image(1080, 1920), sizeMilli: physicalSizeMilli("A5"), label: "A5" });
+    expect(result?.needs).toBe("A5 · 148 × 210 mm");
   });
 
   it("turns the product the way the file is, so the rows compare like with like", () => {
-    expect(note(image(842, 595), "A4")?.needs).toBe("A4 · 297 × 210 mm · about 3508 × 2480 pixels");
+    expect(note(image(1920, 1080), "A4")?.needs).toBe("A4 · 297 × 210 mm · about 3508 × 2480 pixels");
   });
 
   it("reads a business card's size code", () => {
@@ -93,6 +89,7 @@ describe("an image that does not match", () => {
       detected: image(720, 1600, 96),
       sizeMilli: physicalSizeMilli("standard", { subcategoryCode: "business_cards" }),
       label: "standard",
+      minimumDpi: 300,
     });
     expect(result?.needs).toBe("Standard · 50.8 × 88.9 mm · about 600 × 1050 pixels");
     expect(result?.file).toBe("720 × 1600 pixels");
@@ -103,6 +100,7 @@ describe("an image that does not match", () => {
       detected: image(1080, 1080),
       sizeMilli: { width: 914_400, height: 1_524_000 },
       label: "",
+      minimumDpi: 100,
     });
     expect(result?.needs).toBe("91.4 × 152.4 cm · about 3600 × 6000 pixels");
   });

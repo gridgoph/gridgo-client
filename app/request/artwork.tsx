@@ -8,6 +8,7 @@ import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ArtworkSizeNote } from "@/components/ArtworkSizeNote";
 import { ArtworkAttachmentList } from "@/components/ArtworkAttachmentList";
+import { PrepareFileGuide } from "@/components/PrepareFileGuide";
 import { DesignLinkField } from "@/components/DesignLinkField";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { ProductPreview } from "@/components/ProductPreview";
@@ -34,11 +35,8 @@ import {
   slotsLeft,
 } from "@/lib/artworkAttachments";
 import { artworkSizeNote } from "@/lib/artworkSize";
-import {
-  measuredSizeMilli,
-  physicalSizeMilli,
-  printResolution,
-} from "@/lib/printResolution";
+import { guidanceRule, orderedSizeMilli, prepareFileGuide } from "@/lib/artworkGuidance";
+import { measuredSizeMilli, physicalSizeMilli } from "@/lib/printSize";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
@@ -66,6 +64,7 @@ import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
 import { cartRightsScope, useArtworkRights } from "@/store/artworkRights";
 import { useArtworkAttachments, type PendingUpload } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
+import { usePlatformSettings } from "@/store/platformSettings";
 import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
 
 /**
@@ -92,6 +91,12 @@ import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
  * drawn rectangle standing in for one would be a picture of a file GRIDGO has
  * not looked at. That case gets the file named
  * instead, which is the honest version of the same reassurance.
+ *
+ * Resolution and colour mode are GRIDGO's judgement per product type, at the
+ * size ordered (gridgo-client#242): a "Prepare your file" guide before upload,
+ * then each file's colour mode and resolution, and any warning to accept or
+ * answer with a better file. Warnings never block checkout; only a file GRIDGO
+ * cannot read does.
  *
  * A size that does not match the sheet is a warning and never a block. A client
  * printing an A5 design on A4 with a border is doing something deliberate, and
@@ -157,6 +162,13 @@ export default function ArtworkScreen() {
   const primaryId = mainFileId(entries);
   const uploads = useArtworkAttachments((state) => (line ? state.uploads[line.id] : undefined)) ?? NO_UPLOADS;
   const files = useArtworkAttachments((state) => state.files);
+  const accepting = useArtworkAttachments((state) => (line ? state.accepting[line.id] ?? null : null));
+  const acceptError = useArtworkAttachments((state) => (line ? state.acceptError[line.id] ?? null : null));
+  // The per-product-type targets the guide is drawn from; Super Admin edits them.
+  const guidanceSettings = usePlatformSettings((state) => state.settings?.artworkGuidance);
+  useEffect(() => {
+    void usePlatformSettings.getState().load({ refresh: true }).catch(() => undefined);
+  }, []);
   const listSaving = useArtworkAttachments((state) => (line ? state.saving[line.id] === true : false));
   const listError = useArtworkAttachments((state) => (line ? state.saveError[line.id] ?? null : null));
   const notice = useArtworkAttachments((state) => (line ? state.notice[line.id] ?? null : null));
@@ -315,41 +327,31 @@ export default function ArtworkScreen() {
 
   const size = typeof line.structuredSpec.size === "string" ? line.structuredSpec.size : "";
   const summary = detectedSummary(detected);
-  // The byte count is a proxy, said only while there is no measured resolution.
-  const thinFile = describeArtworkFile({
+  // GRIDGO's own check of each file, at the size ordered. Absent on an older API.
+  const lineGuidance = line.artworkGuidance ?? null;
+  // The byte count is a proxy, said only on an API that does not judge resolution.
+  const thinFile = !lineGuidance && describeArtworkFile({
     originalFilename: primary.fileName || null,
     detectedContentType: primary.contentType,
     size: primary.size,
   }).some((fact) => fact.id === "size" && fact.tone === "warn");
 
   /*
-    The one thing this screen has been unable to answer.
-
-    It has had the chosen size all along, and now it has the file's real pixel
-    dimensions, so "will this print sharp" stops being a guess from the byte
-    count. 540 x 720 pixels on A5 is 87 DPI whatever the file weighs, and a
-    38 KB warning that happened to be right about it was right by accident.
-
-    Both halves can be unknown — a custom size nobody has measured, or a PDF,
-    which states a physical size rather than a pixel count and has nothing to
-    divide. Then this is null and the byte-count note stands as before.
-  */
-  const filePixels =
-    detected?.pixelWidth && detected?.pixelHeight
-      ? { width: detected.pixelWidth, height: detected.pixelHeight }
-      : pixels;
-  /*
     Two ways a line knows how big it is, and a measured listing has no size
     label at all: a tarpaulin billed by the square foot was typed as 3 by 5
-    feet, not picked as "A4". Without this the resolution check goes blind on
-    exactly the jobs where it matters most — a banner is the largest thing
-    GRIDGO prints and the easiest to send a screenshot for.
+    feet, not picked as "A4". GRIDGO's own reading of the size comes first.
   */
   const orderedSize =
+    orderedSizeMilli(lineGuidance) ??
     measuredSizeMilli(line.measurement, item?.measureUnit) ??
     physicalSizeMilli(size, { subcategoryCode: item?.subcategoryCode });
-  const resolution = printResolution(filePixels, orderedSize);
-  const sizeNote = artworkSizeNote({ detected, pixels, sizeMilli: orderedSize, label: size });
+  const rule = guidanceRule(guidanceSettings, item?.subcategoryCode);
+  const minimumDpi = lineGuidance ? lineGuidance.minimumDpi : rule?.minimumDpi ?? null;
+  const guide = prepareFileGuide(
+    lineGuidance ? { minimumDpi: lineGuidance.minimumDpi, acceptsRgb: lineGuidance.acceptsRgb } : rule,
+    { milli: orderedSize, label: size },
+  );
+  const sizeNote = artworkSizeNote({ detected, pixels, sizeMilli: orderedSize, label: size, minimumDpi });
   const documentPages = line.documentPages;
   const rangeText = rangeDraft?.fileId === line.artworkFileId ? rangeDraft.text : documentPages?.range ?? "";
   const rangeDirty = rangeText !== (documentPages?.range ?? "");
@@ -459,6 +461,13 @@ export default function ArtworkScreen() {
           Add a front and a back, or a separate logo, each with its own label.
         </Text>
 
+        {/* Before the files: what this product type wants, from GRIDGO's targets. */}
+        {guide && takesFiles ? (
+          <View className="mt-6">
+            <PrepareFileGuide rows={guide} />
+          </View>
+        ) : null}
+
         {takesFiles || links.length ? (
           <TourTarget step="artwork" className="mt-6">
             {/*
@@ -486,6 +495,13 @@ export default function ArtworkScreen() {
               onRecheck={(link) => void verifyLink(link, { force: true })}
               onRetryUpload={(key) => void attachments.retry(line.id, key)}
               onDismissUpload={(key) => attachments.dismiss(line.id, key)}
+              guidance={lineGuidance}
+              accepting={accepting}
+              acceptError={acceptError}
+              onAcceptWarning={(fileId, code, accept) =>
+                void attachments.acceptWarning(line.id, fileId, code, accept)
+              }
+              onReplaceFile={(fileId) => void attachments.replace(line.id, fileId, guard)}
             />
           </TourTarget>
         ) : null}
@@ -515,27 +531,16 @@ export default function ArtworkScreen() {
         ) : null}
 
         {/*
-          About the main file: what it will print at, at the size chosen. A
-          warning, never a block — a file of the wrong size can still be
-          printed scaled, and the client decides.
+          About the main file's shape against the size chosen. A warning,
+          never a block — a file of the wrong size can still be printed
+          scaled, and the client decides. Resolution and colour are each
+          file's own, in the list above.
         */}
-        {primaryId && fileIds.length > 1 && (sizeNote || summary || resolution || thinFile) ? (
+        {primaryId && fileIds.length > 1 && (sizeNote || summary || thinFile) ? (
           <Text className="mt-6 text-overline text-text-muted">MAIN FILE</Text>
         ) : null}
         {sizeNote ? <ArtworkSizeNote note={sizeNote} /> : null}
-        {resolution ? (
-          <Text
-            className={
-              resolution.verdict === "low" && !sizeNote
-                ? "mt-3 text-caption text-warning"
-                : "mt-3 text-caption text-text-muted"
-            }
-          >
-            {resolution.message}
-          </Text>
-        ) : thinFile ? (
-          <Text className="mt-3 text-caption text-warning">{THIN_FILE_NOTE}</Text>
-        ) : null}
+        {thinFile ? <Text className="mt-3 text-caption text-warning">{THIN_FILE_NOTE}</Text> : null}
 
         {saveError ? <Text className="mt-3 text-body text-error">{saveError}</Text> : null}
 

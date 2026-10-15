@@ -23,6 +23,7 @@ import {
   normalizeFileName,
   type ArtworkFormatCheck,
 } from "@/lib/artworkUpload";
+import { acceptanceAfter } from "@/lib/artworkGuidance";
 import { userFacingError } from "@/lib/copy";
 import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
 import { useCart } from "@/store/cart";
@@ -61,6 +62,8 @@ export type PendingUpload = {
   fileId: string | null;
   /** Refused on this phone for its type: only a different file helps. */
   refusal: "format" | "check" | null;
+  /** The file this upload takes the place of, keeping its place and label. */
+  replaces?: string;
 };
 
 /** Where the last change to an item's list went wrong, if it did. */
@@ -74,8 +77,18 @@ type AttachmentState = {
   notice: Record<string, string | null>;
   /** Each file's storage record; null when it could not be read. */
   files: Record<string, StoredFile | null>;
+  /** The warning (`fileId:code`) whose acceptance is on its way to GRIDGO. */
+  accepting: Record<string, string | null>;
+  acceptError: Record<string, string | null>;
   /** Pick one or more files and send each, up to the room the item has left. */
   pick: (lineId: string, guard?: ArtworkFormatCheck & { accept: string[] }) => Promise<void>;
+  /** Pick one file to take the place of a file on the item (a better export). */
+  replace: (lineId: string, fileId: string, guard?: ArtworkFormatCheck & { accept: string[] }) => Promise<void>;
+  /**
+   * Tick or untick one artwork warning. GRIDGO replaces the line's whole
+   * acceptance list, so every other acceptance is sent again with it.
+   */
+  acceptWarning: (lineId: string, fileId: string, code: string, accept: boolean) => Promise<void>;
   retry: (lineId: string, key: string) => Promise<void>;
   /** Stop an upload in flight, or put away one that failed. */
   dismiss: (lineId: string, key: string) => void;
@@ -88,7 +101,7 @@ type AttachmentState = {
   reset: () => void;
 };
 
-const initial = { uploads: {}, saving: {}, saveError: {}, notice: {}, files: {} };
+const initial = { uploads: {}, saving: {}, saveError: {}, notice: {}, files: {}, accepting: {}, acceptError: {} };
 
 /** Picker types when no listing narrows them; the server judges the real format. */
 const PICKER_TYPES = ["application/pdf", DOCX_CONTENT_TYPE, "image/*"];
@@ -118,7 +131,7 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
     });
   }
 
-  function patch<K extends "saving" | "saveError" | "notice">(key: K, lineId: string, value: AttachmentState[K][string]) {
+  function patch<K extends "saving" | "saveError" | "notice" | "accepting" | "acceptError">(key: K, lineId: string, value: AttachmentState[K][string]) {
     set((state) => ({ [key]: { ...state[key], [lineId]: value } }) as unknown as Partial<AttachmentState>);
   }
 
@@ -169,14 +182,19 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
 
   async function attach(lineId: string, key: string, fileId: string) {
     patchUpload(lineId, key, { phase: "attaching", error: null, fileId });
+    const replaces = get().uploads[lineId]?.find((upload) => upload.key === key)?.replaces;
     const result = await change(
       lineId,
       (entries) =>
         entries.some((entry) => entry.kind === "file" && entry.fileId === fileId)
           ? entries
-          : entries.length >= MAX_ARTWORK_ATTACHMENTS
-            ? LIMIT_REACHED
-            : [...entries, { kind: "file", fileId }],
+          : replaces && entries.some((entry) => entry.kind === "file" && entry.fileId === replaces)
+            ? entries.map((entry) =>
+                entry.kind === "file" && entry.fileId === replaces ? { kind: "file", fileId, label: entry.label } : entry,
+              )
+            : entries.length >= MAX_ARTWORK_ATTACHMENTS
+              ? LIMIT_REACHED
+              : [...entries, { kind: "file", fileId }],
       "Your file reached GRIDGO but did not go onto this item. Try again in a moment.",
     );
     if (result.ok) patchUpload(lineId, key, null);
@@ -223,63 +241,110 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
     }
   }
 
+  /** Open the picker for new files, or for one that takes another's place. */
+  async function choose(
+    lineId: string,
+    guard: (ArtworkFormatCheck & { accept: string[] }) | undefined,
+    replaces: string | null,
+  ) {
+    patch("notice", lineId, null);
+    const picker = getDocumentPickerNative();
+    if (!picker) {
+      patch("notice", lineId, FILE_PICKER_NEEDS_REBUILD);
+      return;
+    }
+    let result: Awaited<ReturnType<typeof picker.getDocumentAsync>>;
+    try {
+      result = await picker.getDocumentAsync({
+        type: guard?.accept.length ? guard.accept : PICKER_TYPES,
+        // A replacement is one file for one file.
+        multiple: replaces == null,
+        // A URI the uploader streams from; the bytes never enter JavaScript.
+        copyToCacheDirectory: true,
+      });
+    } catch {
+      patch("notice", lineId, "The file picker did not open. Try again, and check GRIDGO has access to your files.");
+      return;
+    }
+    if (result.canceled) return;
+    const picked = (result.assets ?? []).filter((asset) => asset?.uri);
+    if (!picked.length) {
+      patch("notice", lineId, "That file could not be read. Pick it again, or copy it into Files first.");
+      return;
+    }
+    const busy = (get().uploads[lineId] ?? []).filter((upload) => upload.phase !== "failed").length;
+    const room = replaces ? 1 : slotsLeft(lineAttachments(lineOf(lineId)).length + busy);
+    const taken = picked.slice(0, room);
+    patch("notice", lineId, overflowNote(picked.length, taken.length));
+
+    const started: string[] = [];
+    for (const asset of taken) {
+      const key = `upload-${++sequence}`;
+      const name = normalizeFileName(asset.name);
+      const refused = artworkPickRefusal({ name, mimeType: asset.mimeType ?? null, size: asset.size }, guard);
+      const upload: PendingUpload = {
+        key,
+        phase: refused ? "failed" : "sending",
+        fileName: name,
+        progress: refused ? null : 0,
+        error: refused?.error ?? null,
+        fileId: null,
+        refusal: refused?.refusal ?? null,
+        ...(replaces ? { replaces } : {}),
+      };
+      set((state) => ({ uploads: { ...state.uploads, [lineId]: [...(state.uploads[lineId] ?? []), upload] } }));
+      if (refused) continue;
+      assets.set(key, {
+        uri: asset.uri,
+        name,
+        mimeType: asset.mimeType ?? null,
+        file: "file" in asset ? (asset as { file?: Blob }).file : undefined,
+      });
+      started.push(key);
+    }
+    await Promise.all(started.map((key) => send(lineId, key)));
+  }
+
   return {
     ...initial,
-    pick: async (lineId, guard) => {
-      patch("notice", lineId, null);
-      const picker = getDocumentPickerNative();
-      if (!picker) {
-        patch("notice", lineId, FILE_PICKER_NEEDS_REBUILD);
-        return;
-      }
-      let result: Awaited<ReturnType<typeof picker.getDocumentAsync>>;
+    pick: (lineId, guard) => choose(lineId, guard, null),
+    replace: (lineId, fileId, guard) => choose(lineId, guard, fileId),
+    acceptWarning: async (lineId, fileId, code, accept) => {
+      if (get().accepting[lineId]) return;
+      const owner = generation;
+      patch("accepting", lineId, `${fileId}:${code}`);
+      patch("acceptError", lineId, null);
+      const run = async () => {
+        const guidance = lineOf(lineId)?.artworkGuidance;
+        if (!guidance || owner !== generation) return;
+        const cart = useCart.getState();
+        try {
+          const updated = await cart.run((cartId) =>
+            api.acceptArtworkWarnings(cartId, lineId, acceptanceAfter(guidance, { fileId, code, accept })),
+          );
+          if (owner === generation) cart.adopt(updated);
+        } catch (error) {
+          if (owner !== generation) return;
+          const stale =
+            error instanceof api.ApiError &&
+            (error.body as { error?: string } | null)?.error === "artwork_warning_not_found";
+          if (stale) await cart.load();
+          patch(
+            "acceptError",
+            lineId,
+            stale
+              ? "This file's check changed. Look at the warnings again and choose."
+              : userFacingError(error, "Your choice did not save. Try again in a moment."),
+          );
+        }
+      };
+      const queued = (chains.get(lineId) ?? Promise.resolve()).then(run, run);
+      chains.set(lineId, queued);
       try {
-        result = await picker.getDocumentAsync({
-          type: guard?.accept.length ? guard.accept : PICKER_TYPES,
-          multiple: true,
-          // A URI the uploader streams from; the bytes never enter JavaScript.
-          copyToCacheDirectory: true,
-        });
-      } catch {
-        patch("notice", lineId, "The file picker did not open. Try again, and check GRIDGO has access to your files.");
-        return;
+        await queued;
+      } finally {
+        if (owner === generation) patch("accepting", lineId, null);
       }
-      if (result.canceled) return;
-      const picked = (result.assets ?? []).filter((asset) => asset?.uri);
-      if (!picked.length) {
-        patch("notice", lineId, "That file could not be read. Pick it again, or copy it into Files first.");
-        return;
-      }
-      const busy = (get().uploads[lineId] ?? []).filter((upload) => upload.phase !== "failed").length;
-      const room = slotsLeft(lineAttachments(lineOf(lineId)).length + busy);
-      const taken = picked.slice(0, room);
-      patch("notice", lineId, overflowNote(picked.length, taken.length));
-
-      const started: string[] = [];
-      for (const asset of taken) {
-        const key = `upload-${++sequence}`;
-        const name = normalizeFileName(asset.name);
-        const refused = artworkPickRefusal({ name, mimeType: asset.mimeType ?? null, size: asset.size }, guard);
-        const upload: PendingUpload = {
-          key,
-          phase: refused ? "failed" : "sending",
-          fileName: name,
-          progress: refused ? null : 0,
-          error: refused?.error ?? null,
-          fileId: null,
-          refusal: refused?.refusal ?? null,
-        };
-        set((state) => ({ uploads: { ...state.uploads, [lineId]: [...(state.uploads[lineId] ?? []), upload] } }));
-        if (refused) continue;
-        assets.set(key, {
-          uri: asset.uri,
-          name,
-          mimeType: asset.mimeType ?? null,
-          file: "file" in asset ? (asset as { file?: Blob }).file : undefined,
-        });
-        started.push(key);
-      }
-      await Promise.all(started.map((key) => send(lineId, key)));
     },
     retry: async (lineId, key) => {
       const upload = get().uploads[lineId]?.find((entry) => entry.key === key);
