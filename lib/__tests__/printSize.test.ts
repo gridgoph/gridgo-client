@@ -1,4 +1,4 @@
-import { measuredSizeMilli, physicalSizeMilli } from "@/lib/printSize";
+import { measuredSizeLabel, measuredSizeMilli, physicalSizeMilli } from "@/lib/printSize";
 
 describe("reading a size label as a physical size", () => {
   it("knows the paper the size lists offer", () => {
@@ -60,5 +60,14 @@ describe("a listing the client measured rather than picked a size for", () => {
     expect(measuredSizeMilli({ width: 3_000, height: 5_000 }, null)).toBeNull();
     expect(measuredSizeMilli({ width: 3_000, height: 5_000 }, "furlong")).toBeNull();
     expect(measuredSizeMilli({ width: 3_000 }, "ft")).toBeNull();
+  });
+});
+
+describe("a measured size in the client's own words", () => {
+  it("says the size as it was typed, in the listing's unit", () => {
+    expect(measuredSizeLabel({ width: 3_000, height: 6_000 }, "ft")).toBe("3 × 6 ft");
+    expect(measuredSizeLabel({ width: 2_500, height: 1_250 }, "m")).toBe("2.5 × 1.25 m");
+    expect(measuredSizeLabel({ width: 3_000 }, "ft")).toBeNull();
+    expect(measuredSizeLabel({ width: 3_000, height: 6_000 }, null)).toBeNull();
   });
 });

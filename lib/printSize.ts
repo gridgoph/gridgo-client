@@ -121,3 +121,13 @@ export function measuredSizeMilli(
     height: Math.round(measurement.height * scale),
   };
 }
+
+/** A measured line's size as the client typed it: "3 × 6 ft". Null without both sides or a unit. */
+export function measuredSizeLabel(
+  measurement: { width?: number; height?: number } | null | undefined,
+  measureUnit: string | null | undefined,
+): string | null {
+  if (!measurement?.width || !measurement?.height || !measureUnit) return null;
+  const one = (thousandths: number) => Math.round(thousandths / 10) / 100;
+  return `${one(measurement.width)} × ${one(measurement.height)} ${measureUnit}`;
+}

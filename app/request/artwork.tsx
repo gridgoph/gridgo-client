@@ -36,7 +36,7 @@ import {
 } from "@/lib/artworkAttachments";
 import { artworkSizeNote } from "@/lib/artworkSize";
 import { guidanceRule, orderedSizeMilli, prepareFileGuide } from "@/lib/artworkGuidance";
-import { measuredSizeMilli, physicalSizeMilli } from "@/lib/printSize";
+import { measuredSizeLabel, measuredSizeMilli, physicalSizeMilli } from "@/lib/printSize";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
@@ -349,7 +349,7 @@ export default function ArtworkScreen() {
   const minimumDpi = lineGuidance ? lineGuidance.minimumDpi : rule?.minimumDpi ?? null;
   const guide = prepareFileGuide(
     lineGuidance ? { minimumDpi: lineGuidance.minimumDpi, acceptsRgb: lineGuidance.acceptsRgb } : rule,
-    { milli: orderedSize, label: size },
+    { milli: orderedSize, label: size || measuredSizeLabel(line.measurement, item?.measureUnit) },
   );
   const sizeNote = artworkSizeNote({ detected, pixels, sizeMilli: orderedSize, label: size, minimumDpi });
   const documentPages = line.documentPages;
