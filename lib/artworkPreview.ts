@@ -58,15 +58,19 @@ const REASONS: Record<string, string> = {
   preview_renderer_unavailable: "GRIDGO's preview maker is not running right now. Retry in a moment, or open the original.",
   preview_source_too_large: "This file is too large to preview. Open the original to check it.",
   preview_not_supported: "GRIDGO cannot preview this type of file. Open the original to check it.",
+  storage_object_missing: "GRIDGO could not find its saved picture of this file. Retry to make it again, or open the original.",
   image_load_failed: "The preview picture did not load on this phone. Check your connection and retry.",
 };
 
-const GENERIC = "The preview did not load. Check your connection and retry, or open the original.";
+/** The phone never reached GRIDGO. */
+const OFFLINE = "The preview did not load. Check your connection and retry, or open the original.";
+/** GRIDGO answered, but with no picture and no reason this app knows. */
+const GENERIC = "GRIDGO could not show the preview just now. Retry, or open the original.";
 
 /** Map a failed preview read (an `ApiError`, a network error, or a device code) to what the card says. */
 export function artworkPreviewFailure(error: unknown): ArtworkPreviewFailure {
   if (typeof error === "string") return { code: error, message: REASONS[error] ?? GENERIC, retryAfterMs: 0 };
-  if (!(error instanceof ApiError)) return { code: "network", message: GENERIC, retryAfterMs: 0 };
+  if (!(error instanceof ApiError)) return { code: "network", message: OFFLINE, retryAfterMs: 0 };
   const code = error.message;
   if (error.status === 503 && code === "preview_busy") {
     return { code, message: "GRIDGO is making another preview right now. Retry in a few seconds.", retryAfterMs: PREVIEW_BUSY_WAIT_MS };

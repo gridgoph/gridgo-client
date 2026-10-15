@@ -51,11 +51,15 @@ describe("artworkPreviewFailure", () => {
     const timeout = artworkPreviewFailure(new ApiError(503, { error: "preview_render_timeout" }));
     expect(timeout.message).toMatch(/took too long/);
     expect(timeout.message).not.toMatch(/preview_/);
-    expect(artworkPreviewFailure(new ApiError(500, { error: "storage_object_missing" })).message).toMatch(/did not load/);
+    expect(artworkPreviewFailure(new ApiError(409, { error: "storage_object_missing" })).message).toMatch(/Retry to make it again/);
+    // GRIDGO answered, so the phone's connection is not what to check.
+    expect(artworkPreviewFailure(new ApiError(500, { error: "minio_unavailable" })).message).not.toMatch(/connection/);
   });
 
   it("treats a dropped connection and a device-side decode failure as retryable at once", () => {
-    expect(artworkPreviewFailure(new TypeError("Network request failed"))).toEqual(expect.objectContaining({ code: "network", retryAfterMs: 0 }));
+    const offline = artworkPreviewFailure(new TypeError("Network request failed"));
+    expect(offline).toEqual(expect.objectContaining({ code: "network", retryAfterMs: 0 }));
+    expect(offline.message).toMatch(/Check your connection/);
     expect(artworkPreviewFailure("image_load_failed").message).toMatch(/did not load on this phone/);
   });
 });
