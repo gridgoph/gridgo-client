@@ -64,6 +64,20 @@ export const DEFAULT_SURVEY_OPTIONS: SurveyOptions = {
   },
   easeTags: ["easy_to_find_product", "clear_options", "easy_checkout", "upload_difficulty", "confusing_steps", "payment_difficulty", "slow_app", "other"],
   priceFeeling: ["very_cheap", "cheap", "fair", "expensive", "very_expensive"],
+  directShopComparison: ["much_cheaper", "cheaper", "about_the_same", "more_expensive", "much_more_expensive", "not_sure"],
+  priceWorthTags: [
+    "print_quality",
+    "on_time",
+    "door_delivery",
+    "no_shop_visits",
+    "quality_check",
+    "easy_ordering",
+    "clear_upfront_price",
+    "helpful_support",
+    "other",
+    "not_worth_it",
+  ],
+  orderAgainAtPrice: ["yes", "maybe", "no"],
 };
 
 const TAG_LABEL: Record<string, string> = {
@@ -109,6 +123,98 @@ export function easeTagsFor(options: SurveyOptions | null | undefined): string[]
   return (options ?? DEFAULT_SURVEY_OPTIONS).easeTags ?? DEFAULT_SURVEY_OPTIONS.easeTags;
 }
 
+/* --------------------------------------------------------------------------
+   The pricing questions (gridgo-api `docs/PRICING_FEEDBACK_API.md`)
+
+   Three optional questions after the price, none of them counted for the
+   voucher: answering them, or not, never changes the reward.
+   -------------------------------------------------------------------------- */
+
+export const DIRECT_SHOP_QUESTION = "Compared with ordering directly from a print shop, GRIDGO was…";
+export const PRICE_WORTH_QUESTION = "What made the price worth it?";
+export const ORDER_AGAIN_QUESTION = "Would you order again at this price?";
+
+/** The one answer that says the opposite of every other, so it is sent alone. */
+export const NOT_WORTH_IT = "not_worth_it";
+
+const DIRECT_SHOP_LABEL: Record<string, string> = {
+  much_cheaper: "Much cheaper",
+  cheaper: "Cheaper",
+  about_the_same: "About the same",
+  more_expensive: "More expensive",
+  much_more_expensive: "Much more expensive",
+  not_sure: "Not sure",
+};
+
+const PRICE_WORTH_LABEL: Record<string, string> = {
+  print_quality: "Print quality",
+  on_time: "Ready on time",
+  door_delivery: "Delivered to my door",
+  no_shop_visits: "No trips to print shops",
+  quality_check: "Artwork checked before printing",
+  easy_ordering: "Easy ordering",
+  clear_upfront_price: "Clear price up front",
+  helpful_support: "Helpful support",
+  other: "Something else",
+  not_worth_it: "It was not worth it",
+};
+
+const ORDER_AGAIN_LABEL: Record<string, string> = { yes: "Yes", maybe: "Maybe", no: "No" };
+
+function wordsFor(labels: Record<string, string>, code: string): string {
+  return labels[code] ?? tagLabel(code);
+}
+
+export function directShopLabel(code: string): string {
+  return wordsFor(DIRECT_SHOP_LABEL, code);
+}
+
+export function priceWorthLabel(code: string): string {
+  return wordsFor(PRICE_WORTH_LABEL, code);
+}
+
+export function orderAgainLabel(code: string): string {
+  return wordsFor(ORDER_AGAIN_LABEL, code);
+}
+
+export function directShopOptionsFor(options: SurveyOptions | null | undefined): string[] {
+  return options?.directShopComparison ?? DEFAULT_SURVEY_OPTIONS.directShopComparison ?? [];
+}
+
+export function orderAgainOptionsFor(options: SurveyOptions | null | undefined): string[] {
+  return options?.orderAgainAtPrice ?? DEFAULT_SURVEY_OPTIONS.orderAgainAtPrice ?? [];
+}
+
+/**
+ * The reasons the price was worth it, without "not worth it", which the
+ * screen draws apart as the opposite answer. A door delivery is never offered
+ * on an order that was collected.
+ */
+export function priceWorthTagsFor(options: SurveyOptions | null | undefined, kind: SurveyFulfillmentKind): string[] {
+  const all = options?.priceWorthTags ?? DEFAULT_SURVEY_OPTIONS.priceWorthTags ?? [];
+  return all.filter((code) => code !== NOT_WORTH_IT && !(kind === "pickup" && code === "door_delivery"));
+}
+
+/** Whether this GRIDGO offers "It was not worth it". */
+export function offersNotWorthIt(options: SurveyOptions | null | undefined): boolean {
+  return (options?.priceWorthTags ?? DEFAULT_SURVEY_OPTIONS.priceWorthTags ?? []).includes(NOT_WORTH_IT);
+}
+
+/**
+ * Turns a reason on or off. "Not worth it" clears every reason, and any
+ * reason clears "not worth it": GRIDGO refuses the two together.
+ */
+export function toggleWorthTag(tags: readonly string[], code: string): string[] {
+  if (tags.includes(code)) return tags.filter((tag) => tag !== code);
+  if (code === NOT_WORTH_IT) return [NOT_WORTH_IT];
+  return [...tags.filter((tag) => tag !== NOT_WORTH_IT), code];
+}
+
+/** A single choice that a second tap on the same answer takes back. */
+export function toggleChoice(current: string | null, code: string): string | null {
+  return current === code ? null : code;
+}
+
 /** The price scale, cheapest first: what GRIDGO stores as 1 to 5. */
 export const PRICE_FEELINGS = ["Very cheap", "Cheap", "Fair", "Expensive", "Very expensive"] as const;
 
@@ -144,6 +250,9 @@ export type SurveyDraft = {
   priceFeeling: number;
   /** As typed, in pesos. */
   expectedPrice: string;
+  directShopComparison: string | null;
+  priceWorthTags: string[];
+  orderAgainAtPrice: string | null;
   qualityStars: number;
   recommendScore: number | null;
   improvementNote: string;
@@ -156,6 +265,9 @@ export const EMPTY_SURVEY_DRAFT: SurveyDraft = {
   easeTags: [],
   priceFeeling: 0,
   expectedPrice: "",
+  directShopComparison: null,
+  priceWorthTags: [],
+  orderAgainAtPrice: null,
   qualityStars: 0,
   recommendScore: null,
   improvementNote: "",
@@ -214,6 +326,9 @@ export function toSubmission(
   const ease = easeTagsFor(options);
   const expected = parsePesos(draft.expectedPrice);
   const note = draft.improvementNote.trim();
+  const worth = draft.priceWorthTags.filter(
+    (tag) => priceWorthTagsFor(options, kind).includes(tag) || (tag === NOT_WORTH_IT && offersNotWorthIt(options)),
+  );
   return {
     fulfillmentStars: draft.fulfillmentStars,
     fulfillmentTags: draft.fulfillmentTags.filter((tag) => fulfillment.includes(tag)),
@@ -221,6 +336,16 @@ export function toSubmission(
     easeTags: draft.easeTags.filter((tag) => ease.includes(tag)),
     priceFeeling: draft.priceFeeling,
     expectedPriceMinor: typeof expected === "number" ? expected : null,
+    directShopComparison:
+      draft.directShopComparison && directShopOptionsFor(options).includes(draft.directShopComparison)
+        ? draft.directShopComparison
+        : null,
+    // Alone or not at all: a draft can only hold it alone, but GRIDGO refuses the pair outright.
+    priceWorthTags: worth.includes(NOT_WORTH_IT) ? [NOT_WORTH_IT] : worth,
+    orderAgainAtPrice:
+      draft.orderAgainAtPrice && orderAgainOptionsFor(options).includes(draft.orderAgainAtPrice)
+        ? draft.orderAgainAtPrice
+        : null,
     qualityStars: draft.qualityStars >= 1 ? draft.qualityStars : null,
     recommendScore: draft.recommendScore,
     improvementNote: note ? note.slice(0, SURVEY_NOTE_MAX) : null,

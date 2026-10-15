@@ -5,6 +5,7 @@ import { useHandoverActions } from "@/store/handoverActions";
 import { useNotifications } from "@/store/notifications";
 import { useVouchers } from "@/store/vouchers";
 import { useSurvey } from "@/store/survey";
+import { useCheckoutExit } from "@/store/checkoutExit";
 import { useOrderRanking } from "@/store/orderRanking";
 import { setLiveOwner } from "@/lib/live";
 import { clearBoardCache } from "@/lib/shopBoards";
@@ -366,5 +367,6 @@ useSession.subscribe((state, previous) => {
   useNotifications.getState().setOwner(id);
   useVouchers.getState().reset();
   useSurvey.getState().reset();
+  useCheckoutExit.getState().reset();
   setLiveOwner(id);
 });
