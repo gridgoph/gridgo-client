@@ -156,7 +156,7 @@ export function LatestProgressCard({ order, note }: Props) {
                 ) : null}
               </View>
               {when ? (
-                <Text className="shrink text-caption text-text-muted">
+                <Text className="shrink-0 text-caption text-text-muted">
                   {when}
                 </Text>
               ) : null}

@@ -31,11 +31,14 @@ export function ShopHoursLine({ view, pill = false }: { view: ShopHoursView | nu
       accessibilityLabel={shopHoursSpoken(view)}
       className={
         pill
-          ? "flex-row items-center gap-1.5 self-start rounded-pill border border-outline bg-surface px-2 py-1"
-          : "flex-row items-center gap-1.5"
+          ? "flex-row items-start gap-1.5 self-start rounded-pill border border-outline bg-surface px-2 py-1"
+          : "flex-row items-start gap-1.5"
       }
     >
-      <Icon size={14} color={colors[token]} strokeWidth={2} aria-hidden />
+      {/* On the first line's centre, so a wrapped label hangs from the sign. */}
+      <View className="pt-px">
+        <Icon size={14} color={colors[token]} strokeWidth={2} aria-hidden />
+      </View>
       <Text className={`shrink text-caption font-medium ${text}`}>{view.label}</Text>
     </View>
   );
