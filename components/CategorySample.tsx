@@ -2,10 +2,12 @@ import { Pressable, Text, View, useWindowDimensions } from "react-native";
 
 import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ShopHoursLine } from "@/components/ShopHoursLine";
 import { spacing, typography } from "@/constants/theme";
 import type { CatalogItem, CatalogPhoto } from "@/lib/api";
 import { printTimeLine, samplePhotoUri, unitLine } from "@/lib/listing";
 import type { ProductSubcategory } from "@/lib/productCategories";
+import { shopHoursSpoken, type ShopHoursView } from "@/lib/shopHours";
 import { useServiceFeeRateBps } from "@/store/platformSettings";
 
 type Props = {
@@ -14,6 +16,11 @@ type Props = {
   onPress: () => void;
   /** The screen's re-read for an expired photo link (`SamplePhoto.onStale`). */
   onStalePhoto?: () => Promise<unknown> | void;
+  /**
+   * Every shop printing this is closed: until when, or for now
+   * (`subcategoryHoursView`). Absent while any of them is open.
+   */
+  hours?: ShopHoursView | null;
 };
 
 /**
@@ -60,6 +67,16 @@ function moneyLine(
   };
 }
 
+function sampleLabel(
+  name: string,
+  money: ReturnType<typeof moneyLine>,
+  hours: ShopHoursView | null | undefined,
+): string {
+  return [name, money ? `${money.spoken} ${money.unit}` : null, hours ? shopHoursSpoken(hours) : null]
+    .filter(Boolean)
+    .join(", ");
+}
+
 function sampleUrl(listing: SampleListing | null): string | null {
   return listing ? samplePhotoUri(listing.photos[0]) : null;
 }
@@ -71,7 +88,7 @@ function sampleUrl(listing: SampleListing | null): string | null {
  * sold on the right — the same strip a shop scans on its own board, minus the
  * press's name. A client picking flyers is choosing the work, not the shop.
  */
-export function CategorySampleRow({ subcategory, listing, onPress, onStalePhoto }: Props) {
+export function CategorySampleRow({ subcategory, listing, onPress, onStalePhoto, hours }: Props) {
   const rate = useServiceFeeRateBps();
   const money = moneyLine(listing, rate);
   const pressTime = printTimeLine(listing);
@@ -91,11 +108,7 @@ export function CategorySampleRow({ subcategory, listing, onPress, onStalePhoto 
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={
-          money
-            ? `${subcategory.name}, ${money.spoken} ${money.unit}`
-            : subcategory.name
-        }
+        accessibilityLabel={sampleLabel(subcategory.name, money, hours)}
         accessibilityHint="Finds GRIDGO's printer for this"
         className="min-w-0 flex-1 flex-row items-start gap-3"
         style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
@@ -114,6 +127,7 @@ export function CategorySampleRow({ subcategory, listing, onPress, onStalePhoto 
               {pressTime}
             </Text>
           ) : null}
+          <ShopHoursLine view={hours ?? null} />
         </View>
         {money ? (
           <View className="max-w-[42%] shrink-0 items-end gap-0.5 py-3">
@@ -204,6 +218,7 @@ export function CategorySampleCard({
   onStalePhoto,
   photoRatio = "square",
   showExamples = true,
+  hours,
 }: CardProps) {
   const { fontScale } = useWindowDimensions();
   const slots = sampleCardSlots(fontScale, showExamples);
@@ -220,14 +235,17 @@ export function CategorySampleCard({
         emptyLabel="No sample"
         ratio={photoRatio}
       />
+      {/* On the photo, so every card on the wall keeps the same height
+          whether or not its shops are open. Announced with the card. */}
+      {hours ? (
+        <View pointerEvents="none" className="absolute left-2 top-2 right-2" aria-hidden>
+          <ShopHoursLine view={hours} pill />
+        </View>
+      ) : null}
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={
-          money
-            ? `${subcategory.name}, ${money.spoken} ${money.unit}`
-            : subcategory.name
-        }
+        accessibilityLabel={sampleLabel(subcategory.name, money, hours)}
         accessibilityHint="Finds GRIDGO's printer for this"
         style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
       >

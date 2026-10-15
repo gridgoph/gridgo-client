@@ -86,6 +86,7 @@ import {
   type TravelChoice,
 } from "@/lib/checkout";
 import { userFacingError } from "@/lib/copy";
+import { shopPaused } from "@/lib/shopHours";
 import {
   GRIDGO_OFFICE,
   GRIDGO_OFFICE_BLURB,
@@ -1178,7 +1179,9 @@ export default function CheckoutScreen() {
 
           {totals.totalMinor == null && unpriced.length ? (
             <Text className="text-caption text-text-muted">
-              {unpriced.length === 1
+              {unpriced.some((line) => shopPaused(line.listing?.shopHours))
+                ? "A shop in your order is closed for now and is not taking new orders. Remove its items to see the total and place your order."
+                : unpriced.length === 1
                 ? unpriced[0].listing?.pricingUnit === "per_page" && !unpriced[0].documentPages
                   ? "Upload the document before GRIDGO can calculate the total."
                   : `${lineName(unpriced[0])} has no price at its quantity, so the total lands once you change it.`

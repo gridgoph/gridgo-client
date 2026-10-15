@@ -21,3 +21,15 @@ export function readyByDate(promiseBy: string | null | undefined): string | null
   });
   return `${day} · ${time}`;
 }
+
+/**
+ * "Ready early" — the API's own words — once printing finished before the
+ * shop's deadline (gridgo-api#219). Never worked out here: the client never
+ * receives that deadline. It does not mean the job is on its way.
+ */
+export function readyEarlyLabel(
+  order: { readyEarly?: boolean | null; readyLabel?: string | null; state?: string } | null | undefined,
+): string | null {
+  if (!order || order.readyEarly !== true || order.state === "cancelled") return null;
+  return order.readyLabel?.trim() || "Ready early";
+}

@@ -382,6 +382,12 @@ export type Order = {
   promisedDate: string | null;
   /** Client promise, projected by GRIDGO with the queue and working calendar. */
   promiseBy?: string | null;
+  /**
+   * Printing finished before the shop's own deadline (gridgo-api#219). Says
+   * nothing about dispatch; `readyLabel` is the API's words for it.
+   */
+  readyEarly?: boolean;
+  readyLabel?: string | null;
   /** Display string only — never file identity. See docs/STORAGE_API.md. */
   artworkName: string | null;
   /** Stored artwork ids, newest last. Empty is valid. */
@@ -1757,6 +1763,27 @@ export type CatalogItem = {
   distanceKm?: number;
   /** Present only once the shop has five or more reviews. */
   rating?: ShopRating;
+  /**
+   * Whether the shop is open now and when it next opens (gridgo-api#219).
+   * Sent on full public listings only; read through `lib/shopHours.ts`.
+   */
+  shopHours?: ShopHours | null;
+};
+
+/**
+ * A shop's opening status as GRIDGO worked it out at read time
+ * (gridgo-api `docs/SHOP_HOURS_API.md`). Only the fields a client reads are
+ * typed; the weekly schedule also travels but is never drawn.
+ */
+export type ShopHours = {
+  isOpenNow: boolean;
+  /** Closed by the shop or GRIDGO with no reopening date: takes no new orders. */
+  temporarilyClosed: boolean;
+  /** Now while open, the next opening while closed, null while closed for now. */
+  nextOpeningAt: string | null;
+  /** False on a calendar GRIDGO cannot read: no status is known. */
+  calendarAvailable?: boolean;
+  timeZone?: string;
 };
 
 /** Where a shop is. The same point delivery distance is measured from. */
@@ -1792,6 +1819,7 @@ export type ShopSummary = {
   categories: string[];
   itemCount: number;
   queueAhead?: number | null;
+  hours?: ShopHours | null;
 };
 
 /** One shop, with every live service line and complete listing on it. */
@@ -1803,6 +1831,7 @@ export type ShopBoard = {
   categories: string[];
   services: ShopService[];
   queueAhead?: number | null;
+  hours?: ShopHours | null;
 };
 
 const CATALOG_SHOP_PAGE_CAP = 25;
@@ -2288,6 +2317,7 @@ export type OtherListing = Pick<
   | "acceptedFormats"
   | "optionGroups"
   | "version"
+  | "shopHours"
 > &
   MatchedListingFields & { minimumTurnaroundHours?: number | null };
 
