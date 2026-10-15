@@ -30,6 +30,7 @@ import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { ShopGroupSection } from "@/components/ShopGroupSection";
 import { ReadyTime } from "@/components/ReadyTime";
+import { ShopHoursLine } from "@/components/ShopHoursLine";
 import { ReviewScheduleCard } from "@/components/ReviewScheduleCard";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
@@ -86,7 +87,7 @@ import {
   type TravelChoice,
 } from "@/lib/checkout";
 import { userFacingError } from "@/lib/copy";
-import { shopPaused } from "@/lib/shopHours";
+import { SHOP_PAUSED_LINE, shopHoursView, shopPaused } from "@/lib/shopHours";
 import {
   GRIDGO_OFFICE,
   GRIDGO_OFFICE_BLURB,
@@ -1179,13 +1180,17 @@ export default function CheckoutScreen() {
 
           {totals.totalMinor == null && unpriced.length ? (
             <Text className="text-caption text-text-muted">
-              {unpriced.some((line) => shopPaused(line.listing?.shopHours))
-                ? "A shop in your order is closed for now and is not taking new orders. Remove its items to see the total and place your order."
-                : unpriced.length === 1
+              {unpriced.length === 1
                 ? unpriced[0].listing?.pricingUnit === "per_page" && !unpriced[0].documentPages
                   ? "Upload the document before GRIDGO can calculate the total."
                   : `${lineName(unpriced[0])} has no price at its quantity, so the total lands once you change it.`
                 : "Some items need attention before GRIDGO can calculate the total."}
+            </Text>
+          ) : totals.totalMinor == null && lines.some((line) => shopPaused(line.listing?.shopHours)) ? (
+            // GRIDGO keeps the line's price but will not total or take it.
+            <Text className="text-caption text-text-muted">
+              A shop in your order is closed for now and is not taking new orders. Remove its items to
+              see the total and place your order.
             </Text>
           ) : totals.totalMinor == null && totals.reasons.some((reason) => reason.code === "catalog_item_stale" || reason.code === "shop_unavailable") ? (
             <Text className="text-caption text-text-muted">
@@ -1316,6 +1321,8 @@ function LineRow({
   const name = lineName(line);
   const readyBy = readyByDate(line.promiseBy);
   const clientAmount = clientLineAmountMinor(line, serviceFeeRateBps);
+  // Closed for now: GRIDGO will not take this line, whatever it is priced at.
+  const paused = shopPaused(line.listing?.shopHours);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -1340,6 +1347,12 @@ function LineRow({
             </View>
             <View className="min-w-0 flex-1 gap-1">
               <Text className="text-body-lg font-medium text-text-primary">{name}</Text>
+              {paused ? (
+                <View className="gap-1">
+                  <ShopHoursLine view={shopHoursView(line.listing?.shopHours)} />
+                  <Text className="text-caption text-warning">{SHOP_PAUSED_LINE}</Text>
+                </View>
+              ) : null}
               <ReadyTime promiseBy={line.promiseBy} />
               {options ? (
                 <Text className="text-caption text-text-muted" numberOfLines={2}>
