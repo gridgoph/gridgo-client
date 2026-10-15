@@ -1,5 +1,6 @@
 import { formatPhp, type Notification } from "@/lib/api";
 import { deliveryPinNotificationCopy, isDeliveryPinAsk } from "@/lib/deliveryPin";
+import { CHANGE_WINDOW_STATES, changeNotificationCopy, isChangeAsk } from "@/lib/orderChanges";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
@@ -365,6 +366,44 @@ const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCal
       detail: "Your original pin stays in use until a payment is confirmed.",
     },
   },
+  // A shop's change request can be answered and paid only while the job is
+  // still being printed (report F9FCD485).
+  order_change_requested: {
+    states: CHANGE_WINDOW_STATES,
+    callout: {
+      tone: "warning",
+      icon: "square-pen",
+      title: "Approve or decline the change",
+      detail: "If you decline, the shop prints your order as placed.",
+    },
+  },
+  order_change_accepted: {
+    states: CHANGE_WINDOW_STATES,
+    callout: {
+      tone: "warning",
+      icon: "wallet",
+      title: "Pay for the change by QR",
+      detail: "Open the order for the QR code and receipt upload.",
+    },
+  },
+  order_change_payment_submitted: {
+    states: CHANGE_WINDOW_STATES,
+    callout: {
+      tone: "info",
+      icon: "clock",
+      title: "Your change payment is being checked",
+      detail: "Do not pay again.",
+    },
+  },
+  order_change_payment_rejected: {
+    states: CHANGE_WINDOW_STATES,
+    callout: {
+      tone: "warning",
+      icon: "wallet",
+      title: "Check the reason and send it again",
+      detail: "The shop prints your order as placed until a payment is confirmed.",
+    },
+  },
   order_rate_reminder: {
     states: ["delivered", "issue_window_open", "completed", "payout_released"],
     callout: {
@@ -486,6 +525,7 @@ export function presentNotification(
   if (voucher) return presentVoucher(notification, voucher);
   const refund =
     deliveryPinNotificationCopy(notification.type) ??
+    changeNotificationCopy(notification.type) ??
     refundNotificationCopy(notification.type) ??
     shopRecoveryNotificationCopy(notification) ??
     rescheduleNotificationCopy(notification.type);
@@ -524,6 +564,7 @@ export function presentNotification(
     shopRecoveryNotificationNeedsYou(notification) ||
     rescheduleNotificationNeedsYou(notification.type) ||
     (isDeliveryPinAsk(notification.type) && calloutFor(notification, false, false) != null) ||
+    (isChangeAsk(notification.type) && calloutFor(notification, false, false) != null) ||
     applicationAsk;
 
   const railKind = eventState

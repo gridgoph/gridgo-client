@@ -1344,6 +1344,12 @@ function LineRow({
                 </Text>
               ) : null}
               {line.documentPages ? <Text className="text-caption text-text-secondary">{documentPagesSummary(line.documentPages)}</Text> : null}
+              {/* The note as GRIDGO stored it, contacts already hidden. Edit reopens it. */}
+              {line.specialInstructions?.trim() ? (
+                <Text className="text-caption text-text-secondary" numberOfLines={3}>
+                  Note: {line.specialInstructions.trim()}
+                </Text>
+              ) : null}
               {clientAmount == null ? (
                 <Text className="text-caption text-warning">{unpricedLineReason(line)}</Text>
               ) : (

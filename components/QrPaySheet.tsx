@@ -25,8 +25,8 @@ type Props = {
   downpaymentMinor: number | null;
   /** The share that amount is of the total. Defaults to the old 75. */
   downpaymentPercent?: number;
-  /** Defaults to checkout wording; final and pin payments reuse the same receiving QR. */
-  paymentKind?: "checkout" | "initial" | "final" | "pin";
+  /** Defaults to checkout wording; final, pin and change payments reuse the same receiving QR. */
+  paymentKind?: "checkout" | "initial" | "final" | "pin" | "change";
   /**
    * Public plate from `GET /settings` `paymentQr.imageUrl`. Missing or empty
    * uses the bundled GCash screenshot — never a blank plate.
@@ -149,6 +149,9 @@ export function qrPayCopy(
   }
   if (paymentKind === "pin") {
     return { title: "Scan to pay for your new pin", due: "Delivery difference due", pending };
+  }
+  if (paymentKind === "change") {
+    return { title: "Scan to pay for your change", due: "Change payment due", pending };
   }
   if (inFull) {
     return {
