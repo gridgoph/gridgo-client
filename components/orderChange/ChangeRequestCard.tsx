@@ -118,12 +118,13 @@ export function ChangeRequestCard({ order, view, primary, onChanged }: Props) {
       ) : null}
 
       <View
-        className="flex-row items-baseline justify-between gap-4 border-t border-outline-subtle pt-3"
+        className="flex-row flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-outline-subtle pt-3"
         accessible
         accessibilityLabel={`Cost of this change: ${changePriceLine(change)}`}
       >
-        <Text className="text-body text-text-secondary">Cost of this change</Text>
-        <Text className="text-h3 text-text-primary">{changePriceLine(change)}</Text>
+        {/* Whole phrases: at a large text size the figure moves under the label rather than breaking. */}
+        <Text className="shrink-0 text-body text-text-secondary">Cost of this change</Text>
+        <Text className="shrink-0 text-h3 text-text-primary">{changePriceLine(change)}</Text>
       </View>
       {priced && view.kind === "answer" ? (
         <Text className="-mt-2 text-caption text-text-muted">
