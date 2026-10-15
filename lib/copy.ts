@@ -122,6 +122,27 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "This order is no longer waiting for a drop-off confirmation. Refresh for its latest progress.";
       case "invalid_dropoff_point":
         return "Choose a pin and enter a street and landmark of up to 240 characters.";
+      // ---- the delivery pin and its one change (report 6C8DE953) ----
+      case "delivery_pin_locked":
+        return "A rider has been assigned, so this pin can no longer change. Pull down to see the pin your rider has.";
+      case "delivery_pin_stale":
+        return "This pin was updated a moment ago. It has been reloaded — check it and try again.";
+      case "delivery_pin_change_used":
+        return "You have already used your one pin change.";
+      case "delivery_pin_payment_pending":
+        return "Operations is still checking the payment for your new pin. Wait for their answer first.";
+      case "delivery_pin_fee_changed":
+        return "The delivery price for this pin changed. Check the new difference and save again.";
+      case "delivery_pin_warning_required":
+        return "Tick the box to confirm this is your one pin change.";
+      case "delivery_pin_money_reconciliation_required":
+        return "GRIDGO has to check this order's payments before its delivery price can change. Keep your current pin, or message GRIDGO.";
+      case "delivery_pin_payment_unavailable":
+        return "This pin is not waiting for a payment any more. Pull down to refresh.";
+      case "delivery_pin_idempotency_conflict":
+        return "That clashed with an earlier attempt. Try again.";
+      case "invalid_delivery_pin_request":
+        return "Keep the notes to 500 characters and the receiver's name to 120.";
       case "transition_not_allowed":
       case "invalid_state":
         return "This order is not ready for that action yet. Pull to refresh, or check the timeline.";

@@ -10,6 +10,7 @@ import { BasketGroupsCard } from "@/components/BasketGroupsCard";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DropoffConfirmationCard } from "@/components/DropoffConfirmationCard";
+import { DeliveryPinCard } from "@/components/deliveryPin/DeliveryPinCard";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
 import { MissedCallNotice } from "@/components/call/MissedCallNotice";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
@@ -85,6 +86,7 @@ import {
 } from "@/lib/orderSections";
 import { canRate } from "@/lib/rating";
 import { currentRefund, refundEntry } from "@/lib/refunds";
+import { appliedChangeLine, deliveryPinNeedsClient } from "@/lib/deliveryPin";
 import { rescheduleView } from "@/lib/reschedule";
 import { shopRecoveryView } from "@/lib/shopRecovery";
 import { canHaveSurvey } from "@/lib/survey";
@@ -329,6 +331,8 @@ export default function OrderDetailScreen() {
       ? "correction"
       : payable
         ? "pay"
+        : deliveryPinNeedsClient(order)
+          ? "pin"
         : underReview
           ? "review"
           : isIssueWindowState(order.state)
@@ -419,7 +423,8 @@ export default function OrderDetailScreen() {
     ) : null;
 
   /* One action zone at a time — the single yellow control lives here. */
-  const actionZoneView = actionZone ? (
+  // The pin card draws itself (below the progress docket); here it only takes the yellow.
+  const actionZoneView = actionZone && actionZone !== "pin" ? (
     <Animated.View
       key={`${order.state}:${actionZone}:${recovery?.kind ?? reschedule?.kind ?? ""}`}
       entering={reducedMotion ? undefined : FadeIn.duration(200)}
@@ -689,6 +694,23 @@ export default function OrderDetailScreen() {
 
         <DropoffConfirmationCard key={order.id} order={order} onUpdated={applyOrderUpdate} onRefresh={() => void load()} />
 
+        {/* Where the rider goes, asked once production finishes (report 6C8DE953). */}
+        <DeliveryPinCard
+          key={`pin:${order.id}`}
+          order={order}
+          primary={actionZone === "pin"}
+          showMap={!delivering}
+          onChangePin={() =>
+            router.push({ pathname: "/order/delivery-pin", params: { orderId: order.id } })
+          }
+          onUpdated={(deliveryPin) => {
+            applyOrderUpdate({ ...order, deliveryPin });
+            // An applied change also moves the address and the delivery money.
+            void load();
+          }}
+          onRefresh={() => void load()}
+        />
+
         {finished ? <JobCompleteCard order={order} /> : null}
 
         {refundRecord}
@@ -852,6 +874,12 @@ function MoneyDetails({
   const printing = orderPrintingMinor(order);
   // A pick-up order chosen before matching carries the hub's fee in the
   // delivery slot. Zero (today's setting) still reads as nothing to pay.
+  // The one pin change moves delivery after checkout; the checkout figures stay as they were.
+  const pinChange =
+    order.deliveryPin?.change?.status === "applied" && order.deliveryPin.change.feeDifferenceMinor !== 0
+      ? order.deliveryPin.change
+      : null;
+  const checkoutTotal = order.totalMinor ?? total;
   const pickupFee =
     order.fulfillmentMode === "pickup" && (order.deliveryFeeMinor ?? 0) > 0
       ? (order.deliveryFeeMinor as number)
@@ -876,6 +904,12 @@ function MoneyDetails({
                   : "—"
           }
         />
+        {pinChange ? (
+          <SpecRow
+            label={pinChange.feeDifferenceMinor > 0 ? "New pin · paid by QR" : "New pin · delivery-fee credit"}
+            value={`${pinChange.feeDifferenceMinor > 0 ? "+" : "−"}${formatPhp(Math.abs(pinChange.feeDifferenceMinor))}`}
+          />
+        ) : null}
         {showFee ? (
           <ServiceFeeRow explainOnly rateBps={order.serviceFeeRateBps ?? null} />
         ) : null}
@@ -899,6 +933,11 @@ function MoneyDetails({
           <Text className="text-body-lg text-text-secondary">Total</Text>
           <Text className="text-h3 text-text-primary">{formatPhp(total)}</Text>
         </View>
+        {pinChange ? (
+          <Text className="text-caption text-text-muted">
+            {appliedChangeLine(pinChange)}. The checkout total was {formatPhp(checkoutTotal)}; the receipt keeps the checkout figures.
+          </Text>
+        ) : null}
       </View>
       <SecondaryButton label="View receipt" onPress={onOpenReceipt} />
       {physicalInvoice ? (

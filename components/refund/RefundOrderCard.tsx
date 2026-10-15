@@ -4,7 +4,7 @@ import { RefundStageRail } from "@/components/refund/RefundStageRail";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import type { Refund } from "@/lib/api";
-import { refundEntryNote, refundHeadline, refundStatusMeta, type RefundEntry } from "@/lib/refunds";
+import { isDeliveryCredit, refundEntryNote, refundHeadline, refundMeta, type RefundEntry } from "@/lib/refunds";
 
 /**
  * Where this order's refund stands, on the order itself.
@@ -14,8 +14,9 @@ import { refundEntryNote, refundHeadline, refundStatusMeta, type RefundEntry } f
  * the order's whole action zone.
  */
 export function RefundOrderCard({ refund, onOpen }: { refund: Refund; onOpen: () => void }) {
-  const meta = refundStatusMeta(refund.status);
+  const meta = refundMeta(refund);
   const { headline, detail } = refundHeadline(refund);
+  const credit = isDeliveryCredit(refund);
   return (
     <View className="gg-card gap-4">
       <View className="gap-2">
@@ -26,7 +27,10 @@ export function RefundOrderCard({ refund, onOpen }: { refund: Refund; onOpen: ()
         <Text className="text-body text-text-secondary">{detail}</Text>
       </View>
       <RefundStageRail status={refund.status} />
-      <SecondaryButton label="View refund" onPress={onOpen} />
+      <SecondaryButton
+        label={credit ? (refund.destination ? "View credit" : "Add receiving QR") : "View refund"}
+        onPress={onOpen}
+      />
     </View>
   );
 }

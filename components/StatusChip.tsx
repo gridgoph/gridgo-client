@@ -2,6 +2,7 @@ import {
   CircleCheck,
   CircleX,
   Clock,
+  MapPin,
   Sparkles,
   SquarePen,
   TrendingUp,
@@ -29,6 +30,7 @@ const ICONS = {
   "circle-x": CircleX,
   clock: Clock,
   "square-pen": SquarePen,
+  "map-pin": MapPin,
   // Release labels in Settings > What's new (`RELEASE_LABEL_LOOK`).
   sparkles: Sparkles,
   "trending-up": TrendingUp,

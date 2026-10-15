@@ -403,6 +403,11 @@ function AppNavigation() {
                   name="order/refund-account"
                   options={pushedScreenOptions("Receiving account")}
                 />
+                {/* The one delivery-pin change: a map, a search and a price (report 6C8DE953). */}
+                <Stack.Screen
+                  name="order/delivery-pin"
+                  options={pushedScreenOptions("Change delivery pin")}
+                />
                 {/*
                   Asking for a change to a proof is a real destination with a
                   keyboard in it, so it gets the platform's own sheet: drag to
