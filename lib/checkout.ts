@@ -176,6 +176,7 @@ export const PROOF_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export type PlaceOrderBlocker =
   | "empty"
+  | "shop_closed"
   | "price"
   | "artwork"
   | "artwork_checking"
@@ -203,6 +204,7 @@ export const SWIPE_TO_DELETE_HINT = "Swipe left to delete";
  */
 export function placeOrderBlockers({
   lineCount,
+  linesShopClosed = 0,
   linesUnpriced = 0,
   linesMissingArtwork,
   linesCheckingArtwork = 0,
@@ -215,6 +217,12 @@ export function placeOrderBlockers({
   rightsAgreed = true,
 }: {
   lineCount: number;
+  /**
+   * Lines from a shop closed for now (gridgo-api#219). GRIDGO refuses the
+   * whole checkout with `shop_unavailable`, and no payment fixes that — only
+   * removing them does, so it leads.
+   */
+  linesShopClosed?: number;
   /** Lines GRIDGO answered with no price — checkout would refuse them too. */
   linesUnpriced?: number;
   linesMissingArtwork: number;
@@ -243,6 +251,7 @@ export function placeOrderBlockers({
 }): PlaceOrderBlocker[] {
   const blockers: PlaceOrderBlocker[] = [];
   if (lineCount === 0) blockers.push("empty");
+  if (linesShopClosed > 0) blockers.push("shop_closed");
   if (linesUnpriced > 0) blockers.push("price");
   if (linesMissingArtwork > 0) blockers.push("artwork");
   if (linesArtworkProblem > 0) blockers.push("artwork_problem");
@@ -260,6 +269,10 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
   switch (blocker) {
     case "empty":
       return "Add something to print first.";
+    case "shop_closed":
+      return detail
+        ? `${detail} is from a shop that is closed for now. Remove it to place your order.`
+        : "Some items are from a shop that is closed for now. Remove them to place your order.";
     case "price":
       return detail
         ? `${detail} has no price at this quantity. Open it and change the quantity.`

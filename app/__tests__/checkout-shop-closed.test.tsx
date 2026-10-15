@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react-native";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import { withQuote, type QuoteOptions } from "@/test/cartQuote";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -229,5 +229,27 @@ describe("a basket line from a shop closed for now", () => {
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
     expect(screen.queryByText(/closed for now/i)).toBeNull();
+  });
+  // Presses, so it goes last in this file.
+  it("will not place the order, and says what to do instead", async () => {
+    const closed = line({
+      listing: {
+        ...listing(),
+        shopHours: { isOpenNow: false, temporarilyClosed: true, calendarAvailable: true, nextOpeningAt: null },
+      },
+    });
+    const basket = cart({ lines: [closed] });
+    api.getCart.mockResolvedValue(basket);
+    useCart.setState({ cart: basket });
+    await renderInSafeArea(<CheckoutScreen />);
+    await screen.findByText("WHAT GRIDGO IS PRINTING");
+
+    const place = screen.getByLabelText("Place this order");
+    expect(place).toBeDisabled();
+    expect(
+      screen.getByText("Flyers is from a shop that is closed for now. Remove it to place your order."),
+    ).toBeTruthy();
+    await fireEvent.press(place);
+    expect(api.checkoutCart).not.toHaveBeenCalled();
   });
 });

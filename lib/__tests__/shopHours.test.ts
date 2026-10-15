@@ -1,5 +1,6 @@
 import type { ShopBoard, ShopHours } from "@/lib/api";
 import { unpricedLineReason } from "@/lib/clientPrice";
+import { blockerLine, placeOrderBlockers } from "@/lib/checkout";
 import { userFacingError } from "@/lib/copy";
 import { ApiError } from "@/lib/api";
 import {
@@ -121,5 +122,23 @@ describe("refusals from a shop closed for now", () => {
   it("words checkout's shop_unavailable plainly", () => {
     const error = new ApiError(409, { error: "shop_unavailable", message: "A shop in this cart is no longer available." });
     expect(userFacingError(error, "fallback")).toMatch(/closed for now and is not taking new orders/);
+  });
+
+  it("leads checkout's blockers, ahead of anything a payment could fix", () => {
+    const blockers = placeOrderBlockers({
+      lineCount: 2,
+      linesShopClosed: 1,
+      linesUnpriced: 1,
+      linesMissingArtwork: 1,
+      linesMissingDropoff: 0,
+      referenceOk: false,
+      hasProof: false,
+      hasSettings: true,
+    });
+    expect(blockers[0]).toBe("shop_closed");
+    expect(blockerLine("shop_closed", "Plaques")).toBe(
+      "Plaques is from a shop that is closed for now. Remove it to place your order.",
+    );
+    expect(blockerLine("shop_closed")).toMatch(/^Some items are from a shop that is closed for now/);
   });
 });

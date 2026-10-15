@@ -267,8 +267,10 @@ export default function CheckoutScreen() {
   const artworkProblem = lines.filter((line) => artworkStatus(line)?.kind === "problem");
   const referenceCheck = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
+  const shopClosed = lines.filter((line) => shopPaused(line.listing?.shopHours));
   const blockers = placeOrderBlockers({
     lineCount: lines.length,
+    linesShopClosed: shopClosed.length,
     linesUnpriced: unpriced.length,
     linesMissingArtwork: missingArtwork.length,
     linesCheckingArtwork: checkingArtwork.length,
@@ -583,7 +585,9 @@ export default function CheckoutScreen() {
     );
   }
 
-  const placeLocked = ocrReading || placing || busy;
+  // A shop closed for now is refused whatever else is filled in, so the button
+  // is off rather than a tap that only scrolls; the line under it says why.
+  const placeLocked = ocrReading || placing || busy || shopClosed.length > 0;
 
   const lineRow = (line: CartLineRecord) => (
     <LineRow
@@ -666,7 +670,7 @@ export default function CheckoutScreen() {
           </View>
 
           <Text
-            className={placeError || (missingShown && blockers.length)
+            className={placeError || (missingShown && blockers.length) || shopClosed.length
               ? "text-center text-caption text-error"
               : "text-center text-caption text-text-muted"}
           >
@@ -677,7 +681,11 @@ export default function CheckoutScreen() {
                   ? OCR_UNREADABLE
                   : blockerLine(
                       blockers[0],
-                      blockers[0] === "price"
+                      blockers[0] === "shop_closed"
+                        ? shopClosed.length === 1
+                          ? lineName(shopClosed[0])
+                          : undefined
+                        : blockers[0] === "price"
                         ? unpriced.length === 1
                           ? lineName(unpriced[0])
                           : undefined
