@@ -162,6 +162,8 @@ export type ProductionItem = {
   specialInstructions?: string;
   /** The latest change the client approved (and paid for) on this item. */
   agreedChange?: { id: string; proposedSpec: string; appliedAt: string } | null;
+  /** The artwork check frozen at checkout, acceptances included; null before it. */
+  artworkGuidance?: ArtworkGuidance | null;
 };
 
 /**
@@ -573,6 +575,8 @@ export type PlatformSettings = {
   riderLocationStaleAfterSeconds?: number;
   /** GRIDGO's opening hours (gridgo-api#203). Absent on an older API. */
   operatingHours?: OperatingHours;
+  /** Artwork targets per product type. Absent on an older API. */
+  artworkGuidance?: ArtworkGuidanceSettings;
 };
 
 /**
@@ -693,6 +697,67 @@ export type DetectedArtwork = {
   /** "A4", "Letter" — null when the size matches no name GRIDGO knows. */
   pageSize: string | null;
   orientation: "portrait" | "landscape" | "square" | null;
+  /**
+   * The colour mode the file names (gridgo-api `docs/ARTWORK_GUIDANCE_API.md`).
+   * Null when it states none (Word, a PDF naming no colour space); absent on
+   * an older API. Read through `colorModeLabel`.
+   */
+  colorMode?: ArtworkColorMode | null;
+};
+
+/** `mixed` is a PDF that names both RGB and CMYK colour spaces. */
+export type ArtworkColorMode = "rgb" | "cmyk" | "grayscale" | "mixed" | (string & {});
+
+/**
+ * One product type's artwork targets, which Super Admin edits
+ * (`settings.artworkGuidance`). `minimumDpi` is measured at the ordered size;
+ * null means no resolution check. `acceptsRgb: false` expects CMYK.
+ */
+export type ArtworkGuidanceRule = { minimumDpi: number | null; acceptsRgb: boolean };
+
+export type ArtworkGuidanceSettings = {
+  version: number;
+  default: ArtworkGuidanceRule;
+  /** Keyed by taxonomy subcategory code, the same as `listing.subcategoryCode`. */
+  subcategories: Record<string, ArtworkGuidanceRule>;
+};
+
+/**
+ * Something GRIDGO advises about one file. A warning never blocks: the client
+ * uploads another file or accepts it. `acceptedAt` is null until accepted.
+ * Codes are open strings — an unknown one is drawn generically.
+ */
+export type ArtworkWarning =
+  | { code: "low_resolution"; effectiveDpi: number; minimumDpi: number; acceptedAt: string | null }
+  | { code: "color_mode"; colorMode: ArtworkColorMode; expectedColorMode: ArtworkColorMode; acceptedAt: string | null };
+
+export type ArtworkGuidanceFile = {
+  fileId: string;
+  colorMode: ArtworkColorMode | null;
+  pixelWidth: number | null;
+  pixelHeight: number | null;
+  /** At the ordered size, on the limiting side; null without pixels or a size. */
+  effectiveDpi: number | null;
+  warnings: ArtworkWarning[];
+};
+
+/**
+ * GRIDGO's judgement of a line's uploaded files against its product type, at
+ * the size ordered. On a cart line it is live; on an order's production item
+ * it is the record frozen at checkout (`version`, `evaluatedAt`), and null on
+ * orders from before it.
+ */
+export type ArtworkGuidance = {
+  subcategoryCode: string | null;
+  minimumDpi: number | null;
+  acceptsRgb: boolean;
+  expectedColorMode: ArtworkColorMode | null;
+  /** Thousandths of a millimetre; null when the line names no size. */
+  orderedSize: { widthMilli: number; heightMilli: number } | null;
+  files: ArtworkGuidanceFile[];
+  openWarningCount: number;
+  version?: number;
+  evaluatedAt?: string;
 };
 
 export type StoredFile = {
@@ -2476,6 +2541,8 @@ export type CartLineRecord = {
   lineSubtotalMinor: number | null;
   /** GRIDGO amount for `lineSubtotalMinor` (shop + live service fee). */
   clientLineSubtotalMinor?: number | null;
+  /** Resolution and colour against this product type, at the ordered size. */
+  artworkGuidance?: ArtworkGuidance | null;
 };
 
 /**
@@ -3063,6 +3130,23 @@ export async function removeCartLine(cartId: string, lineId: string): Promise<Ca
   const result = await request<{ cart: Cart }>(
     `/me/carts/${encodeURIComponent(cartId)}/lines/${encodeURIComponent(lineId)}`,
     { method: "DELETE" },
+  );
+  return result.cart;
+}
+
+/**
+ * Accept artwork warnings on a line. Replaces the line's acceptances, so send
+ * every one the client keeps; `[]` withdraws them all. `409
+ * artwork_warning_not_found` means the line changed: re-read it.
+ */
+export async function acceptArtworkWarnings(
+  cartId: string,
+  lineId: string,
+  accept: { fileId: string; code: string }[],
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/lines/${encodeURIComponent(lineId)}/artwork-warnings`,
+    { method: "PUT", body: JSON.stringify({ accept }) },
   );
   return result.cart;
 }

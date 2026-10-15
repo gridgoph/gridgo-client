@@ -20,9 +20,10 @@ import {
 import { useState, type ReactNode } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 
+import { ArtworkFileGuidance } from "@/components/ArtworkFileGuidance";
 import { AcceptedFiles, ProgressBar } from "@/components/ArtworkUploadCard";
 import { useThemeColors } from "@/hooks/useTheme";
-import type { AcceptedFormat, ArtworkAttachment, StoredFile } from "@/lib/api";
+import type { AcceptedFormat, ArtworkAttachment, ArtworkGuidance, StoredFile } from "@/lib/api";
 import {
   ATTACHMENT_LABEL_MAX,
   MAX_ARTWORK_ATTACHMENTS,
@@ -31,6 +32,7 @@ import {
   attachmentLimitLine,
   cleanLabel,
 } from "@/lib/artworkAttachments";
+import { fileGuidance } from "@/lib/artworkGuidance";
 import { ARTWORK_ACCEPTED, ARTWORK_MAX_MIB, artworkCheckFailure, isWordDocument } from "@/lib/artworkUpload";
 import {
   checkKey,
@@ -79,6 +81,13 @@ type Props = {
   onRecheck: (entry: Extract<ArtworkAttachment, { kind: "link" }>) => void;
   onRetryUpload: (uploadKey: string) => void;
   onDismissUpload: (uploadKey: string) => void;
+  /** GRIDGO's resolution and colour check of each file, at the size ordered. */
+  guidance?: ArtworkGuidance | null;
+  /** `fileId:code` of the warning whose answer is being saved. */
+  accepting?: string | null;
+  acceptError?: string | null;
+  onAcceptWarning?: (fileId: string, code: string, accept: boolean) => void;
+  onReplaceFile?: (fileId: string) => void;
 };
 
 /**
@@ -111,6 +120,11 @@ export function ArtworkAttachmentList({
   onRecheck,
   onRetryUpload,
   onDismissUpload,
+  guidance = null,
+  accepting = null,
+  acceptError = null,
+  onAcceptWarning,
+  onReplaceFile,
 }: Props) {
   const colors = useThemeColors();
   const inFlight = uploads.filter((upload) => upload.phase !== "failed").length;
@@ -144,8 +158,29 @@ export function ArtworkAttachmentList({
           onMove={onMove}
           onRelabel={onRelabel}
           onRecheck={onRecheck}
+          guidance={
+            entry.kind === "file" && guidance ? (
+              <FileGuidanceSlot
+                guidance={guidance}
+                fileId={entry.fileId}
+                accepting={accepting}
+                disabled={saving || accepting != null}
+                onAccept={onAcceptWarning}
+                onReplace={takesFiles && onReplaceFile ? () => onReplaceFile(entry.fileId) : undefined}
+              />
+            ) : null
+          }
         />
       ))}
+
+      {acceptError ? (
+        <View className="flex-row items-start gap-2 border-t border-outline-subtle px-4 py-3" accessibilityRole="alert">
+          <View className="pt-0.5">
+            <CircleAlert size={16} color={colors.error} strokeWidth={2} aria-hidden />
+          </View>
+          <Text className="min-w-0 flex-1 text-body text-error">{acceptError}</Text>
+        </View>
+      ) : null}
 
       {uploads.map((upload) => (
         <UploadRow
@@ -341,6 +376,7 @@ function AttachmentRow({
   onMove,
   onRelabel,
   onRecheck,
+  guidance,
 }: {
   entry: ArtworkAttachment;
   index: number;
@@ -355,6 +391,8 @@ function AttachmentRow({
   onMove: (entryKey: string, by: -1 | 1) => void;
   onRelabel: (entryKey: string, label: string) => void;
   onRecheck: (entry: Extract<ArtworkAttachment, { kind: "link" }>) => void;
+  /** This file's resolution and colour check, drawn under its status. */
+  guidance?: ReactNode;
 }) {
   const key = attachmentKey(entry);
   const isFile = entry.kind === "file";
@@ -415,6 +453,8 @@ function AttachmentRow({
 
       {status}
 
+      {guidance}
+
       {/*
         The label and the two moves share a line: both are about this row's
         place in the list, and ten rows of three lines each was a long scroll.
@@ -452,6 +492,35 @@ function AttachmentRow({
         </View>
       ) : null}
     </View>
+  );
+}
+
+function FileGuidanceSlot({
+  guidance,
+  fileId,
+  accepting,
+  disabled,
+  onAccept,
+  onReplace,
+}: {
+  guidance: ArtworkGuidance;
+  fileId: string;
+  accepting: string | null;
+  disabled: boolean;
+  onAccept?: (fileId: string, code: string, accept: boolean) => void;
+  onReplace?: () => void;
+}) {
+  const file = fileGuidance(guidance, fileId);
+  if (!file) return null;
+  return (
+    <ArtworkFileGuidance
+      file={file}
+      guidance={guidance}
+      accepting={accepting}
+      disabled={disabled || !onAccept}
+      onAccept={(code, accept) => onAccept?.(fileId, code, accept)}
+      onReplace={onReplace}
+    />
   );
 }
 

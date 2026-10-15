@@ -13,7 +13,6 @@ import {
   wordFormatNote,
 } from "@/lib/artworkFormats";
 import { uploadLimitLine } from "@/lib/listing";
-import type { PrintResolution } from "@/lib/printResolution";
 import {
   ARTWORK_ACCEPTED,
   ARTWORK_MAX_MIB,
@@ -46,19 +45,6 @@ type Props = {
    */
   emphasis?: "primary" | "quiet";
   /**
-   * What this file will actually print at, at the size the client chose.
-   *
-   * Passed in rather than computed here, because it needs the chosen size and
-   * this card only knows the file. Null where either number is unknown — a
-   * custom size nobody has measured, or a file that stated no dimensions.
-   */
-  resolution?: PrintResolution | null;
-  /**
-   * Set when a note under the card already warns about this file's size, so
-   * the resolution stays a quiet fact here rather than a second amber line.
-   */
-  resolutionQuiet?: boolean;
-  /**
    * The file types this listing takes. Listed on the empty card, so a client
    * knows before the picker opens; omitted where no listing narrows it.
    */
@@ -88,8 +74,6 @@ export function ArtworkUploadCard({
   onCancel,
   readOnly,
   emphasis = "quiet",
-  resolution = null,
-  resolutionQuiet = false,
   formats,
   productName = "This item",
 }: Props) {
@@ -108,16 +92,9 @@ export function ArtworkUploadCard({
     detectedContentType: state.contentType,
     size: state.size,
   });
-  /*
-    The byte count is a proxy, and only worth showing while there is nothing
-    better. Once GRIDGO has read the real pixel dimensions and the client has
-    chosen a size, the resolution is a measurement rather than a guess — and a
-    measured warning beside a guessed one about the same file is one warning
-    too many. So the guess stands down.
-  */
-  const thinFile =
-    !resolution && facts.some((fact) => fact.id === "size" && fact.tone === "warn");
-  const showFacts = !refused && (facts.length > 0 || Boolean(resolution) || thinFile);
+  // The byte count is a proxy: a file small enough to be a screen export.
+  const thinFile = facts.some((fact) => fact.id === "size" && fact.tone === "warn");
+  const showFacts = !refused && (facts.length > 0 || thinFile);
 
   // Empty and idle is the only state where tapping the card has one obvious
   // meaning. Once a file is on it the card is a report with its own controls,
@@ -182,17 +159,6 @@ export function ArtworkUploadCard({
             </View>
           ))}
           {thinFile ? <Text className="text-caption text-warning">{THIN_FILE_NOTE}</Text> : null}
-          {resolution ? (
-            <Text
-              className={
-                resolution.verdict === "low" && !resolutionQuiet
-                  ? "text-caption text-warning"
-                  : "text-caption text-text-muted"
-              }
-            >
-              {resolution.message}
-            </Text>
-          ) : null}
         </View>
       ) : null}
 

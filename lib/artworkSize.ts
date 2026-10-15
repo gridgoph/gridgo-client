@@ -8,6 +8,10 @@
  * product needs, what the file is, what happens if it is sent anyway, and the
  * two ways on: a file that matches, or carry on knowing it will be scaled.
  *
+ * Shape only. Whether the file has enough pixels is GRIDGO's judgement per
+ * product type (`lib/artworkGuidance.ts`); this note only borrows its target
+ * to say how many pixels a matching file would have.
+ *
  * An image is judged on its pixels, never on the millimetres its declared
  * density works out to. A JPEG exported for A4 at 2480 × 3508 that still says
  * "72 DPI" in its header is a perfect A4 file and 875 mm tall on paper, and
@@ -20,7 +24,7 @@
 
 import type { DetectedArtwork } from "@/lib/api";
 import { trimRatio } from "@/lib/listing";
-import { pixelsNeeded, printResolution } from "@/lib/printResolution";
+import { pixelsAt } from "@/lib/artworkGuidance";
 
 type Dimensions = { width: number; height: number };
 
@@ -62,6 +66,8 @@ export function artworkSizeNote(input: {
   sizeMilli: Dimensions | null;
   /** The size as the client picked it ("A4", "3 × 6 ft"); empty on a measured line. */
   label: string;
+  /** GRIDGO's target for this product type, for the pixels a match needs. */
+  minimumDpi?: number | null;
 }): ArtworkSizeNote | null {
   const { detected, sizeMilli } = input;
   const label = tidyLabel(input.label);
@@ -86,21 +92,12 @@ export function artworkSizeNote(input: {
   const pixels = filePixels(detected, input.pixels);
   if (!pixels) return null;
 
-  const shapeOff = shapeDrift(ratio(pixels), target) > SHAPE_TOLERANCE;
-  // "Workable" softness is the upload card's quiet line, not a mismatch: the
-  // file still matches, it just prints a little soft.
-  const blurry = printResolution(pixels, sizeMilli)?.verdict === "low";
-  if (!shapeOff && !blurry) return null;
-
-  const effect =
-    shapeOff && blurry
-      ? `It is a different shape and has too few pixels for this size, so it will be scaled to fit: ${CROP}, and it will print blurry.`
-      : shapeOff
-        ? `It is a different shape, so it will be scaled to fit: ${CROP}.`
-        : "It has too few pixels for this size, so it will be enlarged to fit and print blurry.";
+  if (shapeDrift(ratio(pixels), target) <= SHAPE_TOLERANCE) return null;
+  const effect = `It is a different shape, so it will be scaled to fit: ${CROP}.`;
+  const needed = sizeMilli && input.minimumDpi ? pixelsAt(sizeMilli, input.minimumDpi) : null;
 
   return {
-    needs: describeProduct(label, sizeMilli, pixels, pixelsNeeded(sizeMilli)),
+    needs: describeProduct(label, sizeMilli, pixels, needed),
     file: `${pixels.width} × ${pixels.height} pixels`,
     message: `${effect} ${WAYS_ON}`,
   };

@@ -231,6 +231,16 @@ describe("ArtworkScreen", () => {
             listing: cards,
             artworkFileId: "file_art",
             structuredSpec: { size: "standard" },
+            // GRIDGO's target for business cards names the pixels a match needs.
+            artworkGuidance: {
+              subcategoryCode: "business_cards",
+              minimumDpi: 300,
+              acceptsRgb: false,
+              expectedColorMode: "cmyk",
+              orderedSize: { widthMilli: 50_800, heightMilli: 88_900 },
+              files: [],
+              openWarningCount: 0,
+            },
           }),
         ],
       }),
@@ -266,15 +276,58 @@ describe("ArtworkScreen", () => {
     expect(screen.queryByText("This file does not match the print size")).toBeNull();
   });
 
-  it("gives both sizes when an image is too small for A4", async () => {
+  // gridgo-client#242: too few pixels in the right shape is GRIDGO's warning,
+  // with GRIDGO's figures, and it never closes checkout.
+  it("shows GRIDGO's resolution and colour warnings and keeps checkout open", async () => {
     mockDetected = { ...SCREENSHOT, pixelWidth: 595, pixelHeight: 842, dpi: null, widthMilli: null, heightMilli: null };
     holdFile();
-    useCart.setState({ cart: cart({ lines: [line({ artworkFileId: "file_art" })] }) });
+    useCart.setState({
+      cart: cart({
+        lines: [
+          line({
+            artworkFileId: "file_art",
+            artworkAttachments: [{ kind: "file", fileId: "file_art" }],
+            artworkGuidance: {
+              subcategoryCode: "flyers",
+              minimumDpi: 300,
+              acceptsRgb: false,
+              expectedColorMode: "cmyk",
+              orderedSize: { widthMilli: 210_000, heightMilli: 297_000 },
+              files: [
+                {
+                  fileId: "file_art",
+                  colorMode: "rgb",
+                  pixelWidth: 595,
+                  pixelHeight: 842,
+                  effectiveDpi: 72,
+                  warnings: [
+                    { code: "low_resolution", effectiveDpi: 72, minimumDpi: 300, acceptedAt: null },
+                    { code: "color_mode", colorMode: "rgb", expectedColorMode: "cmyk", acceptedAt: null },
+                  ],
+                },
+              ],
+              openWarningCount: 2,
+            },
+          }),
+        ],
+      }),
+    });
     await renderInSafeArea(<ArtworkScreen />);
 
-    expect(screen.getByText("This file does not match the print size")).toBeTruthy();
-    expect(screen.getByText("A4 · 210 × 297 mm · about 2480 × 3508 pixels")).toBeTruthy();
-    expect(screen.getByText("595 × 842 pixels")).toBeTruthy();
+    // The right shape: no size note, and no threshold of the app's own.
+    expect(screen.queryByText("This file does not match the print size")).toBeNull();
+    expect(screen.getByText("Prepare your file")).toBeTruthy();
+    expect(screen.getByText("Save it in CMYK")).toBeTruthy();
+    expect(screen.getByText("300 DPI at the printed size")).toBeTruthy();
+    expect(screen.getByText("RGB")).toBeTruthy();
+    expect(screen.getByText("72 DPI at the size ordered, 300 recommended")).toBeTruthy();
+    expect(screen.getByText("Lower resolution than recommended")).toBeTruthy();
+    expect(screen.getByText("RGB file")).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Print it at this resolution" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Print it in these colours" })).not.toBeChecked();
+    expect(screen.getByLabelText("Upload a new file")).toBeTruthy();
+    expect(screen.getByText(/not cover it/)).toBeTruthy();
+    expect(screen.getByLabelText("Go to checkout")).toBeEnabled();
   });
 
   it("opens the picker from the list itself", async () => {

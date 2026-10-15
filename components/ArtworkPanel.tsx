@@ -5,10 +5,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Pressable, Text, View } from "react-native";
 
 import { ArtworkDeletion } from "@/components/ArtworkDeletion";
+import { ArtworkGuidanceRecord } from "@/components/ArtworkGuidanceRecord";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
 import { getFile, getFileDownloadUrl as getDownloadUrl, type Order, type Refund, type StoredFile } from "@/lib/api";
 import { removedFileDetail } from "@/lib/artworkDeletion";
+import { orderFileGuidance, type OrderFileGuidance } from "@/lib/artworkGuidance";
 import { describeArtwork, isArtworkImage, isArtworkRemoved, readOrderArtwork, orderArtwork, type ArtworkReference } from "@/lib/orderArtwork";
 import { IDLE_DELETION, useArtworkDeletion } from "@/store/artworkDeletion";
 
@@ -33,6 +35,8 @@ export function ArtworkPanel({ order, refunds, children }: Props) {
 
 function ArtworkFiles({ order, refunds, children }: Props) {
   const files = orderArtwork(order);
+  // The resolution and colour check each file had at checkout, acceptances included.
+  const guidance = orderFileGuidance(order.productionItems);
   /** What each row read: the file, or null when it could not load. */
   const [read, setRead] = useState<Record<string, StoredFile | null>>({});
   const onRead = useCallback((fileId: string, file: StoredFile | null) => {
@@ -57,6 +61,7 @@ function ArtworkFiles({ order, refunds, children }: Props) {
           key={`${order.id}:${file.fileId}`}
           orderId={order.id}
           reference={named ? file : { ...file, itemName: undefined }}
+          guidance={file.kind === "artwork" ? guidance.get(file.fileId) ?? null : null}
           onRead={onRead}
         />
       ))}
@@ -77,9 +82,10 @@ type FileState =
   | { kind: "error"; message: string }
   | { kind: "ready"; file: StoredFile; previewUrl: string | null };
 
-function ArtworkFile({ orderId, reference, onRead }: {
+function ArtworkFile({ orderId, reference, guidance, onRead }: {
   orderId: string;
   reference: ArtworkReference;
+  guidance: OrderFileGuidance | null;
   onRead: (fileId: string, file: StoredFile | null) => void;
 }) {
   const colors = useThemeColors();
@@ -197,6 +203,7 @@ function ArtworkFile({ orderId, reference, onRead }: {
         </View>
         {file ? <ExternalLink size={18} color={colors.textSecondary} aria-hidden /> : null}
       </Pressable>
+      {guidance ? <ArtworkGuidanceRecord record={guidance} /> : null}
       {state.kind === "error" ? <Text accessibilityRole="alert" className="text-body text-error">{state.message}</Text> : null}
       {previewFailed && state.kind !== "error" ? <Text className="text-caption text-text-muted">Preview unavailable. Open the file to see it.</Text> : null}
       {openError ? <Text accessibilityRole="alert" className="text-body text-error">{openError}</Text> : null}

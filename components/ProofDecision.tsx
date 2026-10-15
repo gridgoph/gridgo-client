@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 
+import { ArtworkGuidanceRecord } from "@/components/ArtworkGuidanceRecord";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ErrorState } from "@/components/ErrorState";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -10,6 +11,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SpecRow } from "@/components/SpecRow";
 import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
+import { orderFileGuidance } from "@/lib/artworkGuidance";
 import { userFacingError } from "@/lib/copy";
 import { formatDeadline } from "@/lib/deadline";
 import { formatPriceRange } from "@/lib/orderState";
@@ -52,6 +54,11 @@ export function ProofDecision({
 
   const artworkFileId = order.artworkFileIds?.[order.artworkFileIds.length - 1] ?? null;
   const range = order.priceRange;
+  // The print check recorded with the order: what was flagged, and what the client accepted.
+  const checks = [...orderFileGuidance(order.productionItems).values()].filter(
+    (record) => (record.file.warnings ?? []).length > 0,
+  );
+  const several = new Set(checks.map((record) => record.itemName)).size > 1;
 
   const approve = async () => {
     setBusy(true);
@@ -116,6 +123,23 @@ export function ProofDecision({
           </View>
         ) : null}
       </View>
+
+      {checks.length ? (
+        <View className="gg-card gap-3">
+          <Text className="text-h3 text-text-primary">Print check</Text>
+          {checks.map((record) => (
+            <ArtworkGuidanceRecord
+              key={record.file.fileId}
+              record={record}
+              name={several ? record.itemName : undefined}
+            />
+          ))}
+          <Text className="text-caption text-text-muted">
+            Accepted warnings are kept with this order. A print that looks blurry or off-colour
+            because of one is not covered by the free reprint promise.
+          </Text>
+        </View>
+      ) : null}
 
       {error ? <ErrorState label="Not recorded" body={error} /> : null}
 
