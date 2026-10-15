@@ -11,6 +11,8 @@ import { ErrorScreenState } from "@/components/ErrorState";
 import { GridgoPrice } from "@/components/GridgoPrice";
 import { ListingGallery } from "@/components/ListingGallery";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
+import { PrintLayoutChoice } from "@/components/PrintLayoutChoice";
+import { PrintLayoutPreview } from "@/components/PrintLayoutPreview";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { ShopHoursLine } from "@/components/ShopHoursLine";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
@@ -21,7 +23,9 @@ import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
-import { type CatalogItem, type MeasureUnit, type MeasurementKind } from "@/lib/api";
+import { ApiError, type CatalogItem, type MeasureUnit, type MeasurementKind, type PrintLayoutCheck, type PrintLayoutCode } from "@/lib/api";
+import { attachmentFileIds, lineAttachments } from "@/lib/artworkAttachments";
+import { LAYOUT_NEEDS_FILE, layoutAdvice, offeredLayouts, paperGroupId } from "@/lib/printLayout";
 import {
   EMPTY_MEASUREMENT,
   belowMinimumOrder,
@@ -136,6 +140,9 @@ export default function ListingScreen() {
   const [measured, setMeasured] = useState<MeasurementDraft>(EMPTY_MEASUREMENT);
   // What the options cannot say, one note per item (report F9FCD485).
   const [note, setNote] = useState("");
+  // How the file sits on the paper, for a product whose shop offers the
+  // choice (gridgo-client#245). Never preselected.
+  const [layout, setLayout] = useState<PrintLayoutCode | null>(null);
   const [showMissing, setShowMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -220,6 +227,7 @@ export default function ListingScreen() {
       setQuantity(editing.quantity);
       setMeasured(toDraft(editing.measurement));
       setNote(editing.specialInstructions ?? "");
+      setLayout(editing.printLayout ?? null);
     } else if (item) {
       // A fresh sheet opens at the least the shop will run. Opening at one
       // with a note underneath let a quantity GRIDGO cannot price into the
@@ -282,6 +290,45 @@ export default function ListingScreen() {
   useEffect(() => {
     if (quoteAsk) requestQuote(quoteAsk.key, quoteAsk.input);
   }, [quoteAsk, requestQuote]);
+  /*
+    A basket row reopened to change it already has its files, so GRIDGO can
+    say what the options on screen would do to them before anything is saved
+    (`GET /me/print-layout-check`). A new item has no file yet: the choice is
+    asked here and checked on the artwork step.
+  */
+  const offered = offeredLayouts(item);
+  const layoutFileIds = editing && offered.length ? attachmentFileIds(lineAttachments(editing)) : [];
+  const probeKey =
+    item && layoutFileIds.length
+      ? JSON.stringify([item.id, selectedOptionIds(item, selection), layoutFileIds, layout])
+      : null;
+  const [probe, setProbe] = useState<{ key: string; check: PrintLayoutCheck | null } | null>(null);
+  useEffect(() => {
+    if (!probeKey || !item) return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      api
+        .getPrintLayoutCheck({
+          catalogItemId: item.id,
+          optionIds: selectedOptionIds(item, selection),
+          fileIds: layoutFileIds,
+          layout,
+        })
+        .then((check) => {
+          if (alive) setProbe({ key: probeKey, check });
+        })
+        .catch(() => {
+          // Advice only: without it the saved line's check still reads on the artwork step.
+          if (alive) setProbe({ key: probeKey, check: null });
+        });
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [probeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const layoutCheck = probe && probe.key === probeKey ? probe.check : null;
+
   const quoteStatus = useListingQuote((state) =>
     quoteAsk && state.key === quoteAsk.key ? state.status : "pending",
   );
@@ -323,6 +370,13 @@ export default function ListingScreen() {
   const addOns = addOnGroups(item);
   const complete = isSelectionComplete(item, selection);
   const missing = firstMissingGroup(item, selection);
+  const layoutMissing = offered.length > 0 && !offered.some((code) => code === layout);
+  const paperGroup = paperGroupId(item);
+  const advice = layoutAdvice(layoutCheck, {
+    layout,
+    listing: item,
+    paperPicked: paperGroup ? Boolean(selection[paperGroup]) : true,
+  });
   const shopUnit = unitPriceMinor(item, selection);
   // The header's price of one, at GRIDGO's figures when the listing carries
   // them; an older payload is marked up from the shop's.
@@ -381,6 +435,8 @@ export default function ListingScreen() {
       finish: boundValue(item, selection, "finish"),
     },
     measurement,
+    // Only where the shop offers the choice: GRIDGO refuses it on any other.
+    ...(offered.length ? { printLayout: layout } : {}),
     // Only when written: an API from before notes is never sent the field.
     ...(note.trim() ? { specialInstructions: note.trim() } : {}),
   });
@@ -397,7 +453,7 @@ export default function ListingScreen() {
 
   const add = async () => {
     if (busy || paused) return;
-    if (!complete || !sized) {
+    if (!complete || !sized || layoutMissing) {
       setShowMissing(true);
       return;
     }
@@ -424,8 +480,9 @@ export default function ListingScreen() {
         // Empty clears a note the line had; a line that never had one is left alone.
         const noteChange =
           note.trim() !== (editing.specialInstructions ?? "") ? { specialInstructions: note.trim() } : {};
+        const layoutChange = offered.length ? { printLayout: layout } : {};
         const updated = await run((cartId) =>
-          api.updateCartLine(cartId, editing.id, { optionIds, quantity, structuredSpec, measurement, ...noteChange }),
+          api.updateCartLine(cartId, editing.id, { optionIds, quantity, structuredSpec, measurement, ...noteChange, ...layoutChange }),
         );
         setBusy(false);
         adopt(updated);
@@ -460,6 +517,12 @@ export default function ListingScreen() {
         return;
       }
       if (staleMatch(e)) return;
+      // The shop changed which layouts it prints while this was open: read the
+      // listing again and ask afresh, with nothing ticked.
+      if (e instanceof ApiError && e.message === "print_layout_not_supported") {
+        setLayout(null);
+        void load();
+      }
       // Only a request that never reached GRIDGO is worded as a connection
       // problem, and `userFacingError` says that itself. An answer GRIDGO did
       // give must not be blamed on the phone's signal.
@@ -583,6 +646,34 @@ export default function ListingScreen() {
               />
             </View>
           ))}
+
+          {/* How the file sits on the paper: only where the shop offers the choice. */}
+          {offered.length ? (
+            <View className="mt-8 gap-3">
+              <PrintLayoutChoice
+                layouts={offered}
+                selected={layout}
+                onSelect={setLayout}
+                step={specs.length + 1}
+                disabled={busy}
+                scaleNote={advice.scale}
+              />
+              {editing && layoutFileIds.length ? (
+                <PrintLayoutPreview
+                  check={layoutCheck}
+                  layout={layout}
+                  previewFileId={editing.artworkPreviewFileId}
+                  advice={advice}
+                  onSwitchPaper={(paper) => {
+                    const group = item.optionGroups.find((entry) => entry.options.some((option) => option.id === paper.optionId));
+                    if (group) setSelection((current) => ({ ...current, [group.id]: paper.optionId }));
+                  }}
+                />
+              ) : (
+                <Text className="text-caption text-text-muted">{LAYOUT_NEEDS_FILE}</Text>
+              )}
+            </View>
+          ) : null}
 
           {/* Right under the choices it explains: what the options cannot say. */}
           <View className="mt-8">
@@ -774,6 +865,8 @@ export default function ListingScreen() {
                 : SHOP_PAUSED_MESSAGE
             : showMissing && missing
               ? `Pick a ${missing.name.toLowerCase()} first.`
+              : showMissing && layoutMissing
+                ? "Pick a layout first."
               : pickingUp
                 ? "You collect at GRIDGO Office. Checkout shows any pick-up fee."
                 : "Delivery is added at checkout."}

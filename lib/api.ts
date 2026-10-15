@@ -164,6 +164,10 @@ export type ProductionItem = {
   agreedChange?: { id: string; proposedSpec: string; appliedAt: string } | null;
   /** The artwork check frozen at checkout, acceptances included; null before it. */
   artworkGuidance?: ArtworkGuidance | null;
+  /** The layout agreed at checkout; null for a product without layouts. */
+  printLayout?: PrintLayoutCode | null;
+  /** The fit check as the client saw it at checkout. */
+  printLayoutCheck?: PrintLayoutCheck | null;
 };
 
 /**
@@ -697,6 +701,12 @@ export type DetectedArtwork = {
   /** "A4", "Letter" — null when the size matches no name GRIDGO knows. */
   pageSize: string | null;
   orientation: "portrait" | "landscape" | "square" | null;
+  /**
+   * Every page's largest short and long side, either way round, and whether
+   * the pages differ (gridgo-api `docs/PRINT_LAYOUT_API.md`). Null when the
+   * page size is unknown; absent on an older API or an older upload.
+   */
+  pageEnvelope?: { shortSideMilli: number; longSideMilli: number; mixed: boolean } | null;
   /**
    * The colour mode the file names (gridgo-api `docs/ARTWORK_GUIDANCE_API.md`).
    * Null when it states none (Word, a PDF naming no colour space); absent on
@@ -1749,6 +1759,61 @@ export type CatalogSpeedTier = {
 };
 
 /** One listing on a shop's board. */
+/**
+ * How a document or drawing sits on the paper (gridgo-api
+ * `docs/PRINT_LAYOUT_API.md`). Open strings: a code added after this build
+ * shipped is never offered, but an order that carries one still reads.
+ */
+export type PrintLayoutCode =
+  | "fit_to_paper"
+  | "actual_size_centered"
+  | "actual_size_original_position"
+  | (string & {});
+
+/** A paper option the fit check could size. Thousandths of a millimetre. */
+export type PrintLayoutPaper = {
+  optionId: string;
+  label: string;
+  widthMilli: number;
+  heightMilli: number;
+  pageSize: string | null;
+};
+
+/** One file's first page, and the largest page in it, as GRIDGO read them. */
+export type PrintLayoutFilePage = {
+  widthMilli: number;
+  heightMilli: number;
+  pageSize: string | null;
+  orientation: "portrait" | "landscape" | "square" | null;
+  largestShortSideMilli: number;
+  largestLongSideMilli: number;
+  mixedPageSizes: boolean;
+};
+
+/** Why part of the check is missing. Codes are open strings. */
+export type PrintLayoutUnknown = {
+  code: "paper_size_unknown" | "no_artwork_file" | "page_size_unknown" | (string & {});
+  fileId?: string;
+};
+
+/**
+ * GRIDGO's fit check for one item: the paper, each file's page, whether
+ * anything is cut off and the smallest offered paper that takes it. On a cart
+ * line it is live; on an order it is the check as the client saw it at
+ * checkout. Null for a product with no layouts.
+ */
+export type PrintLayoutCheck = {
+  supportedLayouts: PrintLayoutCode[];
+  layout: PrintLayoutCode | null;
+  paper: PrintLayoutPaper | null;
+  files: { fileId: string; page: PrintLayoutFilePage | null; exceedsPaper: boolean | null }[];
+  exceedsPaper: boolean | null;
+  cutOff: boolean | null;
+  scaleChanges: boolean | null;
+  suggestedPaper: PrintLayoutPaper | null;
+  unknown: PrintLayoutUnknown[];
+};
+
 export type CatalogItem = {
   id: string;
   supplierId: string;
@@ -1793,6 +1858,12 @@ export type CatalogItem = {
    * `lib/printerWidth.ts`.
    */
   printerMaxWidthFeet?: number | null;
+  /**
+   * The layouts this shop prints this product in, in canonical order; `[]`
+   * when the product has no layout choice. Absent on an older API. Read
+   * through `offeredLayouts`.
+   */
+  printLayouts?: PrintLayoutCode[];
   priceTiers: CatalogPriceTier[];
   speedTiers: CatalogSpeedTier[];
   pricingBasis: string;
@@ -2543,6 +2614,10 @@ export type CartLineRecord = {
   clientLineSubtotalMinor?: number | null;
   /** Resolution and colour against this product type, at the ordered size. */
   artworkGuidance?: ArtworkGuidance | null;
+  /** The client's layout; null until chosen. Absent on an older API. */
+  printLayout?: PrintLayoutCode | null;
+  /** GRIDGO's live fit check; null for a product without layouts. */
+  printLayoutCheck?: PrintLayoutCheck | null;
 };
 
 /**
@@ -2704,6 +2779,8 @@ export type InvoiceLine = {
   mockupFileId: string | null;
   artworkLinks?: ArtworkLink[];
   artworkAttachments?: ArtworkAttachment[];
+  /** The agreed layout; null for a product without layouts. */
+  printLayout?: PrintLayoutCode | null;
   dropoff: OrderPoint | null;
 };
 
@@ -3007,6 +3084,8 @@ export async function addCartLine(
     artworkLinks?: ArtworkLink[];
     /** Up to 300 characters; GRIDGO masks contact details before saving. */
     specialInstructions?: string;
+    /** Only for a listing that offers layouts; GRIDGO refuses it on any other. */
+    printLayout?: PrintLayoutCode | null;
     dropoff?: OrderPoint | null;
   },
 ): Promise<Cart> {
@@ -3036,6 +3115,8 @@ export async function updateCartLine(
     artworkAttachments?: ArtworkAttachmentInput[];
     /** Empty clears the note; omit to keep it. */
     specialInstructions?: string;
+    /** A layout the listing offers, or null to clear it; omit to keep it. */
+    printLayout?: PrintLayoutCode | null;
     dropoff?: OrderPoint | null;
     /**
      * Move this product to another date (gridgo-client#189). GRIDGO rechecks
@@ -3049,6 +3130,26 @@ export async function updateCartLine(
     { method: "PATCH", body: JSON.stringify(input) },
   );
   return result.cart;
+}
+
+/**
+ * GRIDGO's fit check for a configuration not saved yet (gridgo-api
+ * `docs/PRINT_LAYOUT_API.md`): the same object a cart line carries, for the
+ * options on screen. Read-only. Null for a product without layouts.
+ */
+export async function getPrintLayoutCheck(input: {
+  catalogItemId: string;
+  optionIds: string[];
+  /** The client's own ready artwork, at most ten. */
+  fileIds: string[];
+  layout?: PrintLayoutCode | null;
+}): Promise<PrintLayoutCheck | null> {
+  const query = new URLSearchParams({ catalogItemId: input.catalogItemId });
+  if (input.optionIds.length) query.set("optionIds", input.optionIds.join(","));
+  if (input.fileIds.length) query.set("fileIds", input.fileIds.slice(0, 10).join(","));
+  if (input.layout) query.set("layout", input.layout);
+  const result = await request<{ check: PrintLayoutCheck | null }>(`/me/print-layout-check?${query}`);
+  return result.check ?? null;
 }
 
 /**

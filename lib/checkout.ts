@@ -181,6 +181,7 @@ export type PlaceOrderBlocker =
   | "artwork"
   | "artwork_checking"
   | "artwork_problem"
+  | "layout"
   | "address"
   | "date"
   | "schedule"
@@ -209,6 +210,7 @@ export function placeOrderBlockers({
   linesMissingArtwork,
   linesCheckingArtwork = 0,
   linesArtworkProblem = 0,
+  linesMissingLayout = 0,
   linesMissingDropoff,
   missingBasketDate = false,
   referenceOk,
@@ -234,6 +236,12 @@ export function placeOrderBlockers({
    * (gridgo-api#122). Never a warning — checkout refuses them.
    */
   linesArtworkProblem?: number;
+  /**
+   * Lines whose product asks how the file sits on the paper, with no layout
+   * chosen (gridgo-api `docs/PRINT_LAYOUT_API.md`). GRIDGO refuses them with
+   * `print_layout_required`; the cut-off and scale warnings never block.
+   */
+  linesMissingLayout?: number;
   linesMissingDropoff: number;
   /**
    * A basket that goes out in more than one group has a product with no date.
@@ -255,6 +263,7 @@ export function placeOrderBlockers({
   if (linesUnpriced > 0) blockers.push("price");
   if (linesMissingArtwork > 0) blockers.push("artwork");
   if (linesArtworkProblem > 0) blockers.push("artwork_problem");
+  if (linesMissingLayout > 0) blockers.push("layout");
   if (linesCheckingArtwork > 0) blockers.push("artwork_checking");
   if (linesMissingDropoff > 0) blockers.push("address");
   if (missingBasketDate) blockers.push("date");
@@ -285,6 +294,10 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
       return detail
         ? `GRIDGO cannot use the artwork on ${detail}. Open its Artwork to fix it.`
         : "GRIDGO cannot use the artwork on some items. Open their Artwork to fix it.";
+    case "layout":
+      return detail
+        ? `Choose how ${detail} sits on the paper. Open its Artwork to choose.`
+        : "Choose how each file sits on the paper. Open its Artwork to choose.";
     case "artwork_checking":
       return "Checking your design link…";
     case "address":

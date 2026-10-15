@@ -76,6 +76,13 @@ describe("placeOrderBlockers", () => {
     expect(placeOrderBlockers({ ...READY, linesMissingArtwork: 1 })).toContain("artwork");
   });
 
+  it("stops a product that asks how the file sits on the paper until a layout is chosen", () => {
+    // Only a missing layout blocks, as GRIDGO's `print_layout_required` does;
+    // the cut-off and scale warnings never reach this list.
+    expect(placeOrderBlockers({ ...READY, linesMissingLayout: 1 })).toEqual(["layout"]);
+    expect(blockerLine("layout", "CAD plotting")).toBe("Choose how CAD plotting sits on the paper. Open its Artwork to choose.");
+  });
+
   it("stops a delivery with an item that has nowhere to go", () => {
     expect(placeOrderBlockers({ ...READY, linesMissingDropoff: 1 })).toContain("address");
   });

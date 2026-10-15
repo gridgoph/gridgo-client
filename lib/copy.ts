@@ -229,6 +229,13 @@ export function userFacingError(error: unknown, fallback: string): string {
           ? `This printer prints up to ${cap} ft wide. Make it ${cap} ft wide or less and try again.`
           : "This is wider than this printer prints. Make it narrower and try again.";
       }
+      // ---- basket: how the file sits on the paper (gridgo-api docs/PRINT_LAYOUT_API.md) ----
+      case "print_layout_required":
+        return "Choose how your file sits on the paper first: fit to paper, or actual size.";
+      case "print_layout_not_supported":
+        return "This shop no longer prints that layout. Choose one of the layouts it offers.";
+      case "invalid_print_layout":
+        return "Choose one of the layouts this product offers.";
       case "assignment_notification_required":
         return "This job has no final price yet, so there is nothing to pay. You get a notification the moment a supplier accepts it.";
       case "payment_already_submitted":

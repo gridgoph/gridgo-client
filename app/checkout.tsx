@@ -87,6 +87,7 @@ import {
   TRAVEL_CHOICES,
   type TravelChoice,
 } from "@/lib/checkout";
+import { lineLayoutSummary, lineNeedsLayout, printLayoutRefusalOf } from "@/lib/printLayout";
 import { userFacingError } from "@/lib/copy";
 import { SHOP_PAUSED_LINE, shopHoursView, shopPaused } from "@/lib/shopHours";
 import {
@@ -275,6 +276,7 @@ export default function CheckoutScreen() {
   const artworkStatus = (line: CartLineRecord) => lineArtworkStatus(line, linkChecks, artworkProblems);
   const checkingArtwork = lines.filter((line) => artworkStatus(line)?.kind === "checking");
   const artworkProblem = lines.filter((line) => artworkStatus(line)?.kind === "problem");
+  const missingLayout = lines.filter(lineNeedsLayout);
   const referenceCheck = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
   const shopClosed = lines.filter((line) => shopPaused(line.listing?.shopHours));
@@ -285,6 +287,7 @@ export default function CheckoutScreen() {
     linesMissingArtwork: missingArtwork.length,
     linesCheckingArtwork: checkingArtwork.length,
     linesArtworkProblem: artworkProblem.length,
+    linesMissingLayout: missingLayout.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
     // More than one group: each is printed and delivered for its own date, so
     // GRIDGO needs one on every product (gridgo-client#189).
@@ -452,7 +455,7 @@ export default function CheckoutScreen() {
 
   const scrollToBlocker = (blocker: (typeof blockers)[number]) => {
     const key =
-      blocker === "artwork" || blocker === "price" || blocker === "artwork_problem" || blocker === "date"
+      blocker === "artwork" || blocker === "price" || blocker === "artwork_problem" || blocker === "layout" || blocker === "date"
         ? "artwork"
         : blocker === "address"
           ? "address"
@@ -537,6 +540,19 @@ export default function CheckoutScreen() {
       // and on its Artwork screen, where the fix is, not only in the footer.
       const refusal = e instanceof api.ApiError ? artworkRefusalOf(e.body) : null;
       const refused = refusal?.lineId ? lines.find((line) => line.id === refusal.lineId) : null;
+      // The layout is missing, or the shop stopped printing the one chosen:
+      // the choice is on the item's Artwork, so that is where this goes.
+      const layoutRefusal = e instanceof api.ApiError ? printLayoutRefusalOf(e.body) : null;
+      const layoutLine = layoutRefusal ? lines.find((line) => line.id === layoutRefusal.lineId) : null;
+      if (layoutRefusal) {
+        void loadCart();
+        setAttempted(true);
+        setPlaceError(userFacingError(e, "Choose how your file sits on the paper first."));
+        if (layoutLine) {
+          router.push({ pathname: "/request/artwork", params: { lineId: layoutLine.id, focus: "layout" } });
+        }
+        return;
+      }
       if (refusal && refused && refusal.code !== "artwork_check_required") {
         setArtworkProblem(refused.id, {
           code: refusal.code,
@@ -702,6 +718,10 @@ export default function CheckoutScreen() {
                         : blockers[0] === "artwork_problem"
                           ? artworkProblem.length === 1
                             ? lineName(artworkProblem[0])
+                            : undefined
+                        : blockers[0] === "layout"
+                          ? missingLayout.length === 1
+                            ? lineName(missingLayout[0])
                             : undefined
                         : missingArtwork.length === 1
                           ? lineName(missingArtwork[0])
@@ -1341,6 +1361,7 @@ function LineRow({
   const clientAmount = clientLineAmountMinor(line, serviceFeeRateBps);
   // Closed for now: GRIDGO will not take this line, whatever it is priced at.
   const paused = shopPaused(line.listing?.shopHours);
+  const layout = lineLayoutSummary(line);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -1404,6 +1425,11 @@ function LineRow({
                   accessibilityLiveRegion="polite"
                 >
                   {artwork.text}
+                </Text>
+              ) : null}
+              {layout ? (
+                <Text className={layout.tone === "warning" ? "text-caption text-warning" : "text-caption text-text-muted"}>
+                  {layout.text}
                 </Text>
               ) : null}
             </View>

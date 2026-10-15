@@ -15,3 +15,7 @@ it("retains readable summary specs for legacy orders", () => {
   const items = orderProductionItems({ id: "old", title: "Legacy print", quantity: 5, size: "A4", material: "paper", finish: "matte" });
   expect(productionSpecRows(items[0])).toContainEqual({ label: "Size", value: "A4" });
 });
+it("shows the layout agreed at checkout, and nothing for a product without one", () => {
+  expect(productionSpecRows({ ...item, printLayout: "actual_size_centered" })).toContainEqual({ label: "Layout", value: "Actual size, centred" });
+  expect(productionSpecRows({ ...item, printLayout: null }).map((row) => row.label)).not.toContain("Layout");
+});

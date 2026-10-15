@@ -1,7 +1,7 @@
 import { CircleAlert, FileCheck } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Screen } from "@/components/Screen";
@@ -9,6 +9,8 @@ import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ArtworkSizeNote } from "@/components/ArtworkSizeNote";
 import { ArtworkAttachmentList } from "@/components/ArtworkAttachmentList";
 import { PrepareFileGuide } from "@/components/PrepareFileGuide";
+import { PrintLayoutChoice } from "@/components/PrintLayoutChoice";
+import { PrintLayoutPreview } from "@/components/PrintLayoutPreview";
 import { DesignLinkField } from "@/components/DesignLinkField";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { ProductPreview } from "@/components/ProductPreview";
@@ -60,6 +62,7 @@ import {
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { MOCKUP_LABEL } from "@/lib/productPreview";
+import { layoutAdvice, layoutLabel, lineNeedsLayout, offeredLayouts, paperChange, type KnownLayout } from "@/lib/printLayout";
 import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
 import { cartRightsScope, useArtworkRights } from "@/store/artworkRights";
 import { useArtworkAttachments, type PendingUpload } from "@/store/artworkAttachments";
@@ -109,7 +112,20 @@ const NO_UPLOADS: PendingUpload[] = [];
 export default function ArtworkScreen() {
   const router = useRouter();
   const colors = useThemeColors();
-  const { lineId } = useLocalSearchParams<{ lineId?: string }>();
+  const { lineId, focus } = useLocalSearchParams<{
+    lineId?: string;
+    /** `layout`: checkout sent the client here to choose how the file sits on the paper. */
+    focus?: string;
+  }>();
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  const [layoutY, setLayoutY] = useState<number | null>(null);
+  // Once per visit: after that the client scrolls where they like.
+  const focusedRef = useRef(false);
+  useEffect(() => {
+    if (focus !== "layout" || focusedRef.current || layoutY == null) return;
+    focusedRef.current = true;
+    scrollRef.current?.scrollTo?.({ y: Math.max(0, layoutY - 12), animated: true });
+  }, [focus, layoutY]);
 
   const cart = useCart((state) => state.cart);
   const rightsScope = cart ? cartRightsScope(cart.id) : null;
@@ -224,6 +240,31 @@ export default function ArtworkScreen() {
     },
     [line?.id, saving], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  /**
+   * How the file sits on the paper (gridgo-client#245). Saved on the tap, so
+   * GRIDGO's check — the cut-off and the preview — answers for it at once.
+   * The paper swap is the same: the one option in the size group changes.
+   */
+  const [layoutSaving, setLayoutSaving] = useState(false);
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+  const [pendingLayout, setPendingLayout] = useState<KnownLayout | null>(null);
+  const saveLayout = async (change: { printLayout?: KnownLayout; optionIds?: string[]; structuredSpec?: Record<string, unknown> }) => {
+    if (!line || layoutSaving) return;
+    setLayoutSaving(true);
+    setLayoutError(null);
+    if (change.printLayout) setPendingLayout(change.printLayout);
+    try {
+      adopt(await run((cartId) => api.updateCartLine(cartId, line.id, change)));
+    } catch (error) {
+      setLayoutError(userFacingError(error, "That did not save. Try again in a moment."));
+      // The shop may have changed what it prints: the basket says what it offers now.
+      void useCart.getState().load();
+    } finally {
+      setPendingLayout(null);
+      setLayoutSaving(false);
+    }
+  };
 
   /**
    * The page total of a Word file that did not say. GRIDGO prices pages,
@@ -351,7 +392,16 @@ export default function ArtworkScreen() {
     lineGuidance ? { minimumDpi: lineGuidance.minimumDpi, acceptsRgb: lineGuidance.acceptsRgb } : rule,
     { milli: orderedSize, label: size || measuredSizeLabel(line.measurement, item?.measureUnit) },
   );
-  const sizeNote = artworkSizeNote({ detected, pixels, sizeMilli: orderedSize, label: size, minimumDpi });
+  const layouts = offeredLayouts(item);
+  // With a layout choice, how a page of another size prints is the layout's
+  // answer, not "scaled to fit": the size note would contradict it.
+  const sizeNote = layouts.length ? null : artworkSizeNote({ detected, pixels, sizeMilli: orderedSize, label: size, minimumDpi });
+  // A layout the shop has stopped printing is not drawn: the client chooses again.
+  const savedLayout = layouts.find((code) => code === line.printLayout) ?? null;
+  const shownLayout = pendingLayout ?? savedLayout;
+  const layoutCheck = line.printLayoutCheck ?? null;
+  const advice = layoutAdvice(layoutCheck, { layout: shownLayout, listing: item });
+  const layoutMissing = lineNeedsLayout(line);
   const documentPages = line.documentPages;
   const rangeText = rangeDraft?.fileId === line.artworkFileId ? rangeDraft.text : documentPages?.range ?? "";
   const rangeDirty = rangeText !== (documentPages?.range ?? "");
@@ -409,7 +459,9 @@ export default function ArtworkScreen() {
     !rangeDirty &&
     !rangeError &&
     !linkBlocked &&
-    !fileProblem;
+    !fileProblem &&
+    !layoutSaving &&
+    !layoutMissing;
   const name = item?.name ?? "this item";
   /** Check the link and, once it is proven public, add it to the item. */
   const commitLinkText = (text: string, options?: { recheck?: boolean }) =>
@@ -421,6 +473,7 @@ export default function ArtworkScreen() {
       <StepTrailBar current="artwork" onStep={goStep} />
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
         className="gg-screen"
         contentContainerClassName="gg-page pb-8 pt-4"
         bottomOffset={KEYBOARD_CARET_GAP}
@@ -641,7 +694,55 @@ export default function ArtworkScreen() {
           </View>
         ) : null}
 
-        {onLine ? (
+        {/*
+          How the file sits on the paper, with GRIDGO's check of it: the
+          picture to scale, a cut-off with the paper that fixes it, and what
+          it could not read. It takes the place of the product mockup, which
+          says nothing about scale — the question these products are about.
+        */}
+        {layouts.length ? (
+          <View className="mt-8 gap-4" onLayout={(event) => setLayoutY(event.nativeEvent.layout.y)}>
+            <PrintLayoutChoice
+              layouts={layouts}
+              selected={shownLayout}
+              onSelect={(printLayout) => {
+                if (printLayout !== line.printLayout) void saveLayout({ printLayout });
+              }}
+              step={null}
+              disabled={layoutSaving}
+              scaleNote={advice.scale}
+            />
+            {layoutError ? (
+              <Text accessibilityRole="alert" className="text-body text-error">{layoutError}</Text>
+            ) : null}
+            {onLine && shownLayout ? (
+              <View className="gap-3">
+                <Text className="text-overline text-text-muted">ON THE PAPER</Text>
+                <PrintLayoutPreview
+                  check={layoutCheck}
+                  layout={shownLayout}
+                  previewFileId={line.artworkPreviewFileId ?? null}
+                  advice={advice}
+                  switching={layoutSaving}
+                  onSwitchPaper={(paper) => {
+                    const change = item ? paperChange(item, line, paper.optionId) : null;
+                    if (change) void saveLayout(change);
+                  }}
+                />
+              </View>
+            ) : onLine ? (
+              <Text className="text-caption text-text-muted">
+                Choose a layout to see your page on the paper.
+              </Text>
+            ) : (
+              <Text className="text-caption text-text-muted">
+                Add your file above to see how it sits on the paper.
+              </Text>
+            )}
+          </View>
+        ) : null}
+
+        {onLine && !layouts.length ? (
           <View className="mt-8 gap-3">
             <Text className="text-overline text-text-muted">HOW IT WOULD LOOK</Text>
             <ProductPreview
@@ -703,6 +804,12 @@ export default function ArtworkScreen() {
             {linkBlocked
               ? "Fix the sharing of the link marked above, or remove it."
               : "Remove the file GRIDGO cannot print from, or upload a new export."}
+          </Text>
+        ) : hasArtwork && layoutMissing ? (
+          <Text className="mt-2 text-center text-caption text-warning">
+            {line.printLayout
+              ? `This shop no longer prints ${layoutLabel(line.printLayout)}. Choose another layout above.`
+              : "Choose a layout above to go on."}
           </Text>
         ) : hasArtwork && inFlight > 0 ? (
           <Text className="mt-2 text-center text-caption text-text-muted">
