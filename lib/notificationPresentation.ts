@@ -1,4 +1,5 @@
 import { formatPhp, type Notification } from "@/lib/api";
+import { deliveryPinNotificationCopy, isDeliveryPinAsk } from "@/lib/deliveryPin";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
@@ -40,7 +41,8 @@ export type NotificationCalloutIcon =
   | "square-pen"
   | "package-check"
   | "star"
-  | "ticket";
+  | "ticket"
+  | "map-pin";
 
 /**
  * The one thing on a card the client must do or know.
@@ -325,6 +327,44 @@ const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCal
     states: ["production", "supplier_self_qc"],
     callout: SHOP_CHOICE_CALLOUT,
   },
+  // A pin can change only before a rider is assigned; presence can still be
+  // confirmed while the rider is on the way.
+  delivery_pin_requested: {
+    states: ["production", "supplier_self_qc", "ready_for_dispatch", "rider_assigned", "picked_up", "out_for_delivery"],
+    callout: {
+      tone: "warning",
+      icon: "map-pin",
+      title: "Confirm your delivery pin",
+      detail: "Or change it once before a rider is assigned.",
+    },
+  },
+  delivery_pin_proposed: {
+    states: ["production", "supplier_self_qc", "ready_for_dispatch"],
+    callout: {
+      tone: "warning",
+      icon: "wallet",
+      title: "Pay the delivery difference",
+      detail: "Open the order for the QR code and receipt upload.",
+    },
+  },
+  delivery_pin_payment_submitted: {
+    states: ["production", "supplier_self_qc", "ready_for_dispatch"],
+    callout: {
+      tone: "info",
+      icon: "clock",
+      title: "Your pin payment is being checked",
+      detail: "Do not pay again.",
+    },
+  },
+  delivery_pin_payment_rejected: {
+    states: ["production", "supplier_self_qc", "ready_for_dispatch"],
+    callout: {
+      tone: "warning",
+      icon: "wallet",
+      title: "Check the reason and send it again",
+      detail: "Your original pin stays in use until a payment is confirmed.",
+    },
+  },
   order_rate_reminder: {
     states: ["delivered", "issue_window_open", "completed", "payout_released"],
     callout: {
@@ -445,6 +485,7 @@ export function presentNotification(
   const voucher = voucherNotificationCopy(notification.type, notification.body);
   if (voucher) return presentVoucher(notification, voucher);
   const refund =
+    deliveryPinNotificationCopy(notification.type) ??
     refundNotificationCopy(notification.type) ??
     shopRecoveryNotificationCopy(notification) ??
     rescheduleNotificationCopy(notification.type);
@@ -482,6 +523,7 @@ export function presentNotification(
     (notification.type != null && NEED_YOU_TYPES.has(notification.type)) ||
     shopRecoveryNotificationNeedsYou(notification) ||
     rescheduleNotificationNeedsYou(notification.type) ||
+    (isDeliveryPinAsk(notification.type) && calloutFor(notification, false, false) != null) ||
     applicationAsk;
 
   const railKind = eventState

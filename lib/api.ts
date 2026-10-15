@@ -158,6 +158,70 @@ export type DropoffConfirmation =
 export type DropoffAnswer = { action: "confirm" } | { action: "change"; point: OrderPoint };
 
 /**
+ * The delivery pin a door-delivery order is taken to (gridgo-api
+ * `docs/DELIVERY_PIN_API.md`, report 6C8DE953). Created when production
+ * finishes; the client confirms they will be there, and may change it once
+ * before the first rider assignment. Statuses are open strings: an unknown one
+ * must never crash the order screen.
+ */
+export type DeliveryPinPoint = { lat: number; lng: number; label: string };
+
+export type DeliveryPinPayment = {
+  proofFileId: string;
+  reference: string;
+  submittedAt: string;
+  amountMinor?: number;
+  confirmedAt?: string;
+};
+
+export type DeliveryPinChange = {
+  id: string;
+  /** `pending_payment` | `pending_confirmation` | `applied`. */
+  status: string;
+  point: DeliveryPinPoint;
+  /** Zone key, as `settings.deliveryFeeBands[].zone`. */
+  zone: string;
+  distanceMeters: number;
+  deliveryFeeMinor: number;
+  /** New fee minus the order's checkout fee: positive is owed, negative is credited. */
+  feeDifferenceMinor: number;
+  createdAt: string;
+  appliedAt?: string | null;
+  /** The delivery-fee credit's refund request, on a lower fee. */
+  refundRequestId?: string | null;
+  payment?: DeliveryPinPayment | null;
+  /** Operations' reason, after a rejected surcharge proof. */
+  rejectionReason?: string | null;
+};
+
+export type DeliveryPin = {
+  version: number;
+  /** `pending` | `confirmed`. */
+  status: string;
+  requestedAt: string;
+  confirmedAt: string | null;
+  /** The pin in use now: the original, or an applied change. */
+  point: DeliveryPinPoint;
+  zone: string;
+  notes: string;
+  /** Empty means the client receives it. */
+  receiverName: string;
+  changeUsed: boolean;
+  canConfirm: boolean;
+  canChange: boolean;
+  original?: DeliveryPinPoint;
+  change?: DeliveryPinChange | null;
+};
+
+export type DeliveryPinPreview = {
+  point: DeliveryPinPoint;
+  zone: string;
+  distanceMeters: number;
+  deliveryFeeMinor: number;
+  feeDifferenceMinor: number;
+};
+
+/**
  * One print job as the client is allowed to see it.
  *
  * Money is printing, the service fee, delivery and total. The shop's own
@@ -274,6 +338,12 @@ export type Order = {
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
   dropoffConfirmation?: DropoffConfirmation | null;
+  /** Production-finished pin confirmation and its one change. Absent on legacy and pick-up orders. */
+  deliveryPin?: DeliveryPin | null;
+  /** The delivery fee after an applied pin change; `deliveryFeeMinor` stays the checkout figure. */
+  effectiveDeliveryFeeMinor?: number;
+  /** The checkout total plus an applied pin change's difference. */
+  effectiveTotalMinor?: number;
   /** The choice made before matching, snapshotted at checkout (gridgo-api#148). */
   requestFulfillment?: RequestFulfilment | null;
   /** A pick-up order's hub hours and fee as they stood at checkout. */
@@ -4112,6 +4182,67 @@ export async function answerDropoffConfirmation(orderId: string, answer: Dropoff
     { method: "POST", body: JSON.stringify(answer) },
   );
   return result.confirmation;
+}
+
+const pinPath = (orderId: string, action?: string) =>
+  `/orders/${encodeURIComponent(orderId)}/delivery-pin${action ? `/${action}` : ""}`;
+
+/** Price a new pin before saving it. Read-only: it reserves nothing. */
+export async function previewDeliveryPin(orderId: string, point: DeliveryPinPoint): Promise<DeliveryPinPreview> {
+  const result = await request<{ preview: DeliveryPinPreview }>(pinPath(orderId, "preview"), {
+    method: "POST",
+    body: JSON.stringify({ point }),
+  });
+  return result.preview;
+}
+
+/** Confirm presence at the pin in use, optionally with notes and a receiver. */
+export async function confirmDeliveryPin(
+  orderId: string,
+  input: { expectedVersion: number; notes?: string; receiverName?: string },
+  idempotencyKey: string,
+): Promise<DeliveryPin> {
+  const result = await request<{ deliveryPin: DeliveryPin }>(pinPath(orderId, "confirm"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.deliveryPin;
+}
+
+/** The one change, at the exact previewed difference. A positive one waits for payment. */
+export async function changeDeliveryPin(
+  orderId: string,
+  input: {
+    expectedVersion: number;
+    point: DeliveryPinPoint;
+    notes: string;
+    receiverName: string;
+    feeDifferenceMinor: number;
+    acknowledgeOneChange: true;
+  },
+  idempotencyKey: string,
+): Promise<DeliveryPin> {
+  const result = await request<{ deliveryPin: DeliveryPin }>(pinPath(orderId, "change"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.deliveryPin;
+}
+
+/** Hand over the QR transfer for a higher-fee pin. Operations still has to confirm it. */
+export async function submitDeliveryPinPayment(
+  orderId: string,
+  input: { expectedVersion: number; proofFileId: string; reference: string },
+  idempotencyKey: string,
+): Promise<DeliveryPin> {
+  const result = await request<{ deliveryPin: DeliveryPin }>(pinPath(orderId, "payment"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.deliveryPin;
 }
 
 // ---------------------------------------------------------------------------

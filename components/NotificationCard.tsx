@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ChevronUp,
   Clock,
+  MapPin,
   PackageCheck,
   SquarePen,
   Star,
@@ -50,6 +51,7 @@ const CALLOUT_ICONS = {
   "package-check": PackageCheck,
   star: Star,
   ticket: TicketPercent,
+  "map-pin": MapPin,
 } satisfies Record<NotificationCalloutIcon, LucideIcon>;
 
 /** Semantic tone → the theme colour it is drawn in. `neutral` carries no signal. */

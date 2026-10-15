@@ -106,3 +106,5 @@ export const createPaymentDraft = () => create<CheckoutPaymentState>((set, get) 
 /** Checkout and order payments never replace each other's in-memory draft. */
 export const useCheckoutPayment = createPaymentDraft();
 export const useOrderPayment = createPaymentDraft();
+/** A higher-fee delivery pin's one surcharge transfer. */
+export const usePinPayment = createPaymentDraft();

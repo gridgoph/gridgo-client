@@ -3,6 +3,7 @@ import {
   CircleCheck,
   CircleX,
   Clock,
+  MapPin,
   PackageCheck,
   SquarePen,
   TriangleAlert,
@@ -46,6 +47,7 @@ const ICONS = {
   "circle-check": CircleCheck,
   "circle-x": CircleX,
   clock: Clock,
+  "map-pin": MapPin,
 } satisfies Record<OrderActionIcon | OrderStatusIcon, LucideIcon>;
 
 /** Semantic tone → the theme colour it is drawn in. `neutral` carries no signal. */

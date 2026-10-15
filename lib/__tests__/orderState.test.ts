@@ -311,6 +311,10 @@ describe("orderTotalMinor", () => {
   it("is null before a supplier has accepted, never zero", () => {
     expect(orderTotalMinor(order())).toBeNull();
   });
+
+  it("follows an applied delivery-pin change, not the checkout total", () => {
+    expect(orderTotalMinor(pricedOrder({ effectiveTotalMinor: 106500 }))).toBe(106500);
+  });
 });
 
 describe("formatPriceRange", () => {

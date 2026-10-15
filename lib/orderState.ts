@@ -24,6 +24,7 @@ import {
 } from "@/lib/payment";
 import { orderReviewView, reviewWaitingLine, waitingForReviewLabel } from "@/lib/operatingHours";
 import { rescheduleNextAction, rescheduleView, rescheduleWaitingOn } from "@/lib/reschedule";
+import { deliveryPinNextAction } from "@/lib/deliveryPin";
 import { shopRecoveryNextAction, shopRecoveryView, shopRecoveryWaitingOn } from "@/lib/shopRecovery";
 import { orderPrintingMinor } from "@/lib/serviceFee";
 
@@ -182,7 +183,8 @@ export type OrderActionIcon =
   | "square-pen"
   | "package-check"
   | "triangle-alert"
-  | "clock";
+  | "clock"
+  | "map-pin";
 
 export type OrderNextAction = {
   /** Sentence-case verb phrase for the action itself. */
@@ -307,7 +309,7 @@ export function orderNextAction(order: Order): OrderNextAction | null {
     };
   }
   if (collectsAtOffice(order)) return COLLECT_STATE_ACTIONS[order.state] ?? STATE_ACTIONS[order.state] ?? null;
-  return STATE_ACTIONS[order.state] ?? null;
+  return deliveryPinNextAction(order) ?? STATE_ACTIONS[order.state] ?? null;
 }
 
 /**
@@ -440,9 +442,12 @@ export function orderItemsMinor(
 /**
  * What the client owes in total, in PHP minor units, or null before a supplier
  * has accepted and the exact price exists. The server's own total when it
- * sends one; otherwise items at GRIDGO's price plus delivery.
+ * sends one; otherwise items at GRIDGO's price plus delivery. An applied
+ * delivery-pin change moves it (`effectiveTotalMinor`); the receipt keeps the
+ * checkout figure.
  */
 export function orderTotalMinor(order: Order): number | null {
+  if (order.effectiveTotalMinor != null) return order.effectiveTotalMinor;
   if (order.totalMinor != null) return order.totalMinor;
   const items = orderItemsMinor(order);
   if (items == null) return null;
