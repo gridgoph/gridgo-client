@@ -145,7 +145,7 @@ export function LatestProgressCard({ order, note }: Props) {
         <View className="flex-row gap-3">
           <View className="min-w-0 flex-1 gap-2">
             <View className="flex-row items-center justify-between gap-3">
-              <View className="min-w-0 shrink flex-row flex-wrap gap-2">
+              <View className="min-w-0 flex-1 flex-row flex-wrap gap-2">
                 <StatusChip
                   tone={meta.tone}
                   label={meta.label}
