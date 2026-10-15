@@ -61,6 +61,7 @@ import {
   shopGroups,
   type ShopGroupView,
 } from "@/lib/basketGroups";
+import { noteCheckoutVisit } from "@/lib/checkoutExit";
 import { unpricedLineReason } from "@/lib/clientPrice";
 import { lineArtworkLinks, lineArtworkSummary, lineHasArtwork } from "@/lib/designLink";
 import { holdPlacedReceipt, openReceiptAfterCheckout, receiptFromCheckout, withBasket } from "@/lib/receipt";
@@ -218,6 +219,15 @@ export default function CheckoutScreen() {
       void load();
       return () => { loadSequence.current++; };
     }, [load]),
+  );
+
+  // Tells GRIDGO checkout was reached, so a client who leaves without paying
+  // can be asked why on a later app open (`lib/checkoutExit.ts`). Fire and
+  // forget: it never waits, and a refusal never reaches the screen.
+  useFocusEffect(
+    useCallback(() => {
+      if (cartId) noteCheckoutVisit(cartId);
+    }, [cartId]),
   );
 
   // Each line's sample is a signed link that expires five minutes after the

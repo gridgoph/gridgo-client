@@ -29,6 +29,7 @@ import {
   type TourRect,
 } from "@/lib/tour";
 import { useAppUpdate } from "@/store/appUpdate";
+import { useCheckoutExit } from "@/store/checkoutExit";
 import { usePushPrompt } from "@/store/pushPrompt";
 import { useTour } from "@/store/tour";
 
@@ -66,6 +67,7 @@ export function TourOverlay({ ready }: { ready: boolean }) {
   const rect = measured && onScreen(measured, width, height) ? measured : undefined;
   const otherPrompt = usePushPrompt((s) => s.open);
   const updatePrompt = useAppUpdate((s) => s.promptOpen || s.completed !== null);
+  const exitQuestion = useCheckoutExit((s) => s.open);
   const settled = useTour((s) => s.settled);
   const insets = useSafeAreaInsets();
   const [cardHeight, setCardHeight] = useState(0);
@@ -82,6 +84,7 @@ export function TourOverlay({ ready }: { ready: boolean }) {
     ready &&
     !otherPrompt &&
     !updatePrompt &&
+    !exitQuestion &&
     accountId != null &&
     step != null &&
     progress?.status === "active" &&

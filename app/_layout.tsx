@@ -26,6 +26,7 @@ import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-c
 import { AppUpdateSheet } from "@/components/AppUpdateSheet";
 import { BrandIntro } from "@/components/BrandIntro";
 import { CallOverlay } from "@/components/call/CallOverlay";
+import { CheckoutExitQuestion } from "@/components/CheckoutExitQuestion";
 import { PushExplainerSheet } from "@/components/PushExplainerSheet";
 import { SessionShell } from "@/components/SessionShell";
 import { TourOverlay } from "@/components/TourOverlay";
@@ -534,6 +535,8 @@ function AppNavigation() {
             <PushExplainerSheet ready={!introPlaying && fontsReady} />
             {/* The first-order tour. Waits behind both prompts; it checks that itself. */}
             <TourOverlay ready={!introPlaying && fontsReady} />
+            {/* "What stopped you from ordering?": last in line, behind every prompt above. */}
+            <CheckoutExitQuestion ready={!introPlaying && fontsReady} />
             {/* Calls with the rider: above every screen and prompt, because a ringing call outranks them. */}
             <CallOverlay />
           </SessionShell>

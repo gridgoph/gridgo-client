@@ -12,6 +12,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { StarRating } from "@/components/StarRating";
 import {
+  ChoicePicker,
   PriceScale,
   QuestionMark,
   RecommendScale,
@@ -25,25 +26,38 @@ import * as api from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import { orderTotalMinor } from "@/lib/orderState";
 import {
+  DIRECT_SHOP_QUESTION,
   EMPTY_SURVEY_DRAFT,
+  NOT_WORTH_IT,
+  ORDER_AGAIN_QUESTION,
+  PRICE_WORTH_QUESTION,
   REPORT_PROBLEM_BODY,
   REPORT_PROBLEM_LABEL,
   REPORT_PROBLEM_TITLE,
   SURVEY_NOTE_MAX,
   SURVEY_REWARD_MINOR,
   canSend,
+  directShopLabel,
+  directShopOptionsFor,
   easeTagsFor,
   expectedPriceProblem,
   fulfillmentQuestion,
   fulfillmentTagsFor,
   missingLine,
   noRewardLine,
+  offersNotWorthIt,
   openUntilLine,
+  orderAgainLabel,
+  orderAgainOptionsFor,
+  priceWorthLabel,
+  priceWorthTagsFor,
   recommendWord,
   requiredAnswered,
   surveyThanks,
   surveyView,
+  toggleChoice,
   toggleTag,
+  toggleWorthTag,
   type SurveyDraft,
 } from "@/lib/survey";
 import { VOUCHERS_ROUTE, exactTime } from "@/lib/vouchers";
@@ -340,7 +354,50 @@ export default function OrderSurveyScreen() {
             <Text className="text-caption text-text-muted">Optional. Leave any of these empty.</Text>
           </View>
           <View className="gg-card-flush">
-            <Question title="How was the print quality?">
+            {/* The price questions come first, straight after the price itself. */}
+            <Question title={DIRECT_SHOP_QUESTION}>
+              <ChoicePicker
+                choices={directShopOptionsFor(options)}
+                value={draft.directShopComparison}
+                onChange={(code) => update({ directShopComparison: toggleChoice(draft.directShopComparison, code) })}
+                group="Compared with a print shop:"
+                labelFor={directShopLabel}
+              />
+            </Question>
+            <Question title={PRICE_WORTH_QUESTION} divided>
+              <Text className="text-caption text-text-muted">Pick any.</Text>
+              <TagPicker
+                tags={priceWorthTagsFor(options, kind)}
+                selected={draft.priceWorthTags}
+                onToggle={(code) => update({ priceWorthTags: toggleWorthTag(draft.priceWorthTags, code) })}
+                group="Worth it for"
+                labelFor={priceWorthLabel}
+              />
+              {offersNotWorthIt(options) ? (
+                // The opposite answer, set apart: choosing it clears the reasons above.
+                <View className="flex-row items-center gap-3 pt-1">
+                  <Text className="text-caption text-text-muted">or</Text>
+                  <TagPicker
+                    tags={[NOT_WORTH_IT]}
+                    selected={draft.priceWorthTags}
+                    onToggle={(code) => update({ priceWorthTags: toggleWorthTag(draft.priceWorthTags, code) })}
+                    group="Price"
+                    labelFor={priceWorthLabel}
+                  />
+                </View>
+              ) : null}
+            </Question>
+            <Question title={ORDER_AGAIN_QUESTION} divided>
+              <ChoicePicker
+                choices={orderAgainOptionsFor(options)}
+                value={draft.orderAgainAtPrice}
+                onChange={(code) => update({ orderAgainAtPrice: toggleChoice(draft.orderAgainAtPrice, code) })}
+                group="Order again at this price:"
+                labelFor={orderAgainLabel}
+                layout="row"
+              />
+            </Question>
+            <Question title="How was the print quality?" divided>
               <StarRating
                 label="Print quality"
                 value={draft.qualityStars}

@@ -3233,6 +3233,10 @@ export type SurveyOptions = {
   fulfillmentTags: Record<SurveyFulfillmentKind, string[]>;
   easeTags: string[];
   priceFeeling: string[];
+  /** The pricing questions (gridgo-api `docs/PRICING_FEEDBACK_API.md`). Absent from an older API. */
+  directShopComparison?: string[];
+  priceWorthTags?: string[];
+  orderAgainAtPrice?: string[];
 };
 
 export type SurveyAnswers = {
@@ -3243,6 +3247,11 @@ export type SurveyAnswers = {
   /** 1–5: very cheap, cheap, fair, expensive, very expensive. */
   priceFeeling: number;
   expectedPriceMinor: number | null;
+  /** The three optional pricing questions. Never counted towards the voucher. */
+  directShopComparison: string | null;
+  /** Choose any; `not_worth_it` is only ever sent alone. */
+  priceWorthTags: string[];
+  orderAgainAtPrice: string | null;
   qualityStars: number | null;
   recommendScore: number | null;
   improvementNote: string | null;
@@ -3284,6 +3293,59 @@ export async function submitOrderSurvey(orderId: string, answers: SurveyAnswers)
   return request(`/orders/${encodeURIComponent(orderId)}/survey`, {
     method: "POST",
     body: JSON.stringify(answers),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Checkout exit question — see docs/PRICING_FEEDBACK_API.md in gridgo-api
+// ---------------------------------------------------------------------------
+
+/**
+ * `POST /me/carts/:id/checkout-visit` — tells GRIDGO checkout was reached.
+ * Callers fire and forget: it never blocks or changes checkout.
+ */
+export async function recordCheckoutVisit(cartId: string): Promise<void> {
+  await request(`/me/carts/${encodeURIComponent(cartId)}/checkout-visit`, { method: "POST" });
+}
+
+export type CheckoutExitOption = { code: string; label: string };
+
+export type CheckoutExitPrompt = {
+  id: string;
+  question: string;
+  status: "unanswered" | "answered" | "skipped" | (string & {});
+  reachedAt: string;
+  askedAt: string;
+  answeredAt: string | null;
+  skippedAt: string | null;
+  reason: string | null;
+  otherText: string | null;
+};
+
+export type CheckoutExitPromptRead = {
+  serverTime: string;
+  question?: string;
+  options?: CheckoutExitOption[];
+  /** Null when nothing is due. A prompt returned here is never returned again. */
+  prompt: CheckoutExitPrompt | null;
+  nextEligibleAt?: string | null;
+};
+
+/** `POST /me/checkout-exit-feedback/prompt` — claims the question when it is due. */
+export async function claimCheckoutExitPrompt(): Promise<CheckoutExitPromptRead> {
+  return request("/me/checkout-exit-feedback/prompt", { method: "POST" });
+}
+
+export type CheckoutExitAnswer = { reason: string; otherText?: string } | { skip: true };
+
+/** `POST /me/checkout-exit-feedback/:id` — the first answer or skip is final. */
+export async function answerCheckoutExitPrompt(
+  promptId: string,
+  answer: CheckoutExitAnswer,
+): Promise<{ serverTime: string; prompt: CheckoutExitPrompt }> {
+  return request(`/me/checkout-exit-feedback/${encodeURIComponent(promptId)}`, {
+    method: "POST",
+    body: JSON.stringify(answer),
   });
 }
 

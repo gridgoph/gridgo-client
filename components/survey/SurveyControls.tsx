@@ -48,25 +48,29 @@ export function TagPicker({
   selected,
   onToggle,
   group,
+  labelFor = tagLabel,
 }: {
   tags: readonly string[];
   selected: readonly string[];
   onToggle: (code: string) => void;
   /** What the tags describe, for each toggle's accessible name. */
   group: string;
+  /** A tag's words, when they are not the shared survey tags'. */
+  labelFor?: (code: string) => string;
 }) {
   const colors = useThemeColors();
   return (
     <View className="flex-row flex-wrap gap-2">
       {tags.map((code) => {
         const on = selected.includes(code);
+        const label = labelFor(code);
         return (
           <Pressable
             key={code}
             onPress={() => onToggle(code)}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: on }}
-            accessibilityLabel={`${group}: ${tagLabel(code)}`}
+            accessibilityLabel={`${group}: ${label}`}
             className={
               on
                 ? "gg-chip gg-touch justify-center border-accent bg-accent"
@@ -75,7 +79,61 @@ export function TagPicker({
             style={({ pressed }) => (pressed ? { opacity: 0.8 } : undefined)}
           >
             {on ? <Check size={14} color={colors.accentOn} strokeWidth={2.5} aria-hidden /> : null}
-            <Text className={on ? "text-body text-accent-on" : "text-body text-text-secondary"}>{tagLabel(code)}</Text>
+            <Text className={on ? "text-body text-accent-on" : "text-body text-text-secondary"}>{label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/* --------------------------------------------------------------------------
+   One choice
+   -------------------------------------------------------------------------- */
+
+/**
+ * One answer from a short list. `row` sets the answers side by side in equal
+ * cells (Yes / Maybe / No); `wrap` lets longer answers flow like the tags.
+ * Every answer here is optional, so tapping the chosen one again takes it back.
+ */
+export function ChoicePicker({
+  choices,
+  value,
+  onChange,
+  group,
+  labelFor,
+  layout = "wrap",
+}: {
+  choices: readonly string[];
+  value: string | null;
+  onChange: (code: string) => void;
+  /** The question, for each answer's accessible name. */
+  group: string;
+  labelFor: (code: string) => string;
+  layout?: "wrap" | "row";
+}) {
+  const colors = useThemeColors();
+  return (
+    <View className={layout === "row" ? "flex-row gap-2" : "flex-row flex-wrap gap-2"} accessibilityRole="radiogroup">
+      {choices.map((code) => {
+        const on = code === value;
+        const label = labelFor(code);
+        const shape =
+          layout === "row"
+            ? "h-11 flex-1 flex-row items-center justify-center gap-1.5 rounded-field border"
+            : "gg-chip gg-touch justify-center";
+        return (
+          <Pressable
+            key={code}
+            onPress={() => onChange(code)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={`${group} ${label}`}
+            className={on ? `${shape} border-accent bg-accent` : `${shape} border-outline bg-surface`}
+            style={({ pressed }) => (pressed ? { opacity: 0.8 } : undefined)}
+          >
+            {on ? <Check size={14} color={colors.accentOn} strokeWidth={2.5} aria-hidden /> : null}
+            <Text className={on ? "text-body text-accent-on" : "text-body text-text-secondary"}>{label}</Text>
           </Pressable>
         );
       })}
