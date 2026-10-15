@@ -206,3 +206,31 @@ describe("Update now", () => {
     expect(promptOpen()).toBe(true);
   });
 });
+
+describe("a Google Play build", () => {
+  const newer = { versionCode: 96, versionName: "1.0.96", whatsNew: [] };
+
+  it("keeps its version but never reads GitHub", async () => {
+    const fetchImpl = releases("v1.0.96");
+    useAppUpdate.getState().start(installed, now, false);
+    await useAppUpdate.getState().check(now, fetchImpl);
+    await useAppUpdate.getState().resume(now + APP_UPDATE_CHECK_INTERVAL_MS, fetchImpl);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(useAppUpdate.getState()).toMatchObject({ installed, offersUpdates: false });
+  });
+
+  it("offers, pins and confirms nothing, even with a newer release remembered", () => {
+    useAppUpdate.setState({
+      lastSeenVersionCode: 94,
+      latest: newer,
+      updatedNotice: { build: { versionCode: 94, versionName: "1.0.94" }, at: now },
+    });
+    useAppUpdate.getState().start(installed, now, false);
+    expect(promptOpen()).toBe(false);
+    expect(available()).toBeNull();
+    expect(useAppUpdate.getState()).toMatchObject({ completed: null, updatedNotice: null });
+
+    void useAppUpdate.getState().resume(now + APP_UPDATE_CHECK_INTERVAL_MS, releases());
+    expect(promptOpen()).toBe(false);
+  });
+});
