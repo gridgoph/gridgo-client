@@ -156,6 +156,15 @@ export default function CheckoutScreen() {
   const scrollRef = useRef<{ scrollTo?: (opts: { y: number; animated?: boolean }) => void }>(null);
   const contentRef = useRef<View>(null);
   const fields = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference", View | null>>>({});
+  const placedOrder = useRef(false);
+
+  useFocusEffect(useCallback(() => {
+    placedOrder.current = false;
+    void api.recordFunnel({ kind: "checkout_reached" });
+    return () => {
+      if (!placedOrder.current) void api.recordFunnel({ kind: "checkout_left" });
+    };
+  }, []));
 
   const proof = usePaymentProof(cartId);
   const setArtworkProblem = useDesignLink((state) => state.setProblem);
@@ -413,6 +422,8 @@ export default function CheckoutScreen() {
         reference: reference.trim(),
         proofFileId: proof.state.fileId,
       });
+      placedOrder.current = true;
+      void api.recordFunnel({ kind: "paid", orderId: order.id });
       // A multi-shop basket answers with one combined receipt; its order is
       // the first shop group, which the receipt and its "View order" open.
       // The basket beside it carries each group's date for the slip.

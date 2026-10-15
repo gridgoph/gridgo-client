@@ -85,6 +85,7 @@ function PaymentForm({ order, installment, basket, onSubmitted }: Props) {
       const current = useOrderPayment.getState();
       if (liveGeneration() !== sessionGeneration || current.cartId !== owner || current.generation !== receiptGeneration) return;
       current.reset();
+      void api.recordFunnel({ kind: "paid", orderId: order.id });
       onSubmitted(updated);
     } catch (e) {
       setError(userFacingError(e, "Your receipt did not reach Operations. Your screenshot and reference are kept here. Try sending them again; do not pay twice."));

@@ -79,6 +79,7 @@ export default function ChooseCategoryScreen() {
   // in one cheap read — guessing here from the platform catalog would tell a
   // client "not priced yet" about a thing a shop has on its board today.
   const openSubcategory = (category: ProductCategory, subcategory: ProductSubcategory) => {
+    void api.recordFunnel({ kind: "product_viewed", productCode: subcategory.code });
     startJob(category.code, subcategory.code);
   };
 
@@ -152,7 +153,10 @@ export default function ChooseCategoryScreen() {
                 <CategoryCard
                   key={category.code}
                   category={category}
-                  onPress={() => router.push(`/request/${category.code}`)}
+                  onPress={() => {
+                    void api.recordFunnel({ kind: "product_viewed", productCode: category.code });
+                    router.push(`/request/${category.code}`);
+                  }}
                 />
               );
               return index === 0 ? (
