@@ -5,6 +5,7 @@ import {
   installChannelFor,
   openReleaseDestination,
   releaseNoticeDestination,
+  showsOnInstall,
 } from "../releasePush";
 
 const APK = "https://gridgo.talasora.com/downloads/gridgo-client.apk";
@@ -104,5 +105,37 @@ describe("opening a release destination", () => {
     expect(openURL).toHaveBeenCalledWith("itms-beta://");
     expect(openURL).toHaveBeenCalledTimes(1);
     await expect(openReleaseDestination(TESTFLIGHT, async () => { throw new Error("no"); })).resolves.toBe(false);
+  });
+});
+
+describe("which release notices an install's inbox shows", () => {
+  const apk = { ...notice("apk", "apk_download"), title: "GRIDGO Client 1.0.185 is ready" };
+  const legacy = { type: "announcement", title: "GRIDGO Client 1.0.182 is ready" };
+  const play = { ...notice("play", "play_store"), title: "GRIDGO Client 1.0.5 is on the Play Store" };
+  const ios = { ...notice("ios", "testflight"), title: "GRIDGO Client 1.0.5 is in TestFlight" };
+  const visible = (channel: "apk" | "play" | "ios" | null) =>
+    [apk, legacy, play, ios].filter((n) => showsOnInstall(n, channel)).map((n) => n.title);
+
+  it("shows each install only its own channel's, counting a notice from before channels as APK", () => {
+    expect(visible("ios")).toEqual([ios.title]);
+    expect(visible("play")).toEqual([play.title]);
+    expect(visible("apk")).toEqual([apk.title, legacy.title]);
+    expect(visible(null)).toEqual([]);
+  });
+
+  it("keeps every notification that is not a release notice", () => {
+    for (const channel of ["apk", "play", "ios", null] as const) {
+      expect(showsOnInstall({ type: "announcement", title: "Office closed on Monday" }, channel)).toBe(true);
+      expect(showsOnInstall({ type: "order_updated", title: APK_TITLE }, channel)).toBe(true);
+      expect(showsOnInstall({ title: "Out for delivery" }, channel)).toBe(true);
+    }
+  });
+
+  it("agrees with the tap: every release notice it shows opens this install's store", () => {
+    for (const channel of ["apk", "play", "ios"] as const) {
+      for (const n of [apk, legacy, play, ios, notice("play", "app_gallery")]) {
+        expect(showsOnInstall(n, channel)).toBe(releaseNoticeDestination(n, (n as { title?: string }).title, channel) !== null);
+      }
+    }
   });
 });

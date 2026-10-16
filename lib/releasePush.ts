@@ -82,6 +82,31 @@ export function releaseNoticeDestination(
   return destination.urls;
 }
 
+/**
+ * Whether a notification belongs in this install's inbox.
+ *
+ * Inbox rows are per account, so a client with the APK on one phone and
+ * TestFlight on another is sent both channels' release notices on both. Each
+ * install keeps only the release notices it can act on — exactly those whose
+ * tap opens this install's store — and every other notification. The rest stay
+ * on GRIDGO, hidden rather than deleted, for the install they belong to. Web is
+ * not an install and shows none.
+ */
+export function showsOnInstall(
+  notice: { type?: string; title?: string; releaseChannel?: string; storeTarget?: string },
+  channel: InstallChannel | null,
+): boolean {
+  if (!isReleaseNotice(notice)) return true;
+  return releaseNoticeDestination(notice, notice.title, channel) !== null;
+}
+
+/** A release notice names its channel or store; one from before channels has the APK title. */
+function isReleaseNotice(notice: { type?: string; title?: string }): boolean {
+  if (parsePushData(notice).type !== "announcement") return false;
+  if (readField(notice, "releaseChannel") || readField(notice, "storeTarget")) return true;
+  return typeof notice.title === "string" && APK_TITLE.test(notice.title);
+}
+
 /** Open the first link the phone can handle. Never throws. */
 export async function openReleaseDestination(
   urls: ReleaseDestination,
