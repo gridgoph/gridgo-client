@@ -8,6 +8,7 @@ import { adaptProductCategories, type ProductCategory } from "@/lib/productCateg
 import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
 import type { DevicePlatform, PushTokenProvider } from "@/lib/push";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
+import type { ArtworkColorsEntry, ColorTarget, ColorTargetInput } from "@/lib/colorTargets";
 import { readCall, readCalls, type CallIceConfig, type CallSignal, type OrderCall } from "@/lib/orderCalls";
 import { parseSeasonWindows, type SeasonWindows } from "@/lib/seasonWindows";
 
@@ -167,7 +168,13 @@ export type ProductionItem = {
   /** The layout agreed at checkout; null for a product without layouts. */
   printLayout?: PrintLayoutCode | null;
   /** The fit check as the client saw it at checkout. */
-  printLayoutCheck?: PrintLayoutCheck | null;
+  printLayoutCheck?: PrintLayoutCheck | null;  /**
+   * The client's exact colours (gridgo-api `docs/EXACT_COLOURS_API.md`):
+   * `[]` when none. Absent on an API from before them — `colorTargetsOf`.
+   */
+  colorTargets?: ColorTarget[];
+  /** The colours GRIDGO read from each uploaded file; design links have none. */
+  artworkColors?: ArtworkColorsEntry[];
 };
 
 /**
@@ -2617,7 +2624,13 @@ export type CartLineRecord = {
   /** The client's layout; null until chosen. Absent on an older API. */
   printLayout?: PrintLayoutCode | null;
   /** GRIDGO's live fit check; null for a product without layouts. */
-  printLayoutCheck?: PrintLayoutCheck | null;
+  printLayoutCheck?: PrintLayoutCheck | null;  /**
+   * The client's exact colours (gridgo-api `docs/EXACT_COLOURS_API.md`):
+   * `[]` when none. Absent on an API from before them — `colorTargetsOf`.
+   */
+  colorTargets?: ColorTarget[];
+  /** The colours GRIDGO read from each uploaded file; design links have none. */
+  artworkColors?: ArtworkColorsEntry[];
 };
 
 /**
@@ -3086,6 +3099,8 @@ export async function addCartLine(
     specialInstructions?: string;
     /** Only for a listing that offers layouts; GRIDGO refuses it on any other. */
     printLayout?: PrintLayoutCode | null;
+    /** Up to eight exact colours; omit when the client named none. */
+    colorTargets?: ColorTargetInput[];
     dropoff?: OrderPoint | null;
   },
 ): Promise<Cart> {
@@ -3117,6 +3132,8 @@ export async function updateCartLine(
     specialInstructions?: string;
     /** A layout the listing offers, or null to clear it; omit to keep it. */
     printLayout?: PrintLayoutCode | null;
+    /** Replaces the whole list; `[]` clears it; omit to keep it. */
+    colorTargets?: ColorTargetInput[] | null;
     dropoff?: OrderPoint | null;
     /**
      * Move this product to another date (gridgo-client#189). GRIDGO rechecks

@@ -13,6 +13,7 @@ import { PrintLayoutChoice } from "@/components/PrintLayoutChoice";
 import { PrintLayoutPreview } from "@/components/PrintLayoutPreview";
 import { DesignLinkField } from "@/components/DesignLinkField";
 import { ErrorScreenState } from "@/components/ErrorState";
+import { ExactColoursSection } from "@/components/ExactColoursSection";
 import { ProductPreview } from "@/components/ProductPreview";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StepTrailBar } from "@/components/StepTrail";
@@ -37,6 +38,7 @@ import {
   slotsLeft,
 } from "@/lib/artworkAttachments";
 import { artworkSizeNote } from "@/lib/artworkSize";
+import { colorFileNamer, colorTargetsOf } from "@/lib/colorTargets";
 import { guidanceRule, orderedSizeMilli, prepareFileGuide } from "@/lib/artworkGuidance";
 import { measuredSizeLabel, measuredSizeMilli, physicalSizeMilli } from "@/lib/printSize";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -755,6 +757,20 @@ export default function ArtworkScreen() {
             <Text className="text-caption text-text-muted">{MOCKUP_LABEL}</Text>
           </View>
         ) : null}
+
+        {/*
+          Exact colours: optional, and never a gate. The colours GRIDGO read
+          from each file sit under the client's, so a file that does not say
+          what they asked for is seen here rather than on the print.
+        */}
+        <View className="mt-8">
+          <ExactColoursSection
+            lineId={line.id}
+            targets={colorTargetsOf(line)}
+            artworkColors={line.artworkColors ?? []}
+            fileName={colorFileNamer(entries, (fileId) => files[fileId]?.originalFilename)}
+          />
+        </View>
 
         {item && !uploads.length && !links.length && otherLinks.length ? (
           <Text className="mt-3 text-body text-text-secondary">

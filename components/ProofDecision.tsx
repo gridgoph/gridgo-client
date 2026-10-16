@@ -5,6 +5,7 @@ import { Text, View } from "react-native";
 import { ArtworkGuidanceRecord } from "@/components/ArtworkGuidanceRecord";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ErrorState } from "@/components/ErrorState";
+import { ExactColoursRecord } from "@/components/ExactColoursRecord";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ProductPreview } from "@/components/ProductPreview";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -140,6 +141,9 @@ export function ProofDecision({
           </Text>
         </View>
       ) : null}
+
+      {/* The colours the client named, beside what GRIDGO read from each file. */}
+      <ExactColoursRecord items={order.productionItems ?? []} withFiles />
 
       {error ? <ErrorState label="Not recorded" body={error} /> : null}
 
