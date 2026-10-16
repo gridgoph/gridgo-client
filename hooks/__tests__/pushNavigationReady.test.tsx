@@ -1,4 +1,4 @@
-import { Linking } from "react-native";
+import { Linking, Platform } from "react-native";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { usePushNotifications } from "../usePushNotifications";
 import { getOrder } from "@/lib/api";
@@ -121,6 +121,8 @@ it("does not let delayed launch-response replay replace a live tap", async () =>
 
 
 it.each(["cold start", "background"])("opens release download while signed out from %s", async mode => {
+  // The APK notice opens the download only on a side-loaded Android install.
+  const os = jest.replaceProperty(Platform, "OS", "android");
   const open = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
   const release = { notification: { request: { identifier: "release-tap", content: {
     title: "GRIDGO Client 1.0.123 is ready", data: { type: "announcement" },
@@ -134,4 +136,5 @@ it.each(["cold start", "background"])("opens release download while signed out f
   expect(mockRouter.push).not.toHaveBeenCalled();
   await view.unmount();
   open.mockRestore();
+  os.restore();
 });
