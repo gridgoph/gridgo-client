@@ -16,6 +16,7 @@ export const LIVE_RESOURCES = [
   "settings",
   "location",
   "credits",
+  "carts",
 ] as const;
 export type LiveResource = (typeof LIVE_RESOURCES)[number];
 export type Invalidation = { resource: LiveResource; id?: string };

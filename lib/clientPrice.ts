@@ -25,6 +25,7 @@
  */
 
 import type { CartLineRecord } from "@/lib/api";
+import { colourLineReason, linePricedByColour } from "@/lib/colourPricing";
 import { SHOP_PAUSED_LINE, shopPaused } from "@/lib/shopHours";
 // Compatibility exports for existing consumers; all markup lives in one helper.
 export {
@@ -44,6 +45,8 @@ export {
 export function unpricedLineReason(line: CartLineRecord): string {
   // GRIDGO stops pricing a line once its shop is closed for now.
   if (shopPaused(line.listing?.shopHours)) return SHOP_PAUSED_LINE;
+  // Priced page by page from colour: the reason is the colour check's own.
+  if (linePricedByColour(line)) return colourLineReason(line.colourPricing);
   const minimum = line.listing?.minimumOrderQuantity ?? null;
   if (minimum != null && line.quantity < minimum) {
     return `No price at this quantity — this shop takes orders of ${minimum} and up.`;

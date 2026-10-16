@@ -182,6 +182,8 @@ export type PlaceOrderBlocker =
   | "artwork_checking"
   | "artwork_problem"
   | "layout"
+  | "colour"
+  | "colour_price_check"
   | "cover_spine"
   | "address"
   | "date"
@@ -212,6 +214,8 @@ export function placeOrderBlockers({
   linesCheckingArtwork = 0,
   linesArtworkProblem = 0,
   linesMissingLayout = 0,
+  linesColourUnready = 0,
+  linesColourPriceCheck = 0,
   linesMissingCoverSpine = 0,
   linesMissingDropoff,
   missingBasketDate = false,
@@ -245,6 +249,18 @@ export function placeOrderBlockers({
    */
   linesMissingLayout?: number;
   /**
+   * Lines priced by colour whose pages are not all priced yet — still being
+   * measured, waiting on copies or sets, or a file GRIDGO cannot measure
+   * (gridgo-api `docs/COLOUR_PRICING_API.md`). Checkout refuses them with
+   * `colour_analysis_required`.
+   */
+  linesColourUnready?: number;
+  /**
+   * Lines with a page in a colour level the shop has not priced. Checkout
+   * refuses them with `colour_price_check_required` until the shop prices it.
+   */
+  linesColourPriceCheck?: number;
+  /**
    * Hardbound lines with no cover and spine while GRIDGO requires them
    * (`coverSpineRequired`, gridgo-api `docs/HARDBOUND_COVER_API.md`). While
    * the switch is off a missing form never blocks.
@@ -272,6 +288,8 @@ export function placeOrderBlockers({
   if (linesMissingArtwork > 0) blockers.push("artwork");
   if (linesArtworkProblem > 0) blockers.push("artwork_problem");
   if (linesMissingLayout > 0) blockers.push("layout");
+  if (linesColourUnready > 0) blockers.push("colour");
+  if (linesColourPriceCheck > 0) blockers.push("colour_price_check");
   if (linesMissingCoverSpine > 0) blockers.push("cover_spine");
   if (linesCheckingArtwork > 0) blockers.push("artwork_checking");
   if (linesMissingDropoff > 0) blockers.push("address");
@@ -307,6 +325,14 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
       return detail
         ? `Choose how ${detail} sits on the paper. Open its Artwork to choose.`
         : "Choose how each file sits on the paper. Open its Artwork to choose.";
+    case "colour":
+      return detail
+        ? `GRIDGO has not finished pricing ${detail} by colour. Open its Artwork to see each page.`
+        : "GRIDGO has not finished pricing every page by colour. Open each item's Artwork to see why.";
+    case "colour_price_check":
+      return detail
+        ? `A page of ${detail} needs a price check. Operations is checking it with the shop, and you can place the order once it is priced.`
+        : "Some pages need a price check. Operations is checking them with the shop, and you can place the order once they are priced.";
     case "cover_spine":
       return detail
         ? `Add the cover and spine for ${detail}. Open its Artwork to fill them in.`

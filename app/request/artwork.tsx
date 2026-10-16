@@ -11,6 +11,7 @@ import { ArtworkAttachmentList } from "@/components/ArtworkAttachmentList";
 import { PrepareFileGuide } from "@/components/PrepareFileGuide";
 import { PrintLayoutChoice } from "@/components/PrintLayoutChoice";
 import { PrintLayoutPreview } from "@/components/PrintLayoutPreview";
+import { ColourPricingSection } from "@/components/ColourPricingSection";
 import { CoverSpineSection } from "@/components/CoverSpineSection";
 import { DesignLinkField } from "@/components/DesignLinkField";
 import { ErrorScreenState } from "@/components/ErrorState";
@@ -40,7 +41,9 @@ import {
 } from "@/lib/artworkAttachments";
 import { artworkSizeNote } from "@/lib/artworkSize";
 import { colorFileNamer, colorTargetsOf } from "@/lib/colorTargets";
-import { guidanceRule, orderedSizeMilli, prepareFileGuide } from "@/lib/artworkGuidance";
+import { guidanceRule, orderedSizeMilli, prepareFileGuide, withPrepareFileAdvice } from "@/lib/artworkGuidance";
+import { a3LimitOf, colourAwaitsPriceCheck, colourBlocksCheckout, lineMeasuresColour } from "@/lib/colourPricing";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { measuredSizeLabel, measuredSizeMilli, physicalSizeMilli } from "@/lib/printSize";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
@@ -114,6 +117,9 @@ import { coverSpineDraftOf, useCoverSpine } from "@/store/coverSpine";
 /** One shared empty list, so an item with nothing in flight never re-renders the screen. */
 const NO_UPLOADS: PendingUpload[] = [];
 
+/** How often the basket is read while GRIDGO measures the pages' colour. */
+const COLOUR_POLL_MS = 3000;
+
 export default function ArtworkScreen() {
   const router = useRouter();
   const colors = useThemeColors();
@@ -159,6 +165,9 @@ export default function ArtworkScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [rangeDraft, setRangeDraft] = useState<{ fileId: string; text: string } | null>(null);
+  const [colourSaving, setColourSaving] = useState(false);
+  const [colourError, setColourError] = useState<string | null>(null);
+  const [colourRetrying, setColourRetrying] = useState(false);
   const [totalDraft, setTotalDraft] = useState<{ fileId: string; text: string } | null>(null);
 
   /**
@@ -229,6 +238,57 @@ export default function ArtworkScreen() {
   }, [linkKeys]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stored = primaryId;
+
+  /*
+    Colour pricing (gridgo-api docs/COLOUR_PRICING_API.md): GRIDGO measures
+    each page on the paper and layout chosen, outside the request. Ask for the
+    current measure once per configuration, then read the basket until it
+    lands — the "carts" signal usually says so first.
+  */
+  const colourSettings = usePlatformSettings((state) => state.settings?.colourDetection);
+  const measuresColour = line ? lineMeasuresColour(line) : false;
+  const colourMeasuring = measuresColour && line?.colourPricing?.status === "pending";
+  const colourKey = line
+    ? [line.id, fileIds.join(","), line.printLayout ?? "", line.optionIds.join(","), line.documentPages?.range ?? ""].join("|")
+    : "";
+  const cartId = cart?.id ?? null;
+  useEffect(() => {
+    if (!colourMeasuring || !cartId) return;
+    void api.requestColourAnalysis(cartId).catch(() => undefined);
+  }, [colourKey, colourMeasuring, cartId]);
+  useEffect(() => {
+    if (!colourMeasuring) return;
+    const timer = setInterval(() => void useCart.getState().load(), COLOUR_POLL_MS);
+    return () => clearInterval(timer);
+  }, [colourMeasuring]);
+  useLiveRefresh(["carts"], () => (measuresColour ? useCart.getState().load() : undefined), { refreshOnFocus: false });
+
+  /** Copies or sets, and how many: saved on the tap, priced by GRIDGO. */
+  const saveColour = async (change: { quantityMode?: api.QuantityMode; quantity?: number }) => {
+    if (!line || colourSaving) return;
+    setColourSaving(true);
+    setColourError(null);
+    try {
+      adopt(await run((id) => api.updateCartLine(id, line.id, change)));
+    } catch (error) {
+      setColourError(userFacingError(error, "That did not save. Try again in a moment."));
+    } finally {
+      setColourSaving(false);
+    }
+  };
+  const retryColour = async () => {
+    if (!cartId || colourRetrying) return;
+    setColourRetrying(true);
+    setColourError(null);
+    try {
+      await api.requestColourAnalysis(cartId, { retry: true });
+      await useCart.getState().load();
+    } catch (error) {
+      setColourError(userFacingError(error, "GRIDGO could not start measuring again. Try again in a moment."));
+    } finally {
+      setColourRetrying(false);
+    }
+  };
 
   /** Save the selection; GRIDGO returns the normalized range and updated price. */
   const savePageRange = useCallback(
@@ -401,10 +461,10 @@ export default function ArtworkScreen() {
     physicalSizeMilli(size, { subcategoryCode: item?.subcategoryCode });
   const rule = guidanceRule(guidanceSettings, item?.subcategoryCode);
   const minimumDpi = lineGuidance ? lineGuidance.minimumDpi : rule?.minimumDpi ?? null;
-  const guide = prepareFileGuide(
+  const guide = withPrepareFileAdvice(prepareFileGuide(
     lineGuidance ? { minimumDpi: lineGuidance.minimumDpi, acceptsRgb: lineGuidance.acceptsRgb } : rule,
     { milli: orderedSize, label: size || measuredSizeLabel(line.measurement, item?.measureUnit) },
-  );
+  ), item?.prepareFile);
   const layouts = offeredLayouts(item);
   // With a layout choice, how a page of another size prints is the layout's
   // answer, not "scaled to fit": the size note would contradict it.
@@ -695,7 +755,7 @@ export default function ArtworkScreen() {
                       {documentPages.total} pages in this file
                     </Text>
                     <Text className="text-caption text-text-secondary">
-                      Read from your file. Copies are set at checkout.
+                      {measuresColour ? "Read from your file." : "Read from your file. Copies are set at checkout."}
                     </Text>
                   </>
                 )}
@@ -777,6 +837,28 @@ export default function ArtworkScreen() {
                 Add your file above to see how it sits on the paper.
               </Text>
             )}
+          </View>
+        ) : null}
+
+        {/*
+          Colour and price: each page's strong colour on the chosen paper,
+          its level and the shop's price for it, copies or sets, and the
+          total. A one-colour service gets the colour read and its warning.
+        */}
+        {measuresColour ? (
+          <View className="mt-8 gap-3">
+            <ColourPricingSection
+              line={line}
+              a3MonochromeMaxBps={a3LimitOf(line.colourPricing, colourSettings?.a3MonochromeMaxBps)}
+              saving={colourSaving}
+              onQuantityMode={(quantityMode) => void saveColour({ quantityMode })}
+              onQuantity={(quantity) => void saveColour({ quantity })}
+              onRetry={() => void retryColour()}
+              retrying={colourRetrying}
+            />
+            {colourError ? (
+              <Text accessibilityRole="alert" className="text-body text-error">{colourError}</Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -870,6 +952,12 @@ export default function ArtworkScreen() {
         ) : hasArtwork && inFlight > 0 ? (
           <Text className="mt-2 text-center text-caption text-text-muted">
             Checkout opens when every upload has finished.
+          </Text>
+        ) : hasArtwork && colourBlocksCheckout(line) ? (
+          <Text className="mt-2 text-center text-caption text-text-muted">
+            {colourAwaitsPriceCheck(line)
+              ? "You can review your order at checkout. It can be placed once every page has a price."
+              : "You can review your order at checkout. It can be placed once every page is measured and priced."}
           </Text>
         ) : null}
 
