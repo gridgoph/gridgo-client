@@ -107,6 +107,51 @@ Restart with a later number (for example the current release's) to see "Update c
 
 Every decision the check makes is logged to Metro in a development build, one `[update-check]` line each: which build it compared (or `off: … EXPO_PUBLIC_UPDATE_CHECK_FORCE_VERSION_CODE is not set` when the override never reached the bundle), what GitHub answered, and whether the release was offered. If the prompt does not appear, those lines say why. A **Later** from an earlier run is remembered on the phone for the rest of that day; clear Expo Go's storage for the project to see the prompt again.
 
+## iPhone build and TestFlight
+
+The iPhone app builds on [EAS Build](https://docs.expo.dev/build/introduction/), because
+an iOS build needs Xcode on macOS. **Actions → iOS TestFlight → Run workflow** builds the
+`production` profile in `eas.json` (an App Store build; EAS raises the build number by one
+each time) and then uploads it to App Store Connect with EAS Submit. Untick
+**submit_to_testflight** to build only. The run summary links the EAS build. Nothing
+reaches the App Store listing or review from here.
+
+What the iPhone build has that Android does not:
+
+- **Sign in with Apple** on Sign In, above Google (`components/auth/AppleButton.ios.tsx`,
+  `lib/appleSignIn.ts`). It lands through `completeClerkAuth` like every other sign-in, and a
+  new person finishes on Finish signing up, as with Google. Android and the web draw nothing.
+- **Push through Firebase.** The API sends through FCM, which cannot address the APNs token
+  expo-notifications returns on iOS, so the iPhone registers Firebase's FCM token instead
+  (`lib/firebaseMessaging.ios.ts`). `@react-native-firebase` is linked on iOS only
+  (`react-native.config.js`); Android push is unchanged. A build without
+  `GoogleService-Info.plist` leaves Firebase out and registers the APNs token as before.
+- **App Store settings** in `app.json` and `plugins/withIosStoreBuild.js`: iPhone only (no
+  iPad), a GRIDGO sentence for every permission, no background audio mode, the
+  export-compliance answer, and dynamic frameworks for Firebase.
+
+The workflow needs, once:
+
+| Where | Name | What |
+|---|---|---|
+| GitHub secret | `EXPO_TOKEN` | Already used by the Play upload. |
+| GitHub secret | `ASC_API_KEY_P8` | App Store Connect API key (Users and Access → Integrations → Team Keys, role App Manager): the `.p8` file's text. |
+| GitHub secret | `ASC_KEY_ID` | That key's Key ID. |
+| GitHub secret | `ASC_ISSUER_ID` | The Issuer ID shown above the key list. |
+| GitHub variable | `ASC_APP_ID` | The app's Apple ID (App Store Connect → the app → App Information). Not secret. |
+| EAS, `production` environment | `GOOGLE_SERVICE_INFO_PLIST` | **File** variable, visibility Secret: the Firebase `GoogleService-Info.plist` for `ph.gridgo.client`. Never commit it. |
+
+`EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` and `EXPO_PUBLIC_CARTO_API_KEY`
+come from the repository secrets the Android release already uses; the workflow copies them
+to the EAS `production` environment before each build, because the EAS machine never sees
+GitHub's environment. On the EAS machine, `app.config.ts` refuses a store build that is
+missing any of them or the Firebase file (`iosStoreBuildProblems`). The App Store Connect
+key lets EAS create the distribution certificate and provisioning profile on the first run.
+
+To try the iPhone build locally, drop `GoogleService-Info.plist` in the repo root (it is
+gitignored) or point `GOOGLE_SERVICE_INFO_PLIST` at it, then `npx expo prebuild -p ios` on
+a Mac. Sign in with Apple and Firebase need a development build; Expo Go has neither.
+
 ## Android emulator API URL
 
 From the **Android emulator**, `127.0.0.1` is the emulator itself. Use:
