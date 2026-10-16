@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
-import type { ArtworkAttachment, StoredFile } from "@/lib/api";
+import type { ArtworkAttachment, CartLineRecord, StoredFile } from "@/lib/api";
 import {
   MAX_ARTWORK_ATTACHMENTS,
   NO_LIST_ON_THIS_API,
@@ -26,6 +26,7 @@ import {
 import { acceptanceAfter } from "@/lib/artworkGuidance";
 import { userFacingError } from "@/lib/copy";
 import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
+import { COVER_FILE_IN_USE, COVER_FILE_LABEL } from "@/lib/coverSpine";
 import { useCart } from "@/store/cart";
 
 /**
@@ -64,6 +65,8 @@ export type PendingUpload = {
   refusal: "format" | "check" | null;
   /** The file this upload takes the place of, keeping its place and label. */
   replaces?: string;
+  /** The label it goes onto the item with: a separate cover page is "Cover". */
+  label?: string;
 };
 
 /** Where the last change to an item's list went wrong, if it did. */
@@ -82,6 +85,12 @@ type AttachmentState = {
   acceptError: Record<string, string | null>;
   /** Pick one or more files and send each, up to the room the item has left. */
   pick: (lineId: string, guard?: ArtworkFormatCheck & { accept: string[] }) => Promise<void>;
+  /**
+   * Pick one file for a hardbound book's separate cover page. It goes onto the
+   * item labelled Cover, after the files already there, so it never becomes
+   * the main file pages are priced from. Resolves its id once it is on the item.
+   */
+  pickCover: (lineId: string, guard?: ArtworkFormatCheck & { accept: string[] }) => Promise<string | null>;
   /** Pick one file to take the place of a file on the item (a better export). */
   replace: (lineId: string, fileId: string, guard?: ArtworkFormatCheck & { accept: string[] }) => Promise<void>;
   /**
@@ -144,6 +153,8 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
     lineId: string,
     edit: (entries: ArtworkAttachment[]) => ArtworkAttachment[] | string,
     fallback: string,
+    /** More of the line to change in the same write, decided against the list GRIDGO holds. */
+    alongside?: (line: CartLineRecord, next: ArtworkAttachment[]) => Partial<api.CartLineChange> | null,
   ): Promise<ChangeResult> {
     const owner = generation;
     const run = async (): Promise<ChangeResult> => {
@@ -153,8 +164,9 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
       const next = edit(current);
       if (typeof next === "string") return { ok: false, message: next };
       if (sameAttachments(current, next)) return { ok: true };
-      const body = attachmentsBody(line, next);
-      if (!body) return { ok: false, message: NO_LIST_ON_THIS_API };
+      const list = attachmentsBody(line, next);
+      if (!list) return { ok: false, message: NO_LIST_ON_THIS_API };
+      const body = { ...list, ...(alongside?.(line, next) ?? {}) };
       patch("saving", lineId, true);
       try {
         const cart = useCart.getState();
@@ -180,9 +192,11 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
     if (!result.ok) patch("saveError", lineId, result.message);
   }
 
-  async function attach(lineId: string, key: string, fileId: string) {
+  async function attach(lineId: string, key: string, fileId: string): Promise<boolean> {
     patchUpload(lineId, key, { phase: "attaching", error: null, fileId });
-    const replaces = get().uploads[lineId]?.find((upload) => upload.key === key)?.replaces;
+    const pending = get().uploads[lineId]?.find((upload) => upload.key === key);
+    const replaces = pending?.replaces;
+    const label = pending?.label;
     const result = await change(
       lineId,
       (entries) =>
@@ -194,16 +208,31 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
               )
             : entries.length >= MAX_ARTWORK_ATTACHMENTS
               ? LIMIT_REACHED
-              : [...entries, { kind: "file", fileId }],
+              : [...entries, label ? { kind: "file", fileId, label } : { kind: "file", fileId }],
       "Your file reached GRIDGO but did not go onto this item. Try again in a moment.",
+      // A better export of the cover page: the cover follows it in the same
+      // write, or GRIDGO refuses the list for dropping the cover's file.
+      (line) => {
+        const cover = line.coverSpine;
+        if (!replaces || cover?.status !== "given" || cover.coverFileId !== replaces || cover.cover !== "separate_file") return null;
+        return {
+          coverSpine: {
+            cover: "separate_file",
+            coverFileId: fileId,
+            spine: cover.spine,
+          },
+        };
+      },
     );
     if (result.ok) patchUpload(lineId, key, null);
     else patchUpload(lineId, key, { phase: "failed", error: result.message, refusal: null });
+    return result.ok;
   }
 
-  async function send(lineId: string, key: string) {
+  /** Upload one picked file and put it on the item. Resolves its id once it is there. */
+  async function send(lineId: string, key: string): Promise<string | null> {
     const asset = assets.get(key);
-    if (!asset) return;
+    if (!asset) return null;
     const owner = generation;
     patchUpload(lineId, key, { phase: "sending", progress: 0, error: null, refusal: null });
     const handle = api.uploadFile(asset, "artwork", (fraction) => {
@@ -215,27 +244,28 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
     handles.set(key, handle);
     try {
       const file = await handle.done;
-      if (owner !== generation) return;
+      if (owner !== generation) return null;
       set((state) => ({ files: { ...state.files, [file.fileId]: file } }));
       // Stored, but not something GRIDGO can print from: never put on the item.
       const unusable = artworkCheckFailure(file.artworkCheck);
       if (unusable) {
         patchUpload(lineId, key, { phase: "failed", error: unusable, refusal: "check" });
-        return;
+        return null;
       }
       assets.delete(key);
-      await attach(lineId, key, file.fileId);
+      return (await attach(lineId, key, file.fileId)) ? file.fileId : null;
     } catch (error) {
-      if (owner !== generation) return;
+      if (owner !== generation) return null;
       const cancelled =
         error instanceof api.ApiError &&
         (error.body as { error?: string } | null)?.error === "upload_cancelled";
       if (cancelled) {
         assets.delete(key);
         patchUpload(lineId, key, null);
-        return;
+        return null;
       }
       patchUpload(lineId, key, { phase: "failed", error: artworkErrorMessage(error), refusal: null });
+      return null;
     } finally {
       handles.delete(key);
     }
@@ -246,34 +276,35 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
     lineId: string,
     guard: (ArtworkFormatCheck & { accept: string[] }) | undefined,
     replaces: string | null,
-  ) {
+    label?: string,
+  ): Promise<string[]> {
     patch("notice", lineId, null);
     const picker = getDocumentPickerNative();
     if (!picker) {
       patch("notice", lineId, FILE_PICKER_NEEDS_REBUILD);
-      return;
+      return [];
     }
     let result: Awaited<ReturnType<typeof picker.getDocumentAsync>>;
     try {
       result = await picker.getDocumentAsync({
         type: guard?.accept.length ? guard.accept : PICKER_TYPES,
-        // A replacement is one file for one file.
-        multiple: replaces == null,
+        // A replacement is one file for one file, and a cover is one page.
+        multiple: replaces == null && label == null,
         // A URI the uploader streams from; the bytes never enter JavaScript.
         copyToCacheDirectory: true,
       });
     } catch {
       patch("notice", lineId, "The file picker did not open. Try again, and check GRIDGO has access to your files.");
-      return;
+      return [];
     }
-    if (result.canceled) return;
+    if (result.canceled) return [];
     const picked = (result.assets ?? []).filter((asset) => asset?.uri);
     if (!picked.length) {
       patch("notice", lineId, "That file could not be read. Pick it again, or copy it into Files first.");
-      return;
+      return [];
     }
     const busy = (get().uploads[lineId] ?? []).filter((upload) => upload.phase !== "failed").length;
-    const room = replaces ? 1 : slotsLeft(lineAttachments(lineOf(lineId)).length + busy);
+    const room = replaces ? 1 : Math.min(label ? 1 : Infinity, slotsLeft(lineAttachments(lineOf(lineId)).length + busy));
     const taken = picked.slice(0, room);
     patch("notice", lineId, overflowNote(picked.length, taken.length));
 
@@ -291,6 +322,7 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
         fileId: null,
         refusal: refused?.refusal ?? null,
         ...(replaces ? { replaces } : {}),
+        ...(label ? { label } : {}),
       };
       set((state) => ({ uploads: { ...state.uploads, [lineId]: [...(state.uploads[lineId] ?? []), upload] } }));
       if (refused) continue;
@@ -302,13 +334,19 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
       });
       started.push(key);
     }
-    await Promise.all(started.map((key) => send(lineId, key)));
+    const landed = await Promise.all(started.map((key) => send(lineId, key)));
+    return landed.filter((fileId): fileId is string => fileId != null);
   }
 
   return {
     ...initial,
-    pick: (lineId, guard) => choose(lineId, guard, null),
-    replace: (lineId, fileId, guard) => choose(lineId, guard, fileId),
+    pick: async (lineId, guard) => {
+      await choose(lineId, guard, null);
+    },
+    pickCover: async (lineId, guard) => (await choose(lineId, guard, null, COVER_FILE_LABEL))[0] ?? null,
+    replace: async (lineId, fileId, guard) => {
+      await choose(lineId, guard, fileId);
+    },
     acceptWarning: async (lineId, fileId, code, accept) => {
       if (get().accepting[lineId]) return;
       const owner = generation;
@@ -362,8 +400,15 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
       assets.delete(key);
       patchUpload(lineId, key, null);
     },
-    remove: (lineId, entryKey) =>
-      edit(lineId, (entries) => withoutAttachment(entries, entryKey), "That did not come off this item. Try again in a moment."),
+    remove: async (lineId, entryKey) => {
+      // GRIDGO refuses a list without the cover's file: the cover changes first.
+      const cover = lineOf(lineId)?.coverSpine;
+      if (cover?.status === "given" && cover.coverFileId && entryKey === attachmentKey({ kind: "file", fileId: cover.coverFileId })) {
+        patch("saveError", lineId, COVER_FILE_IN_USE);
+        return;
+      }
+      await edit(lineId, (entries) => withoutAttachment(entries, entryKey), "That did not come off this item. Try again in a moment.");
+    },
     move: (lineId, entryKey, by) =>
       edit(
         lineId,

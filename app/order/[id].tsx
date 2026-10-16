@@ -33,6 +33,7 @@ import { DesignLinkRow } from "@/components/DesignLinkRow";
 import { ExactColoursRecord } from "@/components/ExactColoursRecord";
 import { FoldSection } from "@/components/FoldSection";
 import { LatestProgressCard } from "@/components/LatestProgressCard";
+import { CoverSpineRecord } from "@/components/CoverSpineRecord";
 import { NoteRow, ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
 import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
@@ -536,6 +537,7 @@ export default function OrderDetailScreen() {
         {order.productionItems?.length ? (
           <>
             <ProductionSpecifications order={order} taxonomy={taxonomy} bare showLinks={false} />
+            <CoverSpineRecord items={order.productionItems} bare />
             <ExactColoursRecord items={order.productionItems} bare />
           </>
         ) : (

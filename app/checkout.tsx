@@ -88,6 +88,8 @@ import {
   type TravelChoice,
 } from "@/lib/checkout";
 import { lineLayoutSummary, lineNeedsLayout, printLayoutRefusalOf } from "@/lib/printLayout";
+import { coverSpineLineSummary, coverSpineRefusalOf, lineMissingCoverSpine } from "@/lib/coverSpine";
+import { useCoverSpine } from "@/store/coverSpine";
 import { userFacingError } from "@/lib/copy";
 import { SHOP_PAUSED_LINE, shopHoursView, shopPaused } from "@/lib/shopHours";
 import {
@@ -287,6 +289,7 @@ export default function CheckoutScreen() {
   const checkingArtwork = lines.filter((line) => artworkStatus(line)?.kind === "checking");
   const artworkProblem = lines.filter((line) => artworkStatus(line)?.kind === "problem");
   const missingLayout = lines.filter(lineNeedsLayout);
+  const missingCoverSpine = lines.filter(lineMissingCoverSpine);
   const referenceCheck = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
   const shopClosed = lines.filter((line) => shopPaused(line.listing?.shopHours));
@@ -298,6 +301,7 @@ export default function CheckoutScreen() {
     linesCheckingArtwork: checkingArtwork.length,
     linesArtworkProblem: artworkProblem.length,
     linesMissingLayout: missingLayout.length,
+    linesMissingCoverSpine: missingCoverSpine.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
     // More than one group: each is printed and delivered for its own date, so
     // GRIDGO needs one on every product (gridgo-client#189).
@@ -465,7 +469,12 @@ export default function CheckoutScreen() {
 
   const scrollToBlocker = (blocker: (typeof blockers)[number]) => {
     const key =
-      blocker === "artwork" || blocker === "price" || blocker === "artwork_problem" || blocker === "layout" || blocker === "date"
+      blocker === "artwork" ||
+      blocker === "price" ||
+      blocker === "artwork_problem" ||
+      blocker === "layout" ||
+      blocker === "cover_spine" ||
+      blocker === "date"
         ? "artwork"
         : blocker === "address"
           ? "address"
@@ -493,6 +502,11 @@ export default function CheckoutScreen() {
     if (blockers.length) {
       setAttempted(true);
       if (blockers.includes("reference")) setReferenceTouched(true);
+      // The form is on the book's Artwork: that is where the client goes.
+      if (blockers[0] === "cover_spine" && missingCoverSpine[0]) {
+        router.push({ pathname: "/request/artwork", params: { lineId: missingCoverSpine[0].id, focus: "cover" } });
+        return;
+      }
       scrollToBlocker(blockers[0]);
       return;
     }
@@ -556,6 +570,29 @@ export default function CheckoutScreen() {
       // the choice is on the item's Artwork, so that is where this goes.
       const layoutRefusal = e instanceof api.ApiError ? printLayoutRefusalOf(e.body) : null;
       const layoutLine = layoutRefusal ? lines.find((line) => line.id === layoutRefusal.lineId) : null;
+      // The cover and spine (gridgo-api docs/HARDBOUND_COVER_API.md): missing
+      // while GRIDGO requires it, or its cover page gone from the files, is
+      // fixed on the book's Artwork. A form on a product that no longer asks
+      // comes off, and the client places the order again.
+      const coverRefusal = e instanceof api.ApiError ? coverSpineRefusalOf(e.body) : null;
+      if (coverRefusal) {
+        setAttempted(true);
+        if (coverRefusal.code === "cover_spine_not_applicable") {
+          const cleared = coverRefusal.lineId ? await useCoverSpine.getState().clear(coverRefusal.lineId) : false;
+          setPlaceError(
+            cleared
+              ? "This product no longer takes cover and spine details, so they were taken off. Check your order and place it again."
+              : coverRefusal.message,
+          );
+          return;
+        }
+        void loadCart();
+        setPlaceError(coverRefusal.message);
+        if (coverRefusal.lineId && lines.some((line) => line.id === coverRefusal.lineId)) {
+          router.push({ pathname: "/request/artwork", params: { lineId: coverRefusal.lineId, focus: "cover" } });
+        }
+        return;
+      }
       if (layoutRefusal) {
         void loadCart();
         setAttempted(true);
@@ -734,6 +771,10 @@ export default function CheckoutScreen() {
                         : blockers[0] === "layout"
                           ? missingLayout.length === 1
                             ? lineName(missingLayout[0])
+                            : undefined
+                        : blockers[0] === "cover_spine"
+                          ? missingCoverSpine.length === 1
+                            ? lineName(missingCoverSpine[0])
                             : undefined
                         : missingArtwork.length === 1
                           ? lineName(missingArtwork[0])
@@ -1374,6 +1415,7 @@ function LineRow({
   // Closed for now: GRIDGO will not take this line, whatever it is priced at.
   const paused = shopPaused(line.listing?.shopHours);
   const layout = lineLayoutSummary(line);
+  const coverSpine = coverSpineLineSummary(line);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -1442,6 +1484,14 @@ function LineRow({
               {layout ? (
                 <Text className={layout.tone === "warning" ? "text-caption text-warning" : "text-caption text-text-muted"}>
                   {layout.text}
+                </Text>
+              ) : null}
+              {coverSpine ? (
+                <Text
+                  className={coverSpine.tone === "warning" ? "text-caption text-warning" : "text-caption text-text-muted"}
+                  numberOfLines={3}
+                >
+                  {coverSpine.text}
                 </Text>
               ) : null}
             </View>

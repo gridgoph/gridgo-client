@@ -182,6 +182,7 @@ export type PlaceOrderBlocker =
   | "artwork_checking"
   | "artwork_problem"
   | "layout"
+  | "cover_spine"
   | "address"
   | "date"
   | "schedule"
@@ -211,6 +212,7 @@ export function placeOrderBlockers({
   linesCheckingArtwork = 0,
   linesArtworkProblem = 0,
   linesMissingLayout = 0,
+  linesMissingCoverSpine = 0,
   linesMissingDropoff,
   missingBasketDate = false,
   referenceOk,
@@ -242,6 +244,12 @@ export function placeOrderBlockers({
    * `print_layout_required`; the cut-off and scale warnings never block.
    */
   linesMissingLayout?: number;
+  /**
+   * Hardbound lines with no cover and spine while GRIDGO requires them
+   * (`coverSpineRequired`, gridgo-api `docs/HARDBOUND_COVER_API.md`). While
+   * the switch is off a missing form never blocks.
+   */
+  linesMissingCoverSpine?: number;
   linesMissingDropoff: number;
   /**
    * A basket that goes out in more than one group has a product with no date.
@@ -264,6 +272,7 @@ export function placeOrderBlockers({
   if (linesMissingArtwork > 0) blockers.push("artwork");
   if (linesArtworkProblem > 0) blockers.push("artwork_problem");
   if (linesMissingLayout > 0) blockers.push("layout");
+  if (linesMissingCoverSpine > 0) blockers.push("cover_spine");
   if (linesCheckingArtwork > 0) blockers.push("artwork_checking");
   if (linesMissingDropoff > 0) blockers.push("address");
   if (missingBasketDate) blockers.push("date");
@@ -298,6 +307,10 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
       return detail
         ? `Choose how ${detail} sits on the paper. Open its Artwork to choose.`
         : "Choose how each file sits on the paper. Open its Artwork to choose.";
+    case "cover_spine":
+      return detail
+        ? `Add the cover and spine for ${detail}. Open its Artwork to fill them in.`
+        : "Add the cover and spine for each book. Open its Artwork to fill them in.";
     case "artwork_checking":
       return "Checking your design link…";
     case "address":

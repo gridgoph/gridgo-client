@@ -1,4 +1,5 @@
 import { useArtworkAttachments } from "@/store/artworkAttachments";
+import { useCoverSpine } from "@/store/coverSpine";
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useHandoverActions } from "@/store/handoverActions";
@@ -357,6 +358,7 @@ useSession.subscribe((state, previous) => {
   useHandoverActions.getState().reset();
   // Uploads in flight belong to the account that started them.
   useArtworkAttachments.getState().reset();
+  useCoverSpine.getState().reset();
   clearBoardCache();
   clearListingCache();
   // A match and its pick tokens are bound to the client who asked; another
