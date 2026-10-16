@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.337 (New feature)
+
+- Hardbound books: choose how the cover is made and fill in the spine, with a preview as you type.
+
 ## 1.0.318 (New feature)
 
 - Vouchers: see yours in Account with a live countdown, add a code, and have one come off your order at checkout.
