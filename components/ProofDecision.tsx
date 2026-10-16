@@ -4,6 +4,7 @@ import { Text, View } from "react-native";
 
 import { ArtworkGuidanceRecord } from "@/components/ArtworkGuidanceRecord";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { CoverSpineRecord } from "@/components/CoverSpineRecord";
 import { ErrorState } from "@/components/ErrorState";
 import { ExactColoursRecord } from "@/components/ExactColoursRecord";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -141,6 +142,9 @@ export function ProofDecision({
           </Text>
         </View>
       ) : null}
+
+      {/* A hardbound book's cover and spine, as the shop will make and letter it. */}
+      <CoverSpineRecord items={order.productionItems ?? []} title="Cover and spine" />
 
       {/* The colours the client named, beside what GRIDGO read from each file. */}
       <ExactColoursRecord items={order.productionItems ?? []} withFiles />

@@ -6,6 +6,7 @@
  */
 
 import { ApiError } from "@/lib/api";
+import { coverSpineErrorMessage } from "@/lib/coverSpine";
 
 /**
  * Where an order stands on money, in plain language.
@@ -104,6 +105,10 @@ export function userFacingError(error: unknown, fallback: string): string {
       typeof error.body === "object" && error.body && "error" in error.body
         ? String((error.body as { error: string }).error)
         : error.message;
+
+    // A hardbound book's cover and spine: said for the field GRIDGO named.
+    const coverSpine = coverSpineErrorMessage(error.body);
+    if (coverSpine) return coverSpine;
 
     switch (code) {
       case "hub_pickup_disabled":

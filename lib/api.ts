@@ -175,6 +175,12 @@ export type ProductionItem = {
   colorTargets?: ColorTarget[];
   /** The colours GRIDGO read from each uploaded file; design links have none. */
   artworkColors?: ArtworkColorsEntry[];
+  /**
+   * The cover and spine agreed at checkout. Null for a product that does not
+   * ask, or an order from before; `status: "not_given"` when it asked and
+   * the client gave nothing.
+   */
+  coverSpine?: CoverSpineRecord | null;
 };
 
 /**
@@ -588,6 +594,12 @@ export type PlatformSettings = {
   operatingHours?: OperatingHours;
   /** Artwork targets per product type. Absent on an older API. */
   artworkGuidance?: ArtworkGuidanceSettings;
+  /**
+   * Whether checkout refuses a hardbound line without its cover and spine
+   * (gridgo-api `docs/HARDBOUND_COVER_API.md`). Absent reads as off. A line
+   * says the same per item in `coverSpineRequired`.
+   */
+  coverSpineRequired?: boolean;
 };
 
 /**
@@ -1821,6 +1833,54 @@ export type PrintLayoutCheck = {
   unknown: PrintLayoutUnknown[];
 };
 
+/** How a hardbound book's cover is made (gridgo-api `docs/HARDBOUND_COVER_API.md`). */
+export type CoverChoice = "first_page" | "separate_file" | "text_only";
+
+/** What is lettered on the spine, as GRIDGO stores it. */
+export type SpineDetails = {
+  institutionCode: string | null;
+  title: string;
+  author: string;
+  month: number;
+  year: number;
+};
+
+/** The form as a line write sends it, whole. */
+export type CoverSpineInput = {
+  cover: CoverChoice;
+  /** Only for `separate_file`: one of the line's own artwork files. */
+  coverFileId?: string;
+  spine: {
+    institutionCode?: string | null;
+    title: string;
+    author: string;
+    month: number;
+    year: number;
+  };
+};
+
+/**
+ * The form as a cart line or an order line reads it back. `cover` is an open
+ * string: a choice added after this build must never crash a screen.
+ */
+export type CoverSpineRecord =
+  | {
+      status: "given";
+      cover: CoverChoice | (string & {});
+      coverFileId: string | null;
+      spine: SpineDetails;
+      spineDate?: string | null;
+      spineSummary?: string | null;
+    }
+  | {
+      status: "not_given";
+      cover?: null;
+      coverFileId?: null;
+      spine?: null;
+      spineDate?: null;
+      spineSummary?: null;
+    };
+
 export type CatalogItem = {
   id: string;
   supplierId: string;
@@ -1871,6 +1931,11 @@ export type CatalogItem = {
    * through `offeredLayouts`.
    */
   printLayouts?: PrintLayoutCode[];
+  /**
+   * Whether this product asks how its cover is made and what the spine says
+   * (gridgo-api `docs/HARDBOUND_COVER_API.md`). Absent on an older API.
+   */
+  coverSpineForm?: boolean;
   priceTiers: CatalogPriceTier[];
   speedTiers: CatalogSpeedTier[];
   pricingBasis: string;
@@ -2646,6 +2711,10 @@ export type CartLineRecord = {
   colorTargets?: ColorTarget[];
   /** The colours GRIDGO read from each uploaded file; design links have none. */
   artworkColors?: ArtworkColorsEntry[];
+  /** The cover and spine as GRIDGO holds them; null until given. */
+  coverSpine?: CoverSpineRecord | null;
+  /** True when checkout will refuse this line without its cover and spine. */
+  coverSpineRequired?: boolean;
 };
 
 /**
@@ -3126,6 +3195,9 @@ export async function addCartLine(
   return result.cart;
 }
 
+/** What a line write may change; omit a field to keep it. */
+export type CartLineChange = Parameters<typeof updateCartLine>[2];
+
 export async function updateCartLine(
   cartId: string,
   lineId: string,
@@ -3150,6 +3222,11 @@ export async function updateCartLine(
     /** Replaces the whole list; `[]` clears it; omit to keep it. */
     colorTargets?: ColorTargetInput[] | null;
     dropoff?: OrderPoint | null;
+    /**
+     * The whole cover and spine form, or null to clear it; omit to keep it.
+     * A separate cover's file must already be one of this line's files.
+     */
+    coverSpine?: CoverSpineInput | null;
     /**
      * Move this product to another date (gridgo-client#189). GRIDGO rechecks
      * the listing against it and refuses with `409 deadline_not_met`.
