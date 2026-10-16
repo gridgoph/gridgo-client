@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.346 (Fix)
+
+- Update notices on Google Play and TestFlight now arrive once the store has the new version, and open the store.
+- A single voucher now shows as a ticket-sized card, and the iPhone tab bar no longer crowds the list above it.
+
 ## 1.0.337 (New feature)
 
 - Hardbound books: choose how the cover is made and fill in the spine, with a preview as you type.
