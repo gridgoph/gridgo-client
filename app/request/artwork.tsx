@@ -11,6 +11,7 @@ import { ArtworkAttachmentList } from "@/components/ArtworkAttachmentList";
 import { PrepareFileGuide } from "@/components/PrepareFileGuide";
 import { PrintLayoutChoice } from "@/components/PrintLayoutChoice";
 import { PrintLayoutPreview } from "@/components/PrintLayoutPreview";
+import { CoverSpineSection } from "@/components/CoverSpineSection";
 import { DesignLinkField } from "@/components/DesignLinkField";
 import { ErrorScreenState } from "@/components/ErrorState";
 import { ExactColoursSection } from "@/components/ExactColoursSection";
@@ -71,6 +72,8 @@ import { useArtworkAttachments, type PendingUpload } from "@/store/artworkAttach
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
+import { coverFileOnItem, coverSpineDirty, coverSpineInput, lineAsksCoverSpine, lineMissingCoverSpine } from "@/lib/coverSpine";
+import { coverSpineDraftOf, useCoverSpine } from "@/store/coverSpine";
 
 /**
  * The artwork for one thing in the basket.
@@ -116,18 +119,23 @@ export default function ArtworkScreen() {
   const colors = useThemeColors();
   const { lineId, focus } = useLocalSearchParams<{
     lineId?: string;
-    /** `layout`: checkout sent the client here to choose how the file sits on the paper. */
+    /**
+     * `layout`: checkout sent the client here to choose how the file sits on
+     * the paper. `cover`: to fill in a hardbound book's cover and spine.
+     */
     focus?: string;
   }>();
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   const [layoutY, setLayoutY] = useState<number | null>(null);
+  const [coverY, setCoverY] = useState<number | null>(null);
   // Once per visit: after that the client scrolls where they like.
   const focusedRef = useRef(false);
   useEffect(() => {
-    if (focus !== "layout" || focusedRef.current || layoutY == null) return;
+    const y = focus === "layout" ? layoutY : focus === "cover" ? coverY : null;
+    if (focusedRef.current || y == null) return;
     focusedRef.current = true;
-    scrollRef.current?.scrollTo?.({ y: Math.max(0, layoutY - 12), animated: true });
-  }, [focus, layoutY]);
+    scrollRef.current?.scrollTo?.({ y: Math.max(0, y - 12), animated: true });
+  }, [focus, layoutY, coverY]);
 
   const cart = useCart((state) => state.cart);
   const rightsScope = cart ? cartRightsScope(cart.id) : null;
@@ -138,6 +146,9 @@ export default function ArtworkScreen() {
   const adopt = useCart((state) => state.adopt);
   const line = cart?.lines.find((entry) => entry.id === lineId) ?? null;
   const item = line?.listing ?? null;
+  // A hardbound book's cover and spine, as typed and as GRIDGO holds them.
+  const coverTyped = useCoverSpine((state) => (line ? state.drafts[line.id] : undefined));
+  const coverSaving = useCoverSpine((state) => (line ? state.saving[line.id] === true || state.uploading[line.id] === true : false));
 
   // The pixels belong to one file; a different file, or a server answer,
   // simply stops them being used rather than needing them cleared.
@@ -464,6 +475,25 @@ export default function ArtworkScreen() {
     !fileProblem &&
     !layoutSaving &&
     !layoutMissing;
+  // Only a product that asks. A finished form not saved yet is saved on the
+  // way to checkout; a missing one blocks only while GRIDGO requires it.
+  const asksCover = lineAsksCoverSpine(line);
+  const coverDraft = coverTyped ?? coverSpineDraftOf({}, line);
+  const coverShown = { ...coverDraft, coverFileId: coverFileOnItem(entries, coverDraft.coverFileId, line.coverSpine) };
+  const coverDirty = asksCover && coverSpineDirty(coverShown, line.coverSpine);
+  const coverReady = coverSpineInput(coverShown) != null;
+  const coverMissing = asksCover && lineMissingCoverSpine(line) && !(coverDirty && coverReady);
+  const checkoutReady = canCheckout && !coverMissing && !coverSaving;
+  const goToCheckout = async () => {
+    if (!checkoutReady) return;
+    if (coverDirty && coverReady) {
+      if (coverTyped == null || coverTyped.coverFileId !== coverShown.coverFileId) {
+        useCoverSpine.getState().edit(line.id, { coverFileId: coverShown.coverFileId });
+      }
+      if (!(await useCoverSpine.getState().save(line.id))) return;
+    }
+    router.replace("/checkout");
+  };
   const name = item?.name ?? "this item";
   /** Check the link and, once it is proven public, add it to the item. */
   const commitLinkText = (text: string, options?: { recheck?: boolean }) =>
@@ -696,6 +726,12 @@ export default function ArtworkScreen() {
           </View>
         ) : null}
 
+        {asksCover ? (
+          <View className="mt-8" onLayout={(event) => setCoverY(event.nativeEvent.layout.y)}>
+            <CoverSpineSection line={line} files={files} guard={guard} full={roomLeft === 0} />
+          </View>
+        ) : null}
+
         {/*
           How the file sits on the paper, with GRIDGO's check of it: the
           picture to scale, a cut-off with the paper that fixes it, and what
@@ -802,16 +838,16 @@ export default function ArtworkScreen() {
 
         {hasArtwork ? (
           <Pressable
-            onPress={() => router.replace("/checkout")}
-            disabled={!canCheckout}
+            onPress={() => void goToCheckout()}
+            disabled={!checkoutReady}
             accessibilityRole="button"
             accessibilityLabel="Go to checkout"
-            accessibilityState={{ disabled: !canCheckout }}
-            className={!canCheckout ? "gg-btn-primary gg-disabled mt-4" : "gg-btn-primary mt-4"}
-            style={({ pressed }) => (pressed && canCheckout ? { opacity: 0.9 } : undefined)}
+            accessibilityState={{ disabled: !checkoutReady }}
+            className={!checkoutReady ? "gg-btn-primary gg-disabled mt-4" : "gg-btn-primary mt-4"}
+            style={({ pressed }) => (pressed && checkoutReady ? { opacity: 0.9 } : undefined)}
           >
             <Text className="text-button text-action-yellow-on">
-              {saving || listSaving ? "Saving…" : linkChecking || savedLinkChecking ? "Checking your link…" : "Go to checkout"}
+              {saving || listSaving || coverSaving ? "Saving…" : linkChecking || savedLinkChecking ? "Checking your link…" : "Go to checkout"}
             </Text>
           </Pressable>
         ) : null}
@@ -826,6 +862,10 @@ export default function ArtworkScreen() {
             {line.printLayout
               ? `This shop no longer prints ${layoutLabel(line.printLayout)}. Choose another layout above.`
               : "Choose a layout above to go on."}
+          </Text>
+        ) : hasArtwork && coverMissing ? (
+          <Text className="mt-2 text-center text-caption text-warning">
+            Fill in the cover and spine above to go on.
           </Text>
         ) : hasArtwork && inFlight > 0 ? (
           <Text className="mt-2 text-center text-caption text-text-muted">
