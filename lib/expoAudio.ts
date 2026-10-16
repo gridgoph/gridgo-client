@@ -22,6 +22,10 @@ export type AudioPlayer = {
   muted?: boolean;
   volume?: number;
   seekTo?: (seconds: number) => void | Promise<void>;
+  addListener?: (
+    event: "playbackStatusUpdate",
+    listener: (status: { playing?: boolean }) => void,
+  ) => { remove: () => void };
 };
 
 export type AudioModule = {
