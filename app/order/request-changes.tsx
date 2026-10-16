@@ -1,8 +1,9 @@
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Platform, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import Animated, { SlideInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -79,18 +80,33 @@ export default function RequestChangesSheet() {
       lift the content twice and push the heading off the top of the sheet, so
       nothing is added — `behavior` is left off there.
 
-      On iOS nothing lifts it. UIKit does not move a sheet with custom detents
-      for the keyboard, and react-native-screens does not either. `padding` is
-      what moves this one: the detent is `fitToContents`, so growing the content
-      by the keyboard's height re-measures the sheet and raises its top edge by
-      the same amount, which carries the field up with it.
+      On iOS nothing would lift it, and the route is not a form sheet there at
+      all: iOS 26 floats a part-height form sheet short of the screen bottom,
+      so the root layout presents this as a transparent modal and the surface
+      is drawn here, down to the screen edge with the home-indicator inset
+      inside it. `padding` grows the space under that bottom-anchored surface
+      by the keyboard's height, which carries the field up with it.
     */
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={{ backgroundColor: colors.surface }}
+      behavior={IOS ? "padding" : undefined}
+      style={IOS ? { flex: 1, justifyContent: "flex-end" } : { backgroundColor: colors.surface }}
     >
-      <View
-        className="gap-5 px-4 pt-5"
+      {IOS ? (
+        // The scrim closes the sheet like Cancel does, so a typed reason still
+        // goes through the discard question.
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          disabled={busy}
+          onPress={() => router.back()}
+          style={{ ...ABSOLUTE_FILL, backgroundColor: colors.scrim }}
+        />
+      ) : null}
+      <Animated.View
+        entering={IOS ? SlideInDown.duration(220) : undefined}
+        accessibilityViewIsModal={IOS}
+        testID="request-changes-surface"
+        className={IOS ? "gap-5 rounded-t-card border-t border-outline bg-surface px-4 pt-5" : "gap-5 px-4 pt-5"}
         style={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
       >
         <View className="gap-2">
@@ -138,7 +154,7 @@ export default function RequestChangesSheet() {
             onPress={() => router.back()}
           />
         </View>
-      </View>
+      </Animated.View>
 
       <ConfirmDialog
         visible={confirmDiscard}
@@ -160,6 +176,16 @@ export default function RequestChangesSheet() {
     </KeyboardAvoidingView>
   );
 }
+
+const IOS = Platform.OS === "ios";
+
+const ABSOLUTE_FILL = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+} as const;
 
 /** Shortest reason that tells someone what to fix. */
 const MIN_REASON = 10;

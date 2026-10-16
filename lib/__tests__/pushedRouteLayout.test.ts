@@ -65,6 +65,41 @@ jest.mock("expo-router", () => {
 });
 
 describe("pushed route layout contract", () => {
+  it("pushes every screen onto the root stack, never a nested one", () => {
+    // iOS draws a back item only for a screen below it in the same stack, so a
+    // nested stack's first screen gets an empty slot where the chevron belongs
+    // — what gridgo-supplier's job and listing screens shipped with. The tab
+    // shell is the one nested navigator, and nothing is pushed inside it.
+    const { readdirSync, statSync } = jest.requireActual<typeof import("node:fs")>("node:fs");
+    const { join } = jest.requireActual<typeof import("node:path")>("node:path");
+    const layouts = (function find(dir: string, prefix: string): string[] {
+      return readdirSync(dir).flatMap((entry) => {
+        const path = join(dir, entry);
+        if (entry === "__tests__") return [];
+        if (statSync(path).isDirectory()) return find(path, `${prefix}${entry}/`);
+        return entry === "_layout.tsx" ? [`${prefix}${entry}`] : [];
+      });
+    })(join(__dirname, "../../app"), "");
+    expect(layouts.sort()).toEqual(["(tabs)/_layout.tsx", "_layout.tsx"]);
+  });
+
+
+  it.each([
+    ["ios", "transparentModal"],
+    ["android", "formSheet"],
+  ])("presents the proof-change sheet on %s as a %s", async (os, presentation) => {
+    // iOS 26 floats a part-height form sheet short of the screen bottom, so
+    // iOS draws its own edge-to-edge surface over a transparent modal.
+    mockUser = { id: "client" };
+    jest.replaceProperty(Platform, "OS", os as typeof Platform.OS);
+    try {
+      await render(createElement(RootLayout));
+      expect(screen.getByTestId("route:order/request-changes").props.options.presentation).toBe(presentation);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
   it.each([false, true])("configures reachable headers with signedIn=%s", async (signedIn) => {
     mockUser = signedIn ? { id: "client" } : null;
     jest.replaceProperty(Platform, "OS", "android");

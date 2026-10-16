@@ -3,8 +3,10 @@ import { create } from "zustand";
 
 import type { Notification } from "@/lib/api";
 import * as api from "@/lib/api";
+import { appInstallChannel } from "@/lib/buildDistribution";
 import { groupInbox, isGroupUnread } from "@/lib/notificationPresentation";
 import { freshUnread, nextBaseline, nudgeAnnouncement } from "@/lib/notificationNudge";
+import { showsOnInstall } from "@/lib/releasePush";
 import { useNotificationNudge } from "@/store/notificationNudge";
 
 let generation = 0;
@@ -14,17 +16,24 @@ const cacheKey = (ownerId: string) =>
   `gridgo-notifications:${encodeURIComponent(ownerId)}`;
 function saveCache(state: NotificationsState): void {
   if (!state.ownerId) return;
-  const { ownerId, items, readIds, snapshot } = state;
+  const { ownerId, items, readIds, snapshot, hiddenUnread } = state;
   void AsyncStorage.setItem(
     cacheKey(ownerId),
-    JSON.stringify({ ownerId, items, readIds, snapshot }),
+    JSON.stringify({ ownerId, items, readIds, snapshot, hiddenUnread }),
   ).catch(() => undefined);
 }
 
 type NotificationsState = {
   ownerId: string | null;
   setOwner: (id: string | null) => void;
+  /** This install's rows: another install's release notices are left out. */
   items: Notification[];
+  /**
+   * Whether a row left out of `items` is still unread on GRIDGO. Mark all then
+   * marks this install's rows one by one, because `read-all` would also mark
+   * the notices the client's other phone has not read.
+   */
+  hiddenUnread: boolean;
   /**
    * Optimistic overlay until `PATCH /notifications/:id` (or read-all) lands.
    * Server `read` is the source of truth after refresh; this set only covers
@@ -74,6 +83,16 @@ export function countUnreadGroups(
   ).length;
 }
 
+/**
+ * The rows this install shows. Release notices for another install channel
+ * stay on GRIDGO, hidden rather than deleted, so the list, the badge and
+ * Mark all count the same rows (`showsOnInstall`).
+ */
+function forThisInstall(items: Notification[]): Notification[] {
+  const channel = appInstallChannel();
+  return items.filter((item) => showsOnInstall(item, channel));
+}
+
 /** Drop overlay ids the server now agrees are read, or that left the window. */
 function pruneReadIds(
   items: Notification[],
@@ -93,6 +112,7 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
     set({
       ownerId,
       items: [],
+      hiddenUnread: false,
       readIds: [],
       snapshot: null,
       loading: false,
@@ -113,7 +133,8 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
         const cached = JSON.parse(raw) as Partial<NotificationsState>;
         if (cached.ownerId !== ownerId || !Array.isArray(cached.items)) return;
         set({
-          items: cached.items.filter((item) => item.userId === ownerId),
+          items: forThisInstall(cached.items.filter((item) => item.userId === ownerId)),
+          hiddenUnread: cached.hiddenUnread ?? false,
           readIds: cached.readIds ?? [],
           snapshot: cached.snapshot ?? null,
         });
@@ -121,6 +142,7 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
       .catch(() => undefined);
   },
   items: [],
+  hiddenUnread: false,
   readIds: [],
   snapshot: null,
   loading: false,
@@ -136,18 +158,22 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
       const result = await api.listNotifications();
       if (generation !== currentGeneration || sequence !== readSequence) return;
       appliedSequence++;
-      const readIds = pruneReadIds(result.notifications, get().readIds);
+      const items = forThisInstall(result.notifications);
+      const readIds = pruneReadIds(items, get().readIds);
       const { seenIds } = get();
-      const fresh = freshUnread(seenIds, result.notifications, (item) =>
+      const fresh = freshUnread(seenIds, items, (item) =>
         isNotificationRead(item, readIds),
       );
       set({
-        items: result.notifications,
+        items,
+        hiddenUnread: result.notifications.some(
+          (item) => !item.read && !items.includes(item),
+        ),
         snapshot: result.snapshot,
         loading: false,
         error: null,
         readIds,
-        seenIds: nextBaseline(seenIds, result.notifications),
+        seenIds: nextBaseline(seenIds, items),
       });
       saveCache(get());
       // Once per read, however many arrived in it: one swing, one chime.
@@ -201,8 +227,9 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
   },
   markAllRead: async () => {
     const currentGeneration = generation;
-    const { items, readIds, snapshot } = get();
+    const { items, readIds, snapshot, hiddenUnread } = get();
     const unread = items.filter((item) => !isNotificationRead(item, readIds));
+    if (hiddenUnread) return get().markManyRead(unread.map((item) => item.id));
     if (!unread.length || !snapshot) return;
     const overlay = unread.map((item) => item.id);
     set({ readIds: [...readIds, ...overlay] });
