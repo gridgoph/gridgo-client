@@ -3,6 +3,7 @@ import { Linking, Platform } from "react-native";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { getFirebaseMessaging } from "@/lib/firebaseMessaging";
 import { liveGeneration, assertLiveGeneration } from "@/lib/live";
 import { withRequestDeadline } from "@/lib/requestDeadline";
 import { useSession } from "@/store/session";
@@ -65,7 +66,7 @@ export function getNotificationsNative(): NotificationsNative | null {
  *
  * Every rule this store applies lives in `lib/push.ts` and is unit-tested
  * without a native runtime; what is here is the plumbing that cannot be — the
- * channel, the permission dialog, the FCM token, and keeping the server's idea
+ * channel, the permission dialog, the push token, and keeping the server's idea
  * of this phone in step with the phone's.
  *
  * Registration uses this client's API role context and session boundary.
@@ -198,12 +199,43 @@ async function ensureChannel(): Promise<boolean> {
   }
 }
 
-/** This installation's native token and who issued it, or null. */
+/**
+ * This installation's token and who issued it, or null.
+ *
+ * An iPhone build with Firebase asks Firebase for an FCM token, so the API's
+ * FCM sender reaches it exactly as it reaches Android (`lib/firebaseMessaging.ios.ts`).
+ * Everything else — Android, and an iPhone build without Firebase — keeps the
+ * expo-notifications token: FCM on Android, the native APNs token on iOS.
+ */
 async function fetchToken(): Promise<{ token: string; provider: PushTokenProvider } | null> {
+  const firebase = getFirebaseMessaging();
+  if (firebase) {
+    const token = await firebase.getToken();
+    return token ? { token, provider: "fcm" } : null;
+  }
   const Notifications = getNotificationsNative();
   if (!Notifications) return null;
   const { type, data } = await Notifications.getDevicePushTokenAsync();
   return typeof data === "string" && data ? { token: data, provider: pushTokenProvider(type) } : null;
+}
+
+/**
+ * Hear about a token the issuer replaced while the app was running.
+ *
+ * Firebase's own refresh on an iPhone build with Firebase. Otherwise
+ * expo-notifications' listener — and only there, because on such an iPhone
+ * that listener reports the APNs token, which is not what the API was given.
+ */
+export function subscribePushTokenRotation(onToken: (token: string) => void): () => void {
+  const adopt = (token: unknown) => {
+    if (typeof token === "string" && token) onToken(token);
+  };
+  const firebase = getFirebaseMessaging();
+  if (firebase) return firebase.onTokenRefresh(adopt);
+  const Notifications = getNotificationsNative();
+  if (!Notifications) return () => undefined;
+  const subscription = Notifications.addPushTokenListener((token) => adopt(token.data));
+  return () => subscription.remove();
 }
 
 export const usePush = create<PushState>((set, get) => ({

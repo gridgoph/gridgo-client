@@ -108,7 +108,9 @@ export type PushTokenProvider = "fcm" | "apns";
  *
  * Expo returns Android's FCM token and iOS's **native APNs** token. The server
  * reads an omitted provider as `fcm` on every platform, so an iOS token sent
- * without `apns` is filed as an FCM token and never delivered.
+ * without `apns` is filed as an FCM token and never delivered. An iPhone build
+ * with Firebase does not come here: it registers Firebase's FCM token as `fcm`
+ * (`fetchToken` in `store/push.ts`).
  */
 export function pushTokenProvider(tokenType: string | null | undefined): PushTokenProvider {
   return tokenType === "ios" ? "apns" : "fcm";

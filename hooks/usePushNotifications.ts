@@ -26,7 +26,7 @@ import { CALL_INCOMING_TYPE, callPushOrder } from "@/lib/orderCalls";
 import { useCall } from "@/store/call";
 import { useNotifications } from "@/store/notifications";
 import { useSeasonWindows } from "@/store/seasonWindows";
-import { getNotificationsNative, pushSupported, usePush } from "@/store/push";
+import { getNotificationsNative, pushSupported, subscribePushTokenRotation, usePush } from "@/store/push";
 import { useSession } from "@/store/session";
 
 /**
@@ -254,16 +254,14 @@ export function usePushNotifications(): void {
 
       // Firebase can reissue a token while the app is running. A stale one stops
       // delivering silently, which is the failure nobody reports.
-      const rotated = Notifications.addPushTokenListener((token) => {
-        if (typeof token.data === "string" && token.data) {
-          void usePush.getState().adoptToken(token.data);
-        }
+      const unsubscribeRotation = subscribePushTokenRotation((token) => {
+        void usePush.getState().adoptToken(token);
       });
 
       return () => {
         tap.remove();
         received.remove();
-        rotated.remove();
+        unsubscribeRotation();
       };
     } catch {
       return;
