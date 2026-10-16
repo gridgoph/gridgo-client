@@ -8,11 +8,13 @@
 import {
   ApiError,
   type ClerkActivateInput,
+  type EnrollmentConsentBody,
   getApiBase,
   isNetworkFailure,
   type User,
 } from "@/lib/api";
 import { clientEmailUnavailableMessage, userFacingError } from "@/lib/copy";
+import { isLegalRefusal } from "@/lib/legal";
 import { needsClientProfile } from "@/lib/signup";
 
 export type ClerkBridgeResult =
@@ -34,6 +36,13 @@ export type ClerkBridgeDeps = {
    */
   awaitToken?: () => Promise<string | null>;
   profile?: ClerkActivateInput;
+  /**
+   * The sign-up agreement for an identity GRIDGO has not enrolled yet. When
+   * given, activate never runs without it: null sends the person to Finish
+   * signing up to tick the boxes, `legacy` is an API with no legal library.
+   * Omitted keeps the old behaviour for callers that enroll some other way.
+   */
+  consent?: () => Promise<EnrollmentConsentBody | "legacy" | null>;
 };
 
 /** Which call failed. A 401 means opposite things on each. */
@@ -101,6 +110,11 @@ function mapFailure(error: unknown, stage: BridgeStage): ClerkBridgeResult {
   if (isNetworkFailure(error)) {
     return { kind: "error", message: unreachableMessage(), signOut: false };
   }
+  // GRIDGO refused the agreement itself (a version changed, a box missing).
+  // Enrollment did not commit, so ask for it again on Finish signing up.
+  if (stage === "activate" && isLegalRefusal(error)) {
+    return { kind: "needs_profile" };
+  }
   if (stage === "activate" && error instanceof ApiError && error.status === 401) {
     return { kind: "error", message: clerkVerificationRejectedMessage(), signOut: false };
   }
@@ -145,8 +159,20 @@ export async function bridgeClerkToGridgo(deps: ClerkBridgeDeps): Promise<ClerkB
     user = await deps.me();
   } catch (error) {
     if (!isUnmappedAuthError(error)) return mapFailure(error, "me");
+    // GRIDGO enrolls nobody who has not agreed to its terms. An identity with
+    // no agreement on hand — Google, or an app restarted mid sign-up — goes to
+    // Finish signing up, where the same boxes as the sign-up form are asked.
+    let legalConsent: EnrollmentConsentBody | undefined;
+    if (deps.consent) {
+      const held = await deps.consent();
+      if (!held) return { kind: "needs_profile" };
+      if (held !== "legacy") legalConsent = held;
+    }
     try {
-      const created = await deps.activate(deps.profile ?? {});
+      const created = await deps.activate({
+        ...(deps.profile ?? {}),
+        ...(legalConsent ? { legalConsent } : {}),
+      });
       provisioned = true;
       if (deps.refreshToken) await deps.refreshToken();
       try {

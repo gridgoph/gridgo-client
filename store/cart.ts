@@ -312,6 +312,18 @@ export function cartHasContent(state: Pick<CartState, "cart">): boolean {
   return (state.cart?.lines.length ?? 0) > 0;
 }
 
+/**
+ * True when the phone holds a basket worth opening checkout for: read from
+ * GRIDGO, still a draft, and with something in it. A remembered id alone is
+ * not one — an empty or finished basket counts as no basket, so an order
+ * button starts a print job instead of opening "Nothing to print yet"
+ * (gridgoph/gridgo-client#250).
+ */
+export function cartIsOpen(state: Pick<CartState, "cartId" | "cart">): boolean {
+  const { cartId, cart } = state;
+  return cartId !== null && cart?.id === cartId && cart.state === "draft" && cart.lines.length > 0;
+}
+
 /** How many things are in the basket, for the badge on Home. */
 export function cartLineCount(state: Pick<CartState, "cart">): number {
   return state.cart?.lines.length ?? 0;

@@ -1,4 +1,5 @@
 import type { AcceptedFormat, ArtworkLink, ArtworkLinkCheck, CartLineRecord } from "@/lib/api";
+import { attachmentFileIds, attachmentKey, attachmentLinks, lineAttachments } from "@/lib/artworkAttachments";
 
 /**
  * A design link: the artwork kept on Canva, Drive, Dropbox or WeTransfer
@@ -187,14 +188,17 @@ export function checkedLink(
   return { formatCode, url: check.url };
 }
 
-/** What GRIDGO holds for this line. An older API sends no field at all. */
-export function lineArtworkLinks(line: Pick<CartLineRecord, "artworkLinks"> | null | undefined): ArtworkLink[] {
-  return Array.isArray(line?.artworkLinks) ? line.artworkLinks : [];
+type ArtworkLine = Pick<CartLineRecord, "artworkFileId" | "artworkLinks"> &
+  Partial<Pick<CartLineRecord, "artworkAttachments">>;
+
+/** Every link GRIDGO holds for this line, in order. An older API sends no field at all. */
+export function lineArtworkLinks(line: Partial<ArtworkLine> | null | undefined): ArtworkLink[] {
+  return attachmentLinks(lineAttachments(line));
 }
 
-/** A file or a link: either is artwork GRIDGO can take to Operations. */
-export function lineHasArtwork(line: Pick<CartLineRecord, "artworkFileId" | "artworkLinks">): boolean {
-  return Boolean(line.artworkFileId) || lineArtworkLinks(line).length > 0;
+/** A file or a link: any one is artwork GRIDGO can take to Operations. */
+export function lineHasArtwork(line: ArtworkLine): boolean {
+  return lineAttachments(line).length > 0;
 }
 
 export function sameLinks(a: ArtworkLink[], b: ArtworkLink[]): boolean {
@@ -337,10 +341,15 @@ export function linkDisplay(url: string): string {
 }
 
 /** What a basket line carries, in the words of the checkout row. */
-export function lineArtworkSummary(line: Pick<CartLineRecord, "artworkFileId" | "artworkLinks">): string {
+export function lineArtworkSummary(line: ArtworkLine): string {
+  const entries = lineAttachments(line);
+  const files = attachmentFileIds(entries).length;
   const links = lineArtworkLinks(line);
-  if (line.artworkFileId && links.length) return `Artwork and ${linkLabel(links[0])} attached`;
-  if (line.artworkFileId) return "Artwork attached";
+  if (entries.length > 2) return `${entries.length} files and links attached`;
+  if (files > 1) return `${files} artwork files attached`;
+  if (links.length > 1) return `${links.length} design links attached`;
+  if (files && links.length) return `Artwork and ${linkLabel(links[0])} attached`;
+  if (files) return "Artwork attached";
   if (links.length) return `${linkLabel(links[0])} attached`;
   return "No artwork yet";
 }
@@ -362,14 +371,14 @@ export function checkKey(link: ArtworkLink): string {
 }
 
 /** The artwork a line carries, as one comparable string. */
-export function artworkSignature(line: Pick<CartLineRecord, "artworkFileId" | "artworkLinks">): string {
-  return [line.artworkFileId ?? "", ...lineArtworkLinks(line).map(checkKey)].join("|");
+export function artworkSignature(line: ArtworkLine): string {
+  return lineAttachments(line).map(attachmentKey).join("|");
 }
 
 /** A checkout refusal still about the artwork the line holds now, or null. */
 export function currentProblem(
   problems: Record<string, ArtworkProblem>,
-  line: Pick<CartLineRecord, "id" | "artworkFileId" | "artworkLinks">,
+  line: ArtworkLine & Pick<CartLineRecord, "id">,
 ): ArtworkProblem | null {
   const problem = problems[line.id];
   return problem && problem.signature === artworkSignature(line) ? problem : null;

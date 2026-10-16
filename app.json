@@ -10,10 +10,16 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "ph.gridgo.client",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "GRIDGO needs the phone's location to pin the delivery drop-off."
+        "NSLocationWhenInUseUsageDescription": "GRIDGO needs the phone's location to pin the delivery drop-off.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "GRIDGO uses your location only while the app is open, to pin the delivery drop-off. It never follows you in the background.",
+        "NSLocationAlwaysUsageDescription": "GRIDGO uses your location only while the app is open, to pin the delivery drop-off. It never follows you in the background.",
+        "NSCameraUsageDescription": "GRIDGO does not turn on your camera. Calls with your rider are voice only, and pictures come from your photo library.",
+        "NSMotionUsageDescription": "GRIDGO does not read your motion or fitness activity. It only uses your location, while the app is open, to pin the drop-off.",
+        "NSFaceIDUsageDescription": "GRIDGO does not use Face ID. Your sign-in stays in the phone's secure storage.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -21,6 +27,9 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#111111",
@@ -53,6 +62,7 @@
       "expo-image",
       "expo-status-bar",
       "expo-web-browser",
+      "expo-apple-authentication",
       [
         "expo-notifications",
         {
@@ -88,6 +98,12 @@
         }
       ],
       [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "GRIDGO uses the microphone only while you are on a call with your rider about a delivery."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "GRIDGO needs the phone's location to pin the delivery drop-off.",
@@ -99,6 +115,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2c012369-5b00-4454-bf1d-0bbf0d0917d8"
+      }
     }
   }
 }

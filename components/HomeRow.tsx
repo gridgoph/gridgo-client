@@ -3,6 +3,7 @@ import {
   CircleCheck,
   CircleX,
   Clock,
+  MapPin,
   PackageCheck,
   SquarePen,
   TriangleAlert,
@@ -27,7 +28,7 @@ import {
 } from "@/lib/orderState";
 import { fulfilmentRailKind, orderStageIndex } from "@/lib/orderStages";
 import { formatRelativeTime } from "@/lib/relativeTime";
-import { readyByDate } from "@/lib/readyTime";
+import { readyByDate, readyEarlyLabel } from "@/lib/readyTime";
 
 /**
  * The icons a docket row draws an action with, keyed by their name.
@@ -46,6 +47,7 @@ const ICONS = {
   "circle-check": CircleCheck,
   "circle-x": CircleX,
   clock: Clock,
+  "map-pin": MapPin,
 } satisfies Record<OrderActionIcon | OrderStatusIcon, LucideIcon>;
 
 /** Semantic tone → the theme colour it is drawn in. `neutral` carries no signal. */
@@ -207,7 +209,7 @@ export function HomeJobRow({ order, onPress }: { order: Order; onPress: () => vo
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${meta.label}, ${order.title}`}
+      accessibilityLabel={[meta.label, readyEarlyLabel(order), order.title].filter(Boolean).join(", ")}
       className="gg-card-flush gg-touch"
     >
       {({ pressed }) => (
@@ -248,7 +250,7 @@ export function HomeJobRow({ order, onPress }: { order: Order; onPress: () => vo
                   ) : null}
                   {promised ? (
                     <View className={next ? "mt-1" : undefined}>
-                      <ReadyTime promiseBy={order.promiseBy} />
+                      <ReadyTime promiseBy={order.promiseBy} early={readyEarlyLabel(order)} />
                     </View>
                   ) : null}
                 </View>

@@ -6,6 +6,7 @@ import { OptionPicker } from "@/components/form/OptionPicker";
 import { TextField } from "@/components/form/TextField";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useThemeColors } from "@/hooks/useTheme";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { MAX_ACCOUNT_NAME, REFUND_PROVIDERS, REFUND_QR_MAX_MIB } from "@/lib/refunds";
 import type { RefundProvider } from "@/lib/api";
 import { useRefundDraft } from "@/store/refundDraft";
@@ -72,6 +73,7 @@ export function RefundAccountFields({ disabled = false }: { disabled?: boolean }
             ? qr.error
             : `JPEG, PNG or WebP, up to ${REFUND_QR_MAX_MIB} MB. Only you and GRIDGO Operations can see it.`}
         </Text>
+        <WhyWeAsk>GRIDGO uses this QR only to send your refund to you.</WhyWeAsk>
         <SecondaryButton
           label={qr ? "Choose a different QR" : "Upload receiving QR"}
           disabled={disabled || sending}

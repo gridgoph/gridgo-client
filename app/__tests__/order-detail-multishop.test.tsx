@@ -38,7 +38,7 @@ jest.mock("@/lib/api", () => {
     listZones: jest.fn(async () => []),
     listOrderRefunds: jest.fn(async () => []),
     getSettings: jest.fn(async () => ({ issueWindowHours: 24, serviceFeeRateBps: 1000, deliveryFeeBands: [] })),
-    getRiderLocation: jest.fn(async () => null),
+    getRiderTracking: jest.fn(async () => ({ ping: null, tracking: null })),
     getFileDownloadUrl: jest.fn(async () => {
       throw new Error("no file");
     }),

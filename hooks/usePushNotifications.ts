@@ -1,6 +1,7 @@
+import { buildDistribution } from "@/lib/buildDistribution";
 import { releasePushDownloadUrl } from "@/lib/releasePush";
 import { accountHold } from "@/lib/accountHold";
-import { getOrder } from "@/lib/api";
+import { getOrder, getSupportChatThread, markNotificationRead } from "@/lib/api";
 import {
   useRouter,
   useRootNavigationState,
@@ -13,13 +14,19 @@ import { AppState, Linking } from "react-native";
 import {
   parsePushData,
   PUSH_FOREGROUND_BEHAVIOR,
+  pushTapKey,
   pushTargetRoute,
   SEASON_PUSH_TYPE,
+  SUPPORT_MESSAGE_PUSH_TYPE,
+  supportThreadRoute,
+  type PushData,
 } from "@/lib/push";
 import { hasActiveSession } from "@/lib/sessionGuard";
+import { CALL_INCOMING_TYPE, callPushOrder } from "@/lib/orderCalls";
+import { useCall } from "@/store/call";
 import { useNotifications } from "@/store/notifications";
 import { useSeasonWindows } from "@/store/seasonWindows";
-import { getNotificationsNative, pushSupported, usePush } from "@/store/push";
+import { getNotificationsNative, pushSupported, subscribePushTokenRotation, usePush } from "@/store/push";
 import { useSession } from "@/store/session";
 
 /**
@@ -35,6 +42,41 @@ import { useSession } from "@/store/session";
  * at import time; `getNotificationsNative` skips that runtime or swallows a
  * failed load so a throw costs push, never the app.
  */
+
+/**
+ * The screen a tap may actually open, read with this person's own session.
+ *
+ * - An Operations message names no thread in its push, so the tap marks the
+ *   notice read — `PATCH /notifications/:id` answers with its `threadId` — and
+ *   opens that thread once `GET /support-chat/threads/:id` lets this person
+ *   read it. A notice that is gone, or a thread that is not theirs or no
+ *   longer there, opens the chat history instead of a guess at the newest.
+ * - Anything about an order (the order, its receipt, its delivery chat) opens
+ *   only once the order reads back; otherwise the notification list, which can
+ *   explain itself. The delivery chat says for itself when it has closed.
+ */
+async function resolvePushDestination(data: PushData, target: string): Promise<string> {
+  if (data.type === SUPPORT_MESSAGE_PUSH_TYPE) {
+    if (!data.notificationId) return target;
+    try {
+      const { threadId } = await markNotificationRead(data.notificationId);
+      const thread = supportThreadRoute(threadId);
+      if (!thread || !threadId) return target;
+      await getSupportChatThread(threadId);
+      return thread;
+    } catch {
+      return target;
+    }
+  }
+  if (target.startsWith("/order/") && data.orderId) {
+    try {
+      await getOrder(data.orderId);
+    } catch {
+      return "/(tabs)/notifications";
+    }
+  }
+  return target;
+}
 
 export function usePushNotifications(): void {
   const router = useRouter();
@@ -67,7 +109,7 @@ export function usePushNotifications(): void {
    * device check after builds.
    */
   const tapSequence = useRef(0);
-  const pending = useRef<{target: string; ownerId: string | null; sequence: number} | null>(null);
+  const pending = useRef<{data: PushData; target: string; ownerId: string | null; sequence: number} | null>(null);
   useEffect(() => {
     const unsubscribe = useSession.subscribe((state, previous) => {
       if (previous.user?.id && previous.user.id !== state.user?.id) {
@@ -81,7 +123,7 @@ export function usePushNotifications(): void {
       unsubscribe();
     };
   }, []);
-  /** Response identifiers already routed, so a tap opens its screen once. */
+  /** Taps already routed (`pushTapKey`), so a tap opens its screen once. */
   const routed = useRef(new Set<string>());
 
   useEffect(() => {
@@ -122,10 +164,12 @@ export function usePushNotifications(): void {
     if (!Notifications) return;
 
     const route = (identifier: string, data: unknown, title?: string | null) => {
-      if (routed.current.has(identifier)) return;
-      routed.current.add(identifier);
+      const parsed = parsePushData(data);
+      const key = pushTapKey(identifier, parsed);
+      if (routed.current.has(key)) return;
+      routed.current.add(key);
       const sequence = ++tapSequence.current;
-      const download = releasePushDownloadUrl(data, title);
+      const download = releasePushDownloadUrl(data, title, buildDistribution());
       if (download) {
         pending.current = null;
         // An update is public and can rescue a signed-out install too.
@@ -134,27 +178,28 @@ export function usePushNotifications(): void {
         return;
       }
       pending.current = null;
-      const parsed = parsePushData(data);
       const target = pushTargetRoute(parsed);
       // Public and not tied to an account, so it need not wait for a session.
       if (parsed.type === SEASON_PUSH_TYPE) void useSeasonWindows.getState().reveal();
+      // An incoming call opens over its order, ringing only if it still is.
+      // A cold start rings from the order screen's own read once it mounts.
+      if (parsed.type === CALL_INCOMING_TYPE && parsed.orderId && hasActiveSession(useSession.getState().user)) {
+        useCall.getState().checkOrder(parsed.orderId);
+      }
       if (!hasActiveSession(useSession.getState().user) || !readyRef.current) {
-        pending.current = {target, ownerId: useSession.getState().user?.id ?? null, sequence};
+        pending.current = {data: parsed, target, ownerId: useSession.getState().user?.id ?? null, sequence};
         return;
       }
       // The push carries no order state by design, so the screen fetches the
-      // order itself. Re-read the list too: the record behind this push is
-      // already in it, and its unread badge should not survive the tap.
-      void useNotifications.getState().refresh();
+      // order itself. Re-read the list too, once the tap is resolved: the record
+      // behind this push is already in it, a support tap has just marked it
+      // read, and its unread badge should not survive the tap.
       // `pushTargetRoute` returns a route this app declares; typed routes
       // cannot see that through a string it built at runtime.
       const ownerId = useSession.getState().user?.id;
       void (async () => {
-        let destination = target;
-        if (target.startsWith("/order/")) {
-          try { await getOrder(target.slice("/order/".length)); }
-          catch { destination = "/(tabs)/notifications"; }
-        }
+        const destination = await resolvePushDestination(parsed, target);
+        void useNotifications.getState().refresh();
         if (sequence === tapSequence.current && ownerId && ownerId === useSession.getState().user?.id && readyRef.current) router.push(destination as Href);
       })();
     };
@@ -199,23 +244,24 @@ export function usePushNotifications(): void {
         });
 
       // A push landing in the foreground shows nothing (see the handler above);
-      // its whole effect is that the in-app list and its badge catch up.
-      const received = Notifications.addNotificationReceivedListener(() => {
+      // its whole effect is that the in-app list and its badge catch up — and
+      // an incoming call rings, in case the live stream missed its pointer.
+      const received = Notifications.addNotificationReceivedListener((notification) => {
         void useNotifications.getState().refresh();
+        const incoming = callPushOrder(notification.request.content.data);
+        if (incoming && hasActiveSession(useSession.getState().user)) useCall.getState().checkOrder(incoming);
       });
 
       // Firebase can reissue a token while the app is running. A stale one stops
       // delivering silently, which is the failure nobody reports.
-      const rotated = Notifications.addPushTokenListener((token) => {
-        if (typeof token.data === "string" && token.data) {
-          void usePush.getState().adoptToken(token.data);
-        }
+      const unsubscribeRotation = subscribePushTokenRotation((token) => {
+        void usePush.getState().adoptToken(token);
       });
 
       return () => {
         tap.remove();
         received.remove();
-        rotated.remove();
+        unsubscribeRotation();
       };
     } catch {
       return;
@@ -230,14 +276,11 @@ export function usePushNotifications(): void {
     let cancelled = false;
     const frame = requestAnimationFrame(() => {
       void (async () => {
-        let destination = entry.target;
-        if (destination.startsWith("/order/")) {
-          try { await getOrder(destination.slice("/order/".length)); }
-          catch { destination = "/(tabs)/notifications"; }
-        }
+        const destination = await resolvePushDestination(entry.data, entry.target);
         if (cancelled || entry.sequence !== tapSequence.current || ownerId !== useSession.getState().user?.id || !readyRef.current || pending.current !== entry) return;
         router.push(destination as Href);
         pending.current = null;
+        void useNotifications.getState().refresh();
         void getNotificationsNative()?.clearLastNotificationResponseAsync?.().catch(() => undefined);
       })();
     });

@@ -5,6 +5,10 @@ import {
   pushedScreenOptions,
 } from "@/lib/navigationHeaders";
 
+// The header bell (#230) navigates with expo-router, which Jest does not
+// transform; tests mock it, as every screen test does.
+jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+
 describe("pushedScreenOptions", () => {
   it("shows the bare chevron the captain asked for", () => {
     expect(pushedScreenOptions("Order").headerBackButtonDisplayMode).toBe("minimal");

@@ -9,6 +9,7 @@ import {
   docxDetected,
   documentCart,
   documentLine,
+  holdUploadedFile,
   renderInSafeArea,
   uploadMock,
 } from "../../test/artworkPagesFixtures";
@@ -17,14 +18,6 @@ jest.mock("expo-router", () => ({
   useFocusEffect: () => undefined,
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), navigate: jest.fn(), back: jest.fn() }),
   useLocalSearchParams: () => ({ lineId: "cline_1" }),
-}));
-
-jest.mock("@/hooks/useArtworkUpload", () => ({
-  useArtworkUpload: (initial?: { fileId?: string | null }) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { uploadHookState } = require("../../test/artworkPagesFixtures");
-    return uploadHookState(initial);
-  },
 }));
 
 jest.mock("@/lib/api", () => ({
@@ -48,6 +41,7 @@ beforeEach(() => {
   uploadMock.fileName = "thesis.docx";
   uploadMock.contentType = DOCX_TYPE;
   uploadMock.detected = docxDetected(null);
+  holdUploadedFile();
   // GRIDGO answers an entered total the way it answers a counted file.
   api.updateCartLine.mockImplementation(async (_cartId: string, lineId: string, body: { measurement?: { pages: number } }) => {
     const current = useCart.getState().cart ?? documentCart();

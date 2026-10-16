@@ -44,9 +44,11 @@ jest.mock("expo-location", () => ({
 // against a granted phone it never granted.
 jest.mock("expo-notifications", () => ({
   __esModule: true,
-  AndroidImportance: { HIGH: 4 },
+  // Expo's own numbers (`AndroidImportance` in expo-notifications).
+  AndroidImportance: { NONE: 2, MIN: 3, LOW: 4, DEFAULT: 5, HIGH: 6, MAX: 7 },
   setNotificationHandler: jest.fn(),
   setNotificationChannelAsync: jest.fn(async () => undefined),
+  getNotificationChannelAsync: jest.fn(async () => null),
   getPermissionsAsync: jest.fn(async () => ({
     status: "undetermined",
     granted: false,
@@ -62,6 +64,37 @@ jest.mock("expo-notifications", () => ({
   addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
   addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
   addPushTokenListener: jest.fn(() => ({ remove: jest.fn() })),
+}));
+
+// iPhone push asks Firebase for its token (lib/firebaseMessaging.ios.ts, which
+// Jest resolves because the preset runs as iOS). No configured Firebase app is
+// the default: a build without GoogleService-Info.plist, where push falls back
+// to expo-notifications. Tests of the Firebase path mock it themselves.
+jest.mock("@react-native-firebase/app", () => ({ getApps: jest.fn(() => []) }));
+
+// Sign in with Apple (components/auth/AppleButton.ios.tsx). Apple's system
+// button is native, so it is a labelled Pressable here, and Clerk's flow
+// answers "closed the sheet" unless a test says otherwise.
+jest.mock("expo-apple-authentication", () => {
+  const React = require("react");
+  const { Pressable, Text } = require("react-native");
+  const AppleAuthenticationButton = ({ onPress }) =>
+    React.createElement(
+      Pressable,
+      { accessibilityRole: "button", accessibilityLabel: "Continue with Apple", onPress },
+      React.createElement(Text, null, "Continue with Apple"),
+    );
+  return {
+    __esModule: true,
+    AppleAuthenticationButton,
+    AppleAuthenticationButtonType: { SIGN_IN: 0, CONTINUE: 1, SIGN_UP: 2 },
+    AppleAuthenticationButtonStyle: { WHITE: 0, WHITE_OUTLINE: 1, BLACK: 2 },
+  };
+});
+jest.mock("@clerk/expo/apple", () => ({
+  useSignInWithApple: () => ({
+    startAppleAuthenticationFlow: jest.fn(async () => ({ createdSessionId: null })),
+  }),
 }));
 
 // The keyboard is a native surface, so the library ships its own Jest double:

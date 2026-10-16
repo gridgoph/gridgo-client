@@ -5,6 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StartPrintFab } from "@/components/StartPrintFab";
 import { useCart } from "@/store/cart";
 import { useRequestDraft } from "@/store/requestDraft";
+import { checkoutCart } from "@/test/checkoutFixtures";
 
 const mockPush = jest.fn();
 
@@ -40,10 +41,18 @@ describe("StartPrintFab", () => {
     expect(mockPush).toHaveBeenCalledWith("/request/category");
   });
 
-  it("opens checkout when a basket is already started", async () => {
-    useCart.setState({ cartId: "cart_1" });
+  it("opens checkout when the basket has something in it", async () => {
+    useCart.setState({ cartId: "cart_1", cart: checkoutCart() });
     await renderInSafeArea(<StartPrintFab />);
     fireEvent.press(screen.getByLabelText("Start a print request"));
     expect(mockPush).toHaveBeenCalledWith("/checkout");
+  });
+
+  // gridgoph/gridgo-client#250: a remembered but empty basket is no basket.
+  it("opens the catalogue when the remembered basket is empty", async () => {
+    useCart.setState({ cartId: "cart_1", cart: checkoutCart({ lines: [] }) });
+    await renderInSafeArea(<StartPrintFab />);
+    fireEvent.press(screen.getByLabelText("Start a print request"));
+    expect(mockPush).toHaveBeenCalledWith("/request/category");
   });
 });

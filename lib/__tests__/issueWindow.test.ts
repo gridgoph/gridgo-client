@@ -1,6 +1,7 @@
 import {
   checkIssueDescription,
   issueKindLabel,
+  issueWindowClock,
   issueWindowLengthLabel,
   issueWindowOpenedAt,
   summarizeIssueWindow,
@@ -149,5 +150,65 @@ describe("issueKindLabel", () => {
   it("never surfaces the API enum", () => {
     expect(issueKindLabel("material_quality")).toBe("Print or material quality");
     expect(issueKindLabel("nonsense")).not.toMatch(/_/);
+  });
+});
+
+describe("issueWindowClock (report 5A28D524)", () => {
+  const opened = new Date(NOW - 2 * HOUR).toISOString();
+
+  it("counts down to the expiry the platform stamped, in hours, minutes and seconds", () => {
+    const expires = new Date(NOW + 21 * HOUR + 47 * 60_000 + 9_000).toISOString();
+    const clock = issueWindowClock({ openedAt: opened, expiresAt: expires, now: NOW });
+    expect(clock?.clock).toBe("21:47:09");
+    expect(clock?.spoken).toBe("21 hours 47 minutes left");
+    expect(clock?.closesAt).toBe(new Date(expires).toISOString());
+  });
+
+  it("sizes the meter from the order's own stamps, never the app's default", () => {
+    // A 72-hour window Operations set, with 18 hours gone: three quarters left.
+    const clock = issueWindowClock({
+      openedAt: new Date(NOW - 18 * HOUR).toISOString(),
+      expiresAt: new Date(NOW + 54 * HOUR).toISOString(),
+      windowHours: 24,
+      now: NOW,
+    });
+    expect(clock?.fraction).toBeCloseTo(0.75);
+    // Whole hours, so a long window still reads as one clock.
+    expect(clock?.clock).toBe("54:00:00");
+  });
+
+  it("falls back to the platform setting when the order has no opening stamp", () => {
+    const clock = issueWindowClock({
+      openedAt: null,
+      expiresAt: new Date(NOW + 12 * HOUR).toISOString(),
+      windowHours: 48,
+      now: NOW,
+    });
+    expect(clock?.fraction).toBeCloseTo(0.25);
+  });
+
+  it("stops at zero and says it is closing, rather than counting into the negative", () => {
+    const clock = issueWindowClock({
+      openedAt: opened,
+      expiresAt: new Date(NOW - 5_000).toISOString(),
+      now: NOW,
+    });
+    expect(clock?.remainingMs).toBe(0);
+    expect(clock?.clock).toBe("00:00:00");
+    expect(clock?.fraction).toBe(0);
+    expect(clock?.spoken).toBe("Closing now");
+  });
+
+  it("speaks the last hour in minutes, and the last minute without a number", () => {
+    const at = (ms: number) =>
+      issueWindowClock({ openedAt: opened, expiresAt: new Date(NOW + ms).toISOString(), now: NOW })?.spoken;
+    expect(at(HOUR + 60_000)).toBe("1 hour 1 minute left");
+    expect(at(5 * 60_000 + 30_000)).toBe("5 minutes left");
+    expect(at(30_000)).toBe("Less than a minute left");
+  });
+
+  it("draws no clock for an order without an expiry", () => {
+    expect(issueWindowClock({ openedAt: opened, expiresAt: null, now: NOW })).toBeNull();
+    expect(issueWindowClock({ openedAt: opened, expiresAt: "not a date", now: NOW })).toBeNull();
   });
 });

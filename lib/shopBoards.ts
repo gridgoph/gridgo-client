@@ -46,27 +46,16 @@ export const BOARDS_TTL_MS = 60_000;
 export const MAX_BOARDS = 12;
 
 /**
- * How many boards Home reads.
- *
- * Home's strip is a taste of what is on press, not a catalogue, and it is read
- * on a screen a client did not ask to browse from. Twelve round trips to fill
- * three cards would be the wrong trade, so it reads far fewer and the picker
- * one tap away does the full read.
- */
-export const HOME_BOARDS = 4;
-
-/**
  * Every shop's board, for one category or — with an empty code — for all of
- * them. Home passes nothing, because the strip is a spread across families
- * rather than a look inside one.
+ * them.
  */
 export async function loadCategoryBoards(
   categoryCode: string,
   { force = false, maxBoards = MAX_BOARDS }: { force?: boolean; maxBoards?: number } = {},
 ): Promise<CategoryBoards> {
-  // The cap is part of the key. A short Home read and a full category read are
-  // different answers, and serving one from the other's entry would either
-  // shorten the category screen or charge Home for twelve boards.
+  // The cap is part of the key. A short read and a full category read are
+  // different answers, and serving one from the other's entry would shorten
+  // the category screen.
   const key = `${categoryCode}|${maxBoards}`;
   const held = cache.get(key);
   if (!force && held && Date.now() - held.at < BOARDS_TTL_MS) return held.value;

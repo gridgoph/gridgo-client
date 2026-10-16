@@ -3,8 +3,7 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import HomeScreen from "@/app/(tabs)/home";
-import type { CatalogItem, Order, ShopBoard, ShopSummary } from "@/lib/api";
-import { clearBoardCache } from "@/lib/shopBoards";
+import type { Order } from "@/lib/api";
 import { useCart } from "@/store/cart";
 import { useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
@@ -29,83 +28,52 @@ jest.mock("@/lib/api", () => {
     listOrders: jest.fn(async () => []),
     getProductCategories: jest.fn(async () => []),
     getCart: jest.fn(async () => null),
+    getFeaturedPrints: jest.fn(async () => ({ items: [] })),
     listCatalogShops: jest.fn(async () => []),
-    getCatalogShop: jest.fn(async () => null),
   };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
 
-function item(subcategoryCode: string, fromPriceMinor: number): CatalogItem {
-  return {
-    id: `sci_${subcategoryCode}`,
-    supplierId: "user_shop",
-    supplierServiceId: "svc",
-    categoryCode: "marketing_collateral",
-    subcategoryCode,
-    name: subcategoryCode,
-    description: null,
-    basePriceMinor: fromPriceMinor,
-    fromPriceMinor,
-    effectivePriceMinor: null,
-    pricingUnit: "per_unit",
-    packageQty: null,
-    measurementKind: "none",
-    measureUnit: null,
-    minimumWidthMilli: null,
-    minimumHeightMilli: null,
-    minimumLengthMilli: null,
-    minimumOrderQuantity: null,
-    priceTiers: [],
-    speedTiers: [],
-    pricingBasis: "per_unit",
-    turnaroundMode: "override",
-    turnaroundHours: 48,
-    rush: null,
-    acceptedFormats: [],
-    photos: [
-      {
-        fileId: "file_1",
-        sortOrder: 0,
-        altText: "A printed flyer",
-        url: "/catalog/media/file_1",
-        downloadUrl: "https://storage.example/file_1",
-      },
-    ],
-    prepSteps: [],
-    optionGroups: [],
-    version: 1,
-    serviceVersion: 1,
-  };
-}
-
-const SHOP: ShopSummary = {
-  supplierId: "user_shop",
-  shopName: "A press the client never sees",
-  shop: null,
-  media: [],
-  categories: ["marketing_collateral"],
-  itemCount: 1,
-};
-
-const BOARD: ShopBoard = {
-  supplierId: "user_shop",
-  shopName: "A press the client never sees",
-  shop: null,
-  media: [],
-  categories: ["marketing_collateral"],
-  services: [
+/**
+ * `GET /featured-prints` as gridgo-api sends it. Even a card that arrived
+ * carrying a shop must not draw one.
+ */
+const FEATURED = {
+  title: "FEATURED PRINTS",
+  items: [
     {
-      id: "svc",
-      version: 1,
+      id: "sci_flyers",
+      name: "Flyers",
       categoryCode: "marketing_collateral",
-      pricingBasis: "per_unit",
-      turnaroundHours: 48,
-      acceptedFormats: [],
-      items: [item("flyers", 45_000)],
+      subcategoryCode: "flyers",
+      clientFromPriceMinor: 49_500,
+      pricingUnit: "per_unit",
+      packageQty: null,
+      measureUnit: null,
+      minimumOrderQuantity: null,
+      shopName: "A press the client never sees",
+      photos: [
+        {
+          fileId: "file_1",
+          sortOrder: 0,
+          url: "/catalog/media/file_1",
+          downloadUrl: "https://storage.example/file_1",
+        },
+      ],
     },
   ],
+  emptyState: null,
+};
+
+const EMPTY = {
+  title: "FEATURED PRINTS",
+  items: [],
+  emptyState: {
+    action: "browse_catalog",
+    message: "Explore print products to start your first print.",
+  },
 };
 
 function order(): Order {
@@ -155,7 +123,6 @@ function renderInSafeArea(ui: ReactElement) {
 
 beforeEach(() => {
   mockPush.mockClear();
-  clearBoardCache();
   usePlatformSettings.getState().reset();
   usePlatformSettings.getState().adopt({
     issueWindowHours: 24,
@@ -164,10 +131,9 @@ beforeEach(() => {
   });
   api.listOrders.mockReset();
   api.listOrders.mockResolvedValue([]);
+  api.getFeaturedPrints.mockReset();
+  api.getFeaturedPrints.mockResolvedValue(FEATURED);
   api.listCatalogShops.mockReset();
-  api.listCatalogShops.mockResolvedValue([SHOP]);
-  api.getCatalogShop.mockReset();
-  api.getCatalogShop.mockResolvedValue(BOARD);
   useCart.getState().reset();
   useRequestDraft.getState().reset();
   useSession.setState({
@@ -185,46 +151,62 @@ beforeEach(() => {
 
 /**
  * A client with nothing on press is the one Home that has room to introduce
- * the platform. It gets a greeting and real printed work — not the grey empty
- * panel that used to sit here offering a button the board below already is.
+ * the platform. It gets a greeting and FEATURED PRINTS — GRIDGO's curated
+ * products, never what other clients are printing (reports 36D13C56 and
+ * C0266B02).
  */
 describe("Home with nothing on press", () => {
-  it("greets the client and shows work GRIDGO is printing today", async () => {
+  it("greets the client and shows GRIDGO's featured prints", async () => {
     await renderInSafeArea(<HomeScreen />);
 
     expect(await screen.findByText("Hello, Rina")).toBeTruthy();
-    expect(
-      screen.getByText("Nothing on press yet. Choose what you need and GRIDGO finds the printer."),
-    ).toBeTruthy();
+    expect(screen.getByText("Choose what you need and GRIDGO finds the printer.")).toBeTruthy();
+    expect(screen.queryByText(/on press/i)).toBeNull();
 
-    expect(await screen.findByText("ON PRESS TODAY")).toBeTruthy();
+    expect(await screen.findByText("FEATURED PRINTS")).toBeTruthy();
+    expect(screen.queryByText("ON PRESS TODAY")).toBeNull();
     expect(await screen.findByText("Flyers")).toBeTruthy();
-    expect(screen.getByText(/^From ₱/)).toBeTruthy();
+    // GRIDGO's figure as sent, fee already inside.
+    expect(screen.getByText("From ₱495.00")).toBeTruthy();
 
     // GRIDGO is the counter: matching picks the press later, and no client
-    // surface names one.
+    // surface names one. The row is curated, so no shop board is read for it.
     expect(screen.queryByText(/A press the client never sees/)).toBeNull();
+    expect(api.listCatalogShops).not.toHaveBeenCalled();
   });
 
-  it("leaves the strip out rather than showing an empty shelf", async () => {
-    api.listCatalogShops.mockResolvedValue([]);
+  it("leaves the row out on the contract's empty state, keeping the start board", async () => {
+    api.getFeaturedPrints.mockResolvedValue(EMPTY);
 
     await renderInSafeArea(<HomeScreen />);
 
     expect(await screen.findByText("Hello, Rina")).toBeTruthy();
-    await waitFor(() => expect(api.listCatalogShops).toHaveBeenCalled());
-    expect(screen.queryByText("ON PRESS TODAY")).toBeNull();
+    await waitFor(() => expect(api.getFeaturedPrints).toHaveBeenCalled());
+    expect(screen.queryByText("FEATURED PRINTS")).toBeNull();
     expect(await screen.findByText("START YOUR FIRST PRINT")).toBeTruthy();
+    // Never a fallback to the shops' live boards.
+    expect(api.listCatalogShops).not.toHaveBeenCalled();
   });
 
-  it("says none of it once the client has a job, and reads no boards at all", async () => {
+  it("leaves the row out when the list cannot be read, and reads nothing in its place", async () => {
+    api.getFeaturedPrints.mockRejectedValue(new Error("offline"));
+
+    await renderInSafeArea(<HomeScreen />);
+
+    expect(await screen.findByText("START YOUR FIRST PRINT")).toBeTruthy();
+    await waitFor(() => expect(api.getFeaturedPrints).toHaveBeenCalled());
+    expect(screen.queryByText("FEATURED PRINTS")).toBeNull();
+    expect(api.listCatalogShops).not.toHaveBeenCalled();
+  });
+
+  it("says none of it once the client has a job, and reads no featured list at all", async () => {
     api.listOrders.mockResolvedValue([order()]);
 
     await renderInSafeArea(<HomeScreen />);
 
     expect(await screen.findByText("Grand opening tarpaulin")).toBeTruthy();
     expect(screen.queryByText("Hello, Rina")).toBeNull();
-    expect(screen.queryByText("ON PRESS TODAY")).toBeNull();
-    expect(api.listCatalogShops).not.toHaveBeenCalled();
+    expect(screen.queryByText("FEATURED PRINTS")).toBeNull();
+    expect(api.getFeaturedPrints).not.toHaveBeenCalled();
   });
 });

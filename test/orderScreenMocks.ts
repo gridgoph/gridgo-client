@@ -13,7 +13,7 @@ export function orderScreenApiMock() {
     listZones: jest.fn(async () => []),
     listIssues: jest.fn(async () => []),
     getSettings: jest.fn(async () => ({ issueWindowHours: 24, deliveryFeeBands: [] })),
-    getRiderLocation: jest.fn(async () => null),
+    getRiderTracking: jest.fn(async () => ({ ping: null, tracking: null })),
     getFileDownloadUrl: jest.fn(),
     getFile: jest.fn(async () => { throw new Error("not in this test"); }),
     submitPayment: jest.fn(),
@@ -26,5 +26,8 @@ export function orderScreenApiMock() {
     getOrderHandover: jest.fn(async () => null),
     requestHubRedelivery: jest.fn(),
     escalateHandover: jest.fn(),
+    // No post-order survey unless a test gives one (gridgo-api SURVEY_API.md).
+    getOrderSurvey: jest.fn(async () => ({ serverTime: new Date().toISOString(), survey: null })),
+    dismissOrderSurvey: jest.fn(),
   };
 }

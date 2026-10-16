@@ -9,6 +9,7 @@ import { FormField, FormSection } from "@/components/form/FormField";
 import { OptionPicker } from "@/components/form/OptionPicker";
 import { TextField } from "@/components/form/TextField";
 import { FormScreen } from "@/components/FormScreen";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { RefundAccountFields } from "@/components/refund/RefundAccountFields";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -297,6 +298,7 @@ export default function RefundRequestScreen() {
               {evidence.length < MAX_REFUND_EVIDENCE ? (
                 <SecondaryButton label="Add a photo" disabled={busy} onPress={() => void addEvidence()} />
               ) : null}
+              <WhyWeAsk>These photos show Operations what went wrong, so they can decide your refund.</WhyWeAsk>
             </View>
           </FormField>
         </FormSection>

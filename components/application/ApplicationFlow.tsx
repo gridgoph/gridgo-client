@@ -17,6 +17,7 @@ import {
 } from "@/components/application/ApplicationParts";
 import { OtpCodeStep } from "@/components/auth/OtpCodeStep";
 import { ErrorState } from "@/components/ErrorState";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { FormScreen } from "@/components/FormScreen";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -367,26 +368,32 @@ export function ApplicationFlow({
                 maxLength={10}
               />
             </FormField>
-            <FormField label="Address" error={personShown.address} helper="As it is printed on the ID.">
-              <TextField
-                value={draft.person.address}
-                onChangeText={(address) => editPerson({ address })}
-                placeholder="Purok 3, Bajada, Davao City"
-                accessibilityLabel="Address"
-                autoCapitalize="words"
-              />
-            </FormField>
-            <FormField label="Mobile number" error={personShown.phone}>
-              <TextField
-                value={draft.person.phone}
-                onChangeText={(phone) => editPerson({ phone })}
-                placeholder="0917 123 4567"
-                accessibilityLabel="Mobile number"
-                keyboardType="phone-pad"
-                textContentType="telephoneNumber"
-                autoCorrect={false}
-              />
-            </FormField>
+            <View className="gap-2">
+              <FormField label="Address" error={personShown.address} helper="As it is printed on the ID.">
+                <TextField
+                  value={draft.person.address}
+                  onChangeText={(address) => editPerson({ address })}
+                  placeholder="Purok 3, Bajada, Davao City"
+                  accessibilityLabel="Address"
+                  autoCapitalize="words"
+                />
+              </FormField>
+              <WhyWeAsk>Operations check it against the ID you send. Shops and riders never see it.</WhyWeAsk>
+            </View>
+            <View className="gap-2">
+              <FormField label="Mobile number" error={personShown.phone}>
+                <TextField
+                  value={draft.person.phone}
+                  onChangeText={(phone) => editPerson({ phone })}
+                  placeholder="0917 123 4567"
+                  accessibilityLabel="Mobile number"
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  autoCorrect={false}
+                />
+              </FormField>
+              <WhyWeAsk>Operations call this number if they need to check the application with you.</WhyWeAsk>
+            </View>
 
             <FormField label="Primary government ID" error={personShown.governmentIdType}>
               <View className="flex-row flex-wrap gap-2" accessibilityRole="radiogroup">

@@ -8,6 +8,7 @@ import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { ErrorState } from "@/components/ErrorState";
+import { IssueWindowCountdown } from "@/components/IssueWindowCountdown";
 import { StatusChip } from "@/components/StatusChip";
 import type { Issue, Order } from "@/lib/api";
 import * as api from "@/lib/api";
@@ -22,11 +23,14 @@ import {
   summarizeIssueWindow,
   type IssueKind,
 } from "@/lib/issueWindow";
+import { useSurvey } from "@/store/survey";
 
 type Props = {
   order: Order;
   /** The order after the client closes it as fine. */
   onUpdated: (order: Order) => void;
+  /** The countdown reached zero: read the order again, which the platform has closed. */
+  onWindowElapsed?: () => void;
 };
 
 /**
@@ -43,11 +47,23 @@ type Props = {
  * finished job. Reporting a problem is the quieter second choice, and takes
  * the yellow only once its form is open — the screen never carries two.
  */
-export function IssueWindowCard({ order, onUpdated }: Props) {
+export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [windowHours, setWindowHours] = useState(DEFAULT_ISSUE_WINDOW_HOURS);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [opened, setOpened] = useState(false);
+  /*
+    The survey's "Report a problem with this order" lands here rather than on
+    a second form: the ask opens this one, and answering it — sending,
+    cancelling — clears the ask.
+  */
+  const reportAsked = useSurvey((state) => state.reportIntent === order.id);
+  const clearReport = useSurvey((state) => state.clearReport);
+  const open = opened || reportAsked;
+  const setOpen = (next: boolean) => {
+    setOpened(next);
+    if (!next) clearReport();
+  };
   const [kind, setKind] = useState<IssueKind>("material_quality");
   const [description, setDescription] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -80,14 +96,17 @@ export function IssueWindowCard({ order, onUpdated }: Props) {
   }, [load]);
 
   const openIssue = issues.find((issue) => issue.status === "open") ?? null;
+  const openedAt = order.issueWindowOpenedAt ?? issueWindowOpenedAt(order.timeline);
   const status = summarizeIssueWindow({
     state: order.state,
-    openedAt: order.issueWindowOpenedAt ?? issueWindowOpenedAt(order.timeline),
+    openedAt,
     expiresAt: order.issueWindowExpiresAt,
     windowHours,
     hasOpenIssue: Boolean(openIssue),
   });
   const check = checkIssueDescription(description);
+  const liveClock =
+    order.state === "issue_window_open" && Number.isFinite(Date.parse(order.issueWindowExpiresAt ?? ""));
 
   const closeAsFine = async () => {
     setBusy(true);
@@ -142,9 +161,23 @@ export function IssueWindowCard({ order, onUpdated }: Props) {
         ) : !status.canReport ? (
           <StatusChip tone="neutral" label="Issue window closed" icon="circle-check" />
         ) : null}
+        {/* While the window is open and the order says when it closes, the
+            time left leads the card, live (report 5A28D524). An older payload
+            without the expiry keeps the one-line caption under the copy. */}
+        {liveClock ? (
+          <View className="pb-2">
+            <IssueWindowCountdown
+              openedAt={openedAt}
+              expiresAt={order.issueWindowExpiresAt}
+              windowHours={windowHours}
+              elapsedLabel={status.elapsedLabel}
+              onElapsed={onWindowElapsed}
+            />
+          </View>
+        ) : null}
         <Text className="text-h3 text-text-primary">{status.headline}</Text>
         <Text className="text-body text-text-secondary">{status.detail}</Text>
-        {status.elapsedLabel || status.remainingLabel ? (
+        {!liveClock && (status.elapsedLabel || status.remainingLabel) ? (
           <Text className="text-caption text-text-muted">
             {[status.elapsedLabel, status.remainingLabel].filter(Boolean).join(" · ")}
           </Text>

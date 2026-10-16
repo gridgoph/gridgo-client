@@ -26,6 +26,7 @@ jest.mock("@/lib/api", () => ({
   submitBasketPayment: (...args) => mockSubmitBasket(...args),
   getOrder: (...args) => mockGetOrder(...args),
   getSettings: async () => ({ paymentQr: { imageUrl: "/public/payment-qr" } }),
+  recordFunnel: async () => {},
 }));
 jest.mock("@/hooks/usePaymentProof", () => ({ usePaymentProof: () => mockProof }));
 jest.mock("@/components/ConfirmDialog", () => ({ ConfirmDialog: "ConfirmDialog" }));

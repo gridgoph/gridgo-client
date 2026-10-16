@@ -9,7 +9,6 @@ import type { ArtworkLinkCheck, Cart, CartLineRecord, CatalogItem } from "@/lib/
 import { useCart } from "@/store/cart";
 import { useDesignLink } from "@/store/designLink";
 
-const mockPick = jest.fn(async () => undefined);
 
 jest.mock("expo-router", () => ({
   // The first-order tour registers its screen on focus (`useTourScreen`).
@@ -21,50 +20,6 @@ jest.mock("expo-router", () => ({
     back: jest.fn(),
   }),
   useLocalSearchParams: () => ({ lineId: "cline_1" }),
-}));
-
-// The picker itself is native. What matters here is that the card reaches it.
-jest.mock("@/hooks/useArtworkUpload", () => ({
-  useArtworkUpload: (initial?: { fileId?: string | null }) => ({
-    state: initial?.fileId
-      ? {
-          phase: "stored",
-          fileId: initial.fileId,
-          fileName: "WorkHard.png",
-          progress: null,
-          error: null,
-          size: 492_000,
-          contentType: "image/png",
-          detected: {
-            kind: "raster",
-            pageCount: 1,
-            pixelWidth: 720,
-            pixelHeight: 1600,
-            dpi: 96,
-            measureUnit: "mm",
-            widthMilli: 190_500,
-            heightMilli: 423_300,
-            pageSize: null,
-            orientation: "portrait",
-          },
-        }
-      : {
-          phase: "empty",
-          fileId: null,
-          fileName: "",
-          progress: null,
-          error: null,
-          size: null,
-          contentType: null,
-          detected: null,
-        },
-    pick: mockPick,
-    retry: jest.fn(),
-    cancel: jest.fn(),
-    attachTo: jest.fn(),
-    reset: jest.fn(),
-    adopt: jest.fn(),
-  }),
 }));
 
 jest.mock("@/lib/api", () => {
@@ -188,7 +143,7 @@ beforeEach(() => {
 
 /** One interaction per file (see AGENTS.md): a paste checks and saves the link. */
 describe("ArtworkScreen design link paste", () => {
-  it("checks a pasted link, shows the answer and keeps it on the line", async () => {
+  it("checks a pasted link, adds it to the item with its answer, and empties the field", async () => {
     (api.checkArtworkLink as jest.Mock).mockResolvedValue(check({ ok: true, access: "public_view" }));
     (api.updateCartLine as jest.Mock).mockResolvedValue(cart({ lines: [line({ artworkLinks: [LINK] })] }));
     await renderInSafeArea(<ArtworkScreen />);
@@ -201,7 +156,9 @@ describe("ArtworkScreen design link paste", () => {
       await screen.findByText("Anyone with the link can view it", {}, { timeout: 3000 }),
     ).toBeTruthy();
     expect(api.checkArtworkLink).toHaveBeenCalledWith(LINK);
-    expect(api.updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkLinks: [LINK] });
+    // This line is from a GRIDGO before the list, so the link goes in the old fields.
+    expect(api.updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", { artworkFileId: null, artworkLinks: [LINK] });
     expect(await screen.findByLabelText("Go to checkout")).toBeTruthy();
+    expect(screen.getByLabelText("Design link").props.value).toBe("");
   });
 });

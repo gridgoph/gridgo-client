@@ -10,22 +10,16 @@ import {
   documentCart,
   documentLine,
   mockUpdateCartLine,
+  holdUploadedFile,
   renderInSafeArea,
   uploadMock,
 } from "../../test/artworkPagesFixtures";
+import { agreeArtworkRights } from "@/test/legalGate";
 
 jest.mock("expo-router", () => ({
   useFocusEffect: () => undefined,
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), navigate: jest.fn(), back: jest.fn() }),
   useLocalSearchParams: () => ({ lineId: "cline_1" }),
-}));
-
-jest.mock("@/hooks/useArtworkUpload", () => ({
-  useArtworkUpload: (initial?: { fileId?: string | null }) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { uploadHookState } = require("../../test/artworkPagesFixtures");
-    return uploadHookState(initial);
-  },
 }));
 
 jest.mock("@/lib/api", () => ({
@@ -44,6 +38,8 @@ jest.mock("@/lib/api", () => ({
 const api = require("@/lib/api");
 
 beforeEach(() => {
+  // The per-order artwork box, ticked by the client (one press per test).
+  agreeArtworkRights("cart:cart_1");
   jest.spyOn(Image, "getSize").mockImplementation(() => undefined);
   uploadMock.fileId = "file_docx";
   uploadMock.fileName = "thesis.docx";
@@ -53,6 +49,7 @@ beforeEach(() => {
 
 it("asks for the total when a Word file did not say how many pages it has", async () => {
   uploadMock.detected = docxDetected(null);
+  holdUploadedFile();
   useCart.setState({
     cartId: "cart_1",
     cart: documentCart({ lines: [documentLine({ artworkFileId: "file_docx", measurement: null, lineSubtotalMinor: null })] }),
@@ -68,13 +65,14 @@ it("asks for the total when a Word file did not say how many pages it has", asyn
   // Nothing to price from yet, so checkout waits for the count.
   expect(screen.getByLabelText("Go to checkout").props.accessibilityState.disabled).toBe(true);
   // A Word file is named with a document mark, never sent to Image to measure.
-  expect(screen.getAllByLabelText("Word document").length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/^Word document · /).length).toBeGreaterThan(0);
   expect(screen.getAllByText("thesis.docx").length).toBeGreaterThan(0);
   expect(Image.getSize).not.toHaveBeenCalled();
 });
 
 it("treats an entered total like a counted file: ranges, copies and checkout", async () => {
   uploadMock.detected = docxDetected(null);
+  holdUploadedFile();
   useCart.setState({
     cartId: "cart_1",
     cart: documentCart({
@@ -101,6 +99,7 @@ it("treats an entered total like a counted file: ranges, copies and checkout", a
 
 it("keeps a Word file's own count read-only, as it does a PDF's", async () => {
   uploadMock.detected = docxDetected(8);
+  holdUploadedFile();
   useCart.setState({
     cartId: "cart_1",
     cart: documentCart({

@@ -22,6 +22,7 @@ import { countLabel, photosByHistoryRow } from "@/lib/orderSections";
 import { fulfilmentRailKind, orderStageIndex } from "@/lib/orderStages";
 import { orderStateMeta } from "@/lib/orderState";
 import { paysInFull } from "@/lib/payment";
+import { readyEarlyLabel } from "@/lib/readyTime";
 import {
   hasPlainHistory,
   progressView,
@@ -111,9 +112,12 @@ export function LatestProgressCard({ order, note }: Props) {
     .filter(Boolean)
     .join(" · ");
 
+  // Printing beat the shop's own time: said beside the state, which stays exact.
+  const early = readyEarlyLabel(order);
   const label = [
     "Latest progress",
     meta.label,
+    early,
     latest && latest.title !== meta.label ? latest.title : null,
     when,
     note,
@@ -141,13 +145,18 @@ export function LatestProgressCard({ order, note }: Props) {
         <View className="flex-row gap-3">
           <View className="min-w-0 flex-1 gap-2">
             <View className="flex-row items-center justify-between gap-3">
-              <StatusChip
-                tone={meta.tone}
-                label={meta.label}
-                icon={meta.icon}
-              />
+              <View className="min-w-0 flex-1 flex-row flex-wrap gap-2">
+                <StatusChip
+                  tone={meta.tone}
+                  label={meta.label}
+                  icon={meta.icon}
+                />
+                {early ? (
+                  <StatusChip tone="success" label={early} icon="clock-check" />
+                ) : null}
+              </View>
               {when ? (
-                <Text className="shrink text-caption text-text-muted">
+                <Text className="shrink-0 text-caption text-text-muted">
                   {when}
                 </Text>
               ) : null}

@@ -3,16 +3,18 @@ import { Platform, View } from "react-native";
 import { WebView } from "react-native-webview";
 
 import type { DeliveryMapProps } from "@/components/DeliveryMap";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
-import { buildMapHtml, type MapModel } from "@/lib/mapHtml";
+import { buildMapHtml, deliveryMapModel, parseMapMessage } from "@/lib/mapHtml";
 import { isGeoPoint } from "@/lib/tracking";
 
+/** On a card; the delivery screen passes `fill` and the map takes the screen. */
 const MAP_HEIGHT = 220;
 
 /**
- * The delivery on a real map: GRIDGO's counter, the drop-off, and the rider's
- * last shared position joined by the road route.
+ * The delivery on a real map: the drop-off, the rider's last shared position,
+ * and the road route between them — or, on a collected order, GRIDGO's counter.
  *
  * The origin pin is GRIDGO — never the press that ran the job. A client buys
  * from GRIDGO and collects from GRIDGO, and the shop behind the counter is not
@@ -25,32 +27,67 @@ const MAP_HEIGHT = 220;
  * same token as Rider. The map renders the same on every Android phone
  * whether or not Play Services are present.
  *
- * The client watches; every gesture that would let them drive the delivery is
- * off. A position the app judges out of date is drawn faded, and the card
- * around this map says why in words — the fade is never the only signal.
+ * The client watches; nothing on the map drives the delivery. Panning and
+ * zooming are theirs, and once they move the view a newer position no longer
+ * refits it until they recentre. A position the app judges out of date is
+ * drawn as a last known position, and the screen says why in words.
  */
-export function DeliveryMap({ pickup, dropoff, rider, stale, route, routed }: DeliveryMapProps) {
-  const theme = useThemeName();
+export function DeliveryMap({
+  pickup,
+  dropoff,
+  rider,
+  stale,
+  route,
+  routed,
+  fill,
+  padTop,
+  padBottom,
+  controlsBottom,
+  hideZoom,
+  recenterKey,
+  onMoved,
+}: DeliveryMapProps) {
+  const theme = useThemeName() === "dark" ? "dark" : "light";
   const colors = useThemeColors();
+  const reduceMotion = useReducedMotion();
   const webRef = useRef<WebView>(null);
   const readyRef = useRef(false);
 
-  const model: MapModel = useMemo(
-    () => ({
-      theme: theme === "dark" ? "dark" : "light",
-      pickup: isGeoPoint(pickup) ? pickup : null,
-      dropoff: isGeoPoint(dropoff) ? dropoff : null,
-      pickupLabel: pickup?.label || GRIDGO_OFFICE_LABEL,
-      pickupMark: "GRIDGO",
-      dropoffLabel: dropoff?.label || "Your delivery address",
-      routeCoordinates: route,
-      routeColor: colors.actionYellow,
-      rider: isGeoPoint(rider) ? rider : null,
-      riderStale: stale,
-      // Only worth saying once the app actually tried to route.
-      routeUnavailable: route.length >= 2 && !routed,
-    }),
-    [theme, pickup, dropoff, rider, stale, route, routed, colors.actionYellow],
+  const model = useMemo(
+    () =>
+      deliveryMapModel({
+        theme,
+        pickup: isGeoPoint(pickup) ? pickup : null,
+        dropoff: isGeoPoint(dropoff) ? dropoff : null,
+        rider: isGeoPoint(rider) ? rider : null,
+        stale,
+        route,
+        routed,
+        routeColor: colors.actionYellow,
+        pickupLabel: GRIDGO_OFFICE_LABEL,
+        padTop,
+        padBottom,
+        controlsBottom,
+        hideZoom,
+        recenterKey,
+        reduceMotion,
+      }),
+    [
+      theme,
+      pickup,
+      dropoff,
+      rider,
+      stale,
+      route,
+      routed,
+      colors.actionYellow,
+      padTop,
+      padBottom,
+      controlsBottom,
+      hideZoom,
+      recenterKey,
+      reduceMotion,
+    ],
   );
 
   // Rebuild the document only when the theme flips, so the tile set swaps
@@ -65,7 +102,7 @@ export function DeliveryMap({ pickup, dropoff, rider, stale, route, routed }: De
   }, [model]);
 
   return (
-    <View style={{ height: MAP_HEIGHT }}>
+    <View style={fill ? { flex: 1 } : { height: MAP_HEIGHT }}>
       <WebView
         ref={webRef}
         originWhitelist={["*"]}
@@ -76,8 +113,11 @@ export function DeliveryMap({ pickup, dropoff, rider, stale, route, routed }: De
             `try { applyModel(${JSON.stringify(model)}); } catch (e) {} true;`,
           );
         }}
+        onMessage={(event) => {
+          if (parseMapMessage(event.nativeEvent.data)?.type === "moved") onMoved?.();
+        }}
         style={{ flex: 1, backgroundColor: colors.surfaceVariant }}
-        // Map gestures must not fight the order screen's ScrollView on Android.
+        // A card-sized map must not fight the order screen's ScrollView on Android.
         nestedScrollEnabled
         scrollEnabled={false}
         overScrollMode="never"
@@ -86,7 +126,7 @@ export function DeliveryMap({ pickup, dropoff, rider, stale, route, routed }: De
         domStorageEnabled
         mixedContentMode="compatibility"
         androidLayerType={Platform.OS === "android" ? "hardware" : undefined}
-        accessibilityLabel="Map showing GRIDGO, your delivery address, and the rider"
+        accessibilityLabel="Map showing your delivery address and the rider"
       />
     </View>
   );

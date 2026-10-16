@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 
 import RootLayout from "@/app/_layout";
 import { HeaderThemeButton } from "@/components/HeaderThemeButton";
+import { PushedHeaderActions } from "@/components/PushedHeaderActions";
 import { PushedStackHeader } from "@/components/PushedStackHeader";
 import { colors, typography } from "@/constants/theme";
 
@@ -25,6 +26,7 @@ jest.mock("@/hooks/useTheme", () => ({
 jest.mock("@/hooks/useAppFonts", () => ({ useAppFonts: jest.fn(() => true) }));
 jest.mock("@/hooks/useClerkApiSession", () => ({ useClerkApiSession: jest.fn() }));
 jest.mock("@/hooks/useClientPreferences", () => ({ useClientPreferences: jest.fn() }));
+jest.mock("@/hooks/useLegalGate", () => ({ useLegalGate: jest.fn() }));
 jest.mock("@/hooks/usePushNotifications", () => ({ usePushNotifications: jest.fn() }));
 jest.mock("@/hooks/useLiveNotifications", () => ({ useLiveNotifications: jest.fn() }));
 jest.mock("@/hooks/useSupportChatUnread", () => ({ useSupportChatUnread: jest.fn() }));
@@ -87,7 +89,10 @@ describe("pushed route layout contract", () => {
         expect(options.headerBackButtonDisplayMode).toBe("minimal");
         expect(options.statusBarTranslucent).toBe(true);
         expect(options.header).toBe(PushedStackHeader);
-        expect(options.headerRight).toBe(HeaderThemeButton);
+        // Every pushed screen carries the bell (#230), except the inbox it opens.
+        expect(options.headerRight).toBe(
+          route.props.name === "inbox" ? HeaderThemeButton : PushedHeaderActions,
+        );
       }
       if (signedIn) {
         expect(screen.getByTestId("route:request/category").props.options.title).toBe("New request");

@@ -21,12 +21,13 @@ import {
   canReplaceDestination,
   canWithdrawRefund,
   currentRefund,
+  isDeliveryCredit,
   refundHeadline,
   refundHistoryRow,
   refundKindLabel,
   refundProviderLabel,
+  refundMeta,
   refundRejectionReason,
-  refundStatusMeta,
 } from "@/lib/refunds";
 import { formatTimelineStamp } from "@/lib/relativeTime";
 
@@ -135,7 +136,8 @@ export default function RefundScreen() {
     );
   }
 
-  const meta = refundStatusMeta(refund.status);
+  const meta = refundMeta(refund);
+  const credit = isDeliveryCredit(refund);
   const { headline, detail } = refundHeadline(refund);
   const rejection = refundRejectionReason(refund);
   const history = [...refund.history].reverse().map(refundHistoryRow);
@@ -194,7 +196,18 @@ export default function RefundScreen() {
             <Text className="text-overline text-text-muted">
               {refund.status === "paid" ? "WHAT WAS REFUNDED" : "WHAT COMES BACK"}
             </Text>
-            <RefundBreakdownCard settlement={refund.settlement} order={order} />
+            {credit ? (
+              /* Delivery only: the printing, the fee and the order are untouched. */
+              <View className="gg-card gap-2">
+                <SpecRow label="Delivery-fee credit" value={formatPhp(refund.settlement.totalMinor)} />
+                <Text className="text-caption text-text-muted">
+                  The difference between the delivery fee you paid and the fee to your new pin. Your
+                  printing and your order are not affected.
+                </Text>
+              </View>
+            ) : (
+              <RefundBreakdownCard settlement={refund.settlement} order={order} />
+            )}
             {refund.settlement.reason.trim() ? (
               <View className="gg-panel gap-1">
                 <Text className="text-caption text-text-muted">
@@ -238,12 +251,12 @@ export default function RefundScreen() {
         </View>
 
         <View className="gap-3">
-          <Text className="text-overline text-text-muted">YOUR REQUEST</Text>
+          <Text className="text-overline text-text-muted">{credit ? "WHY THIS CREDIT" : "YOUR REQUEST"}</Text>
           <View className="gg-card gap-3">
             <View className="gap-1">
               <Text className="text-body-lg font-medium text-text-primary">{refundKindLabel(refund.kind)}</Text>
               <Text className="text-caption text-text-muted">
-                Sent {formatTimelineStamp(refund.createdAt)}
+                {credit ? "Pin moved" : "Sent"} {formatTimelineStamp(refund.createdAt)}
                 {refund.filingDeadlineAt ? ` · deadline was ${formatDeadline(refund.filingDeadlineAt)}` : ""}
               </Text>
             </View>

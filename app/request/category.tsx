@@ -42,14 +42,12 @@ export default function ChooseCategoryScreen() {
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   // Home's dropdown hands its query over through "See all".
-  const { q, forGroup } = useLocalSearchParams<{
-    q?: string;
-    /** Set by checkout's "Add more from Shop A"; anything else starts afresh. */
-    forGroup?: string;
-  }>();
+  const { q } = useLocalSearchParams<{ q?: string }>();
+  // Choosing from every shop: an "Add more from Shop A" errand is over.
+  // That control opens the group's own products (`app/request/add-more.tsx`).
   useEffect(() => {
-    if (!forGroup) useBasketGroupTarget.getState().clear();
-  }, [forGroup]);
+    useBasketGroupTarget.getState().clear();
+  }, []);
   const [query, setQuery] = useState(() => (typeof q === "string" ? q : ""));
   const [focused, setFocused] = useState(false);
   useTourScreen("pick");
@@ -79,7 +77,6 @@ export default function ChooseCategoryScreen() {
   // in one cheap read — guessing here from the platform catalog would tell a
   // client "not priced yet" about a thing a shop has on its board today.
   const openSubcategory = (category: ProductCategory, subcategory: ProductSubcategory) => {
-    void api.recordFunnel({ kind: "product_viewed", productCode: subcategory.code });
     startJob(category.code, subcategory.code);
   };
 
@@ -153,10 +150,7 @@ export default function ChooseCategoryScreen() {
                 <CategoryCard
                   key={category.code}
                   category={category}
-                  onPress={() => {
-                    void api.recordFunnel({ kind: "product_viewed", productCode: category.code });
-                    router.push(`/request/${category.code}`);
-                  }}
+                  onPress={() => router.push(`/request/${category.code}`)}
                 />
               );
               return index === 0 ? (

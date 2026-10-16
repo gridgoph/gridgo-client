@@ -41,6 +41,8 @@ import { findCategory } from "@/lib/productCategories";
 import { fulfilmentSummary, pickupMatchView } from "@/lib/requestFulfilment";
 import { HOME_TAB } from "@/lib/receipt";
 import { basketMatchContext } from "@/lib/basketGroups";
+import { loadCategoryBoards } from "@/lib/shopBoards";
+import { everyShopPaused } from "@/lib/shopHours";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
@@ -100,6 +102,23 @@ export default function MatchScreen() {
   const [loading, setLoading] = useState(true);
   /** The soonest anyone could do it, when nobody can make the client's date. */
   const [earliest, setEarliest] = useState<string | null>(null);
+  // Why nobody was found, when the shops that print this are all closed for
+  // now: they stay on the category wall, so the client deserves the reason.
+  const [everyPaused, setEveryPaused] = useState(false);
+  useEffect(() => {
+    if (error !== "match_not_found" || !category || !subcategory) return;
+    let live = true;
+    loadCategoryBoards(category)
+      .then((read) => {
+        if (live) setEveryPaused(everyShopPaused(read.boards, subcategory));
+      })
+      .catch(() => {
+        // Without the boards the general answer still stands.
+      });
+    return () => {
+      live = false;
+    };
+  }, [error, category, subcategory]);
   /** The ranking the last match was asked with, to tell a change from a first match. */
   const askedFor = useRef<string | null>(null);
   /** When the answer on screen arrived, by this phone's clock. */
@@ -393,6 +412,21 @@ export default function MatchScreen() {
             }}
             altActionLabel="Choose something else"
             onAltAction={() => router.dismissTo("/request/category")}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (error === "match_not_found" && everyPaused) {
+    return (
+      <Screen edges={["bottom"]}>
+        <View className="gg-screen gg-page justify-center">
+          <EmptyState
+            title={`Every shop that prints ${subcategoryName.toLowerCase()} is closed for now`}
+            body="None of them is taking new orders at the moment. Try again later, or pick something else to print."
+            actionLabel="Choose something else"
+            onAction={() => router.dismissTo("/request/category")}
           />
         </View>
       </Screen>

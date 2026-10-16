@@ -22,6 +22,7 @@ import {
 } from "@/lib/push";
 import { hasActiveSession } from "@/lib/sessionGuard";
 import { useAppUpdate } from "@/store/appUpdate";
+import { useCheckoutExit } from "@/store/checkoutExit";
 import { usePush } from "@/store/push";
 import { usePushPrompt } from "@/store/pushPrompt";
 import { useSession } from "@/store/session";
@@ -65,13 +66,15 @@ export function PushExplainerSheet({ ready }: Props) {
   const open = usePushPrompt((s) => s.open);
   const mode = usePushPrompt((s) => s.mode);
   const updateShowing = useAppUpdate((s) => s.promptOpen || s.completed !== null);
+  // The checkout exit question waits for this sheet; once it is up, this one waits for it.
+  const exitQuestionOpen = useCheckoutExit((s) => s.open);
 
   useEffect(() => {
-    if (!ready || !hydrated || !onTabs || updateShowing) return;
+    if (!ready || !hydrated || !onTabs || updateShowing || exitQuestionOpen) return;
     if (usePushPrompt.getState().open) return;
     const due = pushExplainerDue({ supported, signedIn, permission, lastOfferedAt, now: Date.now() });
     if (due) usePushPrompt.getState().offer(due);
-  }, [ready, hydrated, onTabs, updateShowing, supported, signedIn, permission, lastOfferedAt]);
+  }, [ready, hydrated, onTabs, updateShowing, exitQuestionOpen, supported, signedIn, permission, lastOfferedAt]);
 
   // Signed out, or granted from the phone's settings while the sheet was up:
   // there is nothing left to ask.

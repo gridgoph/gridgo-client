@@ -16,6 +16,7 @@ jest.mock("expo-router", () => ({
     dismissTo: jest.fn(),
   }),
   useLocalSearchParams: () => ({ orderId: "ord_3ff0128e105a" }),
+  useNavigation: () => ({ addListener: () => () => undefined }),
   useFocusEffect: (effect: () => void) => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useEffect } = require("react");

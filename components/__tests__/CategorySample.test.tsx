@@ -25,6 +25,33 @@ it("labels the category row's production time in working days", async () => {
   expect(screen.queryByText(/Ready in/)).toBeNull();
 });
 
+it("tells a client every shop printing this is closed, and until when", async () => {
+  await render(
+    <CategorySampleRow
+      subcategory={subcategory("Flyers")}
+      listing={listing()}
+      hours={{ kind: "closed", label: "Closed · opens today, 8:00 AM" }}
+      onPress={() => undefined}
+    />,
+  );
+  expect(screen.getByText("Closed · opens today, 8:00 AM")).toBeTruthy();
+  expect(screen.getByLabelText(/Flyers, .*Shop closed, opens today, 8:00 AM$/)).toBeTruthy();
+});
+
+it("lays a closed-for-now pill over the sample on the wall", async () => {
+  await render(
+    <CategorySampleCard
+      subcategory={subcategory("Flyers")}
+      listing={listing()}
+      hours={{ kind: "paused", label: "Closed for now" }}
+      onPress={() => undefined}
+    />,
+  );
+  // Drawn on the photo, announced with the card rather than as a stop of its own.
+  expect(screen.getByText("Closed for now", { includeHiddenElements: true })).toBeTruthy();
+  expect(screen.getByLabelText(/Flyers, .*Shop closed for now$/)).toBeTruthy();
+});
+
 beforeEach(() => {
   usePlatformSettings.getState().reset();
   usePlatformSettings.getState().adopt(RATE_SETTINGS);

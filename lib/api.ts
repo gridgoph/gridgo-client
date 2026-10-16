@@ -6,8 +6,10 @@ import { Platform } from "react-native";
 import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
 import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
-import type { DevicePlatform } from "@/lib/push";
+import type { DevicePlatform, PushTokenProvider } from "@/lib/push";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
+import type { ArtworkColorsEntry, ColorTarget, ColorTargetInput } from "@/lib/colorTargets";
+import { readCall, readCalls, type CallIceConfig, type CallSignal, type OrderCall } from "@/lib/orderCalls";
 import { parseSeasonWindows, type SeasonWindows } from "@/lib/seasonWindows";
 
 /**
@@ -147,6 +149,82 @@ export type ProductionItem = {
   mockupFileId: string | null;
   /** Design links snapshotted at checkout; absent on an API from before them. */
   artworkLinks?: ArtworkLink[];
+  /**
+   * Every file and link on this item, in the client's order, with labels
+   * (gridgo-api#243). Absent on an API from before — read it through
+   * `lineAttachments`.
+   */
+  artworkAttachments?: ArtworkAttachment[];
+  /**
+   * The client's note for this item, masked and frozen at checkout (gridgo-api
+   * `docs/ORDER_CHANGES_API.md`). Empty when they wrote none; absent on an API
+   * from before notes.
+   */
+  specialInstructions?: string;
+  /** The latest change the client approved (and paid for) on this item. */
+  agreedChange?: { id: string; proposedSpec: string; appliedAt: string } | null;
+  /** The artwork check frozen at checkout, acceptances included; null before it. */
+  artworkGuidance?: ArtworkGuidance | null;
+  /** The layout agreed at checkout; null for a product without layouts. */
+  printLayout?: PrintLayoutCode | null;
+  /** The fit check as the client saw it at checkout. */
+  printLayoutCheck?: PrintLayoutCheck | null;  /**
+   * The client's exact colours (gridgo-api `docs/EXACT_COLOURS_API.md`):
+   * `[]` when none. Absent on an API from before them — `colorTargetsOf`.
+   */
+  colorTargets?: ColorTarget[];
+  /** The colours GRIDGO read from each uploaded file; design links have none. */
+  artworkColors?: ArtworkColorsEntry[];
+};
+
+/**
+ * A shop's formal request to change an order after it took the job
+ * (gridgo-api `docs/ORDER_CHANGES_API.md`, report F9FCD485). The client
+ * projection carries one fee-inclusive `totalMinor` and never the shop's
+ * extra or GRIDGO's fee. Statuses are open strings: `pending` (asks the
+ * client), `pending_payment` (approved, not paid), `pending_confirmation`
+ * (transfer with Operations), `applied`, `declined`, `closed`.
+ */
+export type OrderChangePayment = {
+  proofFileId: string;
+  reference: string;
+  submittedAt: string;
+  confirmedAt?: string;
+  rejectedAt?: string;
+  reason?: string;
+};
+
+export type OrderChangeRequest = {
+  id: string;
+  orderId: string;
+  lineItemId: string | null;
+  status: string;
+  version: number;
+  /** What the client pays for the change, GRIDGO's fee inside. Zero is free. */
+  totalMinor: number;
+  createdAt: string;
+  reason: string;
+  /** Masked amendment to the specification; empty on a time-only request. */
+  proposedSpec?: string | null;
+  /** The new client promise a time change would set. */
+  proposedPromiseBy?: string | null;
+  /** The note the item carried when the shop asked. */
+  originalInstructions?: string;
+  answeredAt?: string;
+  appliedAt?: string;
+  closedAt?: string;
+  closureReason?: string;
+  payment?: OrderChangePayment | null;
+  paymentHistory?: OrderChangePayment[];
+  /** Operations' reason, after a transfer they could not match. */
+  rejectionReason?: string | null;
+};
+
+/** The shop's tick that it read the notes, as the client may see it. */
+export type SpecialInstructionsAcknowledgement = {
+  at: string;
+  lines?: { lineItemId: string; text: string }[];
+  text?: string;
 };
 
 export type DropoffConfirmation =
@@ -155,6 +233,70 @@ export type DropoffConfirmation =
   | { status: "needs_review"; requestedAt: string; answeredAt: string; requestedPoint: OrderPoint };
 
 export type DropoffAnswer = { action: "confirm" } | { action: "change"; point: OrderPoint };
+
+/**
+ * The delivery pin a door-delivery order is taken to (gridgo-api
+ * `docs/DELIVERY_PIN_API.md`, report 6C8DE953). Created when production
+ * finishes; the client confirms they will be there, and may change it once
+ * before the first rider assignment. Statuses are open strings: an unknown one
+ * must never crash the order screen.
+ */
+export type DeliveryPinPoint = { lat: number; lng: number; label: string };
+
+export type DeliveryPinPayment = {
+  proofFileId: string;
+  reference: string;
+  submittedAt: string;
+  amountMinor?: number;
+  confirmedAt?: string;
+};
+
+export type DeliveryPinChange = {
+  id: string;
+  /** `pending_payment` | `pending_confirmation` | `applied`. */
+  status: string;
+  point: DeliveryPinPoint;
+  /** Zone key, as `settings.deliveryFeeBands[].zone`. */
+  zone: string;
+  distanceMeters: number;
+  deliveryFeeMinor: number;
+  /** New fee minus the order's checkout fee: positive is owed, negative is credited. */
+  feeDifferenceMinor: number;
+  createdAt: string;
+  appliedAt?: string | null;
+  /** The delivery-fee credit's refund request, on a lower fee. */
+  refundRequestId?: string | null;
+  payment?: DeliveryPinPayment | null;
+  /** Operations' reason, after a rejected surcharge proof. */
+  rejectionReason?: string | null;
+};
+
+export type DeliveryPin = {
+  version: number;
+  /** `pending` | `confirmed`. */
+  status: string;
+  requestedAt: string;
+  confirmedAt: string | null;
+  /** The pin in use now: the original, or an applied change. */
+  point: DeliveryPinPoint;
+  zone: string;
+  notes: string;
+  /** Empty means the client receives it. */
+  receiverName: string;
+  changeUsed: boolean;
+  canConfirm: boolean;
+  canChange: boolean;
+  original?: DeliveryPinPoint;
+  change?: DeliveryPinChange | null;
+};
+
+export type DeliveryPinPreview = {
+  point: DeliveryPinPoint;
+  zone: string;
+  distanceMeters: number;
+  deliveryFeeMinor: number;
+  feeDifferenceMinor: number;
+};
 
 /**
  * One print job as the client is allowed to see it.
@@ -204,6 +346,9 @@ export type Order = {
   invoiceNumber?: string | null;
   /** An approved organization's discount, already inside `totalMinor`. */
   organizationDiscountMinor?: number;
+  /** The GRIDGO-funded voucher this order used, already inside `totalMinor` (gridgo-api#204). */
+  voucher?: VoucherLine | null;
+  voucherDiscountMinor?: number;
   /** The officer of record when the order was placed. Never today's officer. */
   organizationOfficer?: OrganizationOfficerSnapshot | null;
   /** A printed-invoice request this client filed, when there is one. */
@@ -235,6 +380,12 @@ export type Order = {
    * a day after delivery, absent otherwise. Read it through `deliveryChatOf`.
    */
   deliveryChat?: DeliveryChatSummary | null;
+  /**
+   * The rider's six delivery steps, always in order (gridgo-api#217): sent on
+   * every delivery order whether or not a position is shared. Absent on an
+   * older API — read through `deliveryMilestonesOf` (`lib/tracking.ts`).
+   */
+  deliveryMilestones?: DeliveryMilestone[] | null;
   paymentMethod: string | null;
   paymentStatus: string;
   /** When the client was told a supplier accepted. Payment is gated on it. */
@@ -244,6 +395,12 @@ export type Order = {
   promisedDate: string | null;
   /** Client promise, projected by GRIDGO with the queue and working calendar. */
   promiseBy?: string | null;
+  /**
+   * Printing finished before the shop's own deadline (gridgo-api#219). Says
+   * nothing about dispatch; `readyLabel` is the API's words for it.
+   */
+  readyEarly?: boolean;
+  readyLabel?: string | null;
   /** Display string only — never file identity. See docs/STORAGE_API.md. */
   artworkName: string | null;
   /** Stored artwork ids, newest last. Empty is valid. */
@@ -264,6 +421,22 @@ export type Order = {
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
   dropoffConfirmation?: DropoffConfirmation | null;
+  /** Production-finished pin confirmation and its one change. Absent on legacy and pick-up orders. */
+  deliveryPin?: DeliveryPin | null;
+  /** The delivery fee after an applied pin change; `deliveryFeeMinor` stays the checkout figure. */
+  effectiveDeliveryFeeMinor?: number;
+  /** The checkout total plus an applied pin change's difference. */
+  effectiveTotalMinor?: number;
+  /** Every change request on this order, settled ones included. */
+  changeRequests?: OrderChangeRequest[];
+  /** A legacy order-level note, from before notes were per item. */
+  specialInstructions?: string;
+  /** Present once the shop ticked that it read the notes. */
+  specialInstructionsAcknowledgement?: SpecialInstructionsAcknowledgement | null;
+  /** What the client paid for approved changes, on top of checkout. */
+  supplementalTotalMinor?: number;
+  /** Checkout plus approved changes (an applied pin change is reported apart). */
+  totalIncludingSupplementsMinor?: number;
   /** The choice made before matching, snapshotted at checkout (gridgo-api#148). */
   requestFulfillment?: RequestFulfilment | null;
   /** A pick-up order's hub hours and fee as they stood at checkout. */
@@ -275,6 +448,12 @@ export type Order = {
    * (gridgo-api#122). `pending` from checkout until Operations passes it.
    */
   fileCheck?: OrderFileCheck | null;
+  /**
+   * When GRIDGO reviews the artwork, while that review is still pending
+   * (gridgo-api#203, `docs/OPERATING_HOURS_API.md`). Absent once the check is
+   * done, and on an order from before operating hours.
+   */
+  review?: OrderReview | null;
   /** True while a refund request is open: work and new payments are paused. */
   refundHold?: boolean;
   /** `cancelled | fulfilled_with_refund` once a refund was settled. */
@@ -401,6 +580,60 @@ export type PlatformSettings = {
   hubPickupEnabled?: boolean;
   /** The approved-organization discount on printing. Absent on an older API. */
   organizationDiscountRateBps?: number;
+  /** How often a delivery map asks for the rider's position (15–30 s). */
+  riderLocationRefreshIntervalSeconds?: number;
+  /** After this long without a fix the rider's position is out of date. */
+  riderLocationStaleAfterSeconds?: number;
+  /** GRIDGO's opening hours (gridgo-api#203). Absent on an older API. */
+  operatingHours?: OperatingHours;
+  /** Artwork targets per product type. Absent on an older API. */
+  artworkGuidance?: ArtworkGuidanceSettings;
+};
+
+/**
+ * GRIDGO's own opening hours (gridgo-api#203). Artwork is reviewed only
+ * while GRIDGO is open; Super Admin edits the week, the closures and the
+ * review time without a release. Same calendar shape as the hub's.
+ */
+export type OperatingHours = {
+  timeZone: string;
+  schedule: HubSchedule;
+  /** Working minutes an artwork review takes. */
+  artworkReviewMinutes: number;
+};
+
+/**
+ * Where artwork review stands at the moment GRIDGO answered: open now or
+ * not, and when a review started now would begin and finish. Every instant
+ * is GRIDGO's own — the phone never works these out.
+ */
+export type OperatingStatus = {
+  timeZone: string;
+  isOpenNow: boolean;
+  artworkReviewMinutes: number;
+  scheduledReviewAt: string;
+  reviewCompletesAt: string;
+  /** A closure pushes the review later than an ordinary week would. */
+  reviewDelayed: boolean;
+};
+
+/** A cart's notice while GRIDGO is closed: review timing plus the latest ready-by. */
+export type CheckoutNotice = OperatingStatus & {
+  code: "outside_operating_hours" | (string & {});
+  /** Latest group promise; null while any group cannot be estimated. */
+  readyBy: string | null;
+};
+
+/** A placed order's pending review, as the client may see it. */
+export type OrderReview = OperatingStatus & {
+  status: "waiting_for_review" | (string & {});
+  /** "Waiting for review" — GRIDGO's own words for the chip. */
+  label: string;
+  originallyScheduledReviewAt?: string | null;
+  /** `outside_operating_hours` while GRIDGO is closed, else null. */
+  outsideHoursNotice?: string | null;
+  /** The order's client promise; review delays never move it. */
+  readyBy?: string | null;
 };
 
 /** One opening window in the hub's week. Weekday 0 is Sunday. */
@@ -475,6 +708,73 @@ export type DetectedArtwork = {
   /** "A4", "Letter" — null when the size matches no name GRIDGO knows. */
   pageSize: string | null;
   orientation: "portrait" | "landscape" | "square" | null;
+  /**
+   * Every page's largest short and long side, either way round, and whether
+   * the pages differ (gridgo-api `docs/PRINT_LAYOUT_API.md`). Null when the
+   * page size is unknown; absent on an older API or an older upload.
+   */
+  pageEnvelope?: { shortSideMilli: number; longSideMilli: number; mixed: boolean } | null;
+  /**
+   * The colour mode the file names (gridgo-api `docs/ARTWORK_GUIDANCE_API.md`).
+   * Null when it states none (Word, a PDF naming no colour space); absent on
+   * an older API. Read through `colorModeLabel`.
+   */
+  colorMode?: ArtworkColorMode | null;
+};
+
+/** `mixed` is a PDF that names both RGB and CMYK colour spaces. */
+export type ArtworkColorMode = "rgb" | "cmyk" | "grayscale" | "mixed" | (string & {});
+
+/**
+ * One product type's artwork targets, which Super Admin edits
+ * (`settings.artworkGuidance`). `minimumDpi` is measured at the ordered size;
+ * null means no resolution check. `acceptsRgb: false` expects CMYK.
+ */
+export type ArtworkGuidanceRule = { minimumDpi: number | null; acceptsRgb: boolean };
+
+export type ArtworkGuidanceSettings = {
+  version: number;
+  default: ArtworkGuidanceRule;
+  /** Keyed by taxonomy subcategory code, the same as `listing.subcategoryCode`. */
+  subcategories: Record<string, ArtworkGuidanceRule>;
+};
+
+/**
+ * Something GRIDGO advises about one file. A warning never blocks: the client
+ * uploads another file or accepts it. `acceptedAt` is null until accepted.
+ * Codes are open strings — an unknown one is drawn generically.
+ */
+export type ArtworkWarning =
+  | { code: "low_resolution"; effectiveDpi: number; minimumDpi: number; acceptedAt: string | null }
+  | { code: "color_mode"; colorMode: ArtworkColorMode; expectedColorMode: ArtworkColorMode; acceptedAt: string | null };
+
+export type ArtworkGuidanceFile = {
+  fileId: string;
+  colorMode: ArtworkColorMode | null;
+  pixelWidth: number | null;
+  pixelHeight: number | null;
+  /** At the ordered size, on the limiting side; null without pixels or a size. */
+  effectiveDpi: number | null;
+  warnings: ArtworkWarning[];
+};
+
+/**
+ * GRIDGO's judgement of a line's uploaded files against its product type, at
+ * the size ordered. On a cart line it is live; on an order's production item
+ * it is the record frozen at checkout (`version`, `evaluatedAt`), and null on
+ * orders from before it.
+ */
+export type ArtworkGuidance = {
+  subcategoryCode: string | null;
+  minimumDpi: number | null;
+  acceptsRgb: boolean;
+  expectedColorMode: ArtworkColorMode | null;
+  /** Thousandths of a millimetre; null when the line names no size. */
+  orderedSize: { widthMilli: number; heightMilli: number } | null;
+  files: ArtworkGuidanceFile[];
+  openWarningCount: number;
+  version?: number;
+  evaluatedAt?: string;
 };
 
 export type StoredFile = {
@@ -504,6 +804,32 @@ export type StoredFile = {
    * has to be replaced. Absent on an older API and on non-artwork files.
    */
   artworkCheck?: ArtworkFileCheck | null;
+  /**
+   * The artwork's visual-proof picture (gridgo-api#232). Only artwork has one;
+   * absent on an older API and on every other purpose. Read through
+   * `lib/artworkPreview.ts`.
+   */
+  preview?: ArtworkFilePreview | null;
+};
+
+export type ArtworkFilePreview = {
+  /** `pending` is rendered on first read; it is not "unsupported". */
+  status: "pending" | "ready" | "failed" | "unsupported" | (string & {});
+  /** Resolver paths, not image URLs: each answers a signed `url`. */
+  downloadUrlPath?: string;
+  retryPath?: string;
+  /** A stable code; `preview_word_not_available` for every Word file. */
+  error?: string | null;
+};
+
+/** A signed link to the preview picture: PNG for a PDF's page 1, the original for an image. */
+export type ArtworkPreviewLink = {
+  fileId: string;
+  contentType: string;
+  page: number;
+  url: string;
+  expiresAt: string;
+  expiresInSeconds: number;
 };
 
 export type ArtworkFileCheck = {
@@ -522,7 +848,47 @@ export type LocationPing = {
   lat: number;
   lng: number;
   accuracy: number | null;
+  /** The phone's own GPS time for the fix, not when GRIDGO received it. */
   at: string;
+  leg?: "pickup" | "delivery" | (string & {}) | null;
+};
+
+/**
+ * `inactive` outside the sharing window (before pick-up, after delivery),
+ * `waiting` from pick-up until the first fix, `live`, and `stale` once the
+ * newest fix is older than `staleAfterSeconds`.
+ */
+export type RiderTrackingStatus = "inactive" | "waiting" | "live" | "stale" | (string & {});
+
+/** How GRIDGO judges the position it returned (gridgo-api#217). */
+export type RiderTracking = {
+  status: RiderTrackingStatus;
+  /** How often to ask again. Super Admin sets it, 15–30 seconds. */
+  refreshIntervalSeconds: number;
+  staleAfterSeconds: number;
+  settingsVersion?: number | null;
+  lastUpdatedAt: string | null;
+  /** Age of the fix when the server answered, by the server's clock. */
+  ageSeconds: number | null;
+  stale: boolean;
+  message?: string | null;
+};
+
+/** One of the rider's six delivery steps. */
+export type DeliveryMilestone = {
+  code:
+    | "rider_assigned"
+    | "heading_to_shop"
+    | "at_shop"
+    | "picked_up"
+    | "on_the_way"
+    | "arrived"
+    | (string & {});
+  label: string;
+  /** `passed`: a later step happened but this one was never recorded. */
+  status: "pending" | "completed" | "passed" | (string & {});
+  /** Null when the time is unknown — never invented. */
+  at: string | null;
 };
 
 export type Issue = {
@@ -565,6 +931,10 @@ export type Notification = {
   imageUrl?: string | null;
   read: boolean;
   at: string;
+  /** The wallet item a voucher notice is about (gridgo-api#204). */
+  voucherId?: string;
+  /** The support thread a `support_message` notice is about. Never in push data. */
+  threadId?: string;
   /** Organization reminders and notices (gridgo-client#165). */
   organizationUserId?: string;
   officerId?: string | null;
@@ -1035,11 +1405,12 @@ export async function registerDevice(
   token: string,
   platform: DevicePlatform,
   signal?: AbortSignal,
+  tokenProvider: PushTokenProvider = "fcm",
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
     signal,
-    body: JSON.stringify({ token, platform, appRole: "client" }),
+    body: JSON.stringify({ token, platform, appRole: "client", tokenProvider }),
   });
 }
 
@@ -1073,12 +1444,13 @@ export async function registerDeviceUnclaimed(
   token: string,
   platform: DevicePlatform,
   signal?: AbortSignal,
+  tokenProvider: PushTokenProvider = "fcm",
 ): Promise<void> {
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
     signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ token, platform, appRole: "client" }),
+    body: JSON.stringify({ token, platform, appRole: "client", tokenProvider }),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -1178,6 +1550,12 @@ export type ClerkActivateInput = {
   accountType?: AccountType;
   orgName?: string;
   name?: string;
+  /**
+   * The sign-up agreement, sent as `legalConsentVersion: 1` + `legalConsent`
+   * (gridgo-api `docs/LEGAL_API.md`). Omitted only against an API that has no
+   * legal library, where the fields would mean nothing.
+   */
+  legalConsent?: EnrollmentConsentBody;
 };
 
 /**
@@ -1187,10 +1565,14 @@ export type ClerkActivateInput = {
  * unmapped", not a dead session, so the probe does not fire `onUnauthorized`.
  */
 export async function activateClerkClient(input: ClerkActivateInput = {}): Promise<User> {
-  const body: Record<string, string> = {};
+  const body: Record<string, unknown> = {};
   if (input.accountType) body.accountType = input.accountType;
   if (input.orgName) body.orgName = input.orgName;
   if (input.name) body.name = input.name;
+  if (input.legalConsent) {
+    body.legalConsentVersion = LEGAL_CONSENT_VERSION;
+    body.legalConsent = input.legalConsent;
+  }
   const result = await request<{ user: User }>(
     "/auth/clerk/activate",
     { method: "POST", body: JSON.stringify(body) },
@@ -1223,6 +1605,26 @@ export type AcceptedFormat = {
 
 /** A design kept on Canva, Drive or the like instead of an uploaded file. HTTPS only. */
 export type ArtworkLink = { formatCode: string; url: string };
+
+/**
+ * One file or design link on an item (gridgo-api `docs/ORDER_MATCH_API.md`
+ * "Multiple artwork attachments"). A file read back carries a short-lived
+ * signed `downloadUrl`; it is never sent back.
+ */
+export type ArtworkAttachment =
+  | {
+      kind: "file";
+      fileId: string;
+      label?: string;
+      downloadUrl?: string;
+      downloadUrlExpiresAt?: string;
+    }
+  | { kind: "link"; formatCode: string; url: string; label?: string };
+
+/** What a write sends: the list in order, with nothing GRIDGO signed. */
+export type ArtworkAttachmentInput =
+  | { kind: "file"; fileId: string; label?: string }
+  | { kind: "link"; formatCode: string; url: string; label?: string };
 
 /**
  * What `POST /artwork/link-check` found. Advisory: `ok` is true only with real
@@ -1364,6 +1766,61 @@ export type CatalogSpeedTier = {
 };
 
 /** One listing on a shop's board. */
+/**
+ * How a document or drawing sits on the paper (gridgo-api
+ * `docs/PRINT_LAYOUT_API.md`). Open strings: a code added after this build
+ * shipped is never offered, but an order that carries one still reads.
+ */
+export type PrintLayoutCode =
+  | "fit_to_paper"
+  | "actual_size_centered"
+  | "actual_size_original_position"
+  | (string & {});
+
+/** A paper option the fit check could size. Thousandths of a millimetre. */
+export type PrintLayoutPaper = {
+  optionId: string;
+  label: string;
+  widthMilli: number;
+  heightMilli: number;
+  pageSize: string | null;
+};
+
+/** One file's first page, and the largest page in it, as GRIDGO read them. */
+export type PrintLayoutFilePage = {
+  widthMilli: number;
+  heightMilli: number;
+  pageSize: string | null;
+  orientation: "portrait" | "landscape" | "square" | null;
+  largestShortSideMilli: number;
+  largestLongSideMilli: number;
+  mixedPageSizes: boolean;
+};
+
+/** Why part of the check is missing. Codes are open strings. */
+export type PrintLayoutUnknown = {
+  code: "paper_size_unknown" | "no_artwork_file" | "page_size_unknown" | (string & {});
+  fileId?: string;
+};
+
+/**
+ * GRIDGO's fit check for one item: the paper, each file's page, whether
+ * anything is cut off and the smallest offered paper that takes it. On a cart
+ * line it is live; on an order it is the check as the client saw it at
+ * checkout. Null for a product with no layouts.
+ */
+export type PrintLayoutCheck = {
+  supportedLayouts: PrintLayoutCode[];
+  layout: PrintLayoutCode | null;
+  paper: PrintLayoutPaper | null;
+  files: { fileId: string; page: PrintLayoutFilePage | null; exceedsPaper: boolean | null }[];
+  exceedsPaper: boolean | null;
+  cutOff: boolean | null;
+  scaleChanges: boolean | null;
+  suggestedPaper: PrintLayoutPaper | null;
+  unknown: PrintLayoutUnknown[];
+};
+
 export type CatalogItem = {
   id: string;
   supplierId: string;
@@ -1408,6 +1865,12 @@ export type CatalogItem = {
    * `lib/printerWidth.ts`.
    */
   printerMaxWidthFeet?: number | null;
+  /**
+   * The layouts this shop prints this product in, in canonical order; `[]`
+   * when the product has no layout choice. Absent on an older API. Read
+   * through `offeredLayouts`.
+   */
+  printLayouts?: PrintLayoutCode[];
   priceTiers: CatalogPriceTier[];
   speedTiers: CatalogSpeedTier[];
   pricingBasis: string;
@@ -1443,6 +1906,27 @@ export type CatalogItem = {
   distanceKm?: number;
   /** Present only once the shop has five or more reviews. */
   rating?: ShopRating;
+  /**
+   * Whether the shop is open now and when it next opens (gridgo-api#219).
+   * Sent on full public listings only; read through `lib/shopHours.ts`.
+   */
+  shopHours?: ShopHours | null;
+};
+
+/**
+ * A shop's opening status as GRIDGO worked it out at read time
+ * (gridgo-api `docs/SHOP_HOURS_API.md`). Only the fields a client reads are
+ * typed; the weekly schedule also travels but is never drawn.
+ */
+export type ShopHours = {
+  isOpenNow: boolean;
+  /** Closed by the shop or GRIDGO with no reopening date: takes no new orders. */
+  temporarilyClosed: boolean;
+  /** Now while open, the next opening while closed, null while closed for now. */
+  nextOpeningAt: string | null;
+  /** False on a calendar GRIDGO cannot read: no status is known. */
+  calendarAvailable?: boolean;
+  timeZone?: string;
 };
 
 /** Where a shop is. The same point delivery distance is measured from. */
@@ -1478,6 +1962,7 @@ export type ShopSummary = {
   categories: string[];
   itemCount: number;
   queueAhead?: number | null;
+  hours?: ShopHours | null;
 };
 
 /** One shop, with every live service line and complete listing on it. */
@@ -1489,6 +1974,7 @@ export type ShopBoard = {
   categories: string[];
   services: ShopService[];
   queueAhead?: number | null;
+  hours?: ShopHours | null;
 };
 
 const CATALOG_SHOP_PAGE_CAP = 25;
@@ -1588,6 +2074,36 @@ export async function getCatalogItem(
     `/catalog/items/${encodeURIComponent(itemId)}${query}`,
   );
   return result.item;
+}
+
+/**
+ * One product GRIDGO's staff chose for the client Home's FEATURED PRINTS row
+ * (gridgo-api `docs/FEATURED_PRINTS_API.md`).
+ *
+ * An allowlist card: no shop, no shop figure, no description. The price is
+ * already GRIDGO's (`clientFromPriceMinor`, fee inside) and the photo is a
+ * signed sample link on the usual five-minute expiry.
+ */
+export type FeaturedPrint = {
+  id: string;
+  name: string;
+  categoryCode: string;
+  subcategoryCode: string;
+  clientFromPriceMinor: number;
+  pricingUnit: CatalogPricingUnit;
+  packageQty: number | null;
+  measureUnit: MeasureUnit | null;
+  minimumOrderQuantity: number | null;
+  photos: Pick<CatalogPhoto, "fileId" | "sortOrder" | "url" | "downloadUrl" | "downloadUrlExpiresAt">[];
+};
+
+/**
+ * The curated Home row, in staff order. Public and uncached on the server.
+ * The body is read through `featuredPrintsFrom` (`lib/homeSamples.ts`), so a
+ * malformed card is dropped rather than drawn.
+ */
+export async function getFeaturedPrints(): Promise<unknown> {
+  return request<unknown>("/featured-prints");
 }
 
 export async function listCatalog(): Promise<CatalogProduct[]> {
@@ -1911,6 +2427,8 @@ export type MatchedListingFields = {
   deliveryFeeMinor?: number | null;
   /** On a pick-up match: the hub fee, the same amount as `deliveryFeeMinor`. */
   pickupFeeMinor?: number | null;
+  /** When the artwork would be reviewed, already counted inside `readyBy`. */
+  review?: OperatingStatus | null;
 };
 
 /** A listing on the Top Pick's own board, as the match returns it. */
@@ -1957,6 +2475,7 @@ export type OtherListing = Pick<
   | "acceptedFormats"
   | "optionGroups"
   | "version"
+  | "shopHours"
 > &
   MatchedListingFields & { minimumTurnaroundHours?: number | null };
 
@@ -1990,6 +2509,8 @@ export type MatchResult = {
   listings: MatchListing[];
   /** Echoed when the match was asked with a fulfilment choice (gridgo-api#148). */
   requestFulfillment?: RequestFulfilment | null;
+  /** Artwork review timing behind every `readyBy` here (gridgo-api#203). */
+  operatingStatus?: OperatingStatus | null;
   /** On a pick-up match: the hub's point, hours and fee as they stand now. */
   hubPickup?: HubPickup | null;
   /** How many other shops could have printed it. */
@@ -2057,6 +2578,18 @@ export type CartQuote = {
    * (gridgo-api#155). Drawn as its own line, never subtracted again.
    */
   organizationDiscountMinor?: number;
+  /**
+   * The voucher GRIDGO picked or the client applied (gridgo-api#204). A GET
+   * previews it without holding it; `reservation` says when it is held.
+   * Null when none applies. Absent on an API from before vouchers.
+   */
+  voucher?: Voucher | null;
+  /** What the voucher takes off, already out of `totalMinor`. Zero when none. */
+  voucherDiscountMinor?: number;
+  /** Which discount won: a voucher and the organization discount never stack. */
+  discountKind?: "voucher" | "organization" | null;
+  /** Each group's share of the voucher, keyed by the group's id. */
+  voucherGroups?: { groupId: string; voucherDiscountMinor: number; totalMinor: number }[];
 };
 
 export type CartLineRecord = {
@@ -2087,6 +2620,12 @@ export type CartLineRecord = {
   mockupFileId: string | null;
   /** Design links on this line. Absent on an API from before them — see `lineArtworkLinks`. */
   artworkLinks?: ArtworkLink[];
+  /** Files and links in display order (gridgo-api#243); read through `lineAttachments`. */
+  artworkAttachments?: ArtworkAttachment[];
+  /** The first ready image or PDF among them: the preview's source. */
+  artworkPreviewFileId?: string | null;
+  /** The client's note for this item, as GRIDGO stored it (contacts masked). */
+  specialInstructions?: string;
   /** This line's own drop-off, for a run split across several addresses. */
   dropoff: OrderPoint | null;
   sortOrder: number;
@@ -2095,6 +2634,18 @@ export type CartLineRecord = {
   lineSubtotalMinor: number | null;
   /** GRIDGO amount for `lineSubtotalMinor` (shop + live service fee). */
   clientLineSubtotalMinor?: number | null;
+  /** Resolution and colour against this product type, at the ordered size. */
+  artworkGuidance?: ArtworkGuidance | null;
+  /** The client's layout; null until chosen. Absent on an older API. */
+  printLayout?: PrintLayoutCode | null;
+  /** GRIDGO's live fit check; null for a product without layouts. */
+  printLayoutCheck?: PrintLayoutCheck | null;  /**
+   * The client's exact colours (gridgo-api `docs/EXACT_COLOURS_API.md`):
+   * `[]` when none. Absent on an API from before them — `colorTargetsOf`.
+   */
+  colorTargets?: ColorTarget[];
+  /** The colours GRIDGO read from each uploaded file; design links have none. */
+  artworkColors?: ArtworkColorsEntry[];
 };
 
 /**
@@ -2122,6 +2673,10 @@ export type CartGroup = {
   pickupFeeMinor?: number;
   /** This group's own organization discount, already out of `totalMinor` (#166). */
   organizationDiscountMinor?: number;
+  /** This group's share of the voucher, already out of `totalMinor` (gridgo-api#204). */
+  voucherDiscountMinor?: number;
+  /** The group's client promise; null when GRIDGO cannot estimate it yet. */
+  readyBy?: string | null;
 };
 
 export type Cart = {
@@ -2144,6 +2699,10 @@ export type Cart = {
   hubPickup?: HubPickup | null;
   /** GRIDGO's figures for this draft. Null once checked out; absent on an older API. */
   clientQuote?: CartQuote | null;
+  /** Artwork review timing right now (gridgo-api#203). */
+  operatingStatus?: OperatingStatus | null;
+  /** Set while GRIDGO is closed: when review happens and the estimate. Null while open. */
+  checkoutNotice?: CheckoutNotice | null;
   lines: CartLineRecord[];
   /**
    * One per shop and date, in the order they were first added
@@ -2247,6 +2806,9 @@ export type InvoiceLine = {
   artworkFileId: string | null;
   mockupFileId: string | null;
   artworkLinks?: ArtworkLink[];
+  artworkAttachments?: ArtworkAttachment[];
+  /** The agreed layout; null for a product without layouts. */
+  printLayout?: PrintLayoutCode | null;
   dropoff: OrderPoint | null;
 };
 
@@ -2263,6 +2825,8 @@ export type InvoiceGroup = {
   pickupFeeMinor?: number;
   /** This group's own organization discount, already out of `totalMinor` (#166). */
   organizationDiscountMinor?: number;
+  /** This group's share of the voucher, already out of `totalMinor` (gridgo-api#204). */
+  voucherDiscountMinor?: number;
 };
 
 export type Invoice = {
@@ -2296,6 +2860,9 @@ export type Invoice = {
   };
   /** An approved organization's discount, already inside `totalMinor`. */
   organizationDiscountMinor?: number;
+  /** The voucher line, already inside `totalMinor` (gridgo-api#204). */
+  voucher?: VoucherLine | null;
+  voucherDiscountMinor?: number;
   /** The officer of record when the order was placed (gridgo-client#164). */
   organizationOfficer?: OrganizationOfficerSnapshot | null;
 };
@@ -2447,6 +3014,34 @@ export async function matchNextShop(
   });
 }
 
+/** Why a shop group has nothing more to offer. Open: a newer reason must not crash. */
+export type CartGroupEmptyReason = "no_orderable_listings" | "deadline_not_met" | (string & {});
+
+/**
+ * What one shop group of the basket can still take (gridgo-api#244), for
+ * "Add more from Shop A". The same anonymous card as another shop's listing on
+ * the match — no shop, no address, no ids that say whose — and no
+ * `selectToken`: a pick is matched to the group to get one.
+ */
+export type CartGroupListings = {
+  groupId: string;
+  /** GRIDGO's label for the group, the same as the basket's ("Shop A"). */
+  label: string;
+  deadline: string | null;
+  listings: OtherListing[];
+  /** Null whenever `listings` has something in it. */
+  emptyReason: CartGroupEmptyReason | null;
+};
+
+export async function getCartGroupListings(
+  cartId: string,
+  groupId: string,
+): Promise<CartGroupListings> {
+  return request<CartGroupListings>(
+    `/me/carts/${encodeURIComponent(cartId)}/groups/${encodeURIComponent(groupId)}/listings`,
+  );
+}
+
 export type CartFulfilment = {
   fulfillmentMode?: FulfilmentMode;
   serviceLevel?: ServiceLevel;
@@ -2515,6 +3110,12 @@ export async function addCartLine(
     artworkFileId?: string | null;
     /** Replaces the line's links; `[]` clears them. Omit to keep them. */
     artworkLinks?: ArtworkLink[];
+    /** Up to 300 characters; GRIDGO masks contact details before saving. */
+    specialInstructions?: string;
+    /** Only for a listing that offers layouts; GRIDGO refuses it on any other. */
+    printLayout?: PrintLayoutCode | null;
+    /** Up to eight exact colours; omit when the client named none. */
+    colorTargets?: ColorTargetInput[];
     dropoff?: OrderPoint | null;
   },
 ): Promise<Cart> {
@@ -2537,6 +3138,17 @@ export async function updateCartLine(
     artworkFileId?: string | null;
     /** Replaces the line's links; `[]` clears them. Omit to keep them. */
     artworkLinks?: ArtworkLink[];
+    /**
+     * Replaces every file and link, in this order (at most 10). Never sent
+     * with `artworkFileId` or `artworkLinks`: GRIDGO refuses the mix.
+     */
+    artworkAttachments?: ArtworkAttachmentInput[];
+    /** Empty clears the note; omit to keep it. */
+    specialInstructions?: string;
+    /** A layout the listing offers, or null to clear it; omit to keep it. */
+    printLayout?: PrintLayoutCode | null;
+    /** Replaces the whole list; `[]` clears it; omit to keep it. */
+    colorTargets?: ColorTargetInput[] | null;
     dropoff?: OrderPoint | null;
     /**
      * Move this product to another date (gridgo-client#189). GRIDGO rechecks
@@ -2550,6 +3162,26 @@ export async function updateCartLine(
     { method: "PATCH", body: JSON.stringify(input) },
   );
   return result.cart;
+}
+
+/**
+ * GRIDGO's fit check for a configuration not saved yet (gridgo-api
+ * `docs/PRINT_LAYOUT_API.md`): the same object a cart line carries, for the
+ * options on screen. Read-only. Null for a product without layouts.
+ */
+export async function getPrintLayoutCheck(input: {
+  catalogItemId: string;
+  optionIds: string[];
+  /** The client's own ready artwork, at most ten. */
+  fileIds: string[];
+  layout?: PrintLayoutCode | null;
+}): Promise<PrintLayoutCheck | null> {
+  const query = new URLSearchParams({ catalogItemId: input.catalogItemId });
+  if (input.optionIds.length) query.set("optionIds", input.optionIds.join(","));
+  if (input.fileIds.length) query.set("fileIds", input.fileIds.slice(0, 10).join(","));
+  if (input.layout) query.set("layout", input.layout);
+  const result = await request<{ check: PrintLayoutCheck | null }>(`/me/print-layout-check?${query}`);
+  return result.check ?? null;
 }
 
 /**
@@ -2570,6 +3202,24 @@ export type DeadlineDay = {
    * Never a count. A client is not told how many shops print something.
    */
   state: "cannot" | "tight" | "open";
+  /**
+   * Why a `cannot` day cannot (gridgo-api#203): review, printing and delivery
+   * run past it, or nobody offers this at all. Null when reachable; absent on
+   * an older API.
+   */
+  reason?: DeadlineDayReason | null;
+};
+
+export type DeadlineDayReason =
+  | "review_production_delivery_exceeds_deadline"
+  | "no_eligible_listing"
+  | (string & {});
+
+export type DeadlineDays = {
+  days: DeadlineDay[];
+  earliest: string | null;
+  /** Artwork review timing the days were counted from. */
+  operatingStatus?: OperatingStatus | null;
 };
 
 /**
@@ -2584,9 +3234,9 @@ export async function deadlineDays(
   // and a shorter window reads to a client as GRIDGO refusing the date rather
   // than the calendar simply stopping.
   days = 120,
-): Promise<{ days: DeadlineDay[]; earliest: string | null }> {
+): Promise<DeadlineDays> {
   const query = `?subcategoryCode=${encodeURIComponent(subcategoryCode)}&days=${days}`;
-  return request<{ days: DeadlineDay[]; earliest: string | null }>(`/me/deadline-days${query}`);
+  return request<DeadlineDays>(`/me/deadline-days${query}`);
 }
 
 /**
@@ -2617,6 +3267,23 @@ export async function removeCartLine(cartId: string, lineId: string): Promise<Ca
   return result.cart;
 }
 
+/**
+ * Accept artwork warnings on a line. Replaces the line's acceptances, so send
+ * every one the client keeps; `[]` withdraws them all. `409
+ * artwork_warning_not_found` means the line changed: re-read it.
+ */
+export async function acceptArtworkWarnings(
+  cartId: string,
+  lineId: string,
+  accept: { fileId: string; code: string }[],
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/lines/${encodeURIComponent(lineId)}/artwork-warnings`,
+    { method: "PUT", body: JSON.stringify({ accept }) },
+  );
+  return result.cart;
+}
+
 /** Bind a stored `mockup` file to a basket line. */
 export async function setCartLineMockup(
   cartId: string,
@@ -2640,10 +3307,18 @@ export async function setCartLineMockup(
 export async function checkoutCart(
   cartId: string,
   payment: { reference: string; proofFileId: string },
+  artworkRights?: ArtworkRightsBody | null,
 ): Promise<{ order: MatchedOrder; invoice: Invoice; basket?: Basket }> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
     method: "POST",
-    body: JSON.stringify({ payment: { method: "qr_manual", ...payment } }),
+    body: JSON.stringify({
+      payment: { method: "qr_manual", ...payment },
+      // GRIDGO records the rights statement against every order the basket
+      // becomes, so it rides on checkout rather than on the upload.
+      ...(artworkRights
+        ? { legalConsentVersion: LEGAL_CONSENT_VERSION, artworkRights }
+        : {}),
+    }),
   });
 }
 
@@ -2709,6 +3384,216 @@ export async function requestPhysicalInvoice(
     { method: "POST", body: JSON.stringify(draft) },
   );
   return result.request;
+}
+
+// ---------------------------------------------------------------------------
+// Vouchers — see docs/VOUCHERS_API.md in gridgo-api (gridgo-api#204)
+// ---------------------------------------------------------------------------
+
+export type VoucherStatus = "available" | "used" | "expired" | "void" | (string & {});
+
+/**
+ * One wallet item. GRIDGO pays for it: it is never cash and never someone
+ * else's. `redeemable` is false while it is held for an order (`reservation`)
+ * or its offer is paused — it still sits under Available.
+ */
+export type Voucher = {
+  id: string;
+  campaignId: string;
+  name: string | null;
+  valueMinor: number;
+  status: VoucherStatus;
+  issuedAt: string;
+  expiresAt: string;
+  secondsRemaining: number;
+  redeemable: boolean;
+  reservation: { id: string; cartId: string; expiresAt: string } | null;
+  fundedBy: "GRIDGO" | (string & {});
+  transferable: false;
+  cashValue: false;
+  /**
+   * The voucher's own code, private to its holder. Only a survey reward
+   * carries one (gridgo-api `docs/SURVEY_API.md`); typing it elsewhere finds
+   * this same voucher and never makes another.
+   */
+  code?: string | null;
+};
+
+/** The voucher as an order or invoice snapshotted it. */
+export type VoucherLine = {
+  id: string;
+  campaignId?: string;
+  label?: string;
+  fundedBy?: string;
+  amountMinor: number;
+};
+
+export type VoucherTab = "available" | "used" | "expired" | "all";
+
+export type VoucherList = { serverTime: string; vouchers: Voucher[] };
+
+/** `GET /me/vouchers?tab=` — Expired also carries void items. */
+export async function listVouchers(tab: VoucherTab = "all"): Promise<VoucherList> {
+  return request<VoucherList>(`/me/vouchers?tab=${encodeURIComponent(tab)}`);
+}
+
+/**
+ * `POST /me/vouchers/code` — claims a shared code. Idempotent: a code already
+ * claimed answers with the same wallet item and `issued: false`.
+ */
+export async function addVoucherCode(code: string): Promise<{ voucher: Voucher; issued: boolean }> {
+  return request(`/me/vouchers/code`, { method: "POST", body: JSON.stringify({ code }) });
+}
+
+export type CartVoucherResult = { cart: Cart; serverTime: string };
+
+/** `GET /me/carts/:id/voucher` — the quote with GRIDGO's automatic pick. Holds nothing. */
+export async function getCartVoucher(cartId: string): Promise<CartVoucherResult> {
+  return request(`/me/carts/${encodeURIComponent(cartId)}/voucher`);
+}
+
+/** `POST /me/carts/:id/voucher` — applies a wallet voucher or a code, and holds it for 30 minutes. */
+export async function applyCartVoucher(
+  cartId: string,
+  input: { voucherId: string } | { code: string },
+): Promise<CartVoucherResult> {
+  return request(`/me/carts/${encodeURIComponent(cartId)}/voucher`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** `DELETE /me/carts/:id/voucher` — takes it off and stops GRIDGO picking it again for this basket. */
+export async function removeCartVoucher(cartId: string): Promise<CartVoucherResult> {
+  return request(`/me/carts/${encodeURIComponent(cartId)}/voucher`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Post-order survey — see docs/SURVEY_API.md in gridgo-api (report 81CA4493)
+// ---------------------------------------------------------------------------
+
+export type SurveyFulfillmentKind = "delivery" | "pickup";
+export type SurveyStatus = "open" | "expired" | "submitted" | (string & {});
+
+/** The allowlisted codes GRIDGO accepts. Labels are the app's (`lib/survey.ts`). */
+export type SurveyOptions = {
+  fulfillmentTags: Record<SurveyFulfillmentKind, string[]>;
+  easeTags: string[];
+  priceFeeling: string[];
+  /** The pricing questions (gridgo-api `docs/PRICING_FEEDBACK_API.md`). Absent from an older API. */
+  directShopComparison?: string[];
+  priceWorthTags?: string[];
+  orderAgainAtPrice?: string[];
+};
+
+export type SurveyAnswers = {
+  fulfillmentStars: number;
+  fulfillmentTags: string[];
+  easeStars: number;
+  easeTags: string[];
+  /** 1–5: very cheap, cheap, fair, expensive, very expensive. */
+  priceFeeling: number;
+  expectedPriceMinor: number | null;
+  /** The three optional pricing questions. Never counted towards the voucher. */
+  directShopComparison: string | null;
+  /** Choose any; `not_worth_it` is only ever sent alone. */
+  priceWorthTags: string[];
+  orderAgainAtPrice: string | null;
+  qualityStars: number | null;
+  recommendScore: number | null;
+  improvementNote: string | null;
+};
+
+export type OrderSurvey = {
+  orderId: string;
+  status: SurveyStatus;
+  fulfillmentKind: SurveyFulfillmentKind;
+  openedAt: string;
+  expiresAt: string;
+  dismissedAt: string | null;
+  submittedAt: string | null;
+  answers: SurveyAnswers | null;
+  needsFollowUp: boolean;
+  rewardStatus: "issued" | "cooldown" | (string & {}) | null;
+  reward: Voucher | null;
+  /** A preview, not a reservation: another order's survey can use it first. */
+  rewardEligible: boolean;
+  nextRewardAt: string | null;
+  /** Only for a low star score while the issue window is open; re-read every time. */
+  reportProblem: { label: string; path: string; method: string } | null;
+};
+
+export type OrderSurveyRead = { serverTime: string; options?: SurveyOptions; survey: OrderSurvey | null };
+
+/** `GET /orders/:id/survey` — null when the order has no survey. */
+export async function getOrderSurvey(orderId: string): Promise<OrderSurveyRead> {
+  return request(`/orders/${encodeURIComponent(orderId)}/survey`);
+}
+
+/** `POST /orders/:id/survey/dismiss` — hides the automatic prompt; idempotent, answers stay possible. */
+export async function dismissOrderSurvey(orderId: string): Promise<OrderSurveyRead> {
+  return request(`/orders/${encodeURIComponent(orderId)}/survey/dismiss`, { method: "POST" });
+}
+
+/** `POST /orders/:id/survey` — the one final submission. A replay returns the original. */
+export async function submitOrderSurvey(orderId: string, answers: SurveyAnswers): Promise<OrderSurveyRead> {
+  return request(`/orders/${encodeURIComponent(orderId)}/survey`, {
+    method: "POST",
+    body: JSON.stringify(answers),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Checkout exit question — see docs/PRICING_FEEDBACK_API.md in gridgo-api
+// ---------------------------------------------------------------------------
+
+/**
+ * `POST /me/carts/:id/checkout-visit` — tells GRIDGO checkout was reached.
+ * Callers fire and forget: it never blocks or changes checkout.
+ */
+export async function recordCheckoutVisit(cartId: string): Promise<void> {
+  await request(`/me/carts/${encodeURIComponent(cartId)}/checkout-visit`, { method: "POST" });
+}
+
+export type CheckoutExitOption = { code: string; label: string };
+
+export type CheckoutExitPrompt = {
+  id: string;
+  question: string;
+  status: "unanswered" | "answered" | "skipped" | (string & {});
+  reachedAt: string;
+  askedAt: string;
+  answeredAt: string | null;
+  skippedAt: string | null;
+  reason: string | null;
+  otherText: string | null;
+};
+
+export type CheckoutExitPromptRead = {
+  serverTime: string;
+  question?: string;
+  options?: CheckoutExitOption[];
+  /** Null when nothing is due. A prompt returned here is never returned again. */
+  prompt: CheckoutExitPrompt | null;
+  nextEligibleAt?: string | null;
+};
+
+/** `POST /me/checkout-exit-feedback/prompt` — claims the question when it is due. */
+export async function claimCheckoutExitPrompt(): Promise<CheckoutExitPromptRead> {
+  return request("/me/checkout-exit-feedback/prompt", { method: "POST" });
+}
+
+export type CheckoutExitAnswer = { reason: string; otherText?: string } | { skip: true };
+
+/** `POST /me/checkout-exit-feedback/:id` — the first answer or skip is final. */
+export async function answerCheckoutExitPrompt(
+  promptId: string,
+  answer: CheckoutExitAnswer,
+): Promise<{ serverTime: string; prompt: CheckoutExitPrompt }> {
+  return request(`/me/checkout-exit-feedback/${encodeURIComponent(promptId)}`, {
+    method: "POST",
+    body: JSON.stringify(answer),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2844,10 +3729,16 @@ export function uploadFile(
 export async function attachFileToOrder(
   fileId: string,
   orderId: string,
+  artworkRights?: ArtworkRightsBody | null,
 ): Promise<{ file: StoredFile; order: Order }> {
   return request(`/files/${fileId}/attach`, {
     method: "POST",
-    body: JSON.stringify({ orderId }),
+    body: JSON.stringify({
+      orderId,
+      ...(artworkRights
+        ? { legalConsentVersion: LEGAL_CONSENT_VERSION, artworkRights }
+        : {}),
+    }),
   });
 }
 
@@ -2859,6 +3750,38 @@ export async function getFileDownloadUrl(
   fileId: string,
 ): Promise<{ fileId: string; url: string; expiresAt: string; expiresInSeconds: number }> {
   return request(`/files/${fileId}/download-url`);
+}
+
+/**
+ * Resolve the artwork's preview picture, rendering it first if GRIDGO has not
+ * yet (`GET /files/:fileId/preview-url`). `path` is the file's own
+ * `preview.downloadUrlPath` when it sent one.
+ */
+export async function getFilePreviewUrl(fileId: string, path?: string | null): Promise<ArtworkPreviewLink> {
+  return request(path || `/files/${encodeURIComponent(fileId)}/preview-url`);
+}
+
+/**
+ * Retry a failed preview (`POST /files/:fileId/preview`). Refused with
+ * `429` inside the 30-second cooldown and `503 preview_busy` while another
+ * file renders.
+ */
+export async function retryFilePreview(fileId: string, path?: string | null): Promise<ArtworkPreviewLink> {
+  return request(path || `/files/${encodeURIComponent(fileId)}/preview`, { method: "POST", body: "{}" });
+}
+
+/**
+ * Tell GRIDGO the phone could not draw a signed preview: storage reads go
+ * straight to MinIO, so the API never sees that failure otherwise. Codes only.
+ */
+export async function reportFilePreviewFailure(
+  fileId: string,
+  reason: "image_load_failed" | "download_failed",
+): Promise<void> {
+  await request(`/files/${encodeURIComponent(fileId)}/preview-failure`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export async function getFile(fileId: string): Promise<StoredFile> {
@@ -3156,10 +4079,18 @@ export async function refundReschedule(
 // Tracking and issues
 // ---------------------------------------------------------------------------
 
-/** Newest visible rider position. `null` also covers a rider outside the client reveal distance. */
-export async function getRiderLocation(orderId: string): Promise<LocationPing | null> {
-  const result = await request<{ ping: LocationPing | null }>(`/dispatch/${orderId}/location`);
-  return result.ping;
+/**
+ * The rider's newest position the client may see, and GRIDGO's judgement of
+ * it. `ping` is null before pick-up and after delivery; `tracking` is null on
+ * an API from before gridgo-api#217.
+ */
+export async function getRiderTracking(
+  orderId: string,
+): Promise<{ ping: LocationPing | null; tracking: RiderTracking | null }> {
+  const result = await request<{ ping: LocationPing | null; tracking?: RiderTracking | null }>(
+    `/dispatch/${encodeURIComponent(orderId)}/location`,
+  );
+  return { ping: result.ping ?? null, tracking: result.tracking ?? null };
 }
 
 /** The conversation with this order's rider (`lib/deliveryChat.ts`). */
@@ -3182,6 +4113,94 @@ export async function sendDeliveryMessage(
       ...(options?.attachmentFileIds?.length ? { attachmentFileIds: options.attachmentFileIds } : {}),
     }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Voice calls with the rider (`lib/orderCalls.ts`, gridgo-api `docs/CALLS_API.md`)
+// ---------------------------------------------------------------------------
+
+function callsPath(orderId: string, callId?: string, action?: string): string {
+  return `/orders/${encodeURIComponent(orderId)}/calls${callId ? `/${encodeURIComponent(callId)}` : ""}${action ? `/${action}` : ""}`;
+}
+
+function requireCall(raw: { call?: unknown }): OrderCall {
+  const call = readCall(raw?.call);
+  if (!call) throw new ApiError(502, { error: "invalid_call_response" });
+  return call;
+}
+
+/** This phone's calls on the order, live first then newest. */
+export async function listOrderCalls(orderId: string): Promise<OrderCall[]> {
+  const result = await request<{ calls?: unknown }>(callsPath(orderId));
+  return readCalls(result?.calls);
+}
+
+/** Start ringing the rider. `409 call_already_active` means a call is already live. */
+export async function startOrderCall(orderId: string): Promise<OrderCall> {
+  return requireCall(
+    await request<{ call?: unknown }>(callsPath(orderId), {
+      method: "POST",
+      body: JSON.stringify({ pair: "delivery" }),
+    }),
+  );
+}
+
+export async function getOrderCall(orderId: string, callId: string): Promise<OrderCall> {
+  return requireCall(await request<{ call?: unknown }>(callsPath(orderId, callId)));
+}
+
+export type OrderCallAction = "accept" | "decline" | "cancel" | "end" | "heartbeat";
+
+export async function actOnOrderCall(
+  orderId: string,
+  callId: string,
+  action: OrderCallAction,
+): Promise<OrderCall> {
+  return requireCall(
+    await request<{ call?: unknown }>(callsPath(orderId, callId, action), {
+      method: "POST",
+      body: "{}",
+    }),
+  );
+}
+
+/** Fresh STUN/TURN servers for this call. Never reused for another. */
+export async function getOrderCallIce(orderId: string, callId: string): Promise<CallIceConfig> {
+  const result = await request<Partial<CallIceConfig>>(callsPath(orderId, callId, "ice"));
+  return {
+    iceServers: Array.isArray(result?.iceServers) ? result.iceServers : [],
+    expiresAt: typeof result?.expiresAt === "string" ? result.expiresAt : null,
+    relayAvailable: result?.relayAvailable === true,
+  };
+}
+
+export type OutgoingCallSignal =
+  | { clientId: string; kind: "offer" | "answer"; sdp: string }
+  | { clientId: string; kind: "ice"; candidate: string; sdpMid: string | null; sdpMLineIndex: number | null };
+
+export async function sendOrderCallSignal(
+  orderId: string,
+  callId: string,
+  signal: OutgoingCallSignal,
+): Promise<{ id: number }> {
+  return request(callsPath(orderId, callId, "signals"), {
+    method: "POST",
+    body: JSON.stringify(signal),
+  });
+}
+
+/** The other side's signals after `after`, with the call's current state. */
+export async function listOrderCallSignals(
+  orderId: string,
+  callId: string,
+  after: number,
+): Promise<{ signals: CallSignal[]; cursor: number; call: OrderCall | null }> {
+  const result = await request<{ signals?: unknown; cursor?: unknown; call?: unknown }>(
+    `${callsPath(orderId, callId, "signals")}?after=${after}`,
+  );
+  const signals = Array.isArray(result?.signals) ? (result.signals as CallSignal[]) : [];
+  const cursor = typeof result?.cursor === "number" ? result.cursor : after;
+  return { signals, cursor, call: readCall(result?.call) };
 }
 
 /** Report a material issue while the order's issue window is open. */
@@ -3604,14 +4623,233 @@ export async function statementExportRequest(
   return { url: `${getApiBase()}${statementQuery(period, format)}`, headers };
 }
 
-export function requestAccountDeletion(): Promise<{ ok: true; message: string }> {
-  return request('/me/account-deletion-request', { method: 'POST', body: JSON.stringify({ confirmed: true }) });
-}
-
 export async function answerDropoffConfirmation(orderId: string, answer: DropoffAnswer): Promise<DropoffConfirmation> {
   const result = await request<{ confirmation: DropoffConfirmation }>(
     `/orders/${encodeURIComponent(orderId)}/dropoff-confirmation`,
     { method: "POST", body: JSON.stringify(answer) },
   );
   return result.confirmation;
+}
+
+const pinPath = (orderId: string, action?: string) =>
+  `/orders/${encodeURIComponent(orderId)}/delivery-pin${action ? `/${action}` : ""}`;
+
+/** Price a new pin before saving it. Read-only: it reserves nothing. */
+export async function previewDeliveryPin(orderId: string, point: DeliveryPinPoint): Promise<DeliveryPinPreview> {
+  const result = await request<{ preview: DeliveryPinPreview }>(pinPath(orderId, "preview"), {
+    method: "POST",
+    body: JSON.stringify({ point }),
+  });
+  return result.preview;
+}
+
+/** Confirm presence at the pin in use, optionally with notes and a receiver. */
+export async function confirmDeliveryPin(
+  orderId: string,
+  input: { expectedVersion: number; notes?: string; receiverName?: string },
+  idempotencyKey: string,
+): Promise<DeliveryPin> {
+  const result = await request<{ deliveryPin: DeliveryPin }>(pinPath(orderId, "confirm"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.deliveryPin;
+}
+
+/** The one change, at the exact previewed difference. A positive one waits for payment. */
+export async function changeDeliveryPin(
+  orderId: string,
+  input: {
+    expectedVersion: number;
+    point: DeliveryPinPoint;
+    notes: string;
+    receiverName: string;
+    feeDifferenceMinor: number;
+    acknowledgeOneChange: true;
+  },
+  idempotencyKey: string,
+): Promise<DeliveryPin> {
+  const result = await request<{ deliveryPin: DeliveryPin }>(pinPath(orderId, "change"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.deliveryPin;
+}
+
+/** Hand over the QR transfer for a higher-fee pin. Operations still has to confirm it. */
+export async function submitDeliveryPinPayment(
+  orderId: string,
+  input: { expectedVersion: number; proofFileId: string; reference: string },
+  idempotencyKey: string,
+): Promise<DeliveryPin> {
+  const result = await request<{ deliveryPin: DeliveryPin }>(pinPath(orderId, "payment"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.deliveryPin;
+}
+
+const changePath = (orderId: string, changeId: string, action: string) =>
+  `/orders/${encodeURIComponent(orderId)}/change-requests/${encodeURIComponent(changeId)}/${action}`;
+
+/** Approve or decline a shop's change. A priced approval still has to be paid. */
+export async function answerOrderChange(
+  orderId: string,
+  changeId: string,
+  input: { expectedVersion: number; answer: "accept" | "decline" },
+  idempotencyKey: string,
+): Promise<OrderChangeRequest> {
+  const result = await request<{ changeRequest: OrderChangeRequest }>(changePath(orderId, changeId, "answer"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.changeRequest;
+}
+
+/** Hand over the QR top-up for an approved change. Operations still has to confirm it. */
+export async function submitOrderChangePayment(
+  orderId: string,
+  changeId: string,
+  input: { expectedVersion: number; proofFileId: string; reference: string },
+  idempotencyKey: string,
+): Promise<OrderChangeRequest> {
+  const result = await request<{ changeRequest: OrderChangeRequest }>(changePath(orderId, changeId, "payment"), {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+  return result.changeRequest;
+}
+
+// ---------------------------------------------------------------------------
+// Legal documents, consent and privacy requests
+//
+// `docs/LEGAL_API.md` in gridgo-api is the contract. The library is public:
+// sign-up reads it before an account exists. Every acceptance carries the
+// exact version IDs read here, never a hard-coded "version 1".
+// ---------------------------------------------------------------------------
+
+/** The consent protocol this build speaks. Any other value is refused. */
+export const LEGAL_CONSENT_VERSION = 1;
+
+export type LegalAudience = "all" | "client" | "supplier" | "rider" | "staff";
+
+export type LegalVersion = {
+  /** Opaque version ID — what an acceptance names. */
+  id: string;
+  /** The stable slot, e.g. `terms-of-service`. */
+  documentId: string;
+  version: number;
+  title: string;
+  audience: LegalAudience | string;
+  /** Plain text. Never rendered as HTML. */
+  text: string;
+  pdfFileId?: string | null;
+  pdfUrl?: string | null;
+  effectiveAt: string;
+  publishedAt?: string | null;
+  placeholder: boolean;
+  material: boolean;
+  penalties?: boolean;
+  changeSummary?: string | null;
+  status: "placeholder" | "live" | string;
+};
+
+export type LegalPending = {
+  blocking: boolean;
+  pending: LegalVersion[];
+  notices: LegalVersion[];
+};
+
+/** Who is agreeing from where: caller-reported, never a hardware identity. */
+export type LegalAcceptanceContext = { app: string; device: string };
+
+export type EnrollmentConsentBody = LegalAcceptanceContext & {
+  accepted: true;
+  versionIds: string[];
+  method: "checkbox";
+  junior: boolean;
+  guardian?: boolean;
+  marketing: boolean;
+};
+
+export type ArtworkRightsBody = LegalAcceptanceContext & {
+  accepted: true;
+  versionIds: string[];
+  method: "checkbox";
+};
+
+export async function listLegalDocuments(
+  audience: LegalAudience = "client",
+): Promise<LegalVersion[]> {
+  const result = await request<{ documents: LegalVersion[] }>(
+    `/legal/documents?audience=${encodeURIComponent(audience)}`,
+  );
+  return result.documents ?? [];
+}
+
+export async function getLegalVersion(versionId: string): Promise<LegalVersion> {
+  const result = await request<{ document: LegalVersion }>(
+    `/legal/versions/${encodeURIComponent(versionId)}`,
+  );
+  return result.document;
+}
+
+export function getLegalVersionPdf(
+  versionId: string,
+): Promise<{ url: string; expiresAt: string; expiresInSeconds: number }> {
+  return request(`/legal/versions/${encodeURIComponent(versionId)}/pdf`);
+}
+
+export function getLegalPending(): Promise<LegalPending> {
+  return request<LegalPending>("/me/legal/pending");
+}
+
+export function acceptLegalVersions(
+  versionIds: string[],
+  context: LegalAcceptanceContext,
+): Promise<LegalPending & { recorded: number }> {
+  return request("/me/legal/accept", {
+    method: "POST",
+    body: JSON.stringify({
+      accepted: true,
+      versionIds,
+      method: "blocking_screen",
+      ...context,
+    }),
+  });
+}
+
+export type PrivacyRequestKind = "access" | "correction" | "deletion";
+
+export type PrivacyRequest = {
+  id: string;
+  kind: PrivacyRequestKind | string;
+  status: "pending" | "in_progress" | "completed" | "rejected" | string;
+  details?: string | null;
+  resolution?: string | null;
+  requestedAt: string;
+  dueAt: string;
+  updatedAt?: string | null;
+};
+
+export async function createPrivacyRequest(
+  kind: PrivacyRequestKind,
+  details?: string,
+): Promise<PrivacyRequest> {
+  const trimmed = details?.trim();
+  const result = await request<{ request: PrivacyRequest }>("/me/privacy-requests", {
+    method: "POST",
+    body: JSON.stringify({ kind, confirmed: true, ...(trimmed ? { details: trimmed } : {}) }),
+  });
+  return result.request;
+}
+
+export async function listPrivacyRequests(): Promise<PrivacyRequest[]> {
+  const result = await request<{ requests: PrivacyRequest[] }>("/me/privacy-requests");
+  return result.requests ?? [];
 }

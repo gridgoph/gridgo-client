@@ -36,7 +36,7 @@ export type ListingSelection = Record<string, string>;
  * SamplePhoto yields an empty crop-mark plate.
  */
 export function samplePhotoUri(
-  photo: CatalogPhoto | null | undefined,
+  photo: Partial<CatalogPhoto> | null | undefined,
 ): string | null {
   return photo?.downloadUrl ?? null;
 }
@@ -404,7 +404,7 @@ export function fileMatchesFormats(
 }
 
 /** Word files are held to their own, smaller limit (gridgo-api#198). */
-function isWordFormat(format: AcceptedFormat): boolean {
+export function isWordFormat(format: AcceptedFormat): boolean {
   return format.code === "docx" || format.mimeTypes.includes(DOCX_CONTENT_TYPE);
 }
 

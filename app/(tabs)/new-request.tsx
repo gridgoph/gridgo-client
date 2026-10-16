@@ -22,6 +22,9 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import { useArtworkUpload } from "@/hooks/useArtworkUpload";
+import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
+import { artworkRightsPayload, useArtworkRights } from "@/store/artworkRights";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -79,6 +82,9 @@ import { usePlatformSettings } from "@/store/platformSettings";
  * The screen carries exactly one yellow control, and it is always the thing to
  * do next — pick a file on the artwork step, continue everywhere else.
  */
+/** The stepper's job does not exist until Send, so its box is held by the draft. */
+const STEPPER_RIGHTS_SCOPE = "request:stepper";
+
 export default function NewRequestScreen() {
   const router = useRouter();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
@@ -202,6 +208,10 @@ export default function NewRequestScreen() {
       setBlockReason(result.reason);
       return;
     }
+    if (!useArtworkRights.getState().agreed[STEPPER_RIGHTS_SCOPE]) {
+      setBlockReason("Tick the box to say you have the right to print this artwork.");
+      return;
+    }
     setSubmitError(null);
     // Three calls, named one at a time. A retry resumes where it stopped, so
     // the phase is derived from what already succeeded, never restarted at
@@ -237,7 +247,7 @@ export default function NewRequestScreen() {
       // A retry that got past the attach must not bind the same file twice.
       if (artwork.state.phase !== "attached") {
         setSubmitPhase("attaching");
-        await artwork.attachTo(orderId);
+        await artwork.attachTo(orderId, await artworkRightsPayload());
       }
       setSubmitPhase("sending");
       await api.transitionOrder(orderId, "submitted", {
@@ -395,12 +405,20 @@ export default function NewRequestScreen() {
             ) : null}
 
             {stepId === "confirm" ? (
-              <SendStep
-                unitPriceMinor={draft.basePriceMinor}
-                unit={draft.unit}
-                quantity={draft.quantity}
-                deadline={draft.deadline}
-              />
+              <View className="gap-6">
+                <SendStep
+                  unitPriceMinor={draft.basePriceMinor}
+                  unit={draft.unit}
+                  quantity={draft.quantity}
+                  deadline={draft.deadline}
+                />
+                {/* Recorded against the job when its artwork is attached. */}
+                <ArtworkRightsBox
+                  scope={STEPPER_RIGHTS_SCOPE}
+                  onOpen={(href) => router.push(href)}
+                  disabled={submitting}
+                />
+              </View>
             ) : null}
           </View>
         </Animated.View>
@@ -627,6 +645,7 @@ function DetailsStep({
             maxLength={120}
           />
         </FormField>
+        <WhyWeAsk>We use this address to route your delivery.</WhyWeAsk>
 
         <FormField
           label="Landmark"

@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { AppState } from "react-native";
 import { openAlertStream, type AlertStreamHandle } from "@/lib/alertStream";
 import { invalidate } from "@/lib/live";
+import { useCall } from "@/store/call";
 import { useNotifications } from "@/store/notifications";
 import { useSession } from "@/store/session";
 
@@ -36,6 +37,8 @@ export function useLiveNotifications(): void {
         void useSession.getState().refresh();
         inbox();
         invalidate();
+        // A ring that was announced while the stream was down is found here.
+        void useCall.getState().sweepIncoming();
       }
     };
     const start = () => {
@@ -60,6 +63,7 @@ export function useLiveNotifications(): void {
             clearProductCategoryCache();
           }
           if (event.resource === "notifications") inbox();
+          if (event.resource === "calls" && event.id) useCall.getState().checkOrder(event.id);
           if (event.resource === "identity" || event.resource === "approvals")
             void useSession.getState().refresh();
           invalidate(event.resource);
@@ -83,6 +87,10 @@ export function useLiveNotifications(): void {
         stream?.close();
         stream = null;
         connected = false;
+        // What arrives from here on reaches the phone as a push, with its own
+        // sound. The read on the way back sets a new baseline instead of
+        // ringing the bell for it a second time (#230).
+        useNotifications.getState().rebaseline();
       }
     });
     const fallback = setInterval(() => {

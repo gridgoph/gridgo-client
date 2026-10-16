@@ -1,11 +1,13 @@
-import { SecondaryButton } from "@/components/SecondaryButton";
 import { Image } from "expo-image";
-import { FileText } from "lucide-react-native";
+import { CircleAlert, FileText, ImageOff, Info } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
+import { SecondaryButton } from "@/components/SecondaryButton";
+import { SkeletonBlock } from "@/components/Skeleton";
 import { useArtworkImage } from "@/hooks/useArtworkImage";
 import { useThemeColors } from "@/hooks/useTheme";
+import { previewPageLine } from "@/lib/artworkPreview";
 import { isWordDocument } from "@/lib/artworkUpload";
 import {
   MOCKUP_LABEL,
@@ -25,17 +27,19 @@ type Props = {
   artworkName?: string | null;
   productName?: string | null;
   size?: string | null;
-  /** Stored artwork. When it is an image, it is composited into the template. */
+  /** Stored artwork. Its picture (an image, or page 1 of a PDF) is composited into the template. */
   artworkFileId?: string | null;
 };
 
 /**
  * The artwork, seen as the product, before the client commits to printing it.
  *
- * Image artwork is fetched through the storage API and composited into the
- * template for its family. A PDF or a Word file cannot be laid out on the
- * phone, so the template names the file instead of pretending to show it. Every render
- * carries the mockup label on the render itself.
+ * An image is composited into the template for its family, and so is page 1
+ * of a PDF, from the picture GRIDGO renders of it (gridgo-api#232). A Word
+ * file has no picture yet: the template names the file and GRIDGO's own words
+ * say so. A preview that does not load keeps the product's shape, marks it as
+ * failed, and says why with a Retry — it never leaves an empty frame that
+ * reads as "still loading". Every render carries the mockup label.
  */
 export function ProductPreview({
   family,
@@ -48,22 +52,33 @@ export function ProductPreview({
   const template = subcategoryCode
     ? templateForSubcategory(subcategoryCode)
     : templateForFamily(family);
-  const { uri, unavailable, document, contentType, markUnrenderable, retry, openFile, opening, openError } = useArtworkImage(artworkFileId);
-  const name = artworkName?.trim() || "No artwork yet";
+  const { view, file, contentType, markUnrenderable, retry, retryBlocked, openFile, opening, openError } = useArtworkImage(artworkFileId);
+  const name = artworkName?.trim() || file?.originalFilename || "No artwork yet";
 
-  const artwork: ReactNode = uri ? (
-    <Image
-      source={{ uri }}
-      style={{ width: "100%", height: "100%" }}
-      contentFit="contain"
-      cachePolicy="none"
-      transition={0}
-      onError={markUnrenderable}
-      accessibilityLabel={`Mockup of ${name}`}
-    />
-  ) : (
-    <FileFace name={name} word={isWordDocument(contentType)} />
-  );
+  let artwork: ReactNode;
+  if (!artworkFileId) artwork = <FileFace name={name} />;
+  else if (view.kind === "loading") {
+    artwork = (
+      <View className="h-full w-full" accessible accessibilityLabel="Loading the preview">
+        <SkeletonBlock className="h-full w-full" />
+      </View>
+    );
+  } else if (view.kind === "image") {
+    artwork = (
+      <Image
+        source={{ uri: view.uri }}
+        style={{ width: "100%", height: "100%" }}
+        contentFit="contain"
+        cachePolicy="none"
+        transition={0}
+        onError={markUnrenderable}
+        accessibilityLabel={view.page ? `Mockup of ${name}, page 1` : `Mockup of ${name}`}
+      />
+    );
+  } else if (view.kind === "failed") artwork = <FailedFace name={name} />;
+  else artwork = <FileFace name={name} word={view.kind === "word" || isWordDocument(contentType)} />;
+
+  const pageLine = view.kind === "image" && view.page ? previewPageLine(file) : null;
 
   return (
     <View className="gg-card-flush">
@@ -82,16 +97,69 @@ export function ProductPreview({
             {MOCKUP_LABEL}
           </Text>
         </View>
-        {unavailable && artworkFileId ? (
-          <Text className="text-center text-caption text-text-muted">
-            The image preview could not load. Retry the preview or open the original file.
-          </Text>
+        {pageLine ? <Text className="text-center text-caption text-text-muted">{pageLine}</Text> : null}
+        {artworkFileId && view.kind === "failed" ? (
+          <PreviewProblem message={view.failure.message} onRetry={retry} retryBlocked={retryBlocked} />
         ) : null}
-        {document ? <Text className="text-center text-caption text-text-muted">This attachment is a document. Open the original to inspect it.</Text> : null}
-        {unavailable ? <SecondaryButton label="Retry preview" onPress={retry} /> : null}
-        {artworkFileId ? <SecondaryButton label={opening ? "Opening…" : "Open original file"} onPress={() => void openFile()} disabled={opening} /> : null}
+        {artworkFileId && view.kind === "word" ? <WordNotice message={view.message} /> : null}
+        {view.kind === "document" ? <Text className="text-center text-caption text-text-muted">This attachment is a document. Open the original to inspect it.</Text> : null}
+        {artworkFileId ? (
+          <View className="w-full">
+            <SecondaryButton label={opening ? "Opening…" : "Open original file"} onPress={() => void openFile()} disabled={opening} />
+          </View>
+        ) : null}
         {openError ? <Text accessibilityRole="alert" className="text-body text-error">{openError}</Text> : null}
       </View>
+    </View>
+  );
+}
+
+/**
+ * The failure, said where it can be acted on: what happened, why, and Retry.
+ * Icon, title and the error outline carry it together, so it survives greyscale.
+ */
+function PreviewProblem({ message, onRetry, retryBlocked }: { message: string; onRetry: () => void; retryBlocked: boolean }) {
+  const colors = useThemeColors();
+  return (
+    <View className="w-full gap-3 rounded-card border border-error bg-surface p-3">
+      <View accessible accessibilityRole="alert" className="flex-row items-start gap-3">
+        <CircleAlert size={18} color={colors.error} strokeWidth={2} aria-hidden />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text className="text-body font-medium text-text-primary">Preview did not load</Text>
+          <Text className="text-body text-text-secondary">{message}</Text>
+        </View>
+      </View>
+      <SecondaryButton label={retryBlocked ? "Retry preview (wait a moment)" : "Retry preview"} onPress={onRetry} disabled={retryBlocked} />
+    </View>
+  );
+}
+
+/** A Word file is not a failure: it has no picture yet, and GRIDGO says so. */
+function WordNotice({ message }: { message: string }) {
+  const colors = useThemeColors();
+  return (
+    <View accessible className="w-full flex-row items-start gap-3 rounded-card border border-info bg-surface p-3">
+      <Info size={18} color={colors.info} strokeWidth={2} aria-hidden />
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text className="text-body font-medium text-text-primary">{message}</Text>
+        <Text className="text-body text-text-secondary">Your file is uploaded. Open it to check the layout before you go on.</Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The product's shape with its picture missing: a dashed error edge and a
+ * broken-picture mark, so the frame reads as failed rather than still loading.
+ */
+function FailedFace({ name }: { name: string }) {
+  const colors = useThemeColors();
+  return (
+    <View className="h-full w-full items-center justify-center gap-2 border border-dashed border-error bg-canvas px-3">
+      <ImageOff size={28} color={colors.error} strokeWidth={1.75} aria-hidden />
+      <Text className="text-center text-caption text-text-primary" numberOfLines={3}>
+        {name}
+      </Text>
     </View>
   );
 }

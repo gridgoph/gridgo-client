@@ -176,15 +176,18 @@ export const PROOF_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export type PlaceOrderBlocker =
   | "empty"
+  | "shop_closed"
   | "price"
   | "artwork"
   | "artwork_checking"
   | "artwork_problem"
+  | "layout"
   | "address"
   | "date"
   | "schedule"
   | "reference"
   | "proof"
+  | "rights"
   | "settings";
 
 /** Quiet helper on the basket lines. Swipe is not the only remove path. */
@@ -202,17 +205,26 @@ export const SWIPE_TO_DELETE_HINT = "Swipe left to delete";
  */
 export function placeOrderBlockers({
   lineCount,
+  linesShopClosed = 0,
   linesUnpriced = 0,
   linesMissingArtwork,
   linesCheckingArtwork = 0,
   linesArtworkProblem = 0,
+  linesMissingLayout = 0,
   linesMissingDropoff,
   missingBasketDate = false,
   referenceOk,
   hasProof,
   hasSettings,
+  rightsAgreed = true,
 }: {
   lineCount: number;
+  /**
+   * Lines from a shop closed for now (gridgo-api#219). GRIDGO refuses the
+   * whole checkout with `shop_unavailable`, and no payment fixes that — only
+   * removing them does, so it leads.
+   */
+  linesShopClosed?: number;
   /** Lines GRIDGO answered with no price — checkout would refuse them too. */
   linesUnpriced?: number;
   linesMissingArtwork: number;
@@ -224,6 +236,12 @@ export function placeOrderBlockers({
    * (gridgo-api#122). Never a warning — checkout refuses them.
    */
   linesArtworkProblem?: number;
+  /**
+   * Lines whose product asks how the file sits on the paper, with no layout
+   * chosen (gridgo-api `docs/PRINT_LAYOUT_API.md`). GRIDGO refuses them with
+   * `print_layout_required`; the cut-off and scale warnings never block.
+   */
+  linesMissingLayout?: number;
   linesMissingDropoff: number;
   /**
    * A basket that goes out in more than one group has a product with no date.
@@ -236,17 +254,22 @@ export function placeOrderBlockers({
   referenceOk: boolean;
   hasProof: boolean;
   hasSettings: boolean;
+  /** The per-order artwork rights box (`docs/LEGAL_API.md`). */
+  rightsAgreed?: boolean;
 }): PlaceOrderBlocker[] {
   const blockers: PlaceOrderBlocker[] = [];
   if (lineCount === 0) blockers.push("empty");
+  if (linesShopClosed > 0) blockers.push("shop_closed");
   if (linesUnpriced > 0) blockers.push("price");
   if (linesMissingArtwork > 0) blockers.push("artwork");
   if (linesArtworkProblem > 0) blockers.push("artwork_problem");
+  if (linesMissingLayout > 0) blockers.push("layout");
   if (linesCheckingArtwork > 0) blockers.push("artwork_checking");
   if (linesMissingDropoff > 0) blockers.push("address");
   if (missingBasketDate) blockers.push("date");
   if (!hasProof) blockers.push("proof");
   if (!referenceOk) blockers.push("reference");
+  if (!rightsAgreed) blockers.push("rights");
   if (!hasSettings) blockers.push("settings");
   return blockers;
 }
@@ -255,6 +278,10 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
   switch (blocker) {
     case "empty":
       return "Add something to print first.";
+    case "shop_closed":
+      return detail
+        ? `${detail} is from a shop that is closed for now. Remove it to place your order.`
+        : "Some items are from a shop that is closed for now. Remove them to place your order.";
     case "price":
       return detail
         ? `${detail} has no price at this quantity. Open it and change the quantity.`
@@ -267,6 +294,10 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
       return detail
         ? `GRIDGO cannot use the artwork on ${detail}. Open its Artwork to fix it.`
         : "GRIDGO cannot use the artwork on some items. Open their Artwork to fix it.";
+    case "layout":
+      return detail
+        ? `Choose how ${detail} sits on the paper. Open its Artwork to choose.`
+        : "Choose how each file sits on the paper. Open its Artwork to choose.";
     case "artwork_checking":
       return "Checking your design link…";
     case "address":
@@ -281,6 +312,8 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
       return "Add the screenshot of your QR payment.";
     case "reference":
       return "Enter the reference number from your payment receipt.";
+    case "rights":
+      return "Tick the box to say you have the right to print this artwork.";
     case "settings":
       return "GRIDGO could not read its current charges. Try again in a moment.";
   }

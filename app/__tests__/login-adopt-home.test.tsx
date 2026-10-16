@@ -5,6 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import LoginScreen from "@/app/(auth)/login";
 import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
+import { clearLegalGate } from "@/test/legalGate";
 
 const mockPassword = jest.fn();
 const mockFinalize = jest.fn();
@@ -124,6 +125,7 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("LoginScreen leftover Clerk session for the typed email", () => {
   beforeEach(() => {
+    clearLegalGate();
     mockPassword.mockReset();
     mockFinalize.mockReset();
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");

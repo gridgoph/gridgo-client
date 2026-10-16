@@ -1,8 +1,9 @@
 import Constants from "expo-constants";
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { getFirebaseMessaging } from "@/lib/firebaseMessaging";
 import { liveGeneration, assertLiveGeneration } from "@/lib/live";
 import { withRequestDeadline } from "@/lib/requestDeadline";
 import { useSession } from "@/store/session";
@@ -12,8 +13,11 @@ import {
   isExpoGoRuntime,
   PUSH_CHANNEL,
   PUSH_CHANNEL_ID,
+  pushChannelSilent,
+  pushTokenProvider,
   readPushPermission,
   type PushPermission,
+  type PushTokenProvider,
 } from "@/lib/push";
 
 let deviceMutation: Promise<unknown> = Promise.resolve();
@@ -62,7 +66,7 @@ export function getNotificationsNative(): NotificationsNative | null {
  *
  * Every rule this store applies lives in `lib/push.ts` and is unit-tested
  * without a native runtime; what is here is the plumbing that cannot be — the
- * channel, the permission dialog, the FCM token, and keeping the server's idea
+ * channel, the permission dialog, the push token, and keeping the server's idea
  * of this phone in step with the phone's.
  *
  * Registration uses this client's API role context and session boundary.
@@ -113,6 +117,11 @@ type PushState = {
    * the server under nobody's name.
    */
   claimed: boolean;
+  /**
+   * Android has silenced `gridgo_default` — set to Silent, sound None, or
+   * blocked — so notifications land without a buzz. Re-read with permission.
+   */
+  channelSilent: boolean;
   /** A permission ask or a registration call is in flight. */
   busy: boolean;
   error: string | null;
@@ -130,6 +139,12 @@ type PushState = {
   resume: () => Promise<void>;
   /** Firebase reissued the token while the app was running. */
   adoptToken: (token: string) => Promise<void>;
+  /**
+   * Open the phone's settings for GRIDGO's channel, where a silenced channel
+   * gets its sound back. The app's notification settings when Android will not
+   * open the channel page, and the app's settings page after that.
+   */
+  openChannelSettings: () => Promise<void>;
   /**
    * Sign-out has already unregistered the token with the sign-out call. Forget
    * the claim, then put this phone back on the unclaimed list so GRIDGO can
@@ -161,25 +176,66 @@ function isUnclaimedRouteAbsent(error: unknown): boolean {
  * exists — so this runs before the first permission read, not before the first
  * notification.
  */
-async function ensureChannel(): Promise<void> {
-  if (Platform.OS !== "android") return;
+async function ensureChannel(): Promise<boolean> {
+  if (Platform.OS !== "android") return false;
   const Notifications = getNotificationsNative();
-  if (!Notifications) return;
+  if (!Notifications) return false;
   await Notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
     name: PUSH_CHANNEL.name,
     description: PUSH_CHANNEL.description,
-    // These are order deadlines and payment confirmations: worth a sound and a
-    // heads-up banner, which is also what the server's `priority: high` asks for.
+    // Order deadlines, payment confirmations and a rider's messages: worth a
+    // sound, a buzz and a heads-up banner, which is also what the server's
+    // `priority: high` asks for. No `sound` key means Android's default sound.
     importance: Notifications.AndroidImportance.HIGH,
+    enableVibrate: true,
+    vibrationPattern: [...PUSH_CHANNEL.vibrationPattern],
   });
+  // Android ignores all of that for a channel that already exists — the person
+  // owns it from then on — so read back what the phone will actually do.
+  try {
+    return pushChannelSilent(await Notifications.getNotificationChannelAsync(PUSH_CHANNEL_ID));
+  } catch {
+    return false;
+  }
 }
 
-/** The raw FCM token for this installation, or null if it cannot be had. */
-async function fetchToken(): Promise<string | null> {
+/**
+ * This installation's token and who issued it, or null.
+ *
+ * An iPhone build with Firebase asks Firebase for an FCM token, so the API's
+ * FCM sender reaches it exactly as it reaches Android (`lib/firebaseMessaging.ios.ts`).
+ * Everything else — Android, and an iPhone build without Firebase — keeps the
+ * expo-notifications token: FCM on Android, the native APNs token on iOS.
+ */
+async function fetchToken(): Promise<{ token: string; provider: PushTokenProvider } | null> {
+  const firebase = getFirebaseMessaging();
+  if (firebase) {
+    const token = await firebase.getToken();
+    return token ? { token, provider: "fcm" } : null;
+  }
   const Notifications = getNotificationsNative();
   if (!Notifications) return null;
-  const { data } = await Notifications.getDevicePushTokenAsync();
-  return typeof data === "string" && data ? data : null;
+  const { type, data } = await Notifications.getDevicePushTokenAsync();
+  return typeof data === "string" && data ? { token: data, provider: pushTokenProvider(type) } : null;
+}
+
+/**
+ * Hear about a token the issuer replaced while the app was running.
+ *
+ * Firebase's own refresh on an iPhone build with Firebase. Otherwise
+ * expo-notifications' listener — and only there, because on such an iPhone
+ * that listener reports the APNs token, which is not what the API was given.
+ */
+export function subscribePushTokenRotation(onToken: (token: string) => void): () => void {
+  const adopt = (token: unknown) => {
+    if (typeof token === "string" && token) onToken(token);
+  };
+  const firebase = getFirebaseMessaging();
+  if (firebase) return firebase.onTokenRefresh(adopt);
+  const Notifications = getNotificationsNative();
+  if (!Notifications) return () => undefined;
+  const subscription = Notifications.addPushTokenListener((token) => adopt(token.data));
+  return () => subscription.remove();
 }
 
 export const usePush = create<PushState>((set, get) => ({
@@ -187,6 +243,7 @@ export const usePush = create<PushState>((set, get) => ({
   permission: "unknown",
   token: null,
   claimed: false,
+  channelSilent: false,
   busy: false,
   error: null,
 
@@ -198,9 +255,9 @@ export const usePush = create<PushState>((set, get) => ({
       return "unknown";
     }
     try {
-      await ensureChannel();
+      const channelSilent = await ensureChannel();
       const permission = readPushPermission(await Notifications.getPermissionsAsync());
-      set({ permission });
+      set({ permission, channelSilent });
       return permission;
     } catch {
       // Expo Go on Android, or a build with no Firebase config. Push is simply
@@ -216,12 +273,12 @@ export const usePush = create<PushState>((set, get) => ({
     if (!Notifications) return false;
     set({ busy: true, error: null });
     try {
-      await ensureChannel();
+      const channelSilent = await ensureChannel();
       // The dialog. Android 13+ shows it once and a refusal is effectively
       // permanent, which is why nothing calls this except an explicit tap on a
       // card that has already said what will arrive.
       const permission = readPushPermission(await Notifications.requestPermissionsAsync());
-      set({ permission });
+      set({ permission, channelSilent });
       if (permission !== "granted") {
         set({ busy: false });
         return false;
@@ -255,11 +312,12 @@ export const usePush = create<PushState>((set, get) => ({
 
     set({ busy: true, error: null });
     try {
-      const token = await fetchToken();
-      if (!token) {
+      const issued = await fetchToken();
+      if (!issued) {
         set({ busy: false, error: "This phone did not return a notification token." });
         return;
       }
+      const { token, provider } = issued;
       // Idempotent by contract, so no comparison against the stored token is
       // worth the risk of skipping a call the server never actually received.
       assertLiveGeneration(generation);
@@ -268,8 +326,8 @@ export const usePush = create<PushState>((set, get) => ({
       await serializeDeviceMutation(async (signal) => {
         assertLiveGeneration(generation);
         if (useSession.getState().signingOut) return;
-        if (signedIn) await api.registerDevice(token, platform, signal);
-        else await api.registerDeviceUnclaimed(token, platform, signal);
+        if (signedIn) await api.registerDevice(token, platform, signal, provider);
+        else await api.registerDeviceUnclaimed(token, platform, signal, provider);
       });
       assertLiveGeneration(generation);
       if (useSession.getState().signingOut) return;
@@ -300,6 +358,34 @@ export const usePush = create<PushState>((set, get) => ({
     if (token === get().token) return;
     set({ token });
     await get().registerIfGranted();
+  },
+
+  openChannelSettings: async () => {
+    const pkg = Constants.expoConfig?.android?.package;
+    if (Platform.OS === "android" && pkg) {
+      try {
+        await Linking.sendIntent("android.settings.CHANNEL_NOTIFICATION_SETTINGS", [
+          { key: "android.provider.extra.APP_PACKAGE", value: pkg },
+          { key: "android.provider.extra.CHANNEL_ID", value: PUSH_CHANNEL_ID },
+        ]);
+        return;
+      } catch {
+        // Some launchers refuse the channel page; the app's page still works.
+      }
+      try {
+        await Linking.sendIntent("android.settings.APP_NOTIFICATION_SETTINGS", [
+          { key: "android.provider.extra.APP_PACKAGE", value: pkg },
+        ]);
+        return;
+      } catch {
+        // Fall through to the app's settings page.
+      }
+    }
+    try {
+      await Linking.openSettings();
+    } catch {
+      // Nothing left to open; the card stays and says what to change.
+    }
   },
 
   release: async () => {
