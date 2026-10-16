@@ -465,6 +465,18 @@ describe("submit_to_play hands the verified AAB to EAS Submit for the internal t
     expect(cleanup).toContain("play-service-account.json");
   });
 
+  it("sets the version's What's new on that release after the submit", () => {
+    const step = submitStep() as string;
+    const submit = step.indexOf("eas-cli@");
+    const notes = step.indexOf("node scripts/play-release-notes.mjs");
+    expect(notes).toBeGreaterThan(submit);
+    expect(step).toContain('PLAY_SERVICE_ACCOUNT_KEY_PATH="$key"');
+    expect(step).toContain('PLAY_VERSION_CODE="$CODE"');
+    expect(step).toContain('PLAY_VERSION="$VERSION"');
+    expect(step).toContain('PLAY_PACKAGE="$PACKAGE"');
+    expect(jobBody("check")).toContain("node --test scripts/play-release-notes.test.mjs");
+  });
+
   it("submits to internal testing only and never promotes", () => {
     expect(eas.submit.production.android).toEqual({
       serviceAccountKeyPath: "$GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_PATH",

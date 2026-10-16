@@ -186,4 +186,12 @@ unchanged.
   printed, and it is removed when the step ends.
 - `eas-cli` is pinned in the workflow. The app is linked to its EAS project through
   `owner` and `extra.eas.projectId` in `app.json`.
+- `eas submit` carries no release notes, so the same step then sets them on that release
+  with the Google Play Developer API, using the same service account
+  (`scripts/play-release-notes.mjs`). The notes are the version's What's new (the pending
+  `whats-new/` notes, or the newest release in `WHATS_NEW.md`), newest first, in whole
+  lines within Play's 500-character limit for en-US. The script reads the notes back from
+  Play, and the run summary shows them.
+- The versionCode is the run number, so every upload is newer than the last one and
+  testers get it as an automatic update.
 - If the submission fails, the run fails, but the artifact is still there to upload by hand.

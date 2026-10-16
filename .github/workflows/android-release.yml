@@ -66,6 +66,9 @@ jobs:
       - name: Check release announcement delivery
         run: node --test scripts/announce-release.test.mjs
 
+      - name: Check the Play release notes
+        run: node --test scripts/play-release-notes.test.mjs
+
       # The only check that resolves every config plugin out of node_modules.
       # Metro never reads expo.plugins and neither does jest, which is how a
       # stale plugin entry once shipped a launch crash past a green suite.
@@ -154,10 +157,12 @@ jobs:
           npx expo config --type public --json > "$RUNNER_TEMP/app.config.json"
           version="$(node -p "require('$RUNNER_TEMP/app.config.json').version")"
           code="$(node -p "require('$RUNNER_TEMP/app.config.json').android.versionCode")"
+          package="$(node -p "require('$RUNNER_TEMP/app.config.json').android.package")"
           stem="gridgo-client-$version-${GITHUB_SHA::7}"
           {
             echo "version=$version"
             echo "code=$code"
+            echo "package=$package"
             echo "stem=$stem"
             echo "apk=$stem.apk"
             echo "aab=$stem.aab"
@@ -532,6 +537,11 @@ jobs:
       # Its content is never echoed; the trap removes it however the step ends,
       # and the cleanup step below removes it again. eas-cli is pinned, so a
       # new release cannot change what this step uploads.
+      #
+      # eas submit carries no release notes, so the same key then sets the
+      # version's What's new on that release through Play's edits API and
+      # reads them back (scripts/play-release-notes.mjs). Testers see what
+      # changed; the versionCode is the run number, so each upload is newer.
       - name: Submit the Play bundle to the internal testing track
         if: github.event.inputs.play_bundle == 'true' && github.event.inputs.submit_to_play == 'true'
         env:
@@ -539,6 +549,8 @@ jobs:
           GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           AAB: ${{ steps.config.outputs.aab }}
           CODE: ${{ steps.config.outputs.code }}
+          VERSION: ${{ steps.config.outputs.version }}
+          PACKAGE: ${{ steps.config.outputs.package }}
         run: |
           set -euo pipefail
           missing=""
@@ -577,10 +589,21 @@ jobs:
             --non-interactive \
             --wait
 
+          notes="$RUNNER_TEMP/play-release-notes.txt"
+          PLAY_SERVICE_ACCOUNT_KEY_PATH="$key" \
+          PLAY_PACKAGE="$PACKAGE" \
+          PLAY_VERSION_CODE="$CODE" \
+          PLAY_VERSION="$VERSION" \
+            node scripts/play-release-notes.mjs | tee "$notes"
+
           {
             echo
             echo "Submitted \`$AAB\` (versionCode $CODE) to Google Play's **internal testing** track with EAS Submit."
             echo "Promote it to another track by hand in Play Console."
+            echo
+            echo '```'
+            cat "$notes"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The notes this release carried now belong to its version: they move
