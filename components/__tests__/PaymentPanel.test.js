@@ -9,7 +9,7 @@ const mockProof = { state: { phase: "stored", fileId: "receipt-1", localUri: "fi
 const order = { id: "job", state: "out_for_delivery", payments: { initial: { status: "confirmed", amountMinor: 35000 }, final_online: { status: "not_submitted", amountMinor: 77500 } } };
 jest.mock("expo-router", () => ({ useFocusEffect: jest.fn() }));
 jest.mock("react-native", () => ({ Image: "Image", Modal: "Modal", Text: "Text", View: "View" }));
-jest.mock("@/lib/api", () => ({ ApiError: class ApiError extends Error {}, formatPhp: (value) => `₱${(value / 100).toFixed(2)}`, submitPayment: (...args) => mockSubmit(...args), getSettings: async () => ({ paymentQr: { imageUrl: "/public/payment-qr" } }) }));
+jest.mock("@/lib/api", () => ({ ApiError: class ApiError extends Error {}, formatPhp: (value) => `₱${(value / 100).toFixed(2)}`, submitPayment: (...args) => mockSubmit(...args), getSettings: async () => ({ paymentQr: { imageUrl: "/public/payment-qr" } }), recordFunnel: async () => {} }));
 jest.mock("@/hooks/usePaymentProof", () => ({ usePaymentProof: () => mockProof }));
 jest.mock("@/components/ConfirmDialog", () => ({ ConfirmDialog: "ConfirmDialog" }));
 jest.mock("@/components/ErrorState", () => ({ ErrorState: "ErrorState" }));

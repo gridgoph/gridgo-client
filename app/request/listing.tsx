@@ -150,6 +150,7 @@ export default function ListingScreen() {
   useTourScreen("listing", item != null && !error);
 
   const loadSequence = useRef(0);
+  const viewedListing = useRef<string | null>(null);
   const load = useCallback(() => {
     const sequence = ++loadSequence.current;
     if (!itemId) return;
@@ -158,6 +159,10 @@ export default function ListingScreen() {
       if (sequence !== loadSequence.current) return;
       setItem(read);
       setError(null);
+      if (viewedListing.current !== itemId) {
+        viewedListing.current = itemId;
+        void api.recordFunnel({ kind: "listing_viewed", listingId: itemId });
+      }
     }).catch((e) => {
       if (sequence !== loadSequence.current) return;
       // A failed refresh must not blank a sheet the match already painted.

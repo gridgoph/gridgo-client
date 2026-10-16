@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useRouter } from "expo-router";
 
+import * as api from "@/lib/api";
 import { clearMatchSelections } from "@/lib/matchSelection";
 import { useJobDeadline } from "@/store/jobDeadline";
 import { useJobFulfilment } from "@/store/jobFulfilment";
@@ -16,8 +17,9 @@ import { jobRankingNow, useOrderRanking } from "@/store/orderRanking";
  * no fulfilment question, the drop-off asked first only when distance leads,
  * and the address at checkout (`lib/requestFulfilment.ts`).
  *
- * Both category screens route through this, so a job cannot start with the
- * last job's date, ranking or picks on one of them and not the other.
+ * Both category screens and Home route through this, so a job cannot start
+ * with the last job's date, ranking or picks on one of them and not the other,
+ * and every product picked is counted once as a funnel view.
  */
 export function useStartPrintJob() {
   const router = useRouter();
@@ -33,6 +35,7 @@ export function useStartPrintJob() {
       useJobFulfilment.getState().clear();
       useOrderRanking.getState().clear();
       clearMatchSelections();
+      void api.recordFunnel({ kind: "product_viewed", productCode: subcategoryCode });
       router.push({
         pathname: "/request/when",
         params: { subcategory: subcategoryCode, category: categoryCode },
