@@ -507,6 +507,21 @@ export function openApplicationNoticeId(items: Notification[], sentBack: boolean
   return newest?.id ?? null;
 }
 
+/** What a release notice opens, by its `storeTarget`. */
+function releaseNoticeHint(notification: Notification): string | null {
+  if (notification.type !== "announcement") return null;
+  switch (notification.storeTarget) {
+    case "apk_download":
+      return "Opens the download";
+    case "play_store":
+      return "Opens the Play Store";
+    case "testflight":
+      return "Opens TestFlight";
+    default:
+      return null;
+  }
+}
+
 export type PresentOptions = { showServiceFee?: boolean; applicationNoticeId?: string | null };
 
 export function presentNotification(
@@ -552,7 +567,7 @@ export function presentNotification(
                   ? "Opens this job"
                   : isApplicationNotification(notification.type)
                     ? "Opens your application"
-                    : null,
+                    : releaseNoticeHint(notification),
               };
   const collectReady =
     collect && notification.orderState === "awaiting_collection" && !hold;

@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Linking, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 
 import { AppUpdateNotices } from "@/components/AppUpdateNotices";
@@ -13,6 +13,8 @@ import { businessApplicationSentBack } from "@/lib/accountProfile";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { isVoucherNotification, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { chatNotificationRoute } from "@/lib/push";
+import { appInstallChannel } from "@/lib/buildDistribution";
+import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
 import { RECEIPT_FROM_NOTICE } from "@/lib/receipt";
 import { userFacingError } from "@/lib/copy";
 import {
@@ -72,6 +74,8 @@ export function NotificationInbox() {
     const markGroupRead = () => void markManyRead(group.items.map((item) => item.id));
     // A message opens its conversation, as its push does (#231).
     const chatRoute = chatNotificationRoute(notification);
+    // A release notice opens this install's own store, exactly as its push does.
+    const release = releaseNoticeDestination(notification, notification.title, appInstallChannel());
     return (
       <NotificationCard
         key={group.key}
@@ -79,7 +83,12 @@ export function NotificationInbox() {
         applicationNoticeId={applicationNoticeId}
         read={!isGroupUnread(group, (item) => isNotificationRead(item, readIds))}
         onOpen={
-          isOrganizationNotification(notification.type)
+          release
+            ? () => {
+                markGroupRead();
+                void openReleaseDestination(release, (url) => Linking.openURL(url));
+              }
+            : isOrganizationNotification(notification.type)
             ? () => {
                 // The officer check is answered on the Organizations tab (#165).
                 markGroupRead();

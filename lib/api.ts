@@ -7,6 +7,7 @@ import { PRODUCT_CATEGORY_SEED } from "@/data/productCategories";
 import { adaptProductCategories, type ProductCategory } from "@/lib/productCategories";
 import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physicalInvoice";
 import type { DevicePlatform, PushTokenProvider } from "@/lib/push";
+import type { InstallChannel } from "@/lib/releasePush";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
 import type { ArtworkColorsEntry, ColorTarget, ColorTargetInput } from "@/lib/colorTargets";
 import { readCall, readCalls, type CallIceConfig, type CallSignal, type OrderCall } from "@/lib/orderCalls";
@@ -939,6 +940,10 @@ export type Notification = {
   collectHold?: boolean;
   title: string;
   body: string;
+  /** A release notice's channel (`apk` / `play` / `ios`); staff announcements carry none. */
+  releaseChannel?: string;
+  /** Where a release notice opens (`apk_download` / `play_store` / `testflight`). */
+  storeTarget?: string;
   /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */
   imageUrl?: string | null;
   read: boolean;
@@ -1404,6 +1409,20 @@ export async function logout(
 }
 
 /**
+ * The `POST /devices` body. `installChannel` tells GRIDGO which release
+ * notices this install may receive (gridgo-api
+ * `docs/RELEASE_ANNOUNCEMENTS_API.md`); omitted, the server counts it as `apk`.
+ */
+function deviceBody(
+  token: string,
+  platform: DevicePlatform,
+  tokenProvider: PushTokenProvider,
+  installChannel: InstallChannel | null,
+) {
+  return { token, platform, appRole: "client", tokenProvider, ...(installChannel ? { installChannel } : {}) };
+}
+
+/**
  * Register this installation's FCM token against the signed-in account.
  *
  * Idempotent and cheap by design, so it is called on every launch and on every
@@ -1418,11 +1437,12 @@ export async function registerDevice(
   platform: DevicePlatform,
   signal?: AbortSignal,
   tokenProvider: PushTokenProvider = "fcm",
+  installChannel: InstallChannel | null = null,
 ): Promise<{ device: Device; created: boolean; reassigned: boolean }> {
   return request<{ device: Device; created: boolean; reassigned: boolean }>("/devices", {
     method: "POST",
     signal,
-    body: JSON.stringify({ token, platform, appRole: "client", tokenProvider }),
+    body: JSON.stringify(deviceBody(token, platform, tokenProvider, installChannel)),
   });
 }
 
@@ -1457,12 +1477,13 @@ export async function registerDeviceUnclaimed(
   platform: DevicePlatform,
   signal?: AbortSignal,
   tokenProvider: PushTokenProvider = "fcm",
+  installChannel: InstallChannel | null = null,
 ): Promise<void> {
   const res = await fetch(`${getApiBase()}/devices`, {
     method: "POST",
     signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ token, platform, appRole: "client", tokenProvider }),
+    body: JSON.stringify(deviceBody(token, platform, tokenProvider, installChannel)),
   });
   if (!res.ok) {
     const text = await res.text();
