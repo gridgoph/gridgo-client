@@ -1,0 +1,15 @@
+{
+  "cli": {
+    "version": ">= 24.12.1",
+    "appVersionSource": "local"
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "$GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_PATH",
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
+    }
+  }
+}

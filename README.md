@@ -134,8 +134,8 @@ A Google Play build ignores that tap's download and leaves the push in the inbox
 
 The side-load APK is unchanged: every push to `main` still builds it, puts it on the
 download page, publishes the GitHub Release and broadcasts the release push. The Play
-bundle is an extra build that you start by hand. For now you upload it to Play Console
-yourself.
+bundle is an extra build that you start by hand. You upload it to Play Console yourself,
+or let the run upload it to internal testing (see below).
 
 1. In GitHub, open **Actions → Android release APK → Run workflow**. Choose `main`,
    select **play_bundle**, and run it.
@@ -147,8 +147,8 @@ yourself.
 That run builds `./gradlew bundleRelease` with the same upload key and public
 configuration as the APK. `scripts/verify-release-apk.sh` checks it the same way: the
 signer must match the keystore alias, and the API URL, Clerk and CARTO keys must be
-inlined in `base/assets/index.android.bundle`. The run publishes nothing: no APK, no
-landing-site upload, no GitHub Release, no release push and no What's new record. The
+inlined in `base/assets/index.android.bundle`. Unless **submit_to_play** is selected,
+the run publishes nothing: no APK, no landing-site upload, no GitHub Release, no release push and no What's new record. The
 artifact is kept for 30 days.
 
 The run sets `EXPO_PUBLIC_APP_DISTRIBUTION=play` when it builds. Google Play does not
@@ -167,10 +167,23 @@ a newer one. A **Re-run** keeps the original run's number, so start a new run in
 GitHub restarts the count if the workflow file is renamed or replaced, so keep the file
 where it is.
 
-**Later: `eas submit`.** [EAS Submit](https://docs.expo.dev/submit/android/) can upload
-the same artifact to a Play track instead of you. It needs a Google Play service account
-key, stored as a secret, with release permission in Play Console. Google also requires the
-first upload of an app to be made by hand, and that is what the steps above do. When
-that is set up, a later workflow step can run `eas submit --platform android --path <aab>
---non-interactive` with the track set in `eas.json` under `submit.production.android`.
-That step needs the EAS project linked to this app, and it is not wired up yet.
+**Upload to the internal testing track automatically.** Select **submit_to_play** as well
+as **play_bundle** when you run the workflow. The run builds and verifies the bundle as
+above and keeps the artifact. Then [EAS Submit](https://docs.expo.dev/submit/android/)
+uploads that same `.aab` to Play's **internal testing** track with release status
+`completed` (`eas.json`, profile `production`). The run summary says when the bundle was
+submitted. **submit_to_play** does nothing without **play_bundle**, and the APK path is
+unchanged.
+
+- The build still runs in GitHub Actions with the upload key. EAS only uploads the file.
+  No keystore goes to Expo.
+- The run never uploads to production and never promotes a release. To move a build to
+  another track, promote it by hand in Play Console.
+- The step needs two repository secrets: `EXPO_TOKEN` (an Expo access token for the
+  `felyciaaa` account) and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` (the Play service account's
+  JSON key, with release permission for testing tracks). The key is written to a mode-600
+  file under `$RUNNER_TEMP`, outside the workspace, for that step only. It is never
+  printed, and it is removed when the step ends.
+- `eas-cli` is pinned in the workflow. The app is linked to its EAS project through
+  `owner` and `extra.eas.projectId` in `app.json`.
+- If the submission fails, the run fails, but the artifact is still there to upload by hand.
