@@ -2289,6 +2289,21 @@ export async function submitPayment(
   return result.order;
 }
 
+export type FunnelKind = "product_viewed" | "listing_viewed" | "checkout_reached" | "paid" | "checkout_left";
+
+/** Posts one checkout-funnel step to GRIDGO. A failed post never blocks the screen. */
+export function recordFunnel(event: {
+  kind: FunnelKind;
+  orderId?: string | null;
+  listingId?: string | null;
+  productCode?: string | null;
+}): Promise<void> {
+  return request("/funnel-events", {
+    method: "POST",
+    body: JSON.stringify(event),
+  }).then(() => undefined, () => undefined);
+}
+
 export async function transitionOrder(
   orderId: string,
   state: string,
