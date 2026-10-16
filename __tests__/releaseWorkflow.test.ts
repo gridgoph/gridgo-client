@@ -489,6 +489,6 @@ describe("submit_to_play hands the verified AAB to EAS Submit for the internal t
 
   it("links this app to its EAS project", () => {
     expect(appJson.expo.owner).toBe("felyciaaa");
-    expect(appJson.expo.extra.eas.projectId).toBe("37d2dd75-46d8-4faa-b22a-d2e76472ca8e");
+    expect(appJson.expo.extra.eas.projectId).toBe("2c012369-5b00-4454-bf1d-0bbf0d0917d8");
   });
 });
