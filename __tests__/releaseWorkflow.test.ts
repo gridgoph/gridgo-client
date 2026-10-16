@@ -484,7 +484,8 @@ describe("submit_to_play hands the verified AAB to EAS Submit for the internal t
       releaseStatus: "completed",
     });
     expect(Object.keys(eas.submit)).toEqual(["production"]);
-    expect(eas.build).toBeUndefined();
+    // Android builds stay in this workflow with the upload key, never on EAS.
+    expect(eas.build?.production?.android).toBeUndefined();
   });
 
   it("links this app to its EAS project", () => {
