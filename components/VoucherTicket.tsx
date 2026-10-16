@@ -159,12 +159,19 @@ function StateChip({ state, tone, remaining }: { state: VoucherState; tone: Expi
   }
 }
 
-/** The tear line between stub and body. */
+/**
+ * The tear line between stub and body.
+ *
+ * The line is absolutely placed so it takes the row's height and never gives
+ * the row one. In flow, a percentage-tall Svg has nothing to be a percentage
+ * of, and on Android it measured itself against the screen: one voucher became
+ * a card running to the bottom of the page.
+ */
 function Perforation() {
   const colors = useThemeColors();
   return (
     <View className="w-px self-stretch" aria-hidden>
-      <Svg width={2} height="100%">
+      <Svg width={2} height="100%" style={{ position: "absolute", top: 0, bottom: 0, left: 0 }}>
         <Line
           x1={1}
           y1={10}
