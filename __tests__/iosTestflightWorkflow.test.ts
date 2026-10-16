@@ -15,7 +15,7 @@ const root = join(__dirname, "..");
 const workflow = readFileSync(join(root, ".github", "workflows", "ios-testflight.yml"), "utf8");
 const eas = JSON.parse(readFileSync(join(root, "eas.json"), "utf8")) as {
   cli: { version: string; appVersionSource: string };
-  build: { production: { environment: string; distribution: string; ios: { autoIncrement: boolean } } };
+  build: { production: { environment: string; distribution: string; node: string; ios: { autoIncrement: boolean } } };
   submit: { production: { ios: Record<string, string>; android: Record<string, string> } };
 };
 
@@ -98,6 +98,15 @@ describe("eas.json", () => {
     expect(eas.build.production.ios.autoIncrement).toBe(true);
     expect(eas.build.production.distribution).toBe("store");
     expect(eas.build.production.environment).toBe("production");
+  });
+
+  it("builds on the Node major the workflows install, so npm reads the lock the same way", () => {
+    // EAS's default Node 22 ships npm 10, which wants an optional peer entry
+    // (typescript@5 under @solana/web3.js) that npm 11 never writes into the
+    // lock, so `npm ci` failed on EAS while it passed in GitHub Actions.
+    const workflowNode = /node-version: (\d+)/.exec(workflow)?.[1];
+    expect(workflowNode).toBeDefined();
+    expect(eas.build.production.node).toMatch(new RegExp(`^${workflowNode}\\.\\d+\\.\\d+$`));
   });
 
   it("reads the App Store Connect key from the job's environment", () => {
