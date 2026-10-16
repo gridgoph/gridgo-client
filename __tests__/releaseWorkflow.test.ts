@@ -305,6 +305,28 @@ describe("a pull request never produces a signed release build", () => {
 });
 
 
+describe("the Play release push follows a successful Play upload", () => {
+  const broadcast = () => apkSteps.find((step) => step.includes("RELEASE_CHANNEL: play")) as string;
+
+  it("announces the play channel only after the bundle was submitted", () => {
+    const step = broadcast();
+    expect(step).toBeDefined();
+    expect(step).toMatch(/if: github\.event\.inputs\.play_bundle == 'true' && github\.event\.inputs\.submit_to_play == 'true'\n/);
+    expect(step).not.toMatch(/always\(\)|failure\(\)|!cancelled\(\)/);
+    expect(step).toContain("continue-on-error: true");
+    expect(step).toContain("node scripts/announce-release.mjs");
+    expect(step).toContain("secrets.RELEASE_ANNOUNCE_TOKEN");
+    expect(step).toContain("steps.config.outputs.version");
+    expect(step).toContain("RELEASE_APP: client");
+    expect(apkSteps.indexOf(step)).toBeGreaterThan(apkSteps.findIndex((s) => s.includes("eas-cli@")));
+  });
+
+  it("leaves the APK announcement on its default channel", () => {
+    const apk = apkSteps.find((step) => step.includes("scripts/announce-release.mjs")) as string;
+    expect(apk).not.toContain("RELEASE_CHANNEL");
+  });
+});
+
 describe("release push follows both successful publishes", () => {
   it("announces the released version only on a push to main", () => {
     const index = apkSteps.findIndex(step => step.includes("scripts/announce-release.mjs"));
@@ -422,7 +444,8 @@ describe("submit_to_play hands the verified AAB to EAS Submit for the internal t
     // Nothing else in the job reads the new input, so the APK path cannot change.
     const readers = apkSteps.filter((step) => /inputs\.submit_to_play/.test(step));
     const named = apkSteps.find((step) => step.includes("Name the Play bundle"));
-    expect(readers).toEqual([named, submitStep()]);
+    const broadcast = apkSteps.find((step) => step.includes("RELEASE_CHANNEL: play"));
+    expect(readers).toEqual([named, submitStep(), broadcast]);
   });
 
   it("submits the AAB after it is verified and kept as an artifact", () => {

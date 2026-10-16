@@ -115,11 +115,43 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm", "apk");
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().claimed).toBe(true);
     expect(usePush.getState().error).toBeNull();
     register.mockRestore();
+  });
+
+  it("reports a Google Play build as the play install channel", async () => {
+    process.env.EXPO_PUBLIC_APP_DISTRIBUTION = "play";
+    mocked.getPermissionsAsync.mockResolvedValue(granted as never);
+    const register = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
+    try {
+      await usePush.getState().registerIfGranted();
+      expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm", "play");
+    } finally {
+      delete process.env.EXPO_PUBLIC_APP_DISTRIBUTION;
+      register.mockRestore();
+    }
+  });
+
+  it("sends installChannel in the POST /devices body, and nothing when it is unknown", async () => {
+    const fetchMock = global.fetch as jest.Mock;
+    fetchMock.mockResolvedValue({ ok: true, status: 201, text: async () => "" });
+    try {
+      await api.registerDeviceUnclaimed("tok", "android", undefined, "fcm", "play");
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        token: "tok",
+        platform: "android",
+        appRole: "client",
+        tokenProvider: "fcm",
+        installChannel: "play",
+      });
+      await api.registerDeviceUnclaimed("tok", "web", undefined, "fcm", null);
+      expect(JSON.parse(fetchMock.mock.calls[1][1].body)).not.toHaveProperty("installChannel");
+    } finally {
+      fetchMock.mockReset();
+    }
   });
 
   it("does not register a phone that has not granted permission", async () => {
@@ -136,7 +168,7 @@ describe("registerIfGranted", () => {
     usePush.setState({ permission: "granted" });
     const claim = jest.spyOn(api, "registerDevice").mockResolvedValue({} as never);
     await usePush.getState().registerIfGranted();
-    expect(claim).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
+    expect(claim).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm", "apk");
     expect(usePush.getState().claimed).toBe(true);
     claim.mockRestore();
     api.setTokenProvider(null);
@@ -153,7 +185,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm", "apk");
     expect(claimed).not.toHaveBeenCalled();
     expect(usePush.getState().token).toBe("fcm-token-a7c8d3f1");
     expect(usePush.getState().claimed).toBe(false);
@@ -168,7 +200,7 @@ describe("registerIfGranted", () => {
 
     await usePush.getState().registerIfGranted();
 
-    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
+    expect(claimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm", "apk");
     expect(usePush.getState().claimed).toBe(true);
     claimed.mockRestore();
   });
@@ -303,7 +335,7 @@ describe("the notification channel (gridgo-client#231)", () => {
       Object.defineProperty(Platform, "OS", { value: "android", configurable: true });
     }
 
-    expect(register).toHaveBeenCalledWith("a".repeat(64), "ios", expect.any(AbortSignal), "apns");
+    expect(register).toHaveBeenCalledWith("a".repeat(64), "ios", expect.any(AbortSignal), "apns", "ios");
     register.mockRestore();
   });
 
@@ -325,7 +357,7 @@ describe("the notification channel (gridgo-client#231)", () => {
       mockFirebase = null;
     }
 
-    expect(register).toHaveBeenCalledWith("fcm-ios-token-9b1e", "ios", expect.any(AbortSignal), "fcm");
+    expect(register).toHaveBeenCalledWith("fcm-ios-token-9b1e", "ios", expect.any(AbortSignal), "fcm", "ios");
     expect(mocked.getDevicePushTokenAsync).not.toHaveBeenCalled();
     expect(usePush.getState().token).toBe("fcm-ios-token-9b1e");
     register.mockRestore();
@@ -380,7 +412,7 @@ describe("enable", () => {
     await expect(usePush.getState().enable()).resolves.toBe(true);
 
     expect(mocked.requestPermissionsAsync).toHaveBeenCalled();
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm", "apk");
     register.mockRestore();
   });
 
@@ -408,7 +440,7 @@ describe("resume", () => {
     await usePush.getState().resume();
 
     expect(usePush.getState().permission).toBe("granted");
-    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.anything(), "fcm");
+    expect(register).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.anything(), "fcm", "apk");
     expect(mocked.requestPermissionsAsync).not.toHaveBeenCalled();
   });
 
@@ -453,7 +485,7 @@ describe("adoptToken", () => {
 
     await usePush.getState().adoptToken("rotated-token");
 
-    expect(register).toHaveBeenCalledWith("rotated-token", "android", expect.any(AbortSignal), "fcm");
+    expect(register).toHaveBeenCalledWith("rotated-token", "android", expect.any(AbortSignal), "fcm", "apk");
     register.mockRestore();
   });
 
@@ -530,7 +562,7 @@ describe("signing out", () => {
 
     await usePush.getState().release();
 
-    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm");
+    expect(unclaimed).toHaveBeenCalledWith("fcm-token-a7c8d3f1", "android", expect.any(AbortSignal), "fcm", "apk");
     expect(usePush.getState().claimed).toBe(false);
     unclaimed.mockRestore();
   });

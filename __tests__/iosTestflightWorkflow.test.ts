@@ -126,3 +126,19 @@ it("never commits the iPhone Firebase file", () => {
   const ignored = readFileSync(join(root, ".gitignore"), "utf8").split("\n");
   expect(ignored).toContain("GoogleService-Info.plist");
 });
+
+it("tells TestFlight testers only after the upload, without failing the run", () => {
+  const broadcast = step("Broadcast the TestFlight release");
+  expect(broadcast).toMatch(/if: inputs\.submit_to_testflight && steps\.build\.outputs\.announce_version != ''/);
+  expect(broadcast).not.toMatch(/always\(\)|failure\(\)|!cancelled\(\)/);
+  expect(broadcast).toContain("continue-on-error: true");
+  expect(broadcast).toContain("RELEASE_CHANNEL: ios");
+  expect(broadcast).toContain("RELEASE_APP: client");
+  expect(broadcast).toContain("secrets.RELEASE_ANNOUNCE_TOKEN");
+  expect(broadcast).toContain("node scripts/announce-release.mjs");
+  expect(workflow.indexOf("- name: Upload to TestFlight")).toBeLessThan(
+    workflow.indexOf("- name: Broadcast the TestFlight release"),
+  );
+  // Every iPhone build shares app.json's version; the build number tells them apart.
+  expect(step("Build the iPhone app on EAS")).toContain("announce_version=");
+});
