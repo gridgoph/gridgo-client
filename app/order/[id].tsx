@@ -30,6 +30,7 @@ import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel"
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { DesignLinkRow } from "@/components/DesignLinkRow";
+import { ExactColoursRecord } from "@/components/ExactColoursRecord";
 import { FoldSection } from "@/components/FoldSection";
 import { LatestProgressCard } from "@/components/LatestProgressCard";
 import { NoteRow, ProductionSpecifications } from "@/components/ProductionSpecifications";
@@ -533,7 +534,10 @@ export default function OrderDetailScreen() {
         summary={specificationsSummary(order, unit)}
       >
         {order.productionItems?.length ? (
-          <ProductionSpecifications order={order} taxonomy={taxonomy} bare showLinks={false} />
+          <>
+            <ProductionSpecifications order={order} taxonomy={taxonomy} bare showLinks={false} />
+            <ExactColoursRecord items={order.productionItems} bare />
+          </>
         ) : (
           <>
             <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
