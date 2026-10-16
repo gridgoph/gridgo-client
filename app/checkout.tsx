@@ -1,4 +1,15 @@
 import { documentPagesSummary } from "@/lib/documentPages";
+import {
+  colourAwaitsPriceCheck,
+  colourBlocksCheckout,
+  colourRefusalOf,
+  colourSummary,
+  linePageCount,
+  linePricedByColour,
+  oneColourWarning,
+  quantityUnit,
+  sheetsLine,
+} from "@/lib/colourPricing";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { ChevronRight, Home, Info, MapPin, Minus, Plus, QrCode, Truck } from "lucide-react-native";
@@ -144,6 +155,9 @@ import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
  * submitted, never taken: no money moves through GRIDGO, Operations matches the
  * reference by hand, and nothing on this sheet may read as paid.
  */
+/** How often the basket is read while a page's colour is still being measured. */
+const COLOUR_POLL_MS = 4000;
+
 export default function CheckoutScreen() {
   const router = useRouter();
   const colors = useThemeColors();
@@ -227,7 +241,7 @@ export default function CheckoutScreen() {
     }
   }, [loadCart]);
 
-  useLiveRefresh(["orders", "catalog", "settings"], load, { refreshOnFocus: false });
+  useLiveRefresh(["orders", "catalog", "settings", "carts"], load, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {
@@ -272,7 +286,19 @@ export default function CheckoutScreen() {
   const travel = travelChoiceOf(cart);
   // Chosen before the match (#158): read back here, never asked again.
   const locked = cart?.requestFulfillment ?? null;
-  const unpriced = linesUnpriced(lines);
+  // A line priced by colour has its own reasons for no total yet (still
+  // measuring, copies or sets, a page awaiting a price check), said in its
+  // own words rather than "no price at this quantity".
+  const colourUnready = lines.filter((line) => colourBlocksCheckout(line) && !colourAwaitsPriceCheck(line));
+  const colourPriceCheck = lines.filter(colourAwaitsPriceCheck);
+  const unpriced = linesUnpriced(lines).filter((line) => !colourBlocksCheckout(line));
+  // While GRIDGO measures a page, read the basket until its price lands.
+  const colourMeasuring = lines.some((line) => line.colourPricing?.status === "pending");
+  useEffect(() => {
+    if (!colourMeasuring) return;
+    const timer = setInterval(() => void loadCart(), COLOUR_POLL_MS);
+    return () => clearInterval(timer);
+  }, [colourMeasuring, loadCart]);
   const missingArtwork = linesMissingArtwork(lines);
   // Every design link meets its check before the order can go (#122): a link
   // kept on an earlier visit is checked again here, once per session.
@@ -301,6 +327,8 @@ export default function CheckoutScreen() {
     linesCheckingArtwork: checkingArtwork.length,
     linesArtworkProblem: artworkProblem.length,
     linesMissingLayout: missingLayout.length,
+    linesColourUnready: colourUnready.length,
+    linesColourPriceCheck: colourPriceCheck.length,
     linesMissingCoverSpine: missingCoverSpine.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
     // More than one group: each is printed and delivered for its own date, so
@@ -473,6 +501,8 @@ export default function CheckoutScreen() {
       blocker === "price" ||
       blocker === "artwork_problem" ||
       blocker === "layout" ||
+      blocker === "colour" ||
+      blocker === "colour_price_check" ||
       blocker === "cover_spine" ||
       blocker === "date"
         ? "artwork"
@@ -575,6 +605,23 @@ export default function CheckoutScreen() {
       // fixed on the book's Artwork. A form on a product that no longer asks
       // comes off, and the client places the order again.
       const coverRefusal = e instanceof api.ApiError ? coverSpineRefusalOf(e.body) : null;
+      // A page priced by colour is not priced yet (gridgo-api
+      // docs/COLOUR_PRICING_API.md): the basket is read again so the line
+      // shows which page, and the reason is said here.
+      const colourRefusal = e instanceof api.ApiError ? colourRefusalOf(e.body) : null;
+      if (colourRefusal) {
+        void loadCart();
+        setAttempted(true);
+        const colourLine = lines.find((line) => line.id === colourRefusal.lineId);
+        setPlaceError(
+          blockerLine(
+            colourRefusal.code === "colour_price_check_required" ? "colour_price_check" : "colour",
+            colourLine ? lineName(colourLine) : undefined,
+          ),
+        );
+        scrollToBlocker("colour");
+        return;
+      }
       if (coverRefusal) {
         setAttempted(true);
         if (coverRefusal.code === "cover_spine_not_applicable") {
@@ -771,6 +818,14 @@ export default function CheckoutScreen() {
                         : blockers[0] === "layout"
                           ? missingLayout.length === 1
                             ? lineName(missingLayout[0])
+                            : undefined
+                        : blockers[0] === "colour"
+                          ? colourUnready.length === 1
+                            ? lineName(colourUnready[0])
+                            : undefined
+                        : blockers[0] === "colour_price_check"
+                          ? colourPriceCheck.length === 1
+                            ? lineName(colourPriceCheck[0])
                             : undefined
                         : blockers[0] === "cover_spine"
                           ? missingCoverSpine.length === 1
@@ -1269,7 +1324,18 @@ export default function CheckoutScreen() {
             </View>
           </View>
 
-          {totals.totalMinor == null && unpriced.length ? (
+          {totals.totalMinor == null && colourPriceCheck.length ? (
+            <Text className="text-caption text-warning">
+              A page in your order needs a price check, so there is no total yet. The shop has not
+              priced that much colour on that paper, and GRIDGO never fills in a price. Operations is
+              checking it with the shop; you can place the order once it is priced.
+            </Text>
+          ) : totals.totalMinor == null && colourUnready.length ? (
+            <Text className="text-caption text-text-muted">
+              The total appears once GRIDGO has measured and priced every page. Open the item&apos;s
+              Artwork to see each page.
+            </Text>
+          ) : totals.totalMinor == null && unpriced.length ? (
             <Text className="text-caption text-text-muted">
               {unpriced.length === 1
                 ? unpriced[0].listing?.pricingUnit === "per_page" && !unpriced[0].documentPages
@@ -1416,6 +1482,15 @@ function LineRow({
   const paused = shopPaused(line.listing?.shopHours);
   const layout = lineLayoutSummary(line);
   const coverSpine = coverSpineLineSummary(line);
+  // Priced or checked by colour: the sheets, the pages' colour, the warning.
+  const colour = line.colourPricing
+    ? {
+        sheets: sheetsLine(line.quantityMode, line.quantity, linePageCount(line), line.colourPricing.totalSheets ?? line.totalSheets),
+        summary: linePricedByColour(line) ? colourSummary(line.colourPricing) : null,
+        warning: oneColourWarning(line.colourPricing),
+      }
+    : null;
+  const unit = line.quantityMode ? quantityUnit(line.quantityMode, 1) : null;
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -1452,7 +1527,15 @@ function LineRow({
                   {options}
                 </Text>
               ) : null}
-              {line.documentPages ? <Text className="text-caption text-text-secondary">{documentPagesSummary(line.documentPages)}</Text> : null}
+              {colour ? (
+                <>
+                  {colour.sheets ? <Text className="text-caption text-text-secondary">{colour.sheets}</Text> : null}
+                  {colour.summary ? <Text className="text-caption text-text-muted">{colour.summary}</Text> : null}
+                  {colour.warning ? <Text className="text-caption text-warning">{colour.warning}</Text> : null}
+                </>
+              ) : line.documentPages ? (
+                <Text className="text-caption text-text-secondary">{documentPagesSummary(line.documentPages)}</Text>
+              ) : null}
               {/* The note as GRIDGO stored it, contacts already hidden. Edit reopens it. */}
               {line.specialInstructions?.trim() ? (
                 <Text className="text-caption text-text-secondary" numberOfLines={3}>
@@ -1502,7 +1585,7 @@ function LineRow({
           <View className="flex-row items-center">
             <IconAction
               icon="minus"
-              label={`One fewer ${name}`}
+              label={unit ? `One fewer ${unit} of ${name}` : `One fewer ${name}`}
               disabled={busy || line.quantity <= 1}
               onPress={() => onQuantity(line.quantity - 1)}
             />
@@ -1511,7 +1594,7 @@ function LineRow({
             </Text>
             <IconAction
               icon="plus"
-              label={`One more ${name}`}
+              label={unit ? `One more ${unit} of ${name}` : `One more ${name}`}
               disabled={busy}
               onPress={() => onQuantity(line.quantity + 1)}
             />

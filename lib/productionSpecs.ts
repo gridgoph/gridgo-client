@@ -1,4 +1,5 @@
 import type { Order, ProductionItem } from "@/lib/api";
+import { quantityModeLabel } from "@/lib/colourPricing";
 import { layoutLabel } from "@/lib/printLayout";
 
 export type SpecValue = { label: string; value: string };
@@ -9,6 +10,10 @@ export function readableSpec(value: string): string {
 /** Production values only. Money and evidence never become specification rows. */
 export function productionSpecRows(item: ProductionItem, describeValue: (value: string) => string = readableSpec): SpecValue[] {
   const rows: SpecValue[] = [{ label: "Quantity", value: String(item.quantity) }];
+  // Copies or sets (gridgo-api docs/COLOUR_PRICING_API.md): how the sheets are collated.
+  const mode = quantityModeLabel(item.quantityMode);
+  if (mode) rows.push({ label: "Copies", value: mode });
+  if (mode && item.totalSheets != null) rows.push({ label: "Sheets", value: String(item.totalSheets) });
   if (item.pricingUnit) rows.push({ label: "Unit", value: readableSpec(item.pricingUnit) });
   if (item.packageQty) rows.push({ label: "Pack size", value: String(item.packageQty) });
   if (item.documentPages) {
