@@ -6,7 +6,7 @@ import type { CoverChoice } from "@/lib/api";
 import type { SpineLine } from "@/lib/coverSpine";
 
 /** The book as drawn: tall enough for a title, narrow enough to read as a spine. */
-const BOOK_HEIGHT = 228;
+const BOOK_HEIGHT = 300;
 const SPINE_WIDTH = 46;
 
 type Props = {
@@ -105,7 +105,7 @@ function Spine({ lines }: { lines: SpineLine[] }) {
       style={{ width: SPINE_WIDTH, height: BOOK_HEIGHT }}
     >
       <View
-        className="flex-row items-center gap-3 px-4"
+        className="flex-row items-center gap-2.5 px-3"
         style={{
           position: "absolute",
           width: BOOK_HEIGHT,
@@ -116,10 +116,15 @@ function Spine({ lines }: { lines: SpineLine[] }) {
         }}
       >
         {lines.map((line) => (
+          // The title keeps its room; the shorter lines give theirs up first.
           <View
             key={line.field}
-            className={line.field === "title" ? "min-w-0 flex-1 items-center" : "shrink-0"}
-            style={line.field === "title" ? undefined : { maxWidth: 64 }}
+            className="min-w-0 items-center"
+            style={
+              line.field === "title"
+                ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 104 }
+                : { flexShrink: 1, maxWidth: 80 }
+            }
           >
             <Lettering
               text={line.text}
