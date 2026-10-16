@@ -137,7 +137,14 @@ jobs:
             const fs = require("fs");
             const builds = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
             const build = Array.isArray(builds) ? builds[0] : builds;
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `id=${build.id}\n`);
+            // Every iPhone build is app.json's version and only the build
+            // number rises, so the release notice is MAJOR.MINOR.<build number>,
+            // the way the Android builds count. Announcing app.json's version
+            // would be sent once and then refused as a repeat.
+            const line = /^(\d+)\.(\d+)\./.exec(build.appVersion ?? "");
+            const number = String(build.appBuildVersion ?? "");
+            const announce = line && /^[1-9]\d{0,8}$/.test(number) ? `${line[1]}.${line[2]}.${number}` : "";
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `id=${build.id}\nannounce_version=${announce}\n`);
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
               "### GRIDGO iPhone build",
               "",
@@ -177,6 +184,19 @@ jobs:
             echo
             echo "Uploaded to App Store Connect. It appears in TestFlight once Apple has processed it (usually 5 to 30 minutes)."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # TestFlight testers hear about this version only once it is uploaded.
+      # Advisory: the build is already in App Store Connect, so a failed
+      # announcement must not fail the run.
+      - name: Broadcast the TestFlight release
+        if: inputs.submit_to_testflight && steps.build.outputs.announce_version != ''
+        continue-on-error: true
+        env:
+          RELEASE_ANNOUNCE_TOKEN: ${{ secrets.RELEASE_ANNOUNCE_TOKEN }}
+          RELEASE_APP: client
+          RELEASE_CHANNEL: ios
+          RELEASE_VERSION: ${{ steps.build.outputs.announce_version }}
+        run: node scripts/announce-release.mjs
 
       - name: Remove the App Store Connect key
         if: always()

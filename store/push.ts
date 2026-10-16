@@ -4,6 +4,7 @@ import { create } from "zustand";
 
 import * as api from "@/lib/api";
 import { getFirebaseMessaging } from "@/lib/firebaseMessaging";
+import { appInstallChannel } from "@/lib/buildDistribution";
 import { liveGeneration, assertLiveGeneration } from "@/lib/live";
 import { withRequestDeadline } from "@/lib/requestDeadline";
 import { useSession } from "@/store/session";
@@ -326,8 +327,11 @@ export const usePush = create<PushState>((set, get) => ({
       await serializeDeviceMutation(async (signal) => {
         assertLiveGeneration(generation);
         if (useSession.getState().signingOut) return;
-        if (signedIn) await api.registerDevice(token, platform, signal, provider);
-        else await api.registerDeviceUnclaimed(token, platform, signal, provider);
+        // Sent on every registration, so an install from before the field
+        // reports its channel at its next launch.
+        const channel = appInstallChannel();
+        if (signedIn) await api.registerDevice(token, platform, signal, provider, channel);
+        else await api.registerDeviceUnclaimed(token, platform, signal, provider, channel);
       });
       assertLiveGeneration(generation);
       if (useSession.getState().signingOut) return;

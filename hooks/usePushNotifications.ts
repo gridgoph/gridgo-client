@@ -1,5 +1,5 @@
-import { buildDistribution } from "@/lib/buildDistribution";
-import { releasePushDownloadUrl } from "@/lib/releasePush";
+import { appInstallChannel } from "@/lib/buildDistribution";
+import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
 import { accountHold } from "@/lib/accountHold";
 import { getOrder, getSupportChatThread, markNotificationRead } from "@/lib/api";
 import {
@@ -169,11 +169,12 @@ export function usePushNotifications(): void {
       if (routed.current.has(key)) return;
       routed.current.add(key);
       const sequence = ++tapSequence.current;
-      const download = releasePushDownloadUrl(data, title, buildDistribution());
-      if (download) {
+      const release = releaseNoticeDestination(data, title, appInstallChannel());
+      if (release) {
         pending.current = null;
-        // An update is public and can rescue a signed-out install too.
-        void Linking.openURL(download).catch(() => undefined);
+        // An update is public and can rescue a signed-out install too. A store
+        // install opens its store, never the APK download.
+        void openReleaseDestination(release, (url) => Linking.openURL(url));
         void Notifications?.clearLastNotificationResponseAsync?.().catch(() => undefined);
         return;
       }
