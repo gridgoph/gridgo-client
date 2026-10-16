@@ -23,6 +23,13 @@ import { useIsApprovedOrganization } from "@/store/organization";
    top of it as well: 80 + 34 + 8 = 122pt against the platform's 83. That is the
    "tab bar sits too high" report.
 
+   The exact 49pt row then drew the opposite report (16 Oct 2026, on an
+   iPhone): with 4pt above the glyph, a list scrolled under the bar met the
+   icons with no gap at all. A card's surface is the bar's surface, so the
+   hairline alone cannot separate them in Dark — only air can, which is what
+   Android's 20dp does. The iOS row is therefore 57pt: the same 12pt above the
+   glyph that Android declares, still nothing added under the labels.
+
    **Android.** Material 3's navigation bar container is 80dp
    (`NavigationBarTokens.TallContainerHeight`; the 64dp `ContainerHeight` is the
    short/expressive variant, not this one), and the system navigation inset is
@@ -52,8 +59,8 @@ import { useIsApprovedOrganization } from "@/store/organization";
    `tabBarPaddingBottom` spells the floor out longhand so the intent survives.
 
    Resulting *painted* bar heights, content column plus whatever sits under it:
-     iOS, home indicator     49 + 34 = 83pt   (UIKit exactly)
-     iOS, no indicator       49 +  8 = 57pt
+     iOS, home indicator     57 + 34 = 91pt
+     iOS, no indicator       57 +  8 = 65pt
      Android, gesture nav    80 + 24 = 104dp
      Android, three-button   80 + 48 = 128dp
      Android/web, no inset   80 +  8 = 88dp
@@ -72,19 +79,19 @@ import { useIsApprovedOrganization } from "@/store/organization";
    the same number in all three, but it was measured from the *layout* top while
    the edge a person actually sees is the *painted* top, `actionRise` lower. The
    same 12dp therefore bought 16dp less room here. On iOS it was worse than
-   tight: the 49pt stack fills its column exactly, so the icon sat 6pt *above*
+   tight: the 49pt stack filled its column exactly, so the icon sat 6pt *above*
    the paint.
 
    The fix is to hang the labelled columns off the painted edge and let only the
    action column reach up into the strip — not to shrink `actionRise`, which is
    the overhang itself. `tabBarTopGap` is the space above the icon measured from
-   the painted edge, and it is now what gridgo-supplier draws:
+   the painted edge:
 
-     iOS      4pt   (itemPaddingTop 4, and a 49pt stack leaves no slack)
+     iOS     12pt   (itemPaddingTop 12, and the 57pt stack leaves no slack)
      Android 20dp   (itemPaddingTop 12, plus the 8dp M3 leaves over the stack)
 
    All three apps run this file. Android item padding is 12 above and 16 below
-   in every one of them.
+   in every one of them; the 12pt iOS gap is this app's, from the report above.
    --------------------------------------------------------------------------- */
 
 /**
@@ -120,11 +127,11 @@ const TAB_LABEL_HEIGHT = 16;
  */
 export function tabBarMetrics(platformOS: string): TabBarMetrics {
   if (platformOS === "ios") {
-    // 4 + 24 icon + 2 + 16 label + 3 = 49, the HIG row exactly. The 4pt above
-    // the icon is also precisely the badge's -top-1 overhang.
+    // 12 + 24 icon + 2 + 16 label + 3 = 57: the HIG's 49pt row with the air
+    // above the glyph that keeps a scrolled list off the icons.
     return {
-      columnHeight: 49,
-      itemPaddingTop: 4,
+      columnHeight: 57,
+      itemPaddingTop: 12,
       itemGap: 2,
       itemPaddingBottom: 3,
       actionDiameter: 56,
@@ -202,7 +209,7 @@ export function startPrintFabBottom(_insetBottom: number): number {
  * The column is laid out `justify-end` against a `columnHeight` minimum, so
  * whatever the platform leaves over the natural stack sits above the glyph and
  * adds to the declared top padding. Android's 80dp container holds a 72dp stack
- * and hands the other 8dp up; iOS's 49pt row is the stack exactly.
+ * and hands the other 8dp up; iOS's 57pt row is the stack exactly.
  *
  * This is the number that has to match gridgo-supplier, and the one the strip
  * above the paint was quietly taking `actionRise` out of.
@@ -250,8 +257,8 @@ const ICONS: Record<Exclude<TabName, typeof ACTION_TAB>, LucideIcon> = {
  * `StartPrintFab`) instead of living in this bar, so the row paints edge to
  * edge the way gridgo-supplier does.
  *
- * The column height and the item padding come from `tabBarMetrics` — the HIG's
- * 49pt row on iOS, and Material 3's 80dp container on Android — with the note
+ * The column height and the item padding come from `tabBarMetrics` — a 57pt
+ * row on iOS, and Material 3's 80dp container on Android — with the note
  * above this file's metrics explaining why the two differ and why neither adds
  * a design gap on top of a platform inset.
  *
