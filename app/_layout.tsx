@@ -19,6 +19,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect, useState } from "react";
+import { Platform } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
@@ -422,17 +423,33 @@ function AppNavigation() {
                   keyboard in it, so it gets the platform's own sheet: drag to
                   dismiss, back gesture, keyboard avoidance and focus containment
                   for free. `fitToContents` keeps it the height of its content.
+
+                  Except on iOS. iOS 26 floats a part-height form sheet: inset
+                  from the sides and short of the screen bottom, with a band of
+                  the screen behind it under the home indicator, and UIKit has
+                  no per-sheet way out. So iOS gets a transparent modal and the
+                  screen draws its own surface down to the screen edge, the
+                  home-indicator inset inside it, like `components/Sheet.tsx`.
                 */}
                 <Stack.Screen
                   name="order/request-changes"
-                  options={{
-                    presentation: "formSheet",
-                    headerShown: false,
-                    sheetAllowedDetents: "fitToContents",
-                    sheetGrabberVisible: true,
-                    sheetCornerRadius: radius.lg,
-                    contentStyle: { backgroundColor: token.surface },
-                  }}
+                  options={
+                    Platform.OS === "ios"
+                      ? {
+                          presentation: "transparentModal",
+                          animation: "fade",
+                          headerShown: false,
+                          contentStyle: { backgroundColor: "transparent" },
+                        }
+                      : {
+                          presentation: "formSheet",
+                          headerShown: false,
+                          sheetAllowedDetents: "fitToContents",
+                          sheetGrabberVisible: true,
+                          sheetCornerRadius: radius.lg,
+                          contentStyle: { backgroundColor: token.surface },
+                        }
+                  }
                 />
                 {/*
                   Rating a finished job. It was a content-sized sheet like the
