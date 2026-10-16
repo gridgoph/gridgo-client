@@ -96,9 +96,12 @@ export function changePriceLine(change: Pick<OrderChangeRequest, "totalMinor">):
 }
 
 /** What the request would change, named plainly: the spec, the date, or both. */
-export function changeKindLabel(change: Pick<OrderChangeRequest, "proposedSpec" | "proposedPromiseBy">): string {
+export function changeKindLabel(change: Pick<OrderChangeRequest, "proposedSpec" | "proposedPromiseBy" | "colourCorrection">): string {
   const spec = Boolean(change.proposedSpec?.trim());
   const time = Boolean(change.proposedPromiseBy);
+  // A shop that measured a page differently from GRIDGO's estimate asks
+  // before it prints at another price (gridgo-api docs/COLOUR_PRICING_API.md).
+  if (change.colourCorrection) return time ? "A corrected colour price and a new ready date" : "A corrected colour price";
   if (spec && time) return "A change to the item and its ready date";
   if (time) return "A new ready date";
   return "A change to the item";

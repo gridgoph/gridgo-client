@@ -1,6 +1,7 @@
 import { CircleCheck } from "lucide-react-native";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { Text, View } from "react-native";
+import { ColourEvidence } from "@/components/ColourEvidence";
 import { DesignLinkRow } from "@/components/DesignLinkRow";
 import { SpecRow } from "@/components/SpecRow";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -35,6 +36,7 @@ export function ProductionSpecifications({ order, taxonomy = EMPTY_TAXONOMY, bar
         {named ? <Text className={bare ? "pt-3 text-body font-medium text-text-primary" : "text-body font-medium text-text-primary"}>{item.itemName}</Text> : null}
         <View className={bare ? undefined : "gg-card-flush px-4"}>
           {productionSpecRows(item, (value) => taxonomyLabel(taxonomy, value)).map((row, index) => <SpecRow key={`${row.label}:${index}`} label={row.label} value={row.value} />)}
+          <ColourEvidence item={item} />
           {note ? <NoteRow label="Special instructions" text={note} readAt={readAt} /> : null}
           {agreed ? <NoteRow label="Agreed change" text={agreed} /> : null}
           {showLinks

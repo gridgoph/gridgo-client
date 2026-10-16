@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ColourCorrectionDetail } from "@/components/orderChange/ColourCorrection";
 import { DateChange } from "@/components/DateChange";
 import { DecisionChoice } from "@/components/DecisionChoice";
 import { ErrorState } from "@/components/ErrorState";
@@ -112,6 +113,13 @@ export function ChangeRequestCard({ order, view, primary, onChanged }: Props) {
       ) : null}
 
       <Amendment original={change.originalInstructions ?? ""} proposed={change.proposedSpec ?? ""} />
+
+      {change.colourCorrection ? (
+        <ColourCorrectionDetail
+          correction={change.colourCorrection}
+          item={order.productionItems?.find((entry) => entry.id === change.lineItemId) ?? null}
+        />
+      ) : null}
 
       {change.proposedPromiseBy ? (
         <DateChange next={change.proposedPromiseBy} previous={order.promiseBy} label="Ready by, with the change" />

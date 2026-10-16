@@ -17,6 +17,7 @@ import type {
   ArtworkGuidanceRule,
   ArtworkGuidanceSettings,
   ArtworkWarning,
+  PrepareFileAdvice,
 } from "@/lib/api";
 
 const MILLI = 1000;
@@ -77,6 +78,25 @@ export function prepareFileGuide(
     });
   }
   return rows;
+}
+
+/**
+ * The guide for a per-page product with GRIDGO's resolution advice
+ * (`listing.prepareFile`, gridgo-api `docs/COLOUR_PRICING_API.md`): plans and
+ * documents want 300 to 600 DPI, and resolution never changes their price.
+ * It takes the place of the per-type resolution row.
+ */
+export function withPrepareFileAdvice(rows: GuideRow[] | null, advice: PrepareFileAdvice | null | undefined): GuideRow[] | null {
+  if (!advice?.recommendedDpi) return rows;
+  const { min, max } = advice.recommendedDpi;
+  const row: GuideRow = {
+    id: "resolution",
+    title: `${min} to ${max} DPI`,
+    body: advice.resolutionAffectsPrice
+      ? "Recommended for sharp lines and small text."
+      : "Recommended for sharp lines and small text. Resolution does not change the price.",
+  };
+  return [...(rows ?? []).filter((entry) => entry.id !== "resolution"), row];
 }
 
 /** The pixels a file needs to reach `dpi` at this size. */

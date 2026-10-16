@@ -136,8 +136,122 @@ export type PriceRange = {
 
 export type DocumentPages = { total: number; range: string | null; printed: number };
 
+// ---------------------------------------------------------------------------
+// Colour pricing (gridgo-api `docs/COLOUR_PRICING_API.md`, report 0BE07331)
+// ---------------------------------------------------------------------------
+
+/** How copies are counted: both are pages × quantity sheets; only collating differs. */
+export type QuantityMode = "copies_each_page" | "document_sets";
+
+/** Tier codes: large format `none | up_to_25 | up_to_50 | above_50`, A3 `monochrome | full_colour`. */
+export type ColourTier = "none" | "up_to_25" | "up_to_50" | "above_50" | "monochrome" | "full_colour" | (string & {});
+
+export type ColourTierSet = "large_format" | "a3" | (string & {});
+
+/**
+ * One printed page's colour measure and price, as the client may see it.
+ * Every amount is GRIDGO's, fee inside: `sheetPriceMinor` is the all-in sheet
+ * rate (an alias of `clientSheetPriceMinor`), `clientPageTotalMinor` covers
+ * every copy or set of this page. Null while the group cannot be priced.
+ */
+export type ColourPage = {
+  fileId: string;
+  /** One-based within its file. */
+  page: number;
+  strongColourBps: number;
+  strongColourPercent?: number;
+  tier: ColourTier | null;
+  sheetPriceMinor: number | null;
+  clientSheetPriceMinor?: number | null;
+  clientPageTotalMinor?: number | null;
+  clientPageRoundingMinor?: number | null;
+  status?: "priced" | "needs_price_check" | (string & {});
+  message?: string;
+};
+
+/** Where a colour line stands. Open: an unknown status is "not ready yet". */
+export type ColourPricingStatus =
+  | "configuration_required"
+  | "artwork_upload_required"
+  | "pending"
+  | "failed"
+  | "analysis_limit"
+  | "unsupported"
+  | "quantity_mode_required"
+  | "multiple_file_page_range_unsupported"
+  | "duplicate_artwork_unsupported"
+  | "needs_price_check"
+  | "priced"
+  | "fixed_price"
+  | (string & {});
+
+/**
+ * GRIDGO's colour measure of a line's artwork at the chosen paper and layout,
+ * and — for a listing priced by colour — each page's price. An estimate: the
+ * shop may ask to correct a page through a change request.
+ */
+export type ColourPricing = {
+  version: number;
+  status: ColourPricingStatus;
+  pricedByColour: boolean;
+  estimate?: boolean;
+  quantityMode: QuantityMode | null;
+  quantity: number;
+  totalSheets: number | null;
+  paperSize?: string;
+  tierSet?: ColourTierSet;
+  /** The line's all-in printing total; null until every page in its group is priced. */
+  clientLineSubtotalMinor?: number | null;
+  pagePriceBasis?: string;
+  /** The one-colour service warning, verbatim from GRIDGO; never blocks. */
+  warning: string | null;
+  pages: ColourPage[];
+  /** What was measured: layout, paper and the thresholds in force at the time. */
+  request?: { layout?: string; thresholds?: { a3MonochromeMaxBps?: number } | null } | null;
+};
+
+/** A shop's colour correction on a change request, as the client sees it. */
+export type ColourCorrection = {
+  pages: ColourPage[];
+  quantity: number;
+  quantityMode: QuantityMode | null;
+  totalSheets: number | null;
+  clientLineSubtotalMinor?: number | null;
+  originalClientLineSubtotalMinor: number | null;
+  correctedClientLineSubtotalMinor: number | null;
+};
+
+/** The source file's own colour read, before a paper is chosen. */
+export type FileColourAnalysis = {
+  status: "pending" | "ready" | "failed" | (string & {});
+  version: number;
+  completedAt: string | null;
+  pages?: { page: number; strongColourBps: number }[];
+  error?: string;
+};
+
+/** The M4.08 guide's resolution advice for a per-page listing. */
+export type PrepareFileAdvice = {
+  recommendedDpi: { min: number; max: number };
+  resolutionAffectsPrice: boolean;
+};
+
+/** The size metadata a client may see; never the shop's tier rates. */
+export type ColourListingSize = {
+  paperSize: string;
+  tierSet: ColourTierSet;
+  offeredTiers: ColourTier[];
+};
+
 export type ProductionItem = {
   documentPages?: DocumentPages | null;
+  /** Copies or sets, snapshotted at checkout; null on other products. */
+  quantityMode?: QuantityMode | null;
+  totalSheets?: number | null;
+  /** The colour measure and page prices frozen at checkout: the dispute evidence. */
+  colourPricing?: ColourPricing | null;
+  /** The latest applied colour correction on this item. */
+  agreedColourCorrection?: (ColourCorrection & { id: string; appliedAt: string }) | null;
   id: string;
   itemName: string;
   quantity: number;
@@ -213,6 +327,8 @@ export type OrderChangeRequest = {
   reason: string;
   /** Masked amendment to the specification; empty on a time-only request. */
   proposedSpec?: string | null;
+  /** A shop's corrected colour measure and page prices, when that is the change. */
+  colourCorrection?: ColourCorrection | null;
   /** The new client promise a time change would set. */
   proposedPromiseBy?: string | null;
   /** The note the item carried when the shop asked. */
@@ -596,6 +712,12 @@ export type PlatformSettings = {
   /** Artwork targets per product type. Absent on an older API. */
   artworkGuidance?: ArtworkGuidanceSettings;
   /**
+   * Super Admin's thresholds for "strong colour" (gridgo-api
+   * `docs/COLOUR_PRICING_API.md`). Only `a3MonochromeMaxBps` is read here, to
+   * name the A3 colour levels; absent on an older API.
+   */
+  colourDetection?: { minSaturationBps: number; minLightnessBps: number; maxLightnessBps: number; a3MonochromeMaxBps: number };
+  /**
    * Whether checkout refuses a hardbound line without its cover and spine
    * (gridgo-api `docs/HARDBOUND_COVER_API.md`). Absent reads as off. A line
    * says the same per item in `coverSpineRequired`.
@@ -817,6 +939,8 @@ export type StoredFile = {
    * has to be replaced. Absent on an older API and on non-artwork files.
    */
   artworkCheck?: ArtworkFileCheck | null;
+  /** The file's own colour read, queued at upload (artwork only). */
+  colourAnalysis?: FileColourAnalysis | null;
   /**
    * The artwork's visual-proof picture (gridgo-api#232). Only artwork has one;
    * absent on an older API and on every other purpose. Read through
@@ -1953,6 +2077,17 @@ export type CatalogItem = {
    */
   printLayouts?: PrintLayoutCode[];
   /**
+   * Priced per sheet by how much strong colour each page has (gridgo-api
+   * `docs/COLOUR_PRICING_API.md`). Absent means false.
+   */
+  pricedByColour?: boolean;
+  /** A one-colour service (blueprint, monochrome): a colour file is warned about, never refused. */
+  oneColour?: boolean;
+  /** The paper sizes priced by colour and the tiers each offers; never the shop's rates. */
+  colourPricing?: { sizes: ColourListingSize[] } | null;
+  /** The "Prepare your file" resolution advice, on per-page listings. */
+  prepareFile?: PrepareFileAdvice | null;
+  /**
    * Whether this product asks how its cover is made and what the spine says
    * (gridgo-api `docs/HARDBOUND_COVER_API.md`). Absent on an older API.
    */
@@ -2680,6 +2815,12 @@ export type CartQuote = {
 
 export type CartLineRecord = {
   documentPages?: DocumentPages | null;
+  /** Copies of each page, or sets of the whole document; null until chosen. */
+  quantityMode?: QuantityMode | null;
+  /** Sheets printed in all; null until GRIDGO can count them. */
+  totalSheets?: number | null;
+  /** Null for a listing that is neither priced by colour nor one-colour. */
+  colourPricing?: ColourPricing | null;
   id: string;
   /** Queue-and-calendar projection for this configured line; absent on older APIs. */
   promiseBy?: string | null;
@@ -3204,6 +3345,8 @@ export async function addCartLine(
     specialInstructions?: string;
     /** Only for a listing that offers layouts; GRIDGO refuses it on any other. */
     printLayout?: PrintLayoutCode | null;
+    /** Copies of each page or sets of the document; a colour-priced listing needs one. */
+    quantityMode?: QuantityMode | null;
     /** Up to eight exact colours; omit when the client named none. */
     colorTargets?: ColorTargetInput[];
     dropoff?: OrderPoint | null;
@@ -3240,6 +3383,8 @@ export async function updateCartLine(
     specialInstructions?: string;
     /** A layout the listing offers, or null to clear it; omit to keep it. */
     printLayout?: PrintLayoutCode | null;
+    /** Copies of each page or sets of the document; null clears it; omit to keep it. */
+    quantityMode?: QuantityMode | null;
     /** Replaces the whole list; `[]` clears it; omit to keep it. */
     colorTargets?: ColorTargetInput[] | null;
     dropoff?: OrderPoint | null;
@@ -3260,6 +3405,20 @@ export async function updateCartLine(
     { method: "PATCH", body: JSON.stringify(input) },
   );
   return result.cart;
+}
+
+/**
+ * Ask GRIDGO to measure the basket's artwork for the paper and layout chosen
+ * (gridgo-api `docs/COLOUR_PRICING_API.md`). Idempotent: `{}` makes sure the
+ * current request exists; `retry` re-runs a failed one (after 30 seconds).
+ * The answer is only a receipt — the result arrives on the basket, so read it
+ * with `getCart`.
+ */
+export async function requestColourAnalysis(cartId: string, options: { retry?: boolean } = {}): Promise<void> {
+  await request(`/me/carts/${encodeURIComponent(cartId)}/colour-analysis`, {
+    method: "POST",
+    body: JSON.stringify(options.retry ? { retry: true } : {}),
+  });
 }
 
 /**
