@@ -114,15 +114,15 @@ describe("tabBarPaintedHeight", () => {
   it.each([
     ["Android, three-button", "android", 48, 128],
     ["Android, gesture nav", "android", 24, 104],
-    ["iPhone, home indicator", "ios", 34, 83],
-    ["iPhone, no home indicator", "ios", 0, 57],
+    ["iPhone, home indicator", "ios", 34, 91],
+    ["iPhone, no home indicator", "ios", 0, 65],
     ["Android/web, no inset", "android", 0, 88],
   ] as const)("%s", (_label, os, inset, expected) => {
     expect(tabBarPaintedHeight(os, inset)).toBe(expected);
   });
 
-  it("puts a home-indicator iPhone on UIKit's own 83pt", () => {
-    // 49pt content row + the 34pt inset, with nothing added on top of it.
+  it("adds nothing under the labels on a home-indicator iPhone", () => {
+    // 57pt content row + the 34pt inset, with nothing added on top of it.
     expect(tabBarPaintedHeight("ios", 34)).toBe(tabBarMetrics("ios").columnHeight + 34);
   });
 
@@ -148,7 +148,7 @@ describe("tabBarHeight", () => {
   it("does not move the painted row itself", () => {
     // The strip is transparent. Growing the layout box must not have been done
     // by growing the content row, which is UIKit's and Material's number.
-    expect(tabBarMetrics("ios").columnHeight).toBe(49);
+    expect(tabBarMetrics("ios").columnHeight).toBe(57);
     expect(tabBarMetrics("android").columnHeight).toBe(80);
   });
 });
@@ -162,11 +162,11 @@ describe("tabBarTopGap", () => {
    * the declared padding plus whatever slack the platform leaves. This app
    * paints `actionRise` lower so the action disc can overhang the hairline, and
    * the gap a person sees was that much smaller — on iOS the glyph sat above
-   * the paint entirely. These are gridgo-supplier's numbers, and they are what
-   * the bar must now draw.
+   * the paint entirely. Android keeps gridgo-supplier's 20dp; iOS's 4pt left a
+   * scrolled list touching the icons (16 Oct 2026), so it now has 12pt.
    */
-  it("matches gridgo-supplier from the painted edge", () => {
-    expect(tabBarTopGap("ios")).toBe(4);
+  it("leaves air above the glyph from the painted edge", () => {
+    expect(tabBarTopGap("ios")).toBe(12);
     expect(tabBarTopGap("android")).toBe(20);
   });
 
@@ -174,7 +174,7 @@ describe("tabBarTopGap", () => {
     // Android: 80dp container over a 72dp stack, so 8dp joins the 12dp padding.
     const android = tabBarMetrics("android");
     expect(tabBarTopGap("android")).toBe(android.itemPaddingTop + 8);
-    // iOS: the 49pt stack fills the row exactly, so there is nothing to hand up.
+    // iOS: the 57pt stack fills the row exactly, so there is nothing to hand up.
     expect(tabBarTopGap("ios")).toBe(tabBarMetrics("ios").itemPaddingTop);
   });
 
@@ -187,15 +187,15 @@ describe("tabBarTopGap", () => {
 });
 
 describe("tabBarMetrics", () => {
-  it("gives iOS the Human Interface Guidelines 49pt row", () => {
+  it("gives iOS a 57pt row: the HIG's 49 plus air above the glyph", () => {
     const ios = tabBarMetrics("ios");
-    expect(ios.columnHeight).toBe(49);
-    // 4 + 24 icon + 2 + 16 label + 3 fills it exactly.
+    expect(ios.columnHeight).toBe(57);
+    // 12 + 24 icon + 2 + 16 label + 3 fills it exactly.
     expect(
       ios.itemPaddingTop + 24 + ios.itemGap + 16 + ios.itemPaddingBottom,
     ).toBe(ios.columnHeight);
-    // A home-indicator iPhone therefore lands on UIKit's own 83pt.
-    expect(ios.columnHeight + tabBarPaddingBottom(34)).toBe(83);
+    // A home-indicator iPhone is 91pt — nowhere near the 122pt "too high" bar.
+    expect(ios.columnHeight + tabBarPaddingBottom(34)).toBe(91);
   });
 
   it("gives Android the Material 3 80dp container", () => {
@@ -219,7 +219,7 @@ describe("tabBarMetrics", () => {
 
   it("leaves the badge's overhang room above the glyph on both platforms", () => {
     // The badge is drawn at -top-1 (4). Less top padding than that on iOS,
-    // where the column is pinned to 49, would clip it against the hairline.
+    // where the column is pinned to 57, would clip it against the hairline.
     for (const os of ["ios", "android"]) {
       expect(tabBarMetrics(os).itemPaddingTop).toBeGreaterThanOrEqual(4);
     }
