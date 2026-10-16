@@ -21,6 +21,31 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.318 (New feature)
+
+- Vouchers: see yours in Account with a live countdown, add a code, and have one come off your order at checkout.
+- Read GRIDGO's terms in Account, agree when they change, and ask to see, correct or delete your data.
+- Follow your delivery on a big live map with the rider's steps, from pick-up to your door.
+- Messages from your rider and GRIDGO now ring your phone, and tapping one opens that conversation.
+- After an order arrives, a short optional survey earns a ₱15 voucher, with a code you can copy.
+- A delivered order opens on a live countdown to report a problem, your rating and Get help. The rest is in View details.
+- Ordering after hours shows when GRIDGO checks your artwork, and greyed-out dates now tell you why.
+- The + button and a voucher's Use now open the product categories when your order is empty, not an empty checkout.
+- A new account's Home now shows Featured Prints, products picked by GRIDGO, with a shorter welcome line.
+- The artwork step lists the file types each product takes and explains how to save a Word file as a PDF.
+- A bell on every screen shows unread updates and chimes when an order moves. Mute it in Settings.
+- Your receipt now prints out with a short sound. Turn app sounds off in Settings; silent mode keeps it quiet.
+- PDF artwork now shows its first page in the visual proof, and a preview that fails says why with a Retry.
+- When printing finishes, confirm you will be at your delivery pin, or move it once with the price difference shown.
+- Add special instructions to each item, and approve or decline a shop's change, paying any extra by QR.
+- "Add more from this shop" at checkout now lists what that shop can still make for your date.
+- Attach up to 10 files and design links to one item, each with an optional label like Front or Logo PDF.
+- See whether a shop is open now or when it opens, and spot jobs that finished printing early.
+- The order survey asks three optional price questions, and the app asks once what stopped an unfinished order.
+- Artwork shows how to prepare your file, its colours and sharpness at your size, and warnings you can accept.
+- Plans and documents can be set to fit the paper or print at actual size, with a preview and a cut-off warning.
+- Name exact brand colours as Pantone, CMYK or hex, and see the colours GRIDGO reads from your file.
+
 ## 1.0.276 (New feature)
 
 - Document printing now takes Word files, and you can type the page count when a file does not say.
