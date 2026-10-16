@@ -4,8 +4,6 @@ import { AppState, type AppStateStatus } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import HomeScreen from "@/app/(tabs)/home";
-import type { CatalogItem, ShopBoard, ShopSummary } from "@/lib/api";
-import { clearBoardCache } from "@/lib/shopBoards";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useRequestDraft } from "@/store/requestDraft";
@@ -28,8 +26,7 @@ jest.mock("@/lib/api", () => {
     listOrders: jest.fn(async () => []),
     getProductCategories: jest.fn(async () => []),
     getCart: jest.fn(async () => null),
-    listCatalogShops: jest.fn(async () => []),
-    getCatalogShop: jest.fn(async () => null),
+    getFeaturedPrints: jest.fn(async () => ({ items: [] })),
   };
 });
 
@@ -40,77 +37,33 @@ const START = Date.parse("2026-09-27T08:00:00.000Z");
 const minutesFrom = (base: number, minutes: number) =>
   new Date(base + minutes * 60_000).toISOString();
 
-function flyers(link: string, expiresAt: string): CatalogItem {
+/** A `GET /featured-prints` body with one curated card. */
+function featured(link: string, expiresAt: string) {
   return {
-    id: "sci_flyers",
-    supplierId: "user_shop",
-    supplierServiceId: "svc",
-    categoryCode: "marketing_collateral",
-    subcategoryCode: "flyers",
-    name: "flyers",
-    description: null,
-    basePriceMinor: 45_000,
-    fromPriceMinor: 45_000,
-    effectivePriceMinor: null,
-    pricingUnit: "per_unit",
-    packageQty: null,
-    measurementKind: "none",
-    measureUnit: null,
-    minimumWidthMilli: null,
-    minimumHeightMilli: null,
-    minimumLengthMilli: null,
-    minimumOrderQuantity: null,
-    priceTiers: [],
-    speedTiers: [],
-    pricingBasis: "per_unit",
-    turnaroundMode: "override",
-    turnaroundHours: 48,
-    rush: null,
-    acceptedFormats: [],
-    photos: [
+    title: "FEATURED PRINTS",
+    items: [
       {
-        fileId: "file_1",
-        sortOrder: 0,
-        altText: "A printed flyer",
-        url: "/catalog/media/file_1",
-        downloadUrl: link,
-        downloadUrlExpiresAt: expiresAt,
-      },
-    ],
-    prepSteps: [],
-    optionGroups: [],
-    version: 1,
-    serviceVersion: 1,
-  };
-}
-
-const SHOP: ShopSummary = {
-  supplierId: "user_shop",
-  shopName: "A press the client never sees",
-  shop: null,
-  media: [],
-  categories: ["marketing_collateral"],
-  itemCount: 1,
-};
-
-function board(link: string, expiresAt: string): ShopBoard {
-  return {
-    supplierId: "user_shop",
-    shopName: "A press the client never sees",
-    shop: null,
-    media: [],
-    categories: ["marketing_collateral"],
-    services: [
-      {
-        id: "svc",
-        version: 1,
+        id: "sci_flyers",
+        name: "Flyers",
         categoryCode: "marketing_collateral",
-        pricingBasis: "per_unit",
-        turnaroundHours: 48,
-        acceptedFormats: [],
-        items: [flyers(link, expiresAt)],
+        subcategoryCode: "flyers",
+        clientFromPriceMinor: 49_500,
+        pricingUnit: "per_unit",
+        packageQty: null,
+        measureUnit: null,
+        minimumOrderQuantity: null,
+        photos: [
+          {
+            fileId: "file_1",
+            sortOrder: 0,
+            url: "/catalog/media/file_1",
+            downloadUrl: link,
+            downloadUrlExpiresAt: expiresAt,
+          },
+        ],
       },
     ],
+    emptyState: null,
   };
 }
 
@@ -146,7 +99,6 @@ beforeEach(() => {
       },
     };
   });
-  clearBoardCache();
   usePlatformSettings.getState().reset();
   usePlatformSettings.getState().adopt({
     issueWindowHours: 24,
@@ -155,9 +107,7 @@ beforeEach(() => {
   });
   api.listOrders.mockReset();
   api.listOrders.mockResolvedValue([]);
-  api.listCatalogShops.mockReset();
-  api.listCatalogShops.mockResolvedValue([SHOP]);
-  api.getCatalogShop.mockReset();
+  api.getFeaturedPrints.mockReset();
   useCart.getState().reset();
   useRequestDraft.getState().reset();
   useSession.setState({
@@ -180,42 +130,42 @@ afterEach(() => {
 /*
   Home's sample photos are signed for five minutes. A phone that sits in the
   background longer used to come back to three "This photo will not load"
-  tiles (gridgo-client#111). Home now re-reads the boards instead.
+  tiles (gridgo-client#111). Home now re-reads FEATURED PRINTS instead.
 */
 describe("Home sample photos and expiring links", () => {
-  it("re-reads the boards once when a held photo link has already expired", async () => {
-    api.getCatalogShop
-      .mockResolvedValueOnce(board("https://storage.example/old", minutesFrom(START, -1)))
-      .mockResolvedValue(board("https://storage.example/new", minutesFrom(START, 5)));
+  it("re-reads the list once when a held photo link has already expired", async () => {
+    api.getFeaturedPrints
+      .mockResolvedValueOnce(featured("https://storage.example/old", minutesFrom(START, -1)))
+      .mockResolvedValue(featured("https://storage.example/new", minutesFrom(START, 5)));
 
     await renderInSafeArea(<HomeScreen />);
 
     await waitFor(() => expect(photoLink()).toBe("https://storage.example/new"));
-    // One board read for the strip, one forced re-read for the expired link.
-    expect(api.getCatalogShop).toHaveBeenCalledTimes(2);
+    // One read for the row, one re-read for the expired link.
+    expect(api.getFeaturedPrints).toHaveBeenCalledTimes(2);
     expect(screen.queryByText("This photo will not load")).toBeNull();
   });
 
   it("re-reads on coming back to the app five minutes later", async () => {
-    api.getCatalogShop
-      .mockResolvedValueOnce(board("https://storage.example/first", minutesFrom(START, 5)))
-      .mockResolvedValue(board("https://storage.example/after-resume", minutesFrom(START + 5 * 60_000, 5)));
+    api.getFeaturedPrints
+      .mockResolvedValueOnce(featured("https://storage.example/first", minutesFrom(START, 5)))
+      .mockResolvedValue(featured("https://storage.example/after-resume", minutesFrom(START + 5 * 60_000, 5)));
 
     await renderInSafeArea(<HomeScreen />);
     await waitFor(() => expect(photoLink()).toBe("https://storage.example/first"));
-    expect(api.getCatalogShop).toHaveBeenCalledTimes(1);
+    expect(api.getFeaturedPrints).toHaveBeenCalledTimes(1);
 
     // The phone sat in the background past the signing window.
     now = START + 5 * 60_000 + 1_000;
     appStateListeners.forEach((listener) => listener("active"));
 
     await waitFor(() => expect(photoLink()).toBe("https://storage.example/after-resume"));
-    expect(api.getCatalogShop).toHaveBeenCalledTimes(2);
+    expect(api.getFeaturedPrints).toHaveBeenCalledTimes(2);
     expect(screen.queryByText("This photo will not load")).toBeNull();
   });
 
   it("does not re-read on a quick trip out of the app", async () => {
-    api.getCatalogShop.mockResolvedValue(board("https://storage.example/first", minutesFrom(START, 5)));
+    api.getFeaturedPrints.mockResolvedValue(featured("https://storage.example/first", minutesFrom(START, 5)));
 
     await renderInSafeArea(<HomeScreen />);
     await waitFor(() => expect(photoLink()).toBe("https://storage.example/first"));
@@ -224,6 +174,6 @@ describe("Home sample photos and expiring links", () => {
     appStateListeners.forEach((listener) => listener("active"));
 
     await waitFor(() => expect(api.listOrders).toHaveBeenCalled());
-    expect(api.getCatalogShop).toHaveBeenCalledTimes(1);
+    expect(api.getFeaturedPrints).toHaveBeenCalledTimes(1);
   });
 });

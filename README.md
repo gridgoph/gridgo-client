@@ -89,7 +89,9 @@ For delivery without an address, checkout can fill a saved address. Check it and
 
 ## Updates and notifications
 
-Open screens refresh when GRIDGO reports relevant changes and reconcile after reconnecting or returning to the foreground. Order cards and details include the order ID. Push taps wait for sign-in and navigation readiness, then open an accessible order or the Notifications inbox. Foreground updates work independently of push permission; see [Live resource updates](docs/REALTIME_UPDATES.md) for implementation guidance.
+Open screens refresh when GRIDGO reports relevant changes and reconcile after reconnecting or returning to the foreground. Order cards and details include the order ID. Push taps wait for sign-in and navigation readiness, then open an accessible order or the Notifications inbox; a rider's message opens that delivery's chat and an Operations message opens its own support thread (or chat history when that thread cannot be read). Android notifications use the audible `gridgo_default` channel; if the phone has silenced it, the notifications card offers the channel's settings. Foreground updates work independently of push permission; see [Live resource updates](docs/REALTIME_UPDATES.md) for implementation guidance.
+
+The notification bell is on every signed-in screen: the Notifications tab on tab screens, and a header bell on pushed screens that opens the inbox over the current screen. Each new update while the app is open swings the bell and plays a short chime once (one chime per burst of updates; nothing for what arrived while the app was in the background). The chime follows the phone's silent mode and can be turned off in Settings > App sounds (the same switch mutes the receipt's print sound); reduce motion keeps the bell still, and a screen reader hears the update instead.
 
 ## App updates
 

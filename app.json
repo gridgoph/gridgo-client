@@ -22,6 +22,9 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
       ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#111111",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -85,6 +88,12 @@
         {
           "photosPermission": "GRIDGO needs photo access so you can save the payment QR.",
           "savePhotosPermission": "GRIDGO needs to save the payment QR to your photos."
+        }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "GRIDGO uses the microphone only while you are on a call with your rider about a delivery."
         }
       ],
       [

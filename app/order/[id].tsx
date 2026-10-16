@@ -1,5 +1,5 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { ChevronLeft, ChevronRight, MessageCircle } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, LifeBuoy, MessageCircle, ScrollText, Star } from "lucide-react-native";
 import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -10,29 +10,39 @@ import { BasketGroupsCard } from "@/components/BasketGroupsCard";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DropoffConfirmationCard } from "@/components/DropoffConfirmationCard";
+import { DeliveryPinCard } from "@/components/deliveryPin/DeliveryPinCard";
+import { ChangeHistory } from "@/components/orderChange/ChangeHistory";
+import { ChangeRequestCard } from "@/components/orderChange/ChangeRequestCard";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
-import { DeliveryTrackingCard } from "@/components/DeliveryTrackingCard";
+import { MissedCallNotice } from "@/components/call/MissedCallNotice";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
 import { DeliveryHandoverCard } from "@/components/DeliveryHandoverCard";
 import { HubClaimCard } from "@/components/HubClaimCard";
 import { FormScreen } from "@/components/FormScreen";
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { JobCompleteCard } from "@/components/JobCompleteCard";
+import { OrderDisclosure } from "@/components/OrderDisclosure";
 import { OrderReference } from "@/components/OrderReference";
 import { OrganizationDiscountRow } from "@/components/OrganizationDiscount";
+import { VoucherDiscountRow } from "@/components/VoucherDiscountRow";
+import { VOUCHER_LABEL, VOUCHER_SHARE_LABEL } from "@/lib/vouchers";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { DesignLinkRow } from "@/components/DesignLinkRow";
+import { ExactColoursRecord } from "@/components/ExactColoursRecord";
 import { FoldSection } from "@/components/FoldSection";
 import { LatestProgressCard } from "@/components/LatestProgressCard";
-import { ProductionSpecifications } from "@/components/ProductionSpecifications";
+import { NoteRow, ProductionSpecifications } from "@/components/ProductionSpecifications";
 import { ProofDecision } from "@/components/ProofDecision";
 import { RefundEntryRow, RefundOrderCard } from "@/components/refund/RefundOrderCard";
 import { RescheduleCard } from "@/components/RescheduleCard";
 import { ShopRecoveryCard } from "@/components/ShopRecoveryCard";
+import { SurveyCard } from "@/components/survey/SurveyCard";
+import { DeliveryTrackingScreen } from "@/components/tracking/DeliveryTrackingScreen";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { ReadyTime } from "@/components/ReadyTime";
+import { ReviewScheduleCard } from "@/components/ReviewScheduleCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonLine, SkeletonList, SkeletonPill } from "@/components/Skeleton";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
@@ -44,6 +54,7 @@ import { formatPhp } from "@/lib/api";
 import { installmentStatusLabel, userFacingError } from "@/lib/copy";
 import { formatDeadline } from "@/lib/deadline";
 import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
+import { callWindowOpen, orderHasCalls } from "@/lib/orderCalls";
 import {
   collectsAtOffice,
   formatPriceRange,
@@ -66,15 +77,29 @@ import {
   paysInFull,
 } from "@/lib/payment";
 import { physicalInvoiceEntry, physicalInvoiceRequestsEnabled } from "@/lib/physicalInvoice";
+import { cleanLabel, lineAttachments } from "@/lib/artworkAttachments";
 import { orderArtwork } from "@/lib/orderArtwork";
 import { orderReference } from "@/lib/orderReference";
-import { artworkSummary, paymentSummary, specificationsSummary } from "@/lib/orderSections";
+import {
+  artworkSummary,
+  helpSummary,
+  paymentSummary,
+  RECEIVED_DETAILS_SUMMARY,
+  showsReceivedView,
+  specificationsSummary,
+} from "@/lib/orderSections";
 import { canRate } from "@/lib/rating";
+import { readyEarlyLabel } from "@/lib/readyTime";
 import { currentRefund, refundEntry } from "@/lib/refunds";
+import { appliedChangeLine, deliveryPinNeedsClient } from "@/lib/deliveryPin";
+import { changeItemName, changeNeedsClient, changeRequestView, paidChanges } from "@/lib/orderChanges";
 import { rescheduleView } from "@/lib/reschedule";
 import { shopRecoveryView } from "@/lib/shopRecovery";
+import { canHaveSurvey } from "@/lib/survey";
+import { useSurvey } from "@/store/survey";
 import { orderPrintingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
+import { openingHoursLines, orderReviewView, upcomingClosures } from "@/lib/operatingHours";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
@@ -109,9 +134,17 @@ export default function OrderDetailScreen() {
    */
   const [handover, setHandover] = useState<api.OrderHandover | null | "error">(null);
   const [error, setError] = useState<string | null>(null);
+  /*
+    Which order's View details and Get help are open on the received view.
+    Kept by id, so switching to another shop's group of the same order opens
+    folded, and never remembered: the view exists to open on three things.
+  */
+  const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  const [helpFor, setHelpFor] = useState<string | null>(null);
 
   const loadSequence = useRef(0);
   const loadSettings = usePlatformSettings((state) => state.load);
+  const platformSettings = usePlatformSettings((state) => state.settings);
   const applyOrderUpdate = useCallback((updated: api.Order) => {
     loadSequence.current++;
     setOrder(updated);
@@ -142,6 +175,9 @@ export default function OrderDetailScreen() {
         ? await api.getOrderHandover(current.id).catch(() => "error" as const)
         : null;
       if (sequence !== loadSequence.current) return;
+      // The post-order survey lives in its own store, read alongside the
+      // order so a completed hand-over, a skip or a send shows on return.
+      if (canHaveSurvey(current.state)) void useSurvey.getState().load(current.id);
       setHandover(credential);
       setBasket(group);
       setOrder(current);
@@ -159,6 +195,11 @@ export default function OrderDetailScreen() {
   }, [id]);
 
   useLiveRefresh(["orders", "dispatch", "claims", "payouts"], load, { refreshOnFocus: false });
+  // The delivery map's window opened or closed: only the order itself moved.
+  const reloadOrder = useCallback(() => {
+    if (!id) return;
+    void api.getOrder(id).then(applyOrderUpdate).catch(() => undefined);
+  }, [id, applyOrderUpdate]);
 
   useFocusEffect(
     useCallback(() => {
@@ -237,6 +278,9 @@ export default function OrderDetailScreen() {
 
   const nextAction = orderNextAction(order);
   const waitingOn = orderWaitingOn(order);
+  // Out of hours, or held by a closure: the card under the docket says when
+  // GRIDGO reviews the artwork, so the docket does not say it twice.
+  const reviewWait = orderReviewView(order);
   const unit = order.unit || product?.unit || "";
   const family = product?.family ?? null;
   const materialLabel = taxonomyLabel(taxonomy, order.material);
@@ -279,6 +323,8 @@ export default function OrderDetailScreen() {
   */
   const recovery = shopRecoveryView(order);
   const reschedule = recovery ? null : rescheduleView(order);
+  // The shop asked to change the job while printing it (report F9FCD485).
+  const changeView = changeRequestView(order);
   const actionZone = order.refundHold && existingRefund
     ? "refund"
     : order.refundHold
@@ -293,6 +339,10 @@ export default function OrderDetailScreen() {
       ? "correction"
       : payable
         ? "pay"
+        : changeView
+          ? "change"
+        : deliveryPinNeedsClient(order)
+          ? "pin"
         : underReview
           ? "review"
           : isIssueWindowState(order.state)
@@ -306,11 +356,15 @@ export default function OrderDetailScreen() {
     so they are listed with the files rather than inside the specification.
   */
   const designLinks = (order.productionItems ?? []).flatMap((item) =>
-    (item.artworkLinks ?? []).map((link) => ({ link, itemName: item.itemName })),
+    lineAttachments(item).flatMap((entry) =>
+      entry.kind === "link"
+        ? [{ link: { formatCode: entry.formatCode, url: entry.url }, label: cleanLabel(entry.label), itemName: item.itemName }]
+        : [],
+    ),
   );
   const artworkFiles = orderArtwork(order);
-  const designLinkRows = designLinks.map(({ link, itemName }) => (
-    <DesignLinkRow key={`${itemName}:${link.formatCode}:${link.url}`} link={link} />
+  const designLinkRows = designLinks.map(({ link, label, itemName }) => (
+    <DesignLinkRow key={`${itemName}:${link.formatCode}:${link.url}`} link={link} name={label} />
   ));
   const openChat = () => router.push("/chat");
   // While the rider has the job the tracking card carries the way in; once it
@@ -320,115 +374,383 @@ export default function OrderDetailScreen() {
   const openRiderChat = () => router.push(deliveryChatRoute(order.id));
   /** These zones say their own wait, and offer their own refund. */
   const shopDecision = actionZone === "refund" || actionZone === "recovery" || actionZone === "reschedule";
+  /*
+    While a rider is bringing it to them, the map is the screen and the order
+    rides in the panel under it (gridgo-client#232). A collected job is not
+    watched — the rider only moves it between two of GRIDGO's own places.
+  */
+  const delivering = !collectsAtOffice(order) && isTrackingState(order.state);
 
-  return (
-    /*
-      Two text inputs live inside this scroll: the payment reference in the
-      action zone, and the description on an issue report. FormScreen keeps the
-      caret above the keyboard for both.
-    */
-    <FormScreen overlay={headerEscape}>
-      <View className="gg-page gap-6 pb-16 pt-4">
-        <View className="gap-2">
-          <Text className="text-h1 text-text-primary">{order.title}</Text>
-          <OrderReference id={order.id} />
+  /*
+    The order is with the client (report 5A28D524): the screen opens on the
+    check window and its countdown — or, once that has closed, the job
+    complete — then the rating, then one way to get help. Everything else is
+    the record, one tap away under View details. Every action the full screen
+    carries is still here; only where it sits changes.
+  */
+  const received = showsReceivedView(order, actionZone);
+  const detailsOpen = detailsFor === order.id;
+  const helpOpen = helpFor === order.id;
+
+  const heading = (
+    <View className="gap-2">
+      <Text className="text-h1 text-text-primary">{order.title}</Text>
+      <OrderReference id={order.id} />
+    </View>
+  );
+
+  /*
+    One of several shops in a multi-shop order: every card below is this
+    group's own — its progress, rider, action and money — and this is the way
+    to the others (gridgo-api#117).
+  */
+  const basketGroups = order.basketId ? (
+    <BasketGroupsCard
+      order={order}
+      basket={basket}
+      onSelect={(groupOrderId) => router.setParams({ id: groupOrderId })}
+    />
+  ) : null;
+
+  /*
+    The latest thing that happened leads, and opens onto the whole story with
+    the shop's photos (gridgo-client#129). The one-line wait is said here only
+    when nothing below is already saying it: an action zone owns its
+    instruction, and so does the card explaining a payment being checked. A
+    closed job tells its own story in the card under this.
+  */
+  const latestProgress = (
+    <LatestProgressCard
+      order={order}
+      note={
+        !nextAction && !underReview && !finished && !shopDecision && !groupStopped && !reviewWait && !changeView
+          ? (waitingOn ?? "This job is in progress.")
+          : null
+      }
+    />
+  );
+
+  /* A settled, refused or withdrawn refund stays on the job's record. */
+  const refundRecord =
+    existingRefund && actionZone !== "refund" ? (
+      <RefundOrderCard refund={existingRefund} onOpen={openRefund} />
+    ) : null;
+
+  /* One action zone at a time — the single yellow control lives here. */
+  // The pin card draws itself (below the progress docket); here it only takes the yellow.
+  const actionZoneView = actionZone && actionZone !== "pin" ? (
+    <Animated.View
+      key={`${order.state}:${actionZone}:${recovery?.kind ?? reschedule?.kind ?? changeView?.kind ?? ""}`}
+      entering={reducedMotion ? undefined : FadeIn.duration(200)}
+    >
+      {actionZone === "refund" && existingRefund ? (
+        <RefundOrderCard refund={existingRefund} onOpen={openRefund} />
+      ) : actionZone === "recovery" && recovery ? (
+        <ShopRecoveryCard order={order} view={recovery} onChanged={() => void load()} />
+      ) : actionZone === "reschedule" && reschedule ? (
+        <RescheduleCard order={order} view={reschedule} onChanged={() => void load()} />
+      ) : actionZone === "change" && changeView ? (
+        <ChangeRequestCard
+          order={order}
+          view={changeView}
+          primary={changeNeedsClient(order)}
+          onChanged={() => void load()}
+        />
+      ) : actionZone === "proof" ? (
+        <ProofDecision
+          order={order}
+          family={family}
+          unit={unit}
+          materialLabel={materialLabel}
+          finishLabel={finishLabel}
+          onUpdated={applyOrderUpdate}
+        />
+      ) : actionZone === "correction" ? (
+        <CorrectionCard
+          order={order}
+          onUpdated={applyOrderUpdate}
+          onOpen={(href) => router.push(href)}
+        />
+      ) : actionZone === "pay" && payable ? (
+        <PaymentPanel
+          order={order}
+          installment={payable}
+          basket={basket}
+          onSubmitted={applyOrderUpdate}
+        />
+      ) : actionZone === "review" && underReview ? (
+        <PaymentUnderReviewCard order={order} installment={underReview} basket={basket} />
+      ) : actionZone === "rate" ? (
+        /*
+          The last thing asked, and only once. It sits in the same one action
+          zone as everything else so a finished job still has exactly one
+          thing to do — a rating prompt bolted on beside a payment panel would
+          be the screen's second yellow control.
+        */
+        <View className="gg-card gap-3 p-4">
+          <Text className="text-h3 text-text-primary">How did it go?</Text>
+          <Text className="text-body text-text-secondary">
+            Rate this job and GRIDGO sends your next one to a shop that did well by
+            you. Three questions, and it takes a moment.
+          </Text>
+          <PrimaryButton
+            label="Rate this order"
+            onPress={() =>
+              router.push({ pathname: "/order/rate", params: { orderId: order.id } })
+            }
+          />
         </View>
+      ) : (
+        <IssueWindowCard
+          order={order}
+          onUpdated={applyOrderUpdate}
+          onWindowElapsed={() => void load()}
+        />
+      )}
+    </Animated.View>
+  ) : null;
 
-        {/*
-          One of several shops in a multi-shop order: every card below is this
-          group's own — its progress, rider, action and money — and this is
-          the way to the others (gridgo-api#117).
-        */}
-        {order.basketId ? (
-          <BasketGroupsCard
-            order={order}
-            basket={basket}
-            onSelect={(groupOrderId) => router.setParams({ id: groupOrderId })}
+  /*
+    The post-order survey, under whatever the job still asks. It only takes
+    the yellow when nothing above it has.
+  */
+  const survey = canHaveSurvey(order.state) ? (
+    <SurveyCard orderId={order.id} primary={!actionZone} />
+  ) : null;
+
+  /* A call the client missed, with the way to call back, ahead of the map it is about. */
+  const missedCalls = orderHasCalls(order) ? <MissedCallNotice order={order} /> : null;
+
+  /*
+    The record, folded. One board rather than three cards: the docket above
+    is the one object on this screen, and these are its appendix. Each
+    heading keeps the fact it holds on show while folded.
+  */
+  const record = (
+    <View className="gg-card-flush">
+      <FoldSection
+        section="specifications"
+        title="Specifications"
+        summary={specificationsSummary(order, unit)}
+      >
+        {order.productionItems?.length ? (
+          <>
+            <ProductionSpecifications order={order} taxonomy={taxonomy} bare showLinks={false} />
+            <ExactColoursRecord items={order.productionItems} bare />
+          </>
+        ) : (
+          <>
+            <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
+            <SpecRow label="Size" value={order.size || "—"} />
+            {/* Resolved through the taxonomy: an order can carry a code
+                rather than a name, and `hem_grommet` is not a finish a
+                client recognises. */}
+            <SpecRow label="Material" value={materialLabel} />
+            {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
+          </>
+        )}
+        {/* A note from before notes were per item rides on the order itself. */}
+        {order.specialInstructions?.trim() ? (
+          <NoteRow
+            label="Special instructions"
+            text={order.specialInstructions}
+            readAt={order.specialInstructionsAcknowledgement?.at ?? null}
+          />
+        ) : null}
+        <SpecRow label="Deadline" value={formatDeadline(order.deadline)} />
+        {/* A collected job is not going to the address they shopped with.
+            Naming that address here is how a client ends up waiting at home
+            for something sitting on our counter. */}
+        {collectsAtOffice(order) ? (
+          <SpecRow label="Collect at" value="GRIDGO Office" />
+        ) : (
+          <SpecRow label="Deliver to" value={order.address || "—"} />
+        )}
+        <SpecRow label="Area" value={zoneName(zones, order.zone)} />
+        <View className="pt-3">
+          <ReadyTime promiseBy={order.promiseBy} early={readyEarlyLabel(order)} />
+        </View>
+        <ChangeHistory order={order} />
+      </FoldSection>
+
+      <FoldSection
+        section="artwork"
+        title="Artwork and references"
+        summary={artworkSummary({
+          files: artworkFiles.length,
+          links: designLinks.length,
+          inProof: showsOwnPreview,
+        })}
+        divided
+      >
+        {/* The proof card above already draws the artwork it asks about;
+            loading every file twice would only slow that decision. */}
+        {showsOwnPreview ? (
+          <Text className="py-3 text-body text-text-secondary">
+            Your artwork is shown in the proof above.
+          </Text>
+        ) : null}
+        {/* Links sit with the files, above the retention line and the
+            delete action that close the section. */}
+        {!showsOwnPreview && (artworkFiles.length || !designLinks.length) ? (
+          <ArtworkPanel order={order} refunds={refunds}>{designLinkRows}</ArtworkPanel>
+        ) : designLinkRows}
+      </FoldSection>
+
+      <FoldSection
+        section="payment"
+        title="Payment details"
+        summary={paymentSummary(order)}
+        divided
+      >
+        <MoneyDetails
+          order={order}
+          onOpenReceipt={() =>
+            router.push({ pathname: "/order/receipt", params: { orderId: order.id } })
+          }
+          onOpenPhysicalInvoice={() =>
+            router.push({ pathname: "/order/physical-invoice", params: { orderId: order.id } })
+          }
+        />
+      </FoldSection>
+    </View>
+  );
+
+  /*
+    Help: a refund comes with a deadline that is said up front, and a client
+    stuck on anything else needs the way to Operations without hunting for it.
+  */
+  const refundOffered = refund?.kind === "eligible" && !shopDecision;
+  const helpRows = (
+    <View className="gap-3">
+      {refundOffered ? (
+        <RefundEntryRow
+          entry={refund}
+          onRequest={() =>
+            router.push({ pathname: "/order/refund-request", params: { orderId: order.id } })
+          }
+        />
+      ) : null}
+      {deliveredChat ? (
+        <DeliveryChatRow
+          chat={deliveredChat}
+          onPress={openRiderChat}
+        />
+      ) : null}
+      <Pressable
+        onPress={openChat}
+        accessibilityRole="button"
+        accessibilityLabel="Message GRIDGO about this order"
+        className="gg-touch flex-row items-center gap-3 py-2"
+        style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+      >
+        <MessageCircle size={20} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+        <View className="flex-1">
+          <Text className="text-body font-medium text-text-primary">Message GRIDGO</Text>
+          <Text className="text-caption text-text-muted">
+            Operations answers questions about this order. Mention {orderReference(order.id)}.
+          </Text>
+        </View>
+        <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} aria-hidden />
+      </Pressable>
+    </View>
+  );
+
+  const content = received ? (
+    <View className="gg-page gap-6 pb-16 pt-4">
+      {heading}
+
+      {/* The check window and its countdown, or the job complete once it has closed. */}
+      {finished ? <JobCompleteCard order={order} compact /> : null}
+      {actionZone === "issue" ? actionZoneView : null}
+
+      {/* The rating: the shop's, once the window has closed, then GRIDGO's survey. */}
+      {actionZone === "rate" ? actionZoneView : null}
+      {finished && order.rated ? <RatedNote /> : null}
+      {survey}
+
+      <View className="gap-3">
+        <OrderDisclosure
+          title="Get help?"
+          summary={helpSummary({
+            refundUntil: refundOffered ? (refund.deadlineAt ?? null) : null,
+            refund: refundOffered,
+            riderChat: Boolean(deliveredChat),
+          })}
+          icon={LifeBuoy}
+          open={helpOpen}
+          onToggle={() => setHelpFor(helpOpen ? null : order.id)}
+        />
+        {helpOpen ? helpRows : null}
+      </View>
+
+      <View className="gap-6">
+        <OrderDisclosure
+          title="View details"
+          summary={RECEIVED_DETAILS_SUMMARY}
+          icon={ScrollText}
+          open={detailsOpen}
+          onToggle={() => setDetailsFor(detailsOpen ? null : order.id)}
+        />
+        {detailsOpen ? (
+          <>
+            {basketGroups}
+            {latestProgress}
+            {refundRecord}
+            {missedCalls}
+            {record}
+          </>
+        ) : null}
+      </View>
+    </View>
+  ) : (
+      <View className={delivering ? "gap-6" : "gg-page gap-6 pb-16 pt-4"}>
+        {/* At the door, the code the rider also sees is the thing to find first. */}
+        {delivering && handover && handover !== "error" ? (
+          <DeliveryHandoverCard orderId={order.id} handover={handover} />
+        ) : null}
+
+        {heading}
+
+        {basketGroups}
+
+        {latestProgress}
+
+        {reviewWait && !order.refundHold && !shopDecision ? (
+          <ReviewScheduleCard
+            view={reviewWait}
+            variant="order"
+            hours={openingHoursLines(platformSettings)}
+            closures={reviewWait.delayed ? upcomingClosures(platformSettings?.operatingHours) : []}
           />
         ) : null}
 
-        {/*
-          The latest thing that happened leads, and opens onto the whole story
-          with the shop's photos (gridgo-client#129). The one-line wait is said
-          here only when nothing below is already saying it: an action zone
-          owns its instruction, and so does the card explaining a payment being
-          checked. A closed job tells its own story in the card under this.
-        */}
-        <LatestProgressCard
-          order={order}
-          note={
-            !nextAction && !underReview && !finished && !shopDecision && !groupStopped
-              ? (waitingOn ?? "This job is in progress.")
-              : null
-          }
-        />
-
         <DropoffConfirmationCard key={order.id} order={order} onUpdated={applyOrderUpdate} onRefresh={() => void load()} />
+
+        {/* Where the rider goes, asked once production finishes (report 6C8DE953). */}
+        <DeliveryPinCard
+          key={`pin:${order.id}`}
+          order={order}
+          primary={actionZone === "pin"}
+          showMap={!delivering}
+          onChangePin={() =>
+            router.push({ pathname: "/order/delivery-pin", params: { orderId: order.id } })
+          }
+          onUpdated={(deliveryPin) => {
+            applyOrderUpdate({ ...order, deliveryPin });
+            // An applied change also moves the address and the delivery money.
+            void load();
+          }}
+          onRefresh={() => void load()}
+        />
 
         {finished ? <JobCompleteCard order={order} /> : null}
 
-        {/* A settled, refused or withdrawn refund stays on the job's record. */}
-        {existingRefund && actionZone !== "refund" ? (
-          <RefundOrderCard refund={existingRefund} onOpen={openRefund} />
-        ) : null}
+        {refundRecord}
 
-        {/* One action zone at a time — the single yellow control lives here. */}
-        {actionZone ? (
-          <Animated.View
-            key={`${order.state}:${actionZone}:${recovery?.kind ?? reschedule?.kind ?? ""}`}
-            entering={reducedMotion ? undefined : FadeIn.duration(200)}
-          >
-            {actionZone === "refund" && existingRefund ? (
-              <RefundOrderCard refund={existingRefund} onOpen={openRefund} />
-            ) : actionZone === "recovery" && recovery ? (
-              <ShopRecoveryCard order={order} view={recovery} onChanged={() => void load()} />
-            ) : actionZone === "reschedule" && reschedule ? (
-              <RescheduleCard order={order} view={reschedule} onChanged={() => void load()} />
-            ) : actionZone === "proof" ? (
-              <ProofDecision
-                order={order}
-                family={family}
-                unit={unit}
-                materialLabel={materialLabel}
-                finishLabel={finishLabel}
-                onUpdated={applyOrderUpdate}
-              />
-            ) : actionZone === "correction" ? (
-              <CorrectionCard order={order} onUpdated={applyOrderUpdate} />
-            ) : actionZone === "pay" && payable ? (
-              <PaymentPanel
-                order={order}
-                installment={payable}
-                basket={basket}
-                onSubmitted={applyOrderUpdate}
-              />
-            ) : actionZone === "review" && underReview ? (
-              <PaymentUnderReviewCard order={order} installment={underReview} basket={basket} />
-            ) : actionZone === "rate" ? (
-              /*
-                The last thing asked, and only once. It sits in the same one
-                action zone as everything else so a finished job still has
-                exactly one thing to do — a rating prompt bolted on beside a
-                payment panel would be the screen's second yellow control.
-              */
-              <View className="gg-card gap-3 p-4">
-                <Text className="text-h3 text-text-primary">How did it go?</Text>
-                <Text className="text-body text-text-secondary">
-                  Rate this job and GRIDGO sends your next one to a shop that did well by
-                  you. Three questions, and it takes a moment.
-                </Text>
-                <PrimaryButton
-                  label="Rate this order"
-                  onPress={() =>
-                    router.push({ pathname: "/order/rate", params: { orderId: order.id } })
-                  }
-                />
-              </View>
-            ) : (
-              <IssueWindowCard order={order} onUpdated={applyOrderUpdate} />
-            )}
-          </Animated.View>
-        ) : null}
+        {actionZoneView}
+
+        {survey}
 
         {/*
           Two different endings, two different things to show.
@@ -444,6 +766,7 @@ export default function OrderDetailScreen() {
           hub's QR and code, or the code the rider also sees. An order made
           ready before the switch has none and keeps the old counter card.
         */}
+        {missedCalls}
         {handover === "error" && handoverKind(order) ? (
           <View className="gg-card gap-3">
             <Text className="text-body-lg font-medium text-text-primary">
@@ -465,13 +788,6 @@ export default function OrderDetailScreen() {
               <PickupCounterCard order={order} />
             )
           ) : null
-        ) : isTrackingState(order.state) ? (
-          <>
-            {handover && handover !== "error" ? (
-              <DeliveryHandoverCard orderId={order.id} handover={handover} />
-            ) : null}
-            <DeliveryTrackingCard order={order} onOpenChat={openRiderChat} />
-          </>
         ) : null}
 
         {/*
@@ -482,126 +798,58 @@ export default function OrderDetailScreen() {
         */}
         {!nextAction && !finished ? <PushEnableCard /> : null}
 
-        {/*
-          The record, folded. One board rather than three cards: the docket
-          above is the one object on this screen, and these are its appendix.
-          Each heading keeps the fact it holds on show while folded.
-        */}
-        <View className="gg-card-flush">
-          <FoldSection
-            section="specifications"
-            title="Specifications"
-            summary={specificationsSummary(order, unit)}
-          >
-            {order.productionItems?.length ? (
-              <ProductionSpecifications order={order} taxonomy={taxonomy} bare showLinks={false} />
-            ) : (
-              <>
-                <SpecRow label="Quantity" value={describeQuantity(order.quantity, unit)} />
-                <SpecRow label="Size" value={order.size || "—"} />
-                {/* Resolved through the taxonomy: an order can carry a code
-                    rather than a name, and `hem_grommet` is not a finish a
-                    client recognises. */}
-                <SpecRow label="Material" value={materialLabel} />
-                {finishLabel ? <SpecRow label="Finish" value={finishLabel} /> : null}
-              </>
-            )}
-            <SpecRow label="Deadline" value={formatDeadline(order.deadline)} />
-            {/* A collected job is not going to the address they shopped with.
-                Naming that address here is how a client ends up waiting at home
-                for something sitting on our counter. */}
-            {collectsAtOffice(order) ? (
-              <SpecRow label="Collect at" value="GRIDGO Office" />
-            ) : (
-              <SpecRow label="Deliver to" value={order.address || "—"} />
-            )}
-            <SpecRow label="Area" value={zoneName(zones, order.zone)} />
-            <View className="pt-3">
-              <ReadyTime promiseBy={order.promiseBy} />
-            </View>
-          </FoldSection>
-
-          <FoldSection
-            section="artwork"
-            title="Artwork and references"
-            summary={artworkSummary({
-              files: artworkFiles.length,
-              links: designLinks.length,
-              inProof: showsOwnPreview,
-            })}
-            divided
-          >
-            {/* The proof card above already draws the artwork it asks about;
-                loading every file twice would only slow that decision. */}
-            {showsOwnPreview ? (
-              <Text className="py-3 text-body text-text-secondary">
-                Your artwork is shown in the proof above.
-              </Text>
-            ) : null}
-            {/* Links sit with the files, above the retention line and the
-                delete action that close the section. */}
-            {!showsOwnPreview && (artworkFiles.length || !designLinks.length) ? (
-              <ArtworkPanel order={order} refunds={refunds}>{designLinkRows}</ArtworkPanel>
-            ) : designLinkRows}
-          </FoldSection>
-
-          <FoldSection
-            section="payment"
-            title="Payment details"
-            summary={paymentSummary(order)}
-            divided
-          >
-            <MoneyDetails
-              order={order}
-              onOpenReceipt={() =>
-                router.push({ pathname: "/order/receipt", params: { orderId: order.id } })
-              }
-              onOpenPhysicalInvoice={() =>
-                router.push({ pathname: "/order/physical-invoice", params: { orderId: order.id } })
-              }
-            />
-          </FoldSection>
-        </View>
+        {record}
 
         {/*
           Help sits last and stays unfolded: a refund comes with a deadline
           that is said up front, and a client stuck on anything else needs the
           way to Operations without hunting for it.
         */}
-        <View className="gap-3">
-          {refund?.kind === "eligible" && !shopDecision ? (
-            <RefundEntryRow
-              entry={refund}
-              onRequest={() =>
-                router.push({ pathname: "/order/refund-request", params: { orderId: order.id } })
-              }
-            />
-          ) : null}
-          {deliveredChat ? (
-            <DeliveryChatRow
-              chat={deliveredChat}
-              onPress={openRiderChat}
-            />
-          ) : null}
-          <Pressable
-            onPress={openChat}
-            accessibilityRole="button"
-            accessibilityLabel="Message GRIDGO about this order"
-            className="gg-touch flex-row items-center gap-3 py-2"
-            style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-          >
-            <MessageCircle size={20} color={colors.textSecondary} strokeWidth={2} aria-hidden />
-            <View className="flex-1">
-              <Text className="text-body font-medium text-text-primary">Message GRIDGO</Text>
-              <Text className="text-caption text-text-muted">
-                Operations answers questions about this order. Mention {orderReference(order.id)}.
-              </Text>
-            </View>
-            <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} aria-hidden />
-          </Pressable>
-        </View>
+        {helpRows}
       </View>
-    </FormScreen>
+  );
+
+  if (delivering) {
+    return (
+      <DeliveryTrackingScreen
+        order={order}
+        overlay={headerEscape}
+        nextAction={nextAction?.title ?? null}
+        onOpenChat={openRiderChat}
+        showCall={callWindowOpen(order)}
+        onOrderChanged={reloadOrder}
+      >
+        {content}
+      </DeliveryTrackingScreen>
+    );
+  }
+
+  return (
+    /*
+      Two text inputs live inside this scroll: the payment reference in the
+      action zone, and the description on an issue report. FormScreen keeps the
+      caret above the keyboard for both.
+    */
+    <FormScreen overlay={headerEscape}>{content}</FormScreen>
+  );
+}
+
+/**
+ * A rated job's rating slot: said once, quietly, so the received view still
+ * answers "did I rate this?" without a control that has nothing left to do.
+ */
+function RatedNote() {
+  const colors = useThemeColors();
+  return (
+    <View className="gg-card flex-row items-center gap-3" accessible accessibilityRole="text">
+      <Star size={20} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+      <View className="flex-1 gap-0.5">
+        <Text className="text-body font-medium text-text-primary">You rated this order</Text>
+        <Text className="text-caption text-text-muted">
+          Thank you. GRIDGO uses it to choose the shop for your next job.
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -659,6 +907,14 @@ function MoneyDetails({
   const printing = orderPrintingMinor(order);
   // A pick-up order chosen before matching carries the hub's fee in the
   // delivery slot. Zero (today's setting) still reads as nothing to pay.
+  // The one pin change moves delivery after checkout; the checkout figures stay as they were.
+  const pinChange =
+    order.deliveryPin?.change?.status === "applied" && order.deliveryPin.change.feeDifferenceMinor !== 0
+      ? order.deliveryPin.change
+      : null;
+  const checkoutTotal = order.totalMinor ?? total;
+  // Approved changes the client paid for by QR, on top of checkout (report F9FCD485).
+  const changes = paidChanges(order);
   const pickupFee =
     order.fulfillmentMode === "pickup" && (order.deliveryFeeMinor ?? 0) > 0
       ? (order.deliveryFeeMinor as number)
@@ -669,6 +925,8 @@ function MoneyDetails({
       <View>
         <SpecRow label="Printing" value={printing != null ? formatPhp(printing) : "—"} />
         <OrganizationDiscountRow source={order} />
+        {/* On one part of a multi-shop order this is that part's share of the one voucher. */}
+        <VoucherDiscountRow source={order} label={order.basketId ? VOUCHER_SHARE_LABEL : VOUCHER_LABEL} />
         <SpecRow
           label={pickupFee ? "Pick-up fee" : "Delivery"}
           value={
@@ -681,6 +939,19 @@ function MoneyDetails({
                   : "—"
           }
         />
+        {pinChange ? (
+          <SpecRow
+            label={pinChange.feeDifferenceMinor > 0 ? "New pin · paid by QR" : "New pin · delivery-fee credit"}
+            value={`${pinChange.feeDifferenceMinor > 0 ? "+" : "−"}${formatPhp(Math.abs(pinChange.feeDifferenceMinor))}`}
+          />
+        ) : null}
+        {changes.map((change) => (
+          <SpecRow
+            key={change.id}
+            label={`Change${changeItemName(order, change.lineItemId) ? ` to ${changeItemName(order, change.lineItemId)}` : ""} · paid by QR`}
+            value={`+${formatPhp(change.totalMinor)}`}
+          />
+        ))}
         {showFee ? (
           <ServiceFeeRow explainOnly rateBps={order.serviceFeeRateBps ?? null} />
         ) : null}
@@ -704,6 +975,15 @@ function MoneyDetails({
           <Text className="text-body-lg text-text-secondary">Total</Text>
           <Text className="text-h3 text-text-primary">{formatPhp(total)}</Text>
         </View>
+        {pinChange ? (
+          <Text className="text-caption text-text-muted">
+            {appliedChangeLine(pinChange)}. The checkout total was {formatPhp(checkoutTotal)}; the receipt keeps the checkout figures.
+          </Text>
+        ) : changes.length ? (
+          <Text className="text-caption text-text-muted">
+            The checkout total was {formatPhp(checkoutTotal)}; the receipt keeps the checkout figures.
+          </Text>
+        ) : null}
       </View>
       <SecondaryButton label="View receipt" onPress={onOpenReceipt} />
       {physicalInvoice ? (

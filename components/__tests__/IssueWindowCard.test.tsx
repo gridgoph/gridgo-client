@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 
 import { IssueWindowCard } from "@/components/IssueWindowCard";
 import type { Order } from "@/lib/api";
+import { useSurvey } from "@/store/survey";
+import { renderInSafeArea } from "@/test/checkoutVoucherHarness";
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
@@ -53,6 +55,15 @@ describe("IssueWindowCard", () => {
   beforeEach(() => {
     api.confirmDelivery.mockReset();
     api.listIssues.mockResolvedValue([]);
+  });
+
+  it("opens the report form when the survey's low-score shortcut asked for it", async () => {
+    useSurvey.setState({ reportIntent: order.id });
+    await renderInSafeArea(<IssueWindowCard order={order} onUpdated={jest.fn()} />);
+
+    expect(await screen.findByText("Send this to Operations")).toBeTruthy();
+    expect(screen.queryByText("Everything is fine")).toBeNull();
+    useSurvey.getState().reset();
   });
 
   it("leads with the good ending and keeps the report as the quieter choice", async () => {

@@ -4,8 +4,10 @@ import type { Order } from "@/lib/api";
 import type { HistoryRow } from "@/lib/orderHistory";
 import {
   artworkSummary,
+  helpSummary,
   paymentSummary,
   photosByHistoryRow,
+  showsReceivedView,
   specificationsSummary,
 } from "@/lib/orderSections";
 import { ORDER_SECTIONS_FOLDED, useOrderSections } from "@/store/orderSections";
@@ -112,5 +114,37 @@ describe("useOrderSections", () => {
     );
     await useOrderSections.persist.rehydrate();
     expect(useOrderSections.getState().open).toEqual({ ...ORDER_SECTIONS_FOLDED, payment: true });
+  });
+});
+
+describe("the received view (report 5A28D524)", () => {
+  it("opens on it once the order is with the client and nothing louder holds it", () => {
+    expect(showsReceivedView({ state: "issue_window_open" }, "issue")).toBe(true);
+    expect(showsReceivedView({ state: "completed" }, "rate")).toBe(true);
+    expect(showsReceivedView({ state: "payout_released" }, null)).toBe(true);
+  });
+
+  it("keeps the full screen while the job is going, or something else owns it", () => {
+    expect(showsReceivedView({ state: "out_for_delivery" }, null)).toBe(false);
+    expect(showsReceivedView({ state: "production" }, null)).toBe(false);
+    expect(showsReceivedView({ state: "issue_window_open", refundHold: true }, "refund")).toBe(false);
+    expect(showsReceivedView({ state: "issue_window_open" }, "recovery")).toBe(false);
+    expect(showsReceivedView({ state: "completed" }, "pay")).toBe(false);
+    expect(showsReceivedView({ state: "completed" }, "review")).toBe(false);
+  });
+
+  it("says what Get help holds, with the refund deadline up front", () => {
+    expect(helpSummary({ refund: true, refundUntil: "2026-10-16T15:52:00Z", riderChat: true })).toMatch(
+      /^Request a refund until .+2026.+, or message your rider or GRIDGO$/,
+    );
+    expect(helpSummary({ refund: true, refundUntil: null, riderChat: false })).toBe(
+      "Request a refund, or message GRIDGO",
+    );
+    expect(helpSummary({ refund: false, refundUntil: null, riderChat: true })).toBe(
+      "Message your rider or GRIDGO",
+    );
+    expect(helpSummary({ refund: false, refundUntil: null, riderChat: false })).toBe(
+      "Message GRIDGO about this order",
+    );
   });
 });

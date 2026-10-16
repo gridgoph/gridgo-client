@@ -11,9 +11,10 @@ import { linkDisplay, linkLabel } from "@/lib/designLink";
  * The address is shown, middle-truncated, because two Canva links look alike
  * by name and differ only in the id at the end.
  */
-export function DesignLinkRow({ link }: { link: ArtworkLink }) {
+export function DesignLinkRow({ link, name }: { link: ArtworkLink; name?: string }) {
   const colors = useThemeColors();
-  const label = linkLabel(link);
+  // The client's own label leads where they gave one ("Logo design").
+  const label = name ? `${name} · ${linkLabel(link)}` : linkLabel(link);
 
   return (
     <Pressable

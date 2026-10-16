@@ -1,7 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
+import type { AcceptedFormat } from "@/lib/api";
 import { EMPTY_ARTWORK, type ArtworkUploadState } from "@/lib/artworkUpload";
+
+const PDF_ONLY: AcceptedFormat[] = [
+  { code: "pdf", displayName: "PDF", inputKind: "file", extensions: ["pdf"], mimeTypes: ["application/pdf"], active: true },
+];
 
 function state(overrides: Partial<ArtworkUploadState> = {}): ArtworkUploadState {
   return { ...EMPTY_ARTWORK, ...overrides };
@@ -42,6 +47,30 @@ describe("ArtworkUploadCard", () => {
     );
   });
 
+  it("answers a refused Word file with the steps to save it as PDF, and no retry", async () => {
+    await render(
+      <ArtworkUploadCard
+        state={state({
+          phase: "failed",
+          fileName: "thesis.docx",
+          error: "Booklets does not take Word files. It takes PDF. Save thesis.docx as a PDF, then choose the PDF.",
+          refusal: "format",
+        })}
+        onPick={jest.fn()}
+        onRetry={jest.fn()}
+        onCancel={jest.fn()}
+        formats={PDF_ONLY}
+        productName="Booklets"
+      />,
+    );
+
+    expect(screen.getByText(/Booklets does not take Word files/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Save it as a PDF\. Open the document in Word or Google Docs\./)).toBeTruthy();
+    // The same file would be refused again: only another file helps.
+    expect(screen.queryByText("Try that file again")).toBeNull();
+    expect(screen.getByText("Choose a different file")).toBeTruthy();
+  });
+
   it("stops being a button once a file is on it, and offers Replace instead", async () => {
     const onPick = jest.fn();
     await render(
@@ -74,7 +103,7 @@ describe("ArtworkUploadCard", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the file size and a resolution note once the file is stored", async () => {
+  it("shows the file size once the file is stored", async () => {
     await render(
       <ArtworkUploadCard
         state={state({
@@ -87,18 +116,11 @@ describe("ArtworkUploadCard", () => {
         onPick={jest.fn()}
         onRetry={jest.fn()}
         onCancel={jest.fn()}
-        resolution={{
-          dpi: 87,
-          target: 300,
-          verdict: "low",
-          message: "At 87 DPI this will look blocky at that size.",
-        }}
       />,
     );
 
     expect(screen.getByText("Size")).toBeTruthy();
     expect(screen.getByText("480 KB")).toBeTruthy();
-    expect(screen.getByText(/blocky at that size/)).toBeTruthy();
   });
 
   it("offers nothing to press on a read-only surface", async () => {

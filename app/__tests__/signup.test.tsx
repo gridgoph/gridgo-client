@@ -5,6 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import SignupScreen from "@/app/(auth)/signup";
 import { useSession } from "@/store/session";
 import { useSignupFlow } from "@/store/signupFlow";
+import { holdLegalLibrary } from "@/test/legalGate";
 
 const mockSignUp = {
   status: "missing_requirements",
@@ -65,6 +66,9 @@ function renderInSafeArea(ui: ReactElement) {
 describe("SignupScreen", () => {
   beforeEach(() => {
     useSignupFlow.getState().reset();
+    // Ticked by the person in real life; preset here (one press per test).
+    useSignupFlow.getState().setConsent({ agreed: true, adult: true, guardian: false, marketing: false });
+    holdLegalLibrary();
     useSession.setState({
       user: null,
       loading: false,

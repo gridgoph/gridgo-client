@@ -127,6 +127,76 @@ function msFrom(value: string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+export type IssueWindowClock = {
+  /** Never below zero: a window past its expiry is closing, not owed time. */
+  remainingMs: number;
+  /** The share of the window still left, 0 to 1 — what the meter draws. */
+  fraction: number;
+  /** "21:47:09": whole hours, then minutes and seconds. A 72-hour window reads "71:59:59". */
+  clock: string;
+  /** "21 hours 47 minutes left" — for a screen reader, which should not hear every second. */
+  spoken: string;
+  closesAt: string;
+};
+
+const pad = (value: number) => String(value).padStart(2, "0");
+
+/**
+ * The live countdown to the window's close (report 5A28D524).
+ *
+ * Counts to `issueWindowExpiresAt`, the expiry the platform stamped and
+ * enforces, so the clock and the server agree on when a report stops being
+ * accepted. The window's length — what the meter is a share of — is the span
+ * between the two stamps on the order, else `issueWindowHours` from
+ * `GET /settings`; never a constant of the app's. Null when the order carries
+ * no expiry: an old payload gets no clock rather than a guessed one.
+ */
+export function issueWindowClock({
+  openedAt,
+  expiresAt,
+  windowHours = DEFAULT_ISSUE_WINDOW_HOURS,
+  now = Date.now(),
+}: {
+  openedAt: string | null;
+  expiresAt: string | null | undefined;
+  /** `issueWindowHours` from `GET /settings`, used only when the order has no opening stamp. */
+  windowHours?: number;
+  now?: Date | number;
+}): IssueWindowClock | null {
+  const expiresMs = msFrom(expiresAt);
+  if (expiresMs == null || !expiresAt) return null;
+  const nowMs = typeof now === "number" ? now : now.getTime();
+  const openedMs = msFrom(openedAt);
+  const lengthMs =
+    openedMs != null && expiresMs > openedMs ? expiresMs - openedMs : windowHours * HOUR_MS;
+
+  const remainingMs = Math.max(0, expiresMs - nowMs);
+  const fraction = lengthMs > 0 ? Math.min(1, remainingMs / lengthMs) : 0;
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const hourWords = `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  const minuteWords = `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  const spoken =
+    remainingMs <= 0
+      ? "Closing now"
+      : hours > 0
+        ? `${hourWords} ${minuteWords} left`
+        : minutes > 0
+          ? `${minuteWords} left`
+          : "Less than a minute left";
+
+  return {
+    remainingMs,
+    fraction,
+    clock: `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
+    spoken,
+    closesAt: new Date(expiresMs).toISOString(),
+  };
+}
+
 export function summarizeIssueWindow({
   state,
   openedAt,

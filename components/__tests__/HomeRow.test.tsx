@@ -140,7 +140,7 @@ describe("HomeJobRow's next step", () => {
 
     expect(screen.getByText("Your job is on the press.")).toBeTruthy();
     expect(screen.getByText("Ready by Tue, Sep 29, 2026 · 2:30 PM")).toBeTruthy();
-    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.getByText("Includes artwork review, jobs ahead and opening hours.")).toBeTruthy();
     expect(screen.queryByText(/Promised by/)).toBeNull();
     expect(screen.queryByText(/ETA|min away/)).toBeNull();
   });
@@ -172,7 +172,7 @@ describe("HomeJobRow without a client promise", () => {
 
     expect(screen.getByText("Your job is on the press.")).toBeTruthy();
     expect(screen.queryByText(/Ready by|Promised by/)).toBeNull();
-    expect(screen.queryByText("Includes jobs ahead and shop opening hours.")).toBeNull();
+    expect(screen.queryByText("Includes artwork review, jobs ahead and opening hours.")).toBeNull();
   });
 });
 

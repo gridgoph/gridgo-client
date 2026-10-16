@@ -37,6 +37,7 @@ import { parseDeadline } from "@/lib/deadline";
 import { dayKeyOfDeadline } from "@/lib/deadlineCalendar";
 import { getOrderStateMeta, type OrderStateMeta } from "@/lib/orderState";
 import { organizationDiscountOf } from "@/lib/organization";
+import { voucherDiscountOf } from "@/lib/vouchers";
 
 /** What a basket line is grouped by: its group on a multi-shop basket, else its shop. */
 export function lineGroupKey(line: Pick<CartLineRecord, "id" | "groupId" | "supplierId">): string {
@@ -72,6 +73,8 @@ export type ShopGroupView = {
   totalMinor: number | null;
   /** The organization discount on this group alone; 0 when there is none (#166). */
   organizationDiscountMinor: number;
+  /** This group's share of the one voucher; 0 or absent when there is none (gridgo-api#204). */
+  voucherDiscountMinor?: number;
   /** The zone word GRIDGO priced the group's delivery in, when it has one. */
   zone: DistanceZone | null;
   /** Only for an Out of Zone leg — the one place a client reads kilometres. */
@@ -107,6 +110,11 @@ export function shopGroups(cart: Cart | null | undefined): ShopGroupView[] {
       totalMinor: safeMinor(group.totalMinor),
       // Each shop group is discounted on its own, as GRIDGO prices it.
       organizationDiscountMinor: organizationDiscountOf(group),
+      // One voucher over the whole basket, split by GRIDGO across the groups.
+      // The group carries its share on some payloads; the quote always does.
+      voucherDiscountMinor:
+        voucherDiscountOf(group) ||
+        voucherDiscountOf(cart.clientQuote?.voucherGroups?.find((share) => share.groupId === group.id)),
       zone: leg?.distanceZone ?? null,
       distanceKm: typeof leg?.distanceKm === "number" ? leg.distanceKm : null,
     };

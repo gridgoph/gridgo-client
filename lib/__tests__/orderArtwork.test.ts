@@ -13,6 +13,22 @@ describe("production artwork", () => {
     ]);
   });
   it("does not mistake a display filename for an uploaded file", () => expect(orderArtwork({})).toEqual([]));
+  // Report C6625C57: every file on an item, in the client's order, under the client's own label.
+  it("lists every attached file in the client's order, with its label", () => {
+    expect(orderArtwork({ artworkFileIds: ["front", "logo", "back"], productionItems: [{
+      id: "line1", itemName: "T-shirts", quantity: 1, pricingUnit: null, packageQty: null, measurement: null, structuredSpec: {}, options: [],
+      artworkFileId: "front", mockupFileId: null, artworkAttachments: [
+        { kind: "file", fileId: "front", label: "Front" },
+        { kind: "link", formatCode: "canva_link", url: "https://www.canva.com/design/A/view" },
+        { kind: "file", fileId: "logo", label: "Logo PDF", downloadUrl: "https://signed" },
+        { kind: "file", fileId: "back" },
+      ],
+    }] })).toEqual([
+      { fileId: "front", kind: "artwork", itemName: "T-shirts", label: "Front" },
+      { fileId: "logo", kind: "artwork", itemName: "T-shirts", label: "Logo PDF" },
+      { fileId: "back", kind: "artwork", itemName: "T-shirts" },
+    ]);
+  });
   it.each(["image/jpeg", "image/png", "image/webp"])("previews supported pixels: %s", (mime) => expect(isArtworkImage(file({ detectedContentType: mime }))).toBe(true));
   it.each(["application/pdf", "image/vnd.adobe.photoshop", "application/octet-stream"])("does not render a document as an image: %s", (mime) => expect(isArtworkImage(file({ detectedContentType: mime }))).toBe(false));
   it("accepts current line references and legacy order artwork", () => {

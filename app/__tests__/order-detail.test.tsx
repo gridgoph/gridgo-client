@@ -74,7 +74,7 @@ jest.mock("@/lib/api", () => {
     listZones: jest.fn(),
     listIssues: jest.fn(),
     getSettings: jest.fn(),
-    getRiderLocation: jest.fn(),
+    getRiderTracking: jest.fn(),
     getFileDownloadUrl: jest.fn(),
     submitPayment: jest.fn(),
   };
@@ -82,6 +82,18 @@ jest.mock("@/lib/api", () => {
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
+
+/** GRIDGO's judgement of a fresh fix (gridgo-api#217). */
+const liveTracking = {
+  status: "live",
+  refreshIntervalSeconds: 20,
+  staleAfterSeconds: 120,
+  settingsVersion: 3,
+  lastUpdatedAt: new Date().toISOString(),
+  ageSeconds: 4,
+  stale: false,
+  message: null,
+};
 
 const baseOrder: Order = {
   id: "ord_demo_1",
@@ -208,7 +220,7 @@ describe("OrderDetailScreen", () => {
       ...baseOrder,
       state: "downpayment_review",
     }));
-    api.getRiderLocation.mockResolvedValue(null);
+    api.getRiderTracking.mockResolvedValue({ ping: null, tracking: null });
     api.getFileDownloadUrl.mockRejectedValue(new Error("no file"));
     osrm.fetchRoute.mockResolvedValue({
       routed: true,
@@ -230,7 +242,7 @@ describe("OrderDetailScreen", () => {
       />,
     );
     expect(screen.getByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
-    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.getByText("Includes artwork review, jobs ahead and opening hours.")).toBeTruthy();
   });
 
   it.each(["production", "out_for_delivery"])("uses only the client promise in %s", async (state) => {
@@ -241,7 +253,7 @@ describe("OrderDetailScreen", () => {
     });
     await renderInSafeArea(<OrderDetailScreen />);
     expect(await screen.findByText("Ready by Sat, Sep 26, 2026 · 2:00 PM")).toBeTruthy();
-    expect(screen.getByText("Includes jobs ahead and shop opening hours.")).toBeTruthy();
+    expect(screen.getByText("Includes artwork review, jobs ahead and opening hours.")).toBeTruthy();
     expect(screen.queryByText(/Supplier promised|Promised by/)).toBeNull();
   });
 
@@ -704,6 +716,34 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText(/paid in full/i)).toBeNull();
   });
 
+  it("reads Waiting for review out of hours, and says when GRIDGO looks at the artwork", async () => {
+    setOrder({
+      state: "needs_qa",
+      promiseBy: "2026-09-30T06:00:00.000Z",
+      review: {
+        status: "waiting_for_review",
+        label: "Waiting for review",
+        timeZone: "Asia/Manila",
+        isOpenNow: false,
+        reviewDelayed: false,
+        artworkReviewMinutes: 60,
+        scheduledReviewAt: "2026-09-26T00:00:00.000Z",
+        reviewCompletesAt: "2026-09-26T01:00:00.000Z",
+        originallyScheduledReviewAt: "2026-09-26T00:00:00.000Z",
+        outsideHoursNotice: "outside_operating_hours",
+        readyBy: "2026-09-30T06:00:00.000Z",
+      },
+    });
+    await renderInSafeArea(<OrderDetailScreen />);
+
+    expect(await screen.findByText("Waiting for review")).toBeTruthy();
+    expect(screen.getByText("When GRIDGO reviews your artwork")).toBeTruthy();
+    expect(screen.getByText(/nothing more is needed from you/)).toBeTruthy();
+    // Placed, the date is the promise, not an estimate.
+    expect(screen.queryByText("Ready by, estimated")).toBeNull();
+    expect(screen.queryByText("Review delayed")).toBeNull();
+  });
+
   it("never reads the shop's payout stages, and says nothing of photos to an older API", async () => {
     await renderInSafeArea(<OrderDetailScreen />);
 
@@ -760,19 +800,23 @@ describe("OrderDetailScreen", () => {
     expect(screen.queryByText("Waiting for a progress photo")).toBeNull();
   });
 
-  it("shows delivery progress while the rider location is hidden", async () => {
+  it("explains before pick-up that the live location has not started", async () => {
     setOrder({
-      state: "out_for_delivery",
+      state: "rider_assigned",
       riderId: "user_rider",
       dropoff: { lat: 7.0853, lng: 125.6137, label: "Bajada, Davao City" },
-      // Client-facing: GRIDGO withholds the press's own pin and sends its own.
-      pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
+    });
+    api.getRiderTracking.mockResolvedValue({
+      ping: null,
+      tracking: { ...liveTracking, status: "inactive", ageSeconds: null, lastUpdatedAt: null },
     });
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText("Your rider is on the way.")).toBeTruthy();
-    expect(screen.getByText(/closer to your drop-off/i)).toBeTruthy();
-    expect(screen.queryByText("No location shared")).toBeNull();
+    expect(await screen.findByText("Live location starts at pick-up")).toBeTruthy();
+    expect(screen.getAllByText("Rider assigned").length).toBeGreaterThan(0);
+    expect(screen.getByText("Next: Heading to the shop")).toBeTruthy();
+    // The order still rides under the map.
+    expect(screen.getByText("Specifications")).toBeTruthy();
   });
 
   it("reports road distance from the rider, and never an ETA", async () => {
@@ -783,14 +827,17 @@ describe("OrderDetailScreen", () => {
       // Client-facing: GRIDGO withholds the press's own pin and sends its own.
       pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
     });
-    api.getRiderLocation.mockResolvedValue({
-      id: "ping_1",
-      orderId: "ord_demo_1",
-      riderId: "user_rider",
-      lat: 7.07,
-      lng: 125.611,
-      accuracy: null,
-      at: new Date().toISOString(),
+    api.getRiderTracking.mockResolvedValue({
+      ping: {
+        id: "ping_1",
+        orderId: "ord_demo_1",
+        riderId: "user_rider",
+        lat: 7.07,
+        lng: 125.611,
+        accuracy: null,
+        at: new Date().toISOString(),
+      },
+      tracking: liveTracking,
     });
 
     await renderInSafeArea(<OrderDetailScreen />);
@@ -798,9 +845,11 @@ describe("OrderDetailScreen", () => {
     expect(
       await screen.findByText(/4\.2 km from your drop-off by road/),
     ).toBeTruthy();
+    expect(screen.getByText("Live location")).toBeTruthy();
+    expect(screen.getByText("Last updated just now")).toBeTruthy();
     // OSRM returns a travel time; presenting it would read as a promise.
-    expect(screen.queryByText(/10 min|arriv/i)).toBeNull();
-    expect(screen.getByText(/does not publish a live ETA/i)).toBeTruthy();
+    expect(screen.queryByText(/10 min|arriv(es|ing|al)/i)).toBeNull();
+    expect(screen.queryByText(/\bETA\b/)).toBeNull();
   });
 
   it("still draws the delivery when OSRM cannot be reached", async () => {
@@ -811,14 +860,17 @@ describe("OrderDetailScreen", () => {
       // Client-facing: GRIDGO withholds the press's own pin and sends its own.
       pickup: { lat: 7.13267, lng: 125.611265, label: "GRIDGO Office" },
     });
-    api.getRiderLocation.mockResolvedValue({
-      id: "ping_1",
-      orderId: "ord_demo_1",
-      riderId: "user_rider",
-      lat: 7.07,
-      lng: 125.611,
-      accuracy: null,
-      at: new Date().toISOString(),
+    api.getRiderTracking.mockResolvedValue({
+      ping: {
+        id: "ping_1",
+        orderId: "ord_demo_1",
+        riderId: "user_rider",
+        lat: 7.07,
+        lng: 125.611,
+        accuracy: null,
+        at: new Date().toISOString(),
+      },
+      tracking: liveTracking,
     });
     osrm.fetchRoute.mockResolvedValue(
       jest
@@ -833,7 +885,7 @@ describe("OrderDetailScreen", () => {
 
     // Falls back to the straight line, and says which one the client reads.
     expect(await screen.findByText(/in a straight line/i)).toBeTruthy();
-    expect(screen.getByLabelText(/Map showing GRIDGO/)).toBeTruthy();
+    expect(screen.getByLabelText(/Map showing your delivery address/)).toBeTruthy();
     expect(screen.queryByLabelText(/print shop/i)).toBeNull();
   });
 
@@ -860,10 +912,12 @@ describe("OrderDetailScreen", () => {
 
     expect(await screen.findByText("Report a problem")).toBeTruthy();
     // The platform really expires the window under v2 and stamps the expiry on
-    // the order, so both halves of the clock are honest to show.
-    expect(
-      screen.getByText(/Delivered 1 hour ago · Closes in about 23 hours/),
-    ).toBeTruthy();
+    // the order, so the time left is honest to show — live, to the second
+    // (report 5A28D524) — beside how long ago it arrived.
+    expect(screen.getByText("Check window closes in")).toBeTruthy();
+    expect(screen.getByText(/^23:0\d:\d\d$/)).toBeTruthy();
+    expect(screen.getByText("Delivered 1 hour ago")).toBeTruthy();
+    expect(screen.getByText(/^Closes /)).toBeTruthy();
   });
 
   it("recovers from a failed load with a retry rather than a blank screen", async () => {
@@ -930,7 +984,7 @@ describe("OrderDetailScreen", () => {
     it("shows no rider while it is being carried to the office", async () => {
       setOrder({ ...collecting, state: "out_for_delivery", payments: settled });
       // Call history carries across tests in this file; only this render counts.
-      api.getRiderLocation.mockClear();
+      api.getRiderTracking.mockClear();
 
       await renderInSafeArea(<OrderDetailScreen />);
 
@@ -939,7 +993,7 @@ describe("OrderDetailScreen", () => {
       ).toBeTruthy();
       expect(screen.queryByText(/out for delivery/i)).toBeNull();
       // Nothing asks the platform where the rider is, so nothing can draw them.
-      expect(api.getRiderLocation).not.toHaveBeenCalled();
+      expect(api.getRiderTracking).not.toHaveBeenCalled();
     });
 
     it("gives the counter and the address once it is on the shelf", async () => {
@@ -1009,8 +1063,10 @@ describe("OrderDetailScreen", () => {
       await waitFor(() =>
         expect(screen.getByText(/check window closed with nothing reported/)).toBeTruthy(),
       );
-      expect(screen.getByText("Closed, nothing reported")).toBeTruthy();
-      expect(screen.getByText("Paid in full, ₱1,125.00")).toBeTruthy();
+      expect(screen.getByText(/Your payment is settled in full/)).toBeTruthy();
+      // The fact rows repeat the sentence; the received view leaves them to
+      // View details' history and payment (report 5A28D524).
+      expect(screen.queryByText("Closed, nothing reported")).toBeNull();
       // The old one-liner and the "we will tell your phone" offer both belong
       // to a job that is still going.
       expect(screen.queryByText("This job is closed.")).toBeNull();
@@ -1051,9 +1107,7 @@ describe("OrderDetailScreen", () => {
 
       expect(await screen.findByText("Job complete")).toBeTruthy();
       expect(await screen.findByText(/collected at GRIDGO Office/)).toBeTruthy();
-      // The fact row and the timeline entry both say it; neither says delivered
-      // to a person who fetched the job themselves.
-      expect(screen.getAllByText("Collected").length).toBeGreaterThan(0);
+      // Nothing says delivered to a person who fetched the job themselves.
       expect(screen.queryByText(/was delivered/)).toBeNull();
     });
   });

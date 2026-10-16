@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ShopHoursLine } from "@/components/ShopHoursLine";
 import { ZoneRatingLine } from "@/components/ZoneRatingLine";
 import { useThemeColors } from "@/hooks/useTheme";
 import { ratingLabel, zoneLine } from "@/lib/distanceZone";
@@ -15,12 +16,19 @@ import {
   type PickableListing,
 } from "@/lib/match";
 import { printerCapLine } from "@/lib/printerWidth";
+import { shopHoursSpoken, shopHoursView } from "@/lib/shopHours";
 import { useServiceFeeRateBps } from "@/store/platformSettings";
 
 type Props = {
   listing: PickableListing;
   onPress: () => void;
   onStalePhoto?: () => Promise<unknown> | void;
+  /**
+   * The place in line, large, down the left edge. Off where every row is the
+   * same shop's ("Add more from Shop A"): one queue, so the column would say
+   * the same number on every row and compare nothing.
+   */
+  showPlace?: boolean;
 };
 
 /**
@@ -35,7 +43,7 @@ type Props = {
  * Nothing on the row says whose it is. The API sends these listings with no
  * shop on them at all, and the row would not draw one if it did.
  */
-export function OtherListingRow({ listing, onPress, onStalePhoto }: Props) {
+export function OtherListingRow({ listing, onPress, onStalePhoto, showPlace = true }: Props) {
   const colors = useThemeColors();
   const rate = useServiceFeeRateBps();
   const photo = listing.photos[0];
@@ -43,12 +51,16 @@ export function OtherListingRow({ listing, onPress, onStalePhoto }: Props) {
   const place = placeOrdinal(listing.placeInLine);
   const readyIn = readyInLine(listing.readyBy);
   const cap = printerCapLine(listing);
+  // Drawn only when GRIDGO sends it: another shop's listing travels without
+  // its shop, and the hours arrive once the listing itself is opened.
+  const hours = shopHoursView(listing.shopHours);
 
   const label = [
     listing.name,
     `${from.toLowerCase()}${gridgoPriceLabel(listing.fromPriceMinor, rate, listing.clientFromPriceMinor)} ${unitLine(listing)}`,
     readyIn,
-    placeLabel(listing.placeInLine),
+    hours ? shopHoursSpoken(hours) : null,
+    showPlace ? placeLabel(listing.placeInLine) : null,
     cap?.toLowerCase(),
     zoneLine(listing.distanceZone, listing.distanceKm),
     ratingLabel(listing.rating),
@@ -65,16 +77,18 @@ export function OtherListingRow({ listing, onPress, onStalePhoto }: Props) {
     >
       {({ pressed }) => (
         <>
-          <View className="w-16 items-center" aria-hidden>
-            <Text
-              className="text-h1 text-text-primary"
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {place ?? "—"}
-            </Text>
-            <Text className="text-caption font-bold text-text-primary">IN LINE</Text>
-          </View>
+          {showPlace ? (
+            <View className="w-16 items-center" aria-hidden>
+              <Text
+                className="text-h1 text-text-primary"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {place ?? "—"}
+              </Text>
+              <Text className="text-caption font-bold text-text-primary">IN LINE</Text>
+            </View>
+          ) : null}
 
           <View className="gg-card-flush min-w-0 flex-1 flex-row items-center gap-3 p-3">
             <View className="w-20">
@@ -98,6 +112,7 @@ export function OtherListingRow({ listing, onPress, onStalePhoto }: Props) {
               />
               {readyIn ? <Text className="text-caption text-text-muted">{readyIn}</Text> : null}
               {cap ? <Text className="text-caption text-text-muted">{cap}</Text> : null}
+              <ShopHoursLine view={hours} />
               <ZoneRatingLine
                 zone={listing.distanceZone}
                 distanceKm={listing.distanceKm}

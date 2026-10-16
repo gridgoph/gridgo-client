@@ -1,6 +1,7 @@
 import { ReceiptOcrHost } from "@/components/ReceiptOcrHost";
 import { useGridgoCharges } from "@/hooks/useGridgoCharges";
 import { useLiveNotifications } from "@/hooks/useLiveNotifications";
+import { useUpdateNudge } from "@/hooks/useUpdateNudge";
 import { useSupportChatUnread } from "@/hooks/useSupportChatUnread";
 import { ClerkProvider } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
@@ -24,6 +25,8 @@ import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-c
 
 import { AppUpdateSheet } from "@/components/AppUpdateSheet";
 import { BrandIntro } from "@/components/BrandIntro";
+import { CallOverlay } from "@/components/call/CallOverlay";
+import { CheckoutExitQuestion } from "@/components/CheckoutExitQuestion";
 import { PushExplainerSheet } from "@/components/PushExplainerSheet";
 import { SessionShell } from "@/components/SessionShell";
 import { TourOverlay } from "@/components/TourOverlay";
@@ -32,6 +35,7 @@ import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
 import { useClientPreferences } from "@/hooks/useClientPreferences";
+import { useLegalGate } from "@/hooks/useLegalGate";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import { resolveClerkPublishableKey } from "@/lib/clerkAuth";
@@ -41,6 +45,7 @@ import {
   pushedScreenOptions,
 } from "@/lib/navigationHeaders";
 import { hasActiveSession } from "@/lib/sessionGuard";
+import { legalGateFor, useLegalConsent } from "@/store/legalConsent";
 import { useSession } from "@/store/session";
 // Side-effect: rehydrate persisted theme preference from AsyncStorage.
 import "@/store/theme";
@@ -92,6 +97,11 @@ function AppNavigation() {
   // the signed-in area from anywhere (tabs + root stack siblings), not only at launch.
   const user = useSession((s) => s.user);
   const isSignedIn = hasActiveSession(user);
+  // Terms waiting to be agreed close the ordinary app; the agreement screen,
+  // the documents, privacy requests and sign-out stay open (`docs/LEGAL_API.md`).
+  const legalBlocked = useLegalConsent(
+    (state) => legalGateFor(state, user?.id) === "blocked",
+  );
 
   useClerkApiSession();
 
@@ -99,12 +109,17 @@ function AppNavigation() {
   // The landing ladder waits on it, so it cannot live in the ranking screen.
   useClientPreferences();
 
+  // Whether GRIDGO has terms waiting for this client, on every sign-in and
+  // every return to the app. The landing ladder and the guards below read it.
+  useLegalGate();
+
   // Registration, token rotation, and opening the right screen from a tapped
   // notification. Mounted once, above every route, so a tap that launched the
   // app is picked up before any screen has decided anything. It never asks for
   // permission — only a tap on `PushExplainerSheet` or `PushEnableCard` does.
   usePushNotifications();
   useLiveNotifications();
+  useUpdateNudge();
   useSupportChatUnread();
 
   // GRIDGO's charges, read as soon as a session exists: every price the app
@@ -196,6 +211,12 @@ function AppNavigation() {
                 name="sso-callback"
                 options={{ headerShown: false, title: "Signing in" }}
               />
+              {/*
+                One legal document, by its version. Public: sign-up links to
+                it before there is an account, and the agreement screen opens
+                it while the rest of the app is closed.
+              */}
+              <Stack.Screen name="legal/[versionId]" options={pushedScreenOptions("Legal")} />
 
               <Stack.Protected guard={!isSignedIn}>
                 {/*
@@ -224,7 +245,40 @@ function AppNavigation() {
                 Expo Router removes these history entries so Android back cannot re-enter.
                 Covers root-stack pushes outside (tabs): order/[id], design-system.
               */}
+              {/*
+                Terms waiting to be agreed. While they are, this is the only
+                signed-in screen besides the documents, privacy and sign-out,
+                and it has no back: the guard below has closed what it would go
+                back to.
+              */}
+              <Stack.Protected guard={isSignedIn && legalBlocked}>
+                <Stack.Screen
+                  name="legal/review"
+                  options={{ headerShown: false, title: "Terms", gestureEnabled: false }}
+                />
+              </Stack.Protected>
+
+              {/*
+                Open to every signed-in client, including one with terms still
+                to agree to: reading the documents, asking about their data and
+                deleting the account must never wait behind a checkbox.
+              */}
               <Stack.Protected guard={isSignedIn}>
+                <Stack.Screen name="legal/index" options={pushedScreenOptions("Legal & Privacy")} />
+                <Stack.Screen name="privacy/index" options={pushedScreenOptions("Your data")} />
+                <Stack.Screen name="privacy/request" options={pushedScreenOptions("Your data")} />
+                {/*
+                  Reached from Your data and from Danger zone on Your details.
+                  It asks for the password (or an emailed code) before anything
+                  is sent.
+                */}
+                <Stack.Screen
+                  name="delete-account"
+                  options={pushedScreenOptions("Delete account")}
+                />
+              </Stack.Protected>
+
+              <Stack.Protected guard={isSignedIn && !legalBlocked}>
                 {/*
                   The tab shell draws its own per-tab headers, so its header is
                   hidden — but it still carries a title. Every screen pushed above
@@ -306,6 +360,14 @@ function AppNavigation() {
                   name="request/match"
                   options={pushedScreenOptions("Choose a supplier")}
                 />
+                {/*
+                  Checkout's "Add more from Shop A": what that shop group can
+                  still take, instead of the category picker (#267).
+                */}
+                <Stack.Screen
+                  name="request/add-more"
+                  options={pushedScreenOptions("Add more")}
+                />
                 <Stack.Screen
                   name="request/listing"
                   options={pushedScreenOptions("Listing")}
@@ -350,6 +412,11 @@ function AppNavigation() {
                   name="order/refund-account"
                   options={pushedScreenOptions("Receiving account")}
                 />
+                {/* The one delivery-pin change: a map, a search and a price (report 6C8DE953). */}
+                <Stack.Screen
+                  name="order/delivery-pin"
+                  options={pushedScreenOptions("Change delivery pin")}
+                />
                 {/*
                   Asking for a change to a proof is a real destination with a
                   keyboard in it, so it gets the platform's own sheet: drag to
@@ -375,11 +442,25 @@ function AppNavigation() {
                   a scrolling form under a pinned commit bar.
                 */}
                 <Stack.Screen name="order/rate" options={pushedScreenOptions("Rate this order")} />
+                {/*
+                  The post-order survey (report 81CA4493): the checkout's shape
+                  again — one scrolling page under a pinned bar that carries
+                  the reward meter and "Send".
+                */}
+                <Stack.Screen name="order/survey" options={pushedScreenOptions("Order survey")} />
                 <Stack.Screen
                   name="design-system"
                   options={pushedScreenOptions("Design system")}
                 />
                 <Stack.Screen name="settings" options={pushedScreenOptions("Settings")} />
+                {/*
+                  The inbox a pushed screen's bell opens, over that screen (#230).
+                  No bell of its own: it would only push the inbox again.
+                */}
+                <Stack.Screen
+                  name="inbox"
+                  options={pushedScreenOptions("Notifications", { bell: false })}
+                />
                 <Stack.Screen name="whats-new" options={pushedScreenOptions("What's new")} />
                 {/*
                   The account's own details. The band names the screen, so the
@@ -403,6 +484,8 @@ function AppNavigation() {
                   name="saved-place"
                   options={pushedScreenOptions("Saved Places")}
                 />
+                {/* The voucher wallet (gridgo-api#204), from Account. */}
+                <Stack.Screen name="vouchers" options={pushedScreenOptions("Vouchers")} />
                 {/*
                   The two halves of the sign-in that take steps rather than
                   keystrokes. The band names the thing being changed, because
@@ -416,14 +499,6 @@ function AppNavigation() {
                 <Stack.Screen
                   name="change-password"
                   options={pushedScreenOptions("Password")}
-                />
-                {/*
-                  Reached only from Danger zone on Your details. It asks for
-                  the password (or an emailed code) before anything is sent.
-                */}
-                <Stack.Screen
-                  name="delete-account"
-                  options={pushedScreenOptions("Delete account")}
                 />
                 {/*
                   Becoming an organization or business client, and handing an
@@ -460,6 +535,10 @@ function AppNavigation() {
             <PushExplainerSheet ready={!introPlaying && fontsReady} />
             {/* The first-order tour. Waits behind both prompts; it checks that itself. */}
             <TourOverlay ready={!introPlaying && fontsReady} />
+            {/* "What stopped you from ordering?": last in line, behind every prompt above. */}
+            <CheckoutExitQuestion ready={!introPlaying && fontsReady} />
+            {/* Calls with the rider: above every screen and prompt, because a ringing call outranks them. */}
+            <CallOverlay />
           </SessionShell>
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />
             {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}

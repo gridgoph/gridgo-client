@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { ShopHoursLine } from "@/components/ShopHoursLine";
 import { ZoneRatingLine } from "@/components/ZoneRatingLine";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { MatchListing, MatchResult } from "@/lib/api";
@@ -12,6 +13,8 @@ import { samplePhotoUri, unitLine } from "@/lib/listing";
 import { matchBadge, placeLabel, placeOrdinal, readyInLine } from "@/lib/match";
 import { printerCapLine } from "@/lib/printerWidth";
 import { readyByDate } from "@/lib/readyTime";
+import { reviewStartsLine } from "@/lib/operatingHours";
+import { shopHoursSpoken, shopHoursView } from "@/lib/shopHours";
 import { useServiceFeeRateBps } from "@/store/platformSettings";
 
 type Props = {
@@ -56,17 +59,24 @@ export function TopPickCard({ match, listing, onPress, onStalePhoto }: Props) {
   const promise = listing.readyBy ?? match.promiseBy ?? null;
   const readyBy = readyByDate(promise);
   const readyIn = readyInLine(promise);
+  // Out of hours the date already waits for GRIDGO's review; say from when.
+  const reviewStarts = reviewStartsLine(listing.review ?? match.operatingStatus);
   const cap = printerCapLine(listing);
   const zone = match.distanceZone ?? listing.distanceZone;
   const rating = match.rating ?? listing.rating;
+  // The listing's own copy of the shop's hours; the match's `shop` block is
+  // never read here, even though it carries the same field.
+  const hours = shopHoursView(listing.shopHours);
 
   const label = [
     `Top pick${badge ? `, ${match.matchReason?.label}` : ""}`,
     listing.name,
     `${from.toLowerCase()}${gridgoPriceLabel(listing.fromPriceMinor, rate, listing.clientFromPriceMinor)} ${unitLine(listing)}`,
+    hours ? shopHoursSpoken(hours) : null,
     placeLabel(placeInLine),
     readyBy ? `ready by ${readyBy}` : null,
     readyIn,
+    reviewStarts,
     zoneLine(zone, listing.distanceKm),
     ratingLabel(rating),
   ]
@@ -112,6 +122,11 @@ export function TopPickCard({ match, listing, onPress, onStalePhoto }: Props) {
                 className="text-body-lg font-bold text-text-primary"
               />
               {cap ? <Text className="text-caption text-text-muted">{cap}</Text> : null}
+              {hours ? (
+                <View className="mt-1">
+                  <ShopHoursLine view={hours} />
+                </View>
+              ) : null}
             </View>
             <ZoneRatingLine
               zone={zone}
@@ -138,6 +153,9 @@ export function TopPickCard({ match, listing, onPress, onStalePhoto }: Props) {
                 {readyBy ?? "GRIDGO confirms"}
               </Text>
               {readyIn ? <Text className="text-caption text-text-muted">{readyIn}</Text> : null}
+              {reviewStarts ? (
+                <Text className="text-caption text-text-muted">{reviewStarts}</Text>
+              ) : null}
             </View>
             <ChevronRight size={20} color={colors.textPrimary} strokeWidth={2.5} aria-hidden />
           </View>

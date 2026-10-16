@@ -1,98 +1,103 @@
 /**
- * What Home shows a client who has nothing on press.
+ * What Home shows a client who has nothing on press: FEATURED PRINTS.
  *
- * A first-run Home used to be a category menu and nothing else, which answers
- * "what would you like to order?" without ever showing the client a single
- * thing GRIDGO has printed. This picks a few real listings off the shops'
- * boards so the first screen carries actual work at actual starting prices.
+ * The row is curated. GRIDGO's staff pick which approved products appear and
+ * in what order (gridgo-api `docs/FEATURED_PRINTS_API.md`); the app draws that
+ * list as sent and never fills it with anything else. It used to be picked off
+ * the shops' live boards, which is a short step from showing what other
+ * clients are printing — the thing reports 36D13C56 and C0266B02 asked never to
+ * happen. So there is no fallback to boards, orders or a ranking: an empty,
+ * failed or missing read is no row at all, and the start board under it is
+ * still the way in.
  *
- * Two rules decide the picks, and both are about what the strip is for.
- *
- * **One per family, in the tree's own order.** A strip of five flyers says
- * GRIDGO prints flyers. Spreading it says GRIDGO prints marketing, merch,
- * awards, prototypes and paperwork — which is the thing a new client does not
- * yet know. Only once every family has had a turn does a second pick from any
- * of them appear.
- *
- * **A photo wins over a lower price.** These are samples: a card with no
- * photograph is a grey plate, and three grey plates are worse than two good
- * ones. Within a family the cheapest listing that carries a sample is taken,
- * so the "From" price on the card is still the honest starting price of the
- * listing shown — never one listing's photo over another's number.
- *
- * The shop is deliberately absent. GRIDGO is the counter (`lib/gridgoOffice.ts`),
- * so a pick carries the work and its price and never the press that listed it.
+ * The card is an allowlist on the server and stays one here. It carries the
+ * product, GRIDGO's own starting price and a signed sample photo — never the
+ * shop that listed it (`lib/gridgoOffice.ts`).
  */
 
 import { pagePadding, spacing } from "@/constants/theme";
-import type { CatalogItem, ShopBoard } from "@/lib/api";
-import { samplePhotoUri } from "@/lib/listing";
-import type { ProductCategory, ProductSubcategory } from "@/lib/productCategories";
-import { fromPriceKey, listingsFor } from "@/lib/shopBoards";
+import type { CatalogPricingUnit, FeaturedPrint, MeasureUnit } from "@/lib/api";
 
-export type HomeSample = {
-  category: ProductCategory;
-  subcategory: ProductSubcategory;
-  listing: CatalogItem;
-};
+export type HomeSample = FeaturedPrint;
 
-/** How many samples the strip carries. Enough to scroll, few enough to read. */
-export const HOME_SAMPLE_LIMIT = 6;
+const PRICING_UNITS: readonly CatalogPricingUnit[] = [
+  "per_unit",
+  "per_package",
+  "per_page",
+  "per_area",
+  "per_length",
+  "whole_job",
+];
+const MEASURE_UNITS: readonly MeasureUnit[] = ["mm", "cm", "in", "ft", "m"];
 
-/**
- * The cheapest listing for a subcategory that has a sample photo, falling back
- * to the cheapest listing at all.
- *
- * `listingsFor` already sorts by price, so "first with a photo" is "cheapest
- * with a photo" and no second sort is needed.
- */
-function pickListing(boards: ShopBoard[], subcategoryCode: string): CatalogItem | null {
-  const items = boards.flatMap((board) => listingsFor(board, subcategoryCode));
-  return items.find((item) => samplePhotoUri(item.photos[0])) ?? items[0] ?? null;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Every subcategory of one category that a shop lists today, cheapest first. */
-function candidatesIn(category: ProductCategory, boards: ShopBoard[]): HomeSample[] {
-  return category.subcategories
-    .map((subcategory) => {
-      const listing = pickListing(boards, subcategory.code);
-      return listing ? { category, subcategory, listing } : null;
-    })
-    .filter((entry): entry is HomeSample => entry !== null)
-    .sort((left, right) => fromPriceKey(left.listing) - fromPriceKey(right.listing));
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function wholeOrNull(value: unknown): number | null {
+  return Number.isSafeInteger(value) ? (value as number) : null;
+}
+
+function photosOf(value: unknown): FeaturedPrint["photos"] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map((photo, index) => ({
+    fileId: text(photo.fileId) ?? `photo_${index}`,
+    sortOrder: wholeOrNull(photo.sortOrder) ?? index,
+    url: text(photo.url) ?? "",
+    downloadUrl: text(photo.downloadUrl) ?? undefined,
+    downloadUrlExpiresAt: text(photo.downloadUrlExpiresAt) ?? undefined,
+  }));
+}
+
+function cardOf(value: unknown): FeaturedPrint | null {
+  if (!isRecord(value)) return null;
+  const id = text(value.id);
+  const name = text(value.name);
+  const categoryCode = text(value.categoryCode);
+  const subcategoryCode = text(value.subcategoryCode);
+  const price = value.clientFromPriceMinor;
+  // A card that cannot be started, or has no honest price, is not drawn: a
+  // dash where the starting price goes is worse than one card fewer.
+  if (!id || !name || !categoryCode || !subcategoryCode) return null;
+  if (!Number.isSafeInteger(price) || (price as number) < 0) return null;
+  const unit = PRICING_UNITS.find((known) => known === value.pricingUnit) ?? "per_unit";
+  return {
+    id,
+    name,
+    categoryCode,
+    subcategoryCode,
+    clientFromPriceMinor: price as number,
+    pricingUnit: unit,
+    packageQty: wholeOrNull(value.packageQty),
+    measureUnit: MEASURE_UNITS.find((known) => known === value.measureUnit) ?? null,
+    minimumOrderQuantity: wholeOrNull(value.minimumOrderQuantity),
+    photos: photosOf(value.photos),
+  };
 }
 
 /**
- * A few things GRIDGO prints today, spread across the families.
+ * The cards of a `GET /featured-prints` body, in staff order.
  *
- * Returns an empty list when no shop lists anything readable — Home draws no
- * strip at all then, rather than an empty shelf. A category the API added and
- * this app has no boards for simply contributes nothing.
+ * Forgiving on purpose: anything that is not a usable card is dropped, a body
+ * without `items` is an empty row, and the same product listed twice is drawn
+ * once. The `emptyState` prompt is not drawn — the start board directly below
+ * the row is already the catalogue link it describes.
  */
-export function pickHomeSamples(
-  categories: ProductCategory[],
-  boards: ShopBoard[],
-  limit: number = HOME_SAMPLE_LIMIT,
-): HomeSample[] {
-  if (limit <= 0) return [];
-
-  // One queue per family, so taking the head of each in turn is the round the
-  // strip is built from.
-  const queues = categories.map((category) => candidatesIn(category, boards));
-
-  const picked: HomeSample[] = [];
-  let tookOne = true;
-  while (picked.length < limit && tookOne) {
-    tookOne = false;
-    for (const queue of queues) {
-      if (picked.length >= limit) break;
-      const next = queue.shift();
-      if (!next) continue;
-      picked.push(next);
-      tookOne = true;
-    }
+export function featuredPrintsFrom(body: unknown): HomeSample[] {
+  if (!isRecord(body) || !Array.isArray(body.items)) return [];
+  const seen = new Set<string>();
+  const cards: HomeSample[] = [];
+  for (const entry of body.items) {
+    const card = cardOf(entry);
+    if (!card || seen.has(card.id)) continue;
+    seen.add(card.id);
+    cards.push(card);
   }
-  return picked;
+  return cards;
 }
 
 // ---------------------------------------------------------------------------

@@ -188,6 +188,26 @@ export function refundStatusMeta(status: string): RefundStatusMeta {
   return STATUS_META[status] ?? { label: "Refund updated", tone: "neutral", icon: "clock" };
 }
 
+/**
+ * A delivery-fee credit from a cheaper pin (`kind: "delivery_pin"`, gridgo-api
+ * `docs/DELIVERY_PIN_API.md`). It is not a request the client made, it never
+ * pauses the order, and its amount is reserved the moment the pin moves — it
+ * only needs somewhere to go.
+ */
+export function isDeliveryCredit(refund: Pick<Refund, "kind">): boolean {
+  return refund.kind === "delivery_pin";
+}
+
+/** The chip, with the credit's own first step: an account to send it to. */
+export function refundMeta(refund: Pick<Refund, "kind" | "status" | "destination">): RefundStatusMeta {
+  if (isDeliveryCredit(refund) && refund.status === "destination_review") {
+    return refund.destination
+      ? { label: "Account being checked", tone: "info", icon: "clock" }
+      : { label: "Add your receiving QR", tone: "warning", icon: "square-pen" };
+  }
+  return refundStatusMeta(refund.status);
+}
+
 const PROVIDER_LABELS: Record<string, string> = {
   gcash: "GCash",
   maya: "Maya",
@@ -219,6 +239,7 @@ export function refundReasonPlaceholder(kind: string | null): string {
 }
 
 export function refundKindLabel(kind: string): string {
+  if (kind === "delivery_pin") return "Delivery-fee credit";
   return REFUND_KINDS.find((option) => option.value === kind)?.label ?? "Refund request";
 }
 
@@ -228,6 +249,17 @@ export function refundHeadline(refund: Refund): { headline: string; detail: stri
     ? `your ${refundProviderLabel(refund.destination.provider)} account`
     : "your receiving account";
   const amount = refund.settlement ? formatPhp(refund.settlement.totalMinor) : null;
+  if (isDeliveryCredit(refund) && refund.status === "destination_review") {
+    return refund.destination
+      ? {
+          headline: "Operations is checking your receiving account",
+          detail: `Your ${amount ?? "delivery-fee"} credit is sent once they have checked the QR. Your order carries on as normal.`,
+        }
+      : {
+          headline: `Add where to send your ${amount ?? "delivery-fee"} credit`,
+          detail: "Your new pin costs less to deliver to, so GRIDGO returns the difference. Add your receiving QR; Operations checks it, then sends the credit by hand. Your order carries on as normal.",
+        };
+  }
   switch (refund.status) {
     case "requested":
       return {
@@ -375,6 +407,7 @@ const HISTORY_LABELS: Record<string, string> = {
   paid: "Refund sent",
   rejected: "Not approved",
   withdrawn: "You withdrew the request",
+  delivery_credit_reserved: "Credit reserved when your pin moved",
 };
 
 /**

@@ -2,6 +2,7 @@ import { View } from "react-native";
 
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
+import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import type { useDropoffEditor } from "@/hooks/useDropoffEditor";
 import { ADDRESS_LABEL_MAX, DELIVERY_CITY } from "@/lib/address";
 
@@ -37,19 +38,22 @@ export function DropoffDetails({
         </FormField>
       )}
 
-      <FormField
-        label="Street and building"
-        error={editor.touched && editor.addressCheck.field === "line1" ? editor.addressCheck.reason : null}
-        helper={`Number, street and building. ${DELIVERY_CITY} is assumed.`}
-      >
-        <TextField
-          value={editor.line1}
-          onChangeText={editor.setLine1}
-          placeholder="12 Quimpo Blvd, Unit 3"
-          accessibilityLabel="Street and building"
-          autoCapitalize="words"
-        />
-      </FormField>
+      <View className="gap-2">
+        <FormField
+          label="Street and building"
+          error={editor.touched && editor.addressCheck.field === "line1" ? editor.addressCheck.reason : null}
+          helper={`Number, street and building. ${DELIVERY_CITY} is assumed.`}
+        >
+          <TextField
+            value={editor.line1}
+            onChangeText={editor.setLine1}
+            placeholder="12 Quimpo Blvd, Unit 3"
+            accessibilityLabel="Street and building"
+            autoCapitalize="words"
+          />
+        </FormField>
+        <WhyWeAsk>We use this address to route your delivery and to guide the rider to you.</WhyWeAsk>
+      </View>
 
       <FormField
         label="Landmark"

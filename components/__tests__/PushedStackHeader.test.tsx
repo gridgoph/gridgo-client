@@ -4,6 +4,11 @@ import { Platform } from "react-native";
 
 import { PushedStackHeader } from "@/components/PushedStackHeader";
 import { pushedScreenOptions } from "@/lib/navigationHeaders";
+import { useNotifications } from "@/store/notifications";
+import { useSession } from "@/store/session";
+
+const mockPush = jest.fn();
+jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush }) }));
 
 const mockInsets = { top: 48, right: 0, bottom: 0, left: 0 };
 const headerProps: { headerStatusBarHeight?: number; title?: string }[] = [];
@@ -54,6 +59,36 @@ describe("PushedStackHeader", () => {
       expect(headerProps[0]?.title).toBe(title);
       expect(headerProps[0]?.headerStatusBarHeight).toBe(mockInsets.top);
     } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  it("carries the notification bell, with its count, once signed in (#230)", async () => {
+    jest.replaceProperty(Platform, "OS", "android");
+    useSession.setState({ user: { id: "user_client" } as never });
+    useNotifications.setState({
+      items: [
+        {
+          id: "n1",
+          userId: "user_client",
+          orderId: "ord_1",
+          title: "Ready",
+          body: "",
+          read: false,
+          at: "2026-10-15T00:00:00Z",
+        },
+      ],
+      readIds: [],
+    });
+    try {
+      await render(
+        <PushedStackHeader options={pushedScreenOptions("Order")} route={{ name: "order/[id]" }} />,
+      );
+
+      expect(screen.getByRole("button", { name: "Notifications, 1 unread" })).toBeOnTheScreen();
+      expect(screen.getByRole("button", { name: "Choose theme" })).toBeOnTheScreen();
+    } finally {
+      useSession.setState({ user: null });
       jest.restoreAllMocks();
     }
   });

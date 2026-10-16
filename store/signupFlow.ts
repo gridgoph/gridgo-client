@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { EMPTY_SIGNUP_CONSENT, type SignupConsent } from "@/lib/legal";
+
 /**
  * Where a sign-up is up to, beside `store/loginFlow.ts`.
  *
@@ -14,16 +16,20 @@ export type SignupStep = "details" | "emailCode";
 type SignupFlowState = {
   step: SignupStep;
   code: string;
+  /** The agreement boxes, unticked until the client ticks them. */
+  consent: SignupConsent;
+  setConsent: (consent: SignupConsent) => void;
   enterEmailCode: () => void;
   setCode: (code: string) => void;
   reset: () => void;
 };
 
-const initial = { step: "details" as const, code: "" };
+const initial = { step: "details" as const, code: "", consent: EMPTY_SIGNUP_CONSENT };
 
 export const useSignupFlow = create<SignupFlowState>((set) => ({
   ...initial,
   enterEmailCode: () => set({ step: "emailCode", code: "" }),
+  setConsent: (consent) => set({ consent }),
   setCode: (code) => set({ code }),
   reset: () => set(initial),
 }));

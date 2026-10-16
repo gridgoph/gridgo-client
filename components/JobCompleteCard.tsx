@@ -9,6 +9,12 @@ import { summarizeJobComplete } from "@/lib/jobComplete";
 
 type Props = {
   order: Order;
+  /**
+   * The sentence without the fact rows, for the order screen's received view
+   * (report 5A28D524): the body already says how it arrived, that nothing was
+   * wrong and that it is paid, and the rows' detail is under View details.
+   */
+  compact?: boolean;
 };
 
 /**
@@ -27,7 +33,7 @@ type Props = {
  * No control. The rating prompt below it is the finished job's one action,
  * and this card is the record it sits under.
  */
-export function JobCompleteCard({ order }: Props) {
+export function JobCompleteCard({ order, compact = false }: Props) {
   const [issues, setIssues] = useState<Issue[] | null>(null);
 
   useEffect(() => {
@@ -60,11 +66,13 @@ export function JobCompleteCard({ order }: Props) {
           <Text className="text-body text-text-secondary">{summary.body}</Text>
         </View>
       </View>
-      <View>
-        {summary.facts.map((fact) => (
-          <SpecRow key={fact.label} label={fact.label} value={fact.value} />
-        ))}
-      </View>
+      {compact ? null : (
+        <View>
+          {summary.facts.map((fact) => (
+            <SpecRow key={fact.label} label={fact.label} value={fact.value} />
+          ))}
+        </View>
+      )}
     </View>
   );
 }

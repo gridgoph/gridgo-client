@@ -2,6 +2,7 @@ import { CalendarDays, Plus } from "lucide-react-native";
 import { type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { VOUCHER_SHARE_LABEL, voucherAmount } from "@/lib/vouchers";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
 import { addMoreFromLabel, groupDateLine, type ShopGroupView } from "@/lib/basketGroups";
@@ -176,6 +177,17 @@ export function ShopGroupSection({
         >
           <Text className="text-body text-text-secondary">{ORGANIZATION_DISCOUNT_LABEL}</Text>
           <Text className="text-body font-medium text-success">{discountAmount(group.organizationDiscountMinor)}</Text>
+        </View>
+      ) : null}
+
+      {group.voucherDiscountMinor ? (
+        <View
+          className="flex-row items-baseline justify-between gap-3 px-4"
+          accessible
+          accessibilityLabel={`${VOUCHER_SHARE_LABEL} on ${group.label}, minus ${formatPhp(group.voucherDiscountMinor)}`}
+        >
+          <Text className="text-body text-text-secondary">{VOUCHER_SHARE_LABEL}</Text>
+          <Text className="text-body font-medium text-success">{voucherAmount(group.voucherDiscountMinor)}</Text>
         </View>
       ) : null}
 

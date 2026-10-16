@@ -2,6 +2,8 @@ import {
   CircleCheck,
   CircleX,
   Clock,
+  ClockCheck,
+  MapPin,
   Sparkles,
   SquarePen,
   TrendingUp,
@@ -28,7 +30,10 @@ const ICONS = {
   "triangle-alert": TriangleAlert,
   "circle-x": CircleX,
   clock: Clock,
+  // "Ready early" (gridgo-api#219): printing finished ahead of the shop's time.
+  "clock-check": ClockCheck,
   "square-pen": SquarePen,
+  "map-pin": MapPin,
   // Release labels in Settings > What's new (`RELEASE_LABEL_LOOK`).
   sparkles: Sparkles,
   "trending-up": TrendingUp,

@@ -9,6 +9,7 @@ import {
   documentLine,
   mockUpdateCartLine,
   pdfDetected,
+  holdUploadedFile,
   renderInSafeArea,
   uploadMock,
 } from "../../test/artworkPagesFixtures";
@@ -23,14 +24,6 @@ jest.mock("expo-router", () => ({
     back: jest.fn(),
   }),
   useLocalSearchParams: () => ({ lineId: "cline_1" }),
-}));
-
-jest.mock("@/hooks/useArtworkUpload", () => ({
-  useArtworkUpload: (initial?: { fileId?: string | null }) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { uploadHookState } = require("../../test/artworkPagesFixtures");
-    return uploadHookState(initial);
-  },
 }));
 
 jest.mock("@/lib/api", () => {
@@ -56,6 +49,7 @@ beforeEach(() => {
   uploadMock.fileId = "file_pdf";
   uploadMock.detected = pdfDetected({ pageCount: null });
   uploadMock.contentType = "application/pdf";
+  holdUploadedFile();
   mockUpdateCartLine(api);
   useCart.setState({
     cartId: "cart_1",

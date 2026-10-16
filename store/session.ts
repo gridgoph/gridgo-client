@@ -1,7 +1,11 @@
+import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useHandoverActions } from "@/store/handoverActions";
 import { useNotifications } from "@/store/notifications";
+import { useVouchers } from "@/store/vouchers";
+import { useSurvey } from "@/store/survey";
+import { useCheckoutExit } from "@/store/checkoutExit";
 import { useOrderRanking } from "@/store/orderRanking";
 import { setLiveOwner } from "@/lib/live";
 import { clearBoardCache } from "@/lib/shopBoards";
@@ -351,6 +355,8 @@ useSession.subscribe((state, previous) => {
   useCheckoutPayment.getState().reset();
   useOrderPayment.getState().reset();
   useHandoverActions.getState().reset();
+  // Uploads in flight belong to the account that started them.
+  useArtworkAttachments.getState().reset();
   clearBoardCache();
   clearListingCache();
   // A match and its pick tokens are bound to the client who asked; another
@@ -359,5 +365,8 @@ useSession.subscribe((state, previous) => {
   clearMatchSelections();
   useOrderRanking.getState().clear();
   useNotifications.getState().setOwner(id);
+  useVouchers.getState().reset();
+  useSurvey.getState().reset();
+  useCheckoutExit.getState().reset();
   setLiveOwner(id);
 });

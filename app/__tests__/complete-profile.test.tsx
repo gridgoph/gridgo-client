@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import CompleteProfileScreen from "@/app/complete-profile";
 import { useSession } from "@/store/session";
+import { holdLegalLibrary } from "@/test/legalGate";
 
 jest.mock("@clerk/expo", () => ({
   useAuth: () => ({
@@ -11,6 +12,10 @@ jest.mock("@clerk/expo", () => ({
     isLoaded: true,
     getToken: jest.fn(async () => "clerk-jwt"),
     sessionId: null,
+  }),
+  useUser: () => ({
+    isLoaded: true,
+    user: { primaryEmailAddress: { emailAddress: "ana@example.com" } },
   }),
   useClerk: () => ({
     setActive: jest.fn(async () => undefined),
@@ -49,7 +54,33 @@ describe("CompleteProfileScreen", () => {
     });
   });
 
+  it("asks a Google sign-up to agree before GRIDGO creates the account", async () => {
+    holdLegalLibrary();
+    await renderInSafeArea(<CompleteProfileScreen />);
+
+    expect(screen.getByText("Finish signing up")).toBeTruthy();
+    expect(screen.getByLabelText("Read the Terms of Service")).toBeTruthy();
+    expect(screen.getByLabelText("Read the Privacy Notice")).toBeTruthy();
+    const agree = screen.getByRole("checkbox", {
+      name: "I agree to the Terms of Service and Privacy Notice",
+    });
+    expect(agree.props.accessibilityState.checked).toBe(false);
+    expect(
+      screen.getByRole("checkbox", { name: "Send me GRIDGO news and offers" }).props
+        .accessibilityState.checked,
+    ).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Create my account" }).props.accessibilityState.disabled,
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+  });
+
   it("offers the same three account types as signup, without email or password", async () => {
+    // Enrolled already, but GRIDGO cannot read the account type.
+    useSession.setState({
+      user: { id: "u1", email: "ana@example.com", name: "Ana", role: "client" },
+      pendingClerkProfile: false,
+    });
     await renderInSafeArea(<CompleteProfileScreen />);
 
     expect(screen.getByText("Finish your profile")).toBeTruthy();

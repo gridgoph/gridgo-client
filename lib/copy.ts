@@ -122,6 +122,44 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "This order is no longer waiting for a drop-off confirmation. Refresh for its latest progress.";
       case "invalid_dropoff_point":
         return "Choose a pin and enter a street and landmark of up to 240 characters.";
+      // ---- the delivery pin and its one change (report 6C8DE953) ----
+      case "delivery_pin_locked":
+        return "A rider has been assigned, so this pin can no longer change. Pull down to see the pin your rider has.";
+      case "delivery_pin_stale":
+        return "This pin was updated a moment ago. It has been reloaded — check it and try again.";
+      case "delivery_pin_change_used":
+        return "You have already used your one pin change.";
+      case "delivery_pin_payment_pending":
+        return "Operations is still checking the payment for your new pin. Wait for their answer first.";
+      case "delivery_pin_fee_changed":
+        return "The delivery price for this pin changed. Check the new difference and save again.";
+      case "delivery_pin_warning_required":
+        return "Tick the box to confirm this is your one pin change.";
+      case "delivery_pin_money_reconciliation_required":
+        return "GRIDGO has to check this order's payments before its delivery price can change. Keep your current pin, or message GRIDGO.";
+      case "delivery_pin_payment_unavailable":
+        return "This pin is not waiting for a payment any more. Pull down to refresh.";
+      case "delivery_pin_idempotency_conflict":
+        return "That clashed with an earlier attempt. Try again.";
+      case "invalid_delivery_pin_request":
+        return "Keep the notes to 500 characters and the receiver's name to 120.";
+      // ---- special instructions and the shop's change requests (report F9FCD485) ----
+      case "invalid_special_instructions":
+        return "Keep special instructions to 300 characters.";
+      case "change_request_stale":
+        return "This change request was updated a moment ago. It has been reloaded — read it again before you answer.";
+      case "change_request_not_pending":
+        return "This change request is not waiting for your answer any more. Pull down to see where it stands.";
+      case "change_request_window_closed":
+        return "Printing has finished, so this change can no longer be approved or paid for. Your order stays as you placed it.";
+      case "change_request_supplier_changed":
+        return "Another shop now has this job, so this change no longer applies. Your order stays as you placed it.";
+      case "change_payment_unavailable":
+        return "This change is not waiting for a payment any more. Pull down to refresh.";
+      case "change_payment_pending":
+        return "Operations is still checking the payment for your change. Wait for their answer first.";
+      case "change_request_idempotency_conflict":
+        return "That clashed with an earlier attempt. Try again.";
       case "transition_not_allowed":
       case "invalid_state":
         return "This order is not ready for that action yet. Pull to refresh, or check the timeline.";
@@ -151,6 +189,13 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "That short link did not lead to a design. Open the design and copy its full address.";
       case "artwork_link_format_not_accepted":
         return "This shop does not take that kind of link. Paste a different one, or upload the file.";
+      // ---- artwork: several files and links on one item (gridgo-api#243) ----
+      case "artwork_attachment_limit_exceeded":
+        return "An item can have 10 files and design links at most. Remove one, then add this again.";
+      case "invalid_artwork_attachments":
+        return "GRIDGO could not keep that list of files and links. Check each label is one short line, then try again.";
+      case "artwork_file_format_not_accepted":
+        return "GRIDGO read this file as a type this item does not take. Export it as one of the accepted types and upload it again.";
       // ---- basket: the shop's minimum run ----
       case "below_minimum_quantity": {
         const minimum =
@@ -166,6 +211,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "Your order goes out in more than one part, so every item needs a date. Choose one for any item with no set date and try again.";
       case "basket_deadline_mismatch":
         return "GRIDGO looked again with this item's date — pick from the new answer.";
+      case "shop_unavailable":
+        return "A shop in your order is closed for now and is not taking new orders. Remove its items, then place your order.";
       case "deadline_not_met":
         return "A shop in your order can no longer make one of your dates. Choose a later date for that item, or remove it.";
       case "cart_group_not_found":
@@ -182,6 +229,13 @@ export function userFacingError(error: unknown, fallback: string): string {
           ? `This printer prints up to ${cap} ft wide. Make it ${cap} ft wide or less and try again.`
           : "This is wider than this printer prints. Make it narrower and try again.";
       }
+      // ---- basket: how the file sits on the paper (gridgo-api docs/PRINT_LAYOUT_API.md) ----
+      case "print_layout_required":
+        return "Choose how your file sits on the paper first: fit to paper, or actual size.";
+      case "print_layout_not_supported":
+        return "This shop no longer prints that layout. Choose one of the layouts it offers.";
+      case "invalid_print_layout":
+        return "Choose one of the layouts this product offers.";
       case "assignment_notification_required":
         return "This job has no final price yet, so there is nothing to pay. You get a notification the moment a supplier accepts it.";
       case "payment_already_submitted":

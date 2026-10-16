@@ -1,4 +1,5 @@
 import type { Order, ProductionItem } from "@/lib/api";
+import { layoutLabel } from "@/lib/printLayout";
 
 export type SpecValue = { label: string; value: string };
 export function readableSpec(value: string): string {
@@ -33,6 +34,8 @@ export function productionSpecRows(item: ProductionItem, describeValue: (value: 
   for (const option of item.options ?? []) {
     if (option.label) rows.push({ label: option.groupName || "Selected option", value: option.label });
   }
+  // How the file sits on the paper, as agreed at checkout (gridgo-client#245).
+  if (item.printLayout) rows.push({ label: "Layout", value: layoutLabel(item.printLayout) });
   return rows;
 }
 

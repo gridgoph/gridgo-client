@@ -18,7 +18,9 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DeliveryZonesHelp } from "@/components/DeliveryZonesHelp";
 import { EmptyState } from "@/components/EmptyState";
 import { HubPickupPanel } from "@/components/HubPickupPanel";
+import { CheckoutVoucher } from "@/components/CheckoutVoucher";
 import { OrganizationDiscountRow, OrganizationSavingsNote } from "@/components/OrganizationDiscount";
+import { VoucherDiscountRow } from "@/components/VoucherDiscountRow";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { paymentQrFromSettings, QrPaySheet } from "@/components/QrPaySheet";
@@ -28,6 +30,8 @@ import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
 import { ShopGroupSection } from "@/components/ShopGroupSection";
 import { ReadyTime } from "@/components/ReadyTime";
+import { ShopHoursLine } from "@/components/ShopHoursLine";
+import { ReviewScheduleCard } from "@/components/ReviewScheduleCard";
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
 import { StepTrail } from "@/components/StepTrail";
@@ -58,9 +62,11 @@ import {
   shopGroups,
   type ShopGroupView,
 } from "@/lib/basketGroups";
+import { noteCheckoutVisit } from "@/lib/checkoutExit";
 import { unpricedLineReason } from "@/lib/clientPrice";
 import { lineArtworkLinks, lineArtworkSummary, lineHasArtwork } from "@/lib/designLink";
 import { holdPlacedReceipt, openReceiptAfterCheckout, receiptFromCheckout, withBasket } from "@/lib/receipt";
+import { PLACE_HUSH_MS } from "@/lib/receiptPrint";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
 import { clearOrderFlow } from "@/lib/orderFlow";
 import {
@@ -81,7 +87,9 @@ import {
   TRAVEL_CHOICES,
   type TravelChoice,
 } from "@/lib/checkout";
+import { lineLayoutSummary, lineNeedsLayout, printLayoutRefusalOf } from "@/lib/printLayout";
 import { userFacingError } from "@/lib/copy";
+import { SHOP_PAUSED_LINE, shopHoursView, shopPaused } from "@/lib/shopHours";
 import {
   GRIDGO_OFFICE,
   GRIDGO_OFFICE_BLURB,
@@ -91,6 +99,7 @@ import {
 } from "@/lib/gridgoOffice";
 import { samplePhotoUri } from "@/lib/listing";
 import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
+import { checkoutNoticeView, openingHoursLines, upcomingClosures } from "@/lib/operatingHours";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { checkPaymentReference, DIGITAL_ONLY_NOTICE, FULL_PAYMENT_PERCENT, paymentPlanNote } from "@/lib/payment";
@@ -102,9 +111,15 @@ import { zoneLine } from "@/lib/distanceZone";
 import { hubFeeLabel, hubPickupEnabled } from "@/lib/hubPickup";
 import { fulfilmentSummary } from "@/lib/requestFulfilment";
 import { useBasketGroupTarget } from "@/store/basketGroup";
+import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
+import { artworkRightsPayload, cartRightsScope, useArtworkRights } from "@/store/artworkRights";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
+import { useIsApprovedOrganization } from "@/store/organization";
+import { useNotificationNudge } from "@/store/notificationNudge";
+import { useVouchers } from "@/store/vouchers";
+import { voucherDiscountOf, voucherErrorMessage } from "@/lib/vouchers";
 import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
 
 /**
@@ -133,6 +148,10 @@ export default function CheckoutScreen() {
 
   const cart = useCart((state) => state.cart);
   const cartId = useCart((state) => state.cartId);
+  const rightsScope = cartId ? cartRightsScope(cartId) : null;
+  const rightsAgreed = useArtworkRights((state) =>
+    rightsScope ? state.agreed[rightsScope] === true : false,
+  );
   const loading = useCart((state) => state.loading);
   const hydrated = useCart((state) => state.hydrated);
   const busy = useCart((state) => state.busy);
@@ -155,7 +174,7 @@ export default function CheckoutScreen() {
   const [removing, setRemoving] = useState<CartLineRecord | null>(null);
   const scrollRef = useRef<{ scrollTo?: (opts: { y: number; animated?: boolean }) => void }>(null);
   const contentRef = useRef<View>(null);
-  const fields = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference", View | null>>>({});
+  const fields = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference" | "rights", View | null>>>({});
 
   const proof = usePaymentProof(cartId);
   const setArtworkProblem = useDesignLink((state) => state.setProblem);
@@ -172,6 +191,9 @@ export default function CheckoutScreen() {
   const loadSequence = useRef(0);
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
+    // The wallet beside the basket: which vouchers could go on it, and
+    // whether the one on it is held. GRIDGO's quote already carries its pick.
+    void useVouchers.getState().load();
     await loadCart();
     if (sequence !== loadSequence.current) return;
     try {
@@ -200,6 +222,15 @@ export default function CheckoutScreen() {
       void load();
       return () => { loadSequence.current++; };
     }, [load]),
+  );
+
+  // Tells GRIDGO checkout was reached, so a client who leaves without paying
+  // can be asked why on a later app open (`lib/checkoutExit.ts`). Fire and
+  // forget: it never waits, and a refusal never reaches the screen.
+  useFocusEffect(
+    useCallback(() => {
+      if (cartId) noteCheckoutVisit(cartId);
+    }, [cartId]),
   );
 
   // Each line's sample is a signed link that expires five minutes after the
@@ -245,14 +276,18 @@ export default function CheckoutScreen() {
   const artworkStatus = (line: CartLineRecord) => lineArtworkStatus(line, linkChecks, artworkProblems);
   const checkingArtwork = lines.filter((line) => artworkStatus(line)?.kind === "checking");
   const artworkProblem = lines.filter((line) => artworkStatus(line)?.kind === "problem");
+  const missingLayout = lines.filter(lineNeedsLayout);
   const referenceCheck = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
+  const shopClosed = lines.filter((line) => shopPaused(line.listing?.shopHours));
   const blockers = placeOrderBlockers({
     lineCount: lines.length,
+    linesShopClosed: shopClosed.length,
     linesUnpriced: unpriced.length,
     linesMissingArtwork: missingArtwork.length,
     linesCheckingArtwork: checkingArtwork.length,
     linesArtworkProblem: artworkProblem.length,
+    linesMissingLayout: missingLayout.length,
     linesMissingDropoff: linesMissingDropoff(cart).length,
     // More than one group: each is printed and delivered for its own date, so
     // GRIDGO needs one on every product (gridgo-client#189).
@@ -260,6 +295,7 @@ export default function CheckoutScreen() {
     referenceOk: ocrReading || referenceCheck.ok,
     hasProof: Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
+    rightsAgreed,
   });
 
   /** Every basket change goes through GRIDGO and stores what comes back. */
@@ -272,6 +308,58 @@ export default function CheckoutScreen() {
         userFacingError(e, "GRIDGO could not change your order. Try again in a moment."),
       );
     }
+  };
+
+  /*
+   * The voucher on this basket (gridgo-api#204). Every change goes through
+   * GRIDGO, which answers with the re-priced basket; the wallet is read again
+   * after, because applying holds a voucher and removing lets it go.
+   */
+  const isOrganization = useIsApprovedOrganization();
+  const voucherChange = async (
+    work: (id: string) => Promise<api.CartVoucherResult>,
+    after?: () => void,
+  ): Promise<boolean> => {
+    const vouchers = useVouchers.getState();
+    vouchers.setCodeNotice(null);
+    try {
+      const result = await run(work);
+      adopt(result.cart);
+      vouchers.adoptClock(result.serverTime);
+      after?.();
+      return true;
+    } catch (e) {
+      vouchers.setCodeNotice({
+        ok: false,
+        text: voucherErrorMessage(e, userFacingError(e, "GRIDGO could not change the voucher on your order. Try again in a moment.")),
+      });
+      return false;
+    } finally {
+      void useVouchers.getState().load();
+    }
+  };
+  const applyVoucher = (voucherId: string) =>
+    void voucherChange(
+      (id) => api.applyCartVoucher(id, { voucherId }),
+      () => cartId && useVouchers.getState().markRemoved(cartId, false),
+    );
+  const removeVoucher = () =>
+    void voucherChange(
+      (id) => api.removeCartVoucher(id),
+      () => cartId && useVouchers.getState().markRemoved(cartId, true),
+    );
+  /** A code typed at checkout: into the wallet first, so its answer is precise, then onto this order. */
+  const applyCode = async (code: string): Promise<boolean> => {
+    const outcome = await useVouchers.getState().addCode(code);
+    if (!outcome.ok || !outcome.usable) return false;
+    const applied = await voucherChange(
+      (id) => api.applyCartVoucher(id, { voucherId: outcome.voucher.id }),
+      () => cartId && useVouchers.getState().markRemoved(cartId, false),
+    );
+    if (applied) {
+      useVouchers.getState().setCodeNotice({ ok: true, text: `${formatPhp(outcome.voucher.valueMinor)} voucher added and applied to this order.` });
+    }
+    return applied;
   };
 
   useEffect(() => {
@@ -310,12 +398,12 @@ export default function CheckoutScreen() {
   const lastLine = lines.at(-1) ?? null;
 
   /**
-   * "Add more from Shop A for Fri 12 Oct": the next product is matched to that
-   * group's shop on that group's date, so it rides in the same delivery.
+   * "Add more from Shop A for Fri 12 Oct": the products that group's shop can
+   * still make by that date, so the next one rides in the same delivery (#267).
    */
   const addToGroup = (groupId: string, label: string, deadline: string | null) => {
     useBasketGroupTarget.getState().set(groupId, label, deadline);
-    router.push({ pathname: "/request/category", params: { forGroup: "1" } });
+    router.push("/request/add-more");
   };
 
   /** Move one group's products to another date — or give a "no rush" group one. */
@@ -367,7 +455,7 @@ export default function CheckoutScreen() {
 
   const scrollToBlocker = (blocker: (typeof blockers)[number]) => {
     const key =
-      blocker === "artwork" || blocker === "price" || blocker === "artwork_problem" || blocker === "date"
+      blocker === "artwork" || blocker === "price" || blocker === "artwork_problem" || blocker === "layout" || blocker === "date"
         ? "artwork"
         : blocker === "address"
           ? "address"
@@ -375,7 +463,9 @@ export default function CheckoutScreen() {
             ? "proof"
             : blocker === "reference"
               ? "reference"
-              : null;
+              : blocker === "rights"
+                ? "rights"
+                : null;
     if (!key) return;
     const content = contentRef.current;
     if (!content) return;
@@ -409,10 +499,32 @@ export default function CheckoutScreen() {
       if (!cart?.serviceLevel) {
         await api.setCartFulfilment(cartId, { serviceLevel: "standard" });
       }
-      const { order, invoice, basket } = await api.checkoutCart(cartId, {
-        reference: reference.trim(),
-        proofFileId: proof.state.fileId,
-      });
+      // A voucher can run out or be released between the screen and the tap,
+      // and GRIDGO then writes the order at the full price. The payment the
+      // client just sent was for the total on screen, so read the basket
+      // again and stop if that total moved.
+      if (voucherDiscountOf(cart?.clientQuote) > 0) {
+        const fresh = await api.getCart(cartId);
+        if (fresh.clientQuote?.totalMinor !== totals.totalMinor) {
+          adopt(fresh);
+          void useVouchers.getState().load();
+          setPlaceError(
+            "Your total changed because the voucher can no longer be used on this order. Check the new total and pay that amount before you place the order.",
+          );
+          return;
+        }
+      }
+      // The order's own notices land while its receipt prints: no chime over the print.
+      useNotificationNudge.getState().hush(PLACE_HUSH_MS);
+      const { order, invoice, basket } = await api.checkoutCart(
+        cartId,
+        {
+          reference: reference.trim(),
+          proofFileId: proof.state.fileId,
+        },
+        // Recorded by GRIDGO against every order this basket becomes.
+        await artworkRightsPayload(),
+      );
       // A multi-shop basket answers with one combined receipt; its order is
       // the first shop group, which the receipt and its "View order" open.
       // The basket beside it carries each group's date for the slip.
@@ -428,6 +540,19 @@ export default function CheckoutScreen() {
       // and on its Artwork screen, where the fix is, not only in the footer.
       const refusal = e instanceof api.ApiError ? artworkRefusalOf(e.body) : null;
       const refused = refusal?.lineId ? lines.find((line) => line.id === refusal.lineId) : null;
+      // The layout is missing, or the shop stopped printing the one chosen:
+      // the choice is on the item's Artwork, so that is where this goes.
+      const layoutRefusal = e instanceof api.ApiError ? printLayoutRefusalOf(e.body) : null;
+      const layoutLine = layoutRefusal ? lines.find((line) => line.id === layoutRefusal.lineId) : null;
+      if (layoutRefusal) {
+        void loadCart();
+        setAttempted(true);
+        setPlaceError(userFacingError(e, "Choose how your file sits on the paper first."));
+        if (layoutLine) {
+          router.push({ pathname: "/request/artwork", params: { lineId: layoutLine.id, focus: "layout" } });
+        }
+        return;
+      }
       if (refusal && refused && refusal.code !== "artwork_check_required") {
         setArtworkProblem(refused.id, {
           code: refusal.code,
@@ -442,9 +567,12 @@ export default function CheckoutScreen() {
       setPlaceError(
         refusal
           ? refusal.message
-          : userFacingError(
+          : voucherErrorMessage(
               e,
-              "GRIDGO could not place your order. Nothing was charged — your order is still here, so try again.",
+              userFacingError(
+                e,
+                "GRIDGO could not place your order. Nothing was charged — your order is still here, so try again.",
+              ),
             ),
       );
     } finally {
@@ -483,7 +611,9 @@ export default function CheckoutScreen() {
     );
   }
 
-  const placeLocked = ocrReading || placing || busy;
+  // A shop closed for now is refused whatever else is filled in, so the button
+  // is off rather than a tap that only scrolls; the line under it says why.
+  const placeLocked = ocrReading || placing || busy || shopClosed.length > 0;
 
   const lineRow = (line: CartLineRecord) => (
     <LineRow
@@ -512,6 +642,9 @@ export default function CheckoutScreen() {
     />
   );
   const missingShown = attempted || referenceTouched;
+  // Out of hours: when GRIDGO reviews the artwork, and the estimate that
+  // counts it (gridgo-api#203). Never a reason to hold the order back.
+  const afterHours = checkoutNoticeView(cart?.checkoutNotice);
 
   return (
     <FormScreen
@@ -563,7 +696,7 @@ export default function CheckoutScreen() {
           </View>
 
           <Text
-            className={placeError || (missingShown && blockers.length)
+            className={placeError || (missingShown && blockers.length) || shopClosed.length
               ? "text-center text-caption text-error"
               : "text-center text-caption text-text-muted"}
           >
@@ -574,7 +707,11 @@ export default function CheckoutScreen() {
                   ? OCR_UNREADABLE
                   : blockerLine(
                       blockers[0],
-                      blockers[0] === "price"
+                      blockers[0] === "shop_closed"
+                        ? shopClosed.length === 1
+                          ? lineName(shopClosed[0])
+                          : undefined
+                        : blockers[0] === "price"
                         ? unpriced.length === 1
                           ? lineName(unpriced[0])
                           : undefined
@@ -582,11 +719,17 @@ export default function CheckoutScreen() {
                           ? artworkProblem.length === 1
                             ? lineName(artworkProblem[0])
                             : undefined
+                        : blockers[0] === "layout"
+                          ? missingLayout.length === 1
+                            ? lineName(missingLayout[0])
+                            : undefined
                         : missingArtwork.length === 1
                           ? lineName(missingArtwork[0])
                           : undefined,
                     )
-                : "GRIDGO checks your file before the shop starts.")}
+                : afterHours?.reviewAt
+                  ? `GRIDGO checks your file ${afterHours.reviewAt}, before the shop starts.`
+                  : "GRIDGO checks your file before the shop starts.")}
           </Text>
         </TourTarget>
       }
@@ -648,6 +791,22 @@ export default function CheckoutScreen() {
         <StepTrail current="pay" onStep={goStep} canGo={(step) => step === "shop" || Boolean(lastLine)} />
 
         <Text className="mt-4 text-h1 text-text-primary">Your order</Text>
+
+        {/*
+          Said before anything is paid, where the client decides: an order
+          placed at 9 PM waits for the morning's review, and every date below
+          already counts that. Paying is not held back by it.
+        */}
+        {afterHours ? (
+          <View className="mt-4">
+            <ReviewScheduleCard
+              view={afterHours}
+              variant="checkout"
+              hours={openingHoursLines(settings)}
+              closures={afterHours.delayed ? upcomingClosures(settings?.operatingHours) : []}
+            />
+          </View>
+        ) : null}
 
         {/* ---- What is being printed ------------------------------------- */}
         <View className="mt-6 gap-6" collapsable={false} ref={(node) => { fields.current.artwork = node; }}>
@@ -822,6 +981,24 @@ export default function CheckoutScreen() {
           )}
           </>
           )}
+        </Section>
+
+        {/* ---- Voucher ---------------------------------------------------- */}
+        {/*
+          Ahead of paying, because it changes what is paid: the QR amount
+          below is already the total after the voucher.
+        */}
+        <Section title="VOUCHER">
+          <CheckoutVoucher
+            cartId={cartId}
+            quote={cart?.clientQuote}
+            isOrganization={isOrganization}
+            showServiceFee={serviceFeeVisibleToClient(settings)}
+            busy={busy || placing}
+            onApply={applyVoucher}
+            onRemove={removeVoucher}
+            onCode={applyCode}
+          />
         </Section>
 
         {/* ---- Paying ----------------------------------------------------- */}
@@ -1026,6 +1203,8 @@ export default function CheckoutScreen() {
 
             {/* Already out of the total GRIDGO sends (#166): drawn, never subtracted. */}
             <OrganizationDiscountRow source={cart?.clientQuote} />
+            {/* Already out of the total too (gridgo-api#204); the two never stack. */}
+            <VoucherDiscountRow source={cart?.clientQuote} />
 
             <View className="gg-divider my-2" />
 
@@ -1045,6 +1224,12 @@ export default function CheckoutScreen() {
                   : `${lineName(unpriced[0])} has no price at its quantity, so the total lands once you change it.`
                 : "Some items need attention before GRIDGO can calculate the total."}
             </Text>
+          ) : totals.totalMinor == null && lines.some((line) => shopPaused(line.listing?.shopHours)) ? (
+            // GRIDGO keeps the line's price but will not total or take it.
+            <Text className="text-caption text-text-muted">
+              A shop in your order is closed for now and is not taking new orders. Remove its items to
+              see the total and place your order.
+            </Text>
           ) : totals.totalMinor == null && totals.reasons.some((reason) => reason.code === "catalog_item_stale" || reason.code === "shop_unavailable") ? (
             <Text className="text-caption text-text-muted">
               Something in your order can no longer be printed as you picked it. Open it and pick
@@ -1061,6 +1246,29 @@ export default function CheckoutScreen() {
           </Text>
           <OrganizationSavingsNote source={cart?.clientQuote} />
         </Section>
+
+        {/*
+          The same box the Artwork step drew, bound to this basket: ticked
+          there, it is ticked here, and the client can still take it back
+          before the order is placed. Last, so it is the thing read just above
+          Place order.
+        */}
+        {rightsScope ? (
+          <Section title="YOUR ARTWORK">
+            <View collapsable={false} ref={(node) => { fields.current.rights = node; }}>
+              <ArtworkRightsBox
+                scope={rightsScope}
+                onOpen={(href) => router.push(href)}
+                disabled={placing}
+              />
+              {attempted && blockers.includes("rights") ? (
+                <Text className="text-caption text-error" accessibilityRole="alert">
+                  {blockerLine("rights")}
+                </Text>
+              ) : null}
+            </View>
+          </Section>
+        ) : null}
 
       </View>
 
@@ -1151,6 +1359,9 @@ function LineRow({
   const name = lineName(line);
   const readyBy = readyByDate(line.promiseBy);
   const clientAmount = clientLineAmountMinor(line, serviceFeeRateBps);
+  // Closed for now: GRIDGO will not take this line, whatever it is priced at.
+  const paused = shopPaused(line.listing?.shopHours);
+  const layout = lineLayoutSummary(line);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -1175,6 +1386,12 @@ function LineRow({
             </View>
             <View className="min-w-0 flex-1 gap-1">
               <Text className="text-body-lg font-medium text-text-primary">{name}</Text>
+              {paused ? (
+                <View className="gap-1">
+                  <ShopHoursLine view={shopHoursView(line.listing?.shopHours)} />
+                  <Text className="text-caption text-warning">{SHOP_PAUSED_LINE}</Text>
+                </View>
+              ) : null}
               <ReadyTime promiseBy={line.promiseBy} />
               {options ? (
                 <Text className="text-caption text-text-muted" numberOfLines={2}>
@@ -1182,6 +1399,12 @@ function LineRow({
                 </Text>
               ) : null}
               {line.documentPages ? <Text className="text-caption text-text-secondary">{documentPagesSummary(line.documentPages)}</Text> : null}
+              {/* The note as GRIDGO stored it, contacts already hidden. Edit reopens it. */}
+              {line.specialInstructions?.trim() ? (
+                <Text className="text-caption text-text-secondary" numberOfLines={3}>
+                  Note: {line.specialInstructions.trim()}
+                </Text>
+              ) : null}
               {clientAmount == null ? (
                 <Text className="text-caption text-warning">{unpricedLineReason(line)}</Text>
               ) : (
@@ -1202,6 +1425,11 @@ function LineRow({
                   accessibilityLiveRegion="polite"
                 >
                   {artwork.text}
+                </Text>
+              ) : null}
+              {layout ? (
+                <Text className={layout.tone === "warning" ? "text-caption text-warning" : "text-caption text-text-muted"}>
+                  {layout.text}
                 </Text>
               ) : null}
             </View>

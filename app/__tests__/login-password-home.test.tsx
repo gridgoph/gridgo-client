@@ -6,6 +6,7 @@ import LoginScreen from "@/app/(auth)/login";
 import type { User } from "@/lib/api";
 import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
+import { clearLegalGate } from "@/test/legalGate";
 
 /**
  * The plain password sign-in: Clerk answers `complete` on the first call, with
@@ -135,6 +136,7 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("LoginScreen completed password sign-in", () => {
   beforeEach(() => {
+    clearLegalGate();
     mockPassword.mockReset().mockResolvedValue({ error: null });
     mockFinalize.mockReset().mockResolvedValue({ error: null });
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");

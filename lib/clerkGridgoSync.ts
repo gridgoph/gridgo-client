@@ -18,6 +18,7 @@ import {
   wrongRoleMessage,
   type ClerkBridgeResult,
 } from "@/lib/clerkSessionBridge";
+import { useEnrollmentConsent } from "@/store/enrollmentConsent";
 import { useSession } from "@/store/session";
 
 let currentGeneration = 0;
@@ -53,7 +54,7 @@ async function loadClerkGridgoUser(
 ): Promise<ClerkBridgeResult> {
   api.setTokenProvider(clerkTokenProvider(getToken));
   useSession.getState().beginClerkSync();
-  return bridgeClerkToGridgo({
+  const result = await bridgeClerkToGridgo({
     // The one place that waits, and the only one allowed more than a single
     // mint: this runs straight after a Clerk step completes, and the client
     // needs a beat to swap the session in before it can mint that session's
@@ -69,7 +70,19 @@ async function loadClerkGridgoUser(
     // Activate wrote `gridgo_role`; the cached JWT predates that claim, so
     // this is one of the two places a forced mint is the point.
     refreshToken: () => clerkFreshSessionToken(getToken),
+    // What the sign-up form's boxes said, if this is that sign-up finishing.
+    consent: async () => {
+      const choice = useEnrollmentConsent.getState().choice;
+      if (!choice) return null;
+      return choice.kind === "legacy" ? "legacy" : choice.body;
+    },
   });
+  // Used once: enrolled, or refused and asked again on Finish signing up. A
+  // network failure keeps it, so the retry does not ask twice.
+  if (result.kind === "adopt" || result.kind === "needs_profile") {
+    useEnrollmentConsent.getState().clear();
+  }
+  return result;
 }
 
 async function applyClerkGridgoResult(

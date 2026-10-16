@@ -4,7 +4,15 @@ import { Pressable, Text, View } from "react-native";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
-import type { PrintResolution } from "@/lib/printResolution";
+import type { AcceptedFormat } from "@/lib/api";
+import {
+  WORD_TO_PDF_STEPS,
+  acceptedFormatNames,
+  showsWordToPdfSteps,
+  uploadSizeLine,
+  wordFormatNote,
+} from "@/lib/artworkFormats";
+import { uploadLimitLine } from "@/lib/listing";
 import {
   ARTWORK_ACCEPTED,
   ARTWORK_MAX_MIB,
@@ -37,23 +45,12 @@ type Props = {
    */
   emphasis?: "primary" | "quiet";
   /**
-   * What this file will actually print at, at the size the client chose.
-   *
-   * Passed in rather than computed here, because it needs the chosen size and
-   * this card only knows the file. Null where either number is unknown — a
-   * custom size nobody has measured, or a file that stated no dimensions.
+   * The file types this listing takes. Listed on the empty card, so a client
+   * knows before the picker opens; omitted where no listing narrows it.
    */
-  resolution?: PrintResolution | null;
-  /**
-   * Set when a note under the card already warns about this file's size, so
-   * the resolution stays a quiet fact here rather than a second amber line.
-   */
-  resolutionQuiet?: boolean;
-  /**
-   * What this listing takes and how large, in its own terms ("PDF or Word
-   * document, up to …"). Omitted where no listing narrows it.
-   */
-  accepts?: string;
+  formats?: AcceptedFormat[];
+  /** The product's name, for the Word note ("Flyers does not take Word files"). */
+  productName?: string;
 };
 
 /**
@@ -77,30 +74,27 @@ export function ArtworkUploadCard({
   onCancel,
   readOnly,
   emphasis = "quiet",
-  resolution = null,
-  resolutionQuiet = false,
-  accepts,
+  formats,
+  productName = "This item",
 }: Props) {
   const colors = useThemeColors();
   const chip = artworkChip(state);
   const busy = isArtworkBusy(state);
-  const acceptLine = accepts || `${ARTWORK_ACCEPTED}, up to ${ARTWORK_MAX_MIB} MB`;
+  const listed = formats?.length ? formats : null;
+  const wordNote = listed ? wordFormatNote(productName, listed) : null;
+  const acceptLine = listed ? uploadLimitLine(listed) : `${ARTWORK_ACCEPTED}, up to ${ARTWORK_MAX_MIB} MB`;
+  // Refused on this phone for its type: nothing was sent, so only another file helps.
+  const refused = state.phase === "failed" && state.refusal === "format";
+  const pdfSteps = refused && listed != null && showsWordToPdfSteps(listed, state.fileName, state.refusedMimeType);
   const wordFile = isWordDocument(state.contentType, state.fileName);
   const facts = describeArtworkFile({
     originalFilename: state.fileName || null,
     detectedContentType: state.contentType,
     size: state.size,
   });
-  /*
-    The byte count is a proxy, and only worth showing while there is nothing
-    better. Once GRIDGO has read the real pixel dimensions and the client has
-    chosen a size, the resolution is a measurement rather than a guess — and a
-    measured warning beside a guessed one about the same file is one warning
-    too many. So the guess stands down.
-  */
-  const thinFile =
-    !resolution && facts.some((fact) => fact.id === "size" && fact.tone === "warn");
-  const showFacts = facts.length > 0 || Boolean(resolution) || thinFile;
+  // The byte count is a proxy: a file small enough to be a screen export.
+  const thinFile = facts.some((fact) => fact.id === "size" && fact.tone === "warn");
+  const showFacts = !refused && (facts.length > 0 || thinFile);
 
   // Empty and idle is the only state where tapping the card has one obvious
   // meaning. Once a file is on it the card is a report with its own controls,
@@ -114,7 +108,9 @@ export function ArtworkUploadCard({
         <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
       </View>
 
-      {state.phase === "empty" ? (
+      {state.phase === "empty" && listed ? (
+        <AcceptedFiles formats={listed} note={wordNote} />
+      ) : state.phase === "empty" ? (
         <Text className="text-body text-text-secondary">
           Send the file you want printed — {acceptLine}.
         </Text>
@@ -143,6 +139,8 @@ export function ArtworkUploadCard({
 
       {state.phase === "sending" ? <ProgressBar fraction={state.progress} /> : null}
 
+      {pdfSteps ? <WordToPdfSteps /> : null}
+
       {showFacts ? (
         <View className="gg-panel gap-2">
           {facts.map((fact) => (
@@ -161,17 +159,6 @@ export function ArtworkUploadCard({
             </View>
           ))}
           {thinFile ? <Text className="text-caption text-warning">{THIN_FILE_NOTE}</Text> : null}
-          {resolution ? (
-            <Text
-              className={
-                resolution.verdict === "low" && !resolutionQuiet
-                  ? "text-caption text-warning"
-                  : "text-caption text-text-muted"
-              }
-            >
-              {resolution.message}
-            </Text>
-          ) : null}
         </View>
       ) : null}
 
@@ -210,7 +197,7 @@ export function ArtworkUploadCard({
         <View className="gap-3">
           {busy ? (
             <SecondaryButton label="Cancel upload" onPress={onCancel} />
-          ) : state.phase === "failed" && state.fileCheck?.status === "failed" ? (
+          ) : refused || (state.phase === "failed" && state.fileCheck?.status === "failed") ? (
             // The same bytes would fail the same check: only a new export helps.
             <SecondaryButton label="Choose a different file" onPress={onPick} />
           ) : state.phase === "failed" ? (
@@ -239,7 +226,7 @@ export function ArtworkUploadCard({
       onPress={onPick}
       accessibilityRole="button"
       accessibilityLabel="Choose your artwork file"
-      accessibilityHint={acceptLine}
+      accessibilityHint={wordNote ? `${acceptLine}. ${wordNote}` : acceptLine}
       className="gg-card gg-touch gap-4"
       style={({ pressed }) => (pressed ? { opacity: 0.9 } : undefined)}
     >
@@ -249,10 +236,60 @@ export function ArtworkUploadCard({
 }
 
 /**
+ * What the listing takes, before anything is picked: the shop's own format
+ * names, the size limits, and one line about Word files.
+ *
+ * Plain filled tags rather than outlined chips — outlined chips read as
+ * filters to tap, and these are facts. The card around them is the button.
+ */
+export function AcceptedFiles({ formats, note }: { formats: AcceptedFormat[]; note: string | null }) {
+  const colors = useThemeColors();
+  return (
+    <View className="gap-3">
+      <Text className="text-body text-text-secondary">Send the file you want printed.</Text>
+      <View className="gap-2">
+        <Text className="text-caption text-text-muted">Accepted files</Text>
+        <View className="flex-row flex-wrap gap-2">
+          {acceptedFormatNames(formats).map((name) => (
+            <View key={name} className="rounded-pill bg-surface-variant px-3 py-1">
+              <Text className="text-caption font-medium text-text-primary">{name}</Text>
+            </View>
+          ))}
+        </View>
+        <Text className="text-caption text-text-muted">{uploadSizeLine(formats)}</Text>
+      </View>
+      {note ? (
+        <View className="flex-row items-start gap-2">
+          <View className="pt-0.5">
+            <FileText size={14} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+          </View>
+          <Text className="min-w-0 flex-1 text-caption text-text-secondary">{note}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** The fix for a Word file on a product that takes PDF. A real sequence, so numbered. */
+function WordToPdfSteps() {
+  return (
+    <View className="gg-panel gap-2" accessible accessibilityLabel={`Save it as a PDF. ${WORD_TO_PDF_STEPS.join(" ")}`}>
+      <Text className="text-body font-medium text-text-primary">Save it as a PDF</Text>
+      {WORD_TO_PDF_STEPS.map((step, index) => (
+        <View key={step} className="flex-row items-start gap-2">
+          <Text className="w-4 text-caption font-medium text-text-muted">{index + 1}</Text>
+          <Text className="min-w-0 flex-1 text-caption text-text-secondary">{step}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
  * Transfer progress only. Monochrome on purpose — yellow is reserved for the
  * action the client can take, and a progress bar is not one.
  */
-function ProgressBar({ fraction }: { fraction: number | null }) {
+export function ProgressBar({ fraction }: { fraction: number | null }) {
   const percent = fraction == null ? null : Math.round(Math.min(1, Math.max(0, fraction)) * 100);
 
   return (

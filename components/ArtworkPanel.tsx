@@ -5,10 +5,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Pressable, Text, View } from "react-native";
 
 import { ArtworkDeletion } from "@/components/ArtworkDeletion";
+import { ArtworkGuidanceRecord } from "@/components/ArtworkGuidanceRecord";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
 import { getFile, getFileDownloadUrl as getDownloadUrl, type Order, type Refund, type StoredFile } from "@/lib/api";
 import { removedFileDetail } from "@/lib/artworkDeletion";
+import { orderFileGuidance, type OrderFileGuidance } from "@/lib/artworkGuidance";
 import { describeArtwork, isArtworkImage, isArtworkRemoved, readOrderArtwork, orderArtwork, type ArtworkReference } from "@/lib/orderArtwork";
 import { IDLE_DELETION, useArtworkDeletion } from "@/store/artworkDeletion";
 
@@ -33,6 +35,8 @@ export function ArtworkPanel({ order, refunds, children }: Props) {
 
 function ArtworkFiles({ order, refunds, children }: Props) {
   const files = orderArtwork(order);
+  // The resolution and colour check each file had at checkout, acceptances included.
+  const guidance = orderFileGuidance(order.productionItems);
   /** What each row read: the file, or null when it could not load. */
   const [read, setRead] = useState<Record<string, StoredFile | null>>({});
   const onRead = useCallback((fileId: string, file: StoredFile | null) => {
@@ -57,6 +61,7 @@ function ArtworkFiles({ order, refunds, children }: Props) {
           key={`${order.id}:${file.fileId}`}
           orderId={order.id}
           reference={named ? file : { ...file, itemName: undefined }}
+          guidance={file.kind === "artwork" ? guidance.get(file.fileId) ?? null : null}
           onRead={onRead}
         />
       ))}
@@ -77,9 +82,10 @@ type FileState =
   | { kind: "error"; message: string }
   | { kind: "ready"; file: StoredFile; previewUrl: string | null };
 
-function ArtworkFile({ orderId, reference, onRead }: {
+function ArtworkFile({ orderId, reference, guidance, onRead }: {
   orderId: string;
   reference: ArtworkReference;
+  guidance: OrderFileGuidance | null;
   onRead: (fileId: string, file: StoredFile | null) => void;
 }) {
   const colors = useThemeColors();
@@ -142,12 +148,18 @@ function ArtworkFile({ orderId, reference, onRead }: {
   }
 
   const file = state.kind === "ready" ? state.file : null;
-  if (file && isArtworkRemoved(file)) return <RemovedFile file={file} itemName={reference.itemName} kind={kind} />;
+  if (file && isArtworkRemoved(file)) return <RemovedFile file={file} itemName={reference.itemName} kind={kind} label={reference.label} />;
   const image = Boolean(file && isArtworkImage(file));
-  const kindLabel = kind === "mockup" ? "Reference mockup" : "Artwork";
+  // The client's own label ("Front", "Logo PDF") names the file where they gave one.
+  const kindLabel = reference.label ?? (kind === "mockup" ? "Reference mockup" : "Artwork");
   const failed = state.kind === "error" || previewFailed;
-  const title = file?.originalFilename ?? (state.kind === "error" ? "File could not load" : "Loading attachment…");
-  const detail = file ? `${kindLabel} · ${describeArtwork(file)}` : kindLabel;
+  const fileName = file?.originalFilename ?? (state.kind === "error" ? "File could not load" : "Loading attachment…");
+  const title = reference.label && file ? reference.label : fileName;
+  const detail = file
+    ? reference.label
+      ? `${file.originalFilename} · ${describeArtwork(file)}`
+      : `${kindLabel} · ${describeArtwork(file)}`
+    : kindLabel;
 
   /*
     One compact row per file: what it is, its type and size, and a tap that
@@ -187,10 +199,11 @@ function ArtworkFile({ orderId, reference, onRead }: {
         </View>
         <View className="min-w-0 flex-1 gap-0.5">
           <Text className="text-body font-medium text-text-primary" numberOfLines={1} ellipsizeMode="middle">{title}</Text>
-          <Text className="text-caption text-text-muted" numberOfLines={1}>{opening ? "Opening…" : detail}</Text>
+          <Text className="text-caption text-text-muted" numberOfLines={1} ellipsizeMode="middle">{opening ? "Opening…" : detail}</Text>
         </View>
         {file ? <ExternalLink size={18} color={colors.textSecondary} aria-hidden /> : null}
       </Pressable>
+      {guidance ? <ArtworkGuidanceRecord record={guidance} /> : null}
       {state.kind === "error" ? <Text accessibilityRole="alert" className="text-body text-error">{state.message}</Text> : null}
       {previewFailed && state.kind !== "error" ? <Text className="text-caption text-text-muted">Preview unavailable. Open the file to see it.</Text> : null}
       {openError ? <Text accessibilityRole="alert" className="text-body text-error">{openError}</Text> : null}
@@ -204,9 +217,9 @@ function ArtworkFile({ orderId, reference, onRead }: {
 }
 
 /** A file whose bytes are gone: its name and when, with nothing to open. */
-function RemovedFile({ file, itemName, kind }: { file: StoredFile; itemName?: string; kind: ArtworkReference["kind"] }) {
+function RemovedFile({ file, itemName, kind, label }: { file: StoredFile; itemName?: string; kind: ArtworkReference["kind"]; label?: string }) {
   const colors = useThemeColors();
-  const detail = `${kind === "mockup" ? "Reference mockup" : "Artwork"} · ${removedFileDetail(file)}`;
+  const detail = `${label ?? (kind === "mockup" ? "Reference mockup" : "Artwork")} · ${removedFileDetail(file)}`;
   return (
     <View className="gap-2 border-b border-outline-subtle py-3">
       {itemName ? <Text className="text-caption text-text-muted">{itemName}</Text> : null}

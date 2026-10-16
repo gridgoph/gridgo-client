@@ -17,7 +17,12 @@
 
 import { Platform } from "react-native";
 
+import { CHAT_LIST_ROUTE, isChatThreadId } from "@/lib/chatThreads";
+import { DELIVERY_CHAT_ROUTE } from "@/lib/deliveryChat";
 import { APPLICATION_ROUTE, isApplicationNotification } from "@/lib/organization";
+import { receiptNoticeHref } from "@/lib/receipt";
+import { isSurveyNotification, surveyRoute } from "@/lib/survey";
+import { isVoucherNotification, VOUCHERS_ROUTE } from "@/lib/vouchers";
 
 /**
  * The Android channel the server names in every message.
@@ -33,12 +38,49 @@ import { APPLICATION_ROUTE, isApplicationNotification } from "@/lib/organization
  */
 export const PUSH_CHANNEL_ID = "gridgo_default";
 
-/** Channel presentation. Importance is high — these are SLA-bearing updates. */
+/**
+ * Channel presentation. Importance is high — these are SLA-bearing updates and
+ * messages from a rider at the door, so they sound, vibrate and show a banner.
+ *
+ * The sound is Android's default, which is what a channel gets when no `sound`
+ * is passed. Do not pass `sound: "default"`: expo-notifications reads any
+ * string as a custom file name and logs that `default` is missing.
+ */
 export const PUSH_CHANNEL = {
   name: "Order updates",
   description:
-    "Artwork checks, prices, payment confirmations and delivery progress for your print jobs.",
+    "Messages from your rider and GRIDGO Operations, artwork checks, payment confirmations and delivery progress.",
+  vibrationPattern: [0, 250, 250, 250],
 } as const;
+
+/**
+ * `AndroidImportance.DEFAULT` in expo-notifications — the lowest importance
+ * that makes a sound. Android's own scale is shifted by one in Expo's enum,
+ * so this is Expo's number, checked against the module in `store/push.ts`'s
+ * tests rather than imported, because this file must not load the module.
+ */
+export const ANDROID_IMPORTANCE_AUDIBLE = 5;
+
+/**
+ * Whether the phone has silenced GRIDGO's channel.
+ *
+ * Android 8+ hands a channel to the person once it exists: re-creating it
+ * with a sound changes nothing, and the server's `sound: "default"` cannot
+ * override it either. A channel set to "Silent" drops below the audible
+ * importance; one with its sound set to "None" keeps the importance and loses
+ * the sound. Either way a rider's message arrives without a buzz, which is
+ * exactly how messages were missed (gridgo-client#231). Only the phone's own
+ * settings can undo it, so all the app can do is notice and say so.
+ */
+export function pushChannelSilent(
+  channel: { importance?: number | null; sound?: string | null } | null | undefined,
+): boolean {
+  if (!channel) return false;
+  if (typeof channel.importance === "number" && channel.importance < ANDROID_IMPORTANCE_AUDIBLE) {
+    return true;
+  }
+  return channel.sound === null;
+}
 
 /**
  * Whether this runtime is Expo Go.
@@ -57,6 +99,20 @@ export function isExpoGoRuntime(input: {
 
 /** The `platform` value `POST /devices` accepts. */
 export type DevicePlatform = "android" | "ios" | "web";
+
+/** The `tokenProvider` value `POST /devices` accepts. */
+export type PushTokenProvider = "fcm" | "apns";
+
+/**
+ * Which provider issued the token `getDevicePushTokenAsync` returned.
+ *
+ * Expo returns Android's FCM token and iOS's **native APNs** token. The server
+ * reads an omitted provider as `fcm` on every platform, so an iOS token sent
+ * without `apns` is filed as an FCM token and never delivered.
+ */
+export function pushTokenProvider(tokenType: string | null | undefined): PushTokenProvider {
+  return tokenType === "ios" ? "apns" : "fcm";
+}
 
 /**
  * Map the runtime to the contract's platform value.
@@ -108,8 +164,29 @@ export function parsePushData(raw: unknown): PushData {
   };
 }
 
+/**
+ * The key a tap is remembered by, so it opens its screen once.
+ *
+ * The server's `notificationId` when the push carries one: a cold-start replay
+ * and the live listener can hand the same tap over under different native
+ * identifiers. The native identifier otherwise (a local or older push).
+ */
+export function pushTapKey(identifier: string, data: PushData): string {
+  return data.notificationId ? `notification:${data.notificationId}` : `response:${identifier}`;
+}
+
 /** The push type gridgo-api sends six to four weeks before a season window opens. */
 export const SEASON_PUSH_TYPE = "season_window";
+
+/** A rider wrote on a delivery. Opens that delivery's chat (`orderId`). */
+export const DELIVERY_MESSAGE_PUSH_TYPE = "delivery_message";
+
+/**
+ * Operations wrote in a support thread. The push names no thread — `threadId`
+ * is deliberately outside the data allowlist — so a tap reads it back from
+ * `PATCH /notifications/:notificationId` before opening the thread.
+ */
+export const SUPPORT_MESSAGE_PUSH_TYPE = "support_message";
 
 /** Organization pushes (gridgo-api `docs/ORGANIZATION_ACCOUNTS_API.md`). Name no job. */
 const ORGANIZATION_PUSH_TYPES = new Set([
@@ -138,11 +215,45 @@ export function pushTargetRoute(data: PushData): string {
   if (data.type && ORGANIZATION_PUSH_TYPES.has(data.type)) return "/(tabs)/organizations";
   // A sent-back application opens on the application, filled in (#187).
   if (isApplicationNotification(data.type)) return APPLICATION_ROUTE;
+  // A voucher notice opens the wallet it is about (gridgo-api#204).
+  if (isVoucherNotification(data.type)) return VOUCHERS_ROUTE;
+  // A message opens its conversation. The push names no support thread, so
+  // until the tap reads it back (`usePushNotifications`) — and whenever it
+  // cannot — Operations' messages open the chat history, never a guess at the
+  // newest thread, which may be a different conversation.
+  const chat = chatNotificationRoute(data);
+  if (chat) return chat;
   if (!data.orderId) return "/(tabs)/notifications";
-  if (data.type === "order_receipt_ready") {
-    return `/order/receipt?orderId=${encodeURIComponent(data.orderId)}`;
-  }
+  // The post-order survey invitation opens that order's survey (report 81CA4493).
+  if (isSurveyNotification(data.type)) return surveyRoute(data.orderId);
+  // Opening the notice is the receipt being issued, so it prints (#229).
+  if (data.type === "order_receipt_ready") return receiptNoticeHref(data.orderId);
   return `/order/${data.orderId}`;
+}
+
+/** The exact support thread a chat notice opens, when it names one. */
+export function supportThreadRoute(threadId: string | null | undefined): string | null {
+  return isChatThreadId(threadId ?? undefined) ? `/chat/${threadId}` : null;
+}
+
+/**
+ * Where an inbox row about a conversation opens, or null for any other row.
+ *
+ * The inbox list carries `threadId` (the push does not), so an Operations
+ * message opens its own thread straight away.
+ */
+export function chatNotificationRoute(notification: {
+  type?: string | null;
+  orderId?: string | null;
+  threadId?: string | null;
+}): string | null {
+  if (notification.type === SUPPORT_MESSAGE_PUSH_TYPE) {
+    return supportThreadRoute(notification.threadId) ?? CHAT_LIST_ROUTE;
+  }
+  if (notification.type === DELIVERY_MESSAGE_PUSH_TYPE && notification.orderId) {
+    return `${DELIVERY_CHAT_ROUTE}?orderId=${encodeURIComponent(notification.orderId)}`;
+  }
+  return null;
 }
 
 /**
@@ -175,10 +286,15 @@ export function readPushPermission(response: {
 }
 
 /** What the enable card should do, if anything. */
-export type PushOffer = "hidden" | "ask" | "settings" | "retry";
+export type PushOffer = "hidden" | "ask" | "settings" | "retry" | "sound";
 
 /**
  * Whether to offer phone notifications, and how.
+ *
+ * `sound` is a granted, registered phone whose GRIDGO channel the person has
+ * silenced (`pushChannelSilent`). Notifications still arrive, but a message
+ * from a rider at the door makes no noise, so the card says so and opens the
+ * channel's own settings — the only place that can be changed.
  *
  * The ask is never fired cold: this returns `ask` only so a **card** can be
  * drawn, and the OS dialog is raised from that card's button. A refusal on
@@ -206,11 +322,14 @@ export function pushOffer(input: {
   permission: PushPermission;
   /** A permission ask or a registration call failed. */
   failed?: boolean;
+  /** Android has silenced GRIDGO's notification channel. */
+  silent?: boolean;
 }): PushOffer {
   if (!input.supported) return "hidden";
   if (!input.signedIn) return input.permission === "undetermined" ? "ask" : "hidden";
   if (input.failed) return input.permission === "blocked" ? "settings" : "retry";
-  if (input.permission === "granted" || input.permission === "unknown") return "hidden";
+  if (input.permission === "granted") return input.silent ? "sound" : "hidden";
+  if (input.permission === "unknown") return "hidden";
   return input.permission === "blocked" ? "settings" : "ask";
 }
 
@@ -244,6 +363,13 @@ export function pushOfferCopy(
       title: "This phone is not registered for notifications",
       body: "Permission is on, but we could not register this phone, so nothing will reach it while GRIDGO is closed. Your updates still arrive in the app.",
       action: "Try again",
+    };
+  }
+  if (offer === "sound") {
+    return {
+      title: "GRIDGO notifications are silent",
+      body: "This phone shows them without a sound, so a message from your rider or GRIDGO Operations can go unnoticed. Turn the sound on for Order updates in your phone's settings.",
+      action: "Open notification settings",
     };
   }
   if (offer === "settings") {

@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
+import { BellSwing } from "@/components/BellSwing";
 import { fontFamily } from "@/constants/fonts";
 import { useThemeColors } from "@/hooks/useTheme";
 
@@ -11,6 +12,8 @@ type Props = {
   onPress: () => void;
   /** Optional tally. Omit it entirely rather than passing 0 for "no count". */
   count?: number;
+  /** Swing the glyph on each new update — the notification bell only (#230). */
+  swing?: boolean;
 };
 
 /** The glyph, and the plate that sits on its corner. */
@@ -58,11 +61,14 @@ const RING = 2;
  * NativeWind on a small overlay dropped `text-accent-on` and left a white
  * numeral on a white circle.
  */
-export function HeaderIconButton({ icon: Icon, accessibilityLabel, onPress, count }: Props) {
+export function HeaderIconButton({ icon: Icon, accessibilityLabel, onPress, count, swing }: Props) {
   const colors = useThemeColors();
   const badge = count ?? 0;
   const wide = badge > 9;
   const label = wide ? "9+" : String(badge);
+  const glyph = (
+    <Icon size={GLYPH} color={colors.textPrimary} strokeWidth={1.75} aria-hidden />
+  );
 
   return (
     <Pressable
@@ -77,12 +83,11 @@ export function HeaderIconButton({ icon: Icon, accessibilityLabel, onPress, coun
             <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-full" />
           ) : null}
           <View style={{ width: GLYPH, height: GLYPH }}>
-            <Icon
-              size={GLYPH}
-              color={colors.textPrimary}
-              strokeWidth={1.75}
-              aria-hidden
-            />
+            {swing ? (
+              <BellSwing size={GLYPH}>{glyph}</BellSwing>
+            ) : (
+              glyph
+            )}
             {badge > 0 ? (
               <View
                 pointerEvents="none"

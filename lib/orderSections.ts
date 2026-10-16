@@ -10,7 +10,7 @@
 
 import type { Order, ProductionPhoto } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
-import { parseDeadline } from "@/lib/deadline";
+import { formatDeadline, parseDeadline } from "@/lib/deadline";
 import type { HistoryRow } from "@/lib/orderHistory";
 import { formatPriceRange, orderTotalMinor } from "@/lib/orderState";
 import { describeQuantity } from "@/lib/quantity";
@@ -132,3 +132,52 @@ export function paymentSummary(order: Order): string {
   }
   return "Priced once a shop takes the job";
 }
+
+/*
+  The order once it is with the client (report 5A28D524). The screen leads
+  with three things — the check window and its countdown (or, once it has
+  closed, that the job is complete), the rating, and a way to get help — and
+  everything else sits one tap away under View details.
+*/
+
+/** The action zones the received view is built around. Anything else keeps the full screen. */
+const RECEIVED_ZONES: readonly (string | null)[] = ["issue", "rate", null];
+
+/**
+ * Whether the order screen opens on the received view: the order is in its
+ * check window or finished, and nothing louder holds it. A refund hold, a
+ * shop that cannot carry on, or a payment still asked for or being checked
+ * owns the screen as before.
+ */
+export function showsReceivedView(
+  order: Pick<Order, "state" | "refundHold">,
+  actionZone: string | null,
+): boolean {
+  const received = ["issue_window_open", "completed", "payout_released"].includes(order.state);
+  if (!received || order.refundHold) return false;
+  return RECEIVED_ZONES.includes(actionZone);
+}
+
+/**
+ * What "Get help?" holds, said while it is folded. A refund's deadline is said
+ * here rather than only behind the fold, so nobody has to open it to learn the
+ * time to ask is running out.
+ */
+export function helpSummary({
+  refund,
+  refundUntil,
+  riderChat,
+}: {
+  refund: boolean;
+  /** `deadlineAt` of an eligible refund entry, when it has one. */
+  refundUntil: string | null;
+  riderChat: boolean;
+}): string {
+  const others = riderChat ? "message your rider or GRIDGO" : "message GRIDGO";
+  if (refund && refundUntil) return `Request a refund until ${formatDeadline(refundUntil)}, or ${others}`;
+  if (refund) return `Request a refund, or ${others}`;
+  return riderChat ? "Message your rider or GRIDGO" : "Message GRIDGO about this order";
+}
+
+/** What View details holds, said while it is folded. */
+export const RECEIVED_DETAILS_SUMMARY = "History, specifications, artwork and payment";

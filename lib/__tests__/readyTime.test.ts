@@ -1,4 +1,4 @@
-import { readyByDate } from "@/lib/readyTime";
+import { readyByDate, readyEarlyLabel } from "@/lib/readyTime";
 import { printTimeLine } from "@/lib/listing";
 
 describe("client ready time", () => {
@@ -30,5 +30,19 @@ describe("client ready time", () => {
 
   it.each([null, undefined, 0, -1, NaN, Infinity])("omits unavailable production time (%s)", (hours) => {
     expect(printTimeLine({ turnaroundHours: hours as number | null })).toBeNull();
+  });
+});
+
+describe("readyEarlyLabel", () => {
+  it("uses the API's label once printing finished early", () => {
+    expect(readyEarlyLabel({ readyEarly: true, readyLabel: "Ready early" })).toBe("Ready early");
+    expect(readyEarlyLabel({ readyEarly: true, readyLabel: null })).toBe("Ready early");
+  });
+
+  it("says nothing otherwise", () => {
+    expect(readyEarlyLabel({ readyEarly: false, readyLabel: null })).toBeNull();
+    expect(readyEarlyLabel({})).toBeNull();
+    expect(readyEarlyLabel(null)).toBeNull();
+    expect(readyEarlyLabel({ readyEarly: true, readyLabel: "Ready early", state: "cancelled" })).toBeNull();
   });
 });

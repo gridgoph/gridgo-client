@@ -1,9 +1,13 @@
 import { formatPhp, type Notification } from "@/lib/api";
+import { deliveryPinNotificationCopy, isDeliveryPinAsk } from "@/lib/deliveryPin";
+import { CHANGE_WINDOW_STATES, changeNotificationCopy, isChangeAsk } from "@/lib/orderChanges";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
 import { isApplicationNotification } from "@/lib/organization";
 import { refundNotificationCopy } from "@/lib/refunds";
+import { isSurveyNotification, surveyNotificationCallout, surveyNotificationCopy } from "@/lib/survey";
+import { exactTime, voucherNotificationCopy } from "@/lib/vouchers";
 import { formatTimelineStamp } from "@/lib/relativeTime";
 import { rescheduleNotificationCopy, rescheduleNotificationNeedsYou } from "@/lib/reschedule";
 import {
@@ -18,6 +22,7 @@ import {
   stagesForRail,
   type FulfilmentRailKind,
 } from "@/lib/orderStages";
+import { CALL_INCOMING_TYPE, isCallNotificationType } from "@/lib/orderCalls";
 
 /**
  * How one inbox row should read, independent of how the server first worded it.
@@ -36,7 +41,9 @@ export type NotificationCalloutIcon =
   | "upload"
   | "square-pen"
   | "package-check"
-  | "star";
+  | "star"
+  | "ticket"
+  | "map-pin";
 
 /**
  * The one thing on a card the client must do or know.
@@ -217,12 +224,36 @@ function deliveryStamp(state: string | undefined): string | null {
   return null;
 }
 
+function surveyCallout(at: string): NotificationCallout | null {
+  const callout = surveyNotificationCallout(at);
+  return callout ? { tone: "info", icon: "ticket", ...callout } : null;
+}
+
 function rateReminderCopy(): { title: string; body: string; hint: string } {
   return {
     title: "How did it go?",
     body: "Rate this job so GRIDGO can send your next one to a shop that did well by you.",
     hint: "Open to rate",
   };
+}
+
+/**
+ * Call rows (gridgo-api `docs/CALLS_API.md`). The server's incoming copy says
+ * "open to answer", which is false a minute later and forever after in the
+ * inbox, so both rows are worded as what happened.
+ */
+function callCopy(type: string): { title: string; body: string; hint: string } {
+  return type === CALL_INCOMING_TYPE
+    ? {
+        title: "Your rider called",
+        body: "Open the order to call back while they have the delivery. Your phone number stays private.",
+        hint: "Opens this job",
+      }
+    : {
+        title: "Missed call from your rider",
+        body: "Open the order to call back while they have the delivery. Your phone number stays private.",
+        hint: "Opens this job",
+      };
 }
 
 function receiptReadyCopy(showServiceFee: boolean): { title: string; body: string; hint: string } {
@@ -296,6 +327,82 @@ const TYPE_CALLOUTS: Record<string, { states: string[]; callout: NotificationCal
   order_reschedule_rematch_refreshed: {
     states: ["production", "supplier_self_qc"],
     callout: SHOP_CHOICE_CALLOUT,
+  },
+  // A pin can change only before a rider is assigned; presence can still be
+  // confirmed while the rider is on the way.
+  delivery_pin_requested: {
+    states: ["production", "supplier_self_qc", "ready_for_dispatch", "rider_assigned", "picked_up", "out_for_delivery"],
+    callout: {
+      tone: "warning",
+      icon: "map-pin",
+      title: "Confirm your delivery pin",
+      detail: "Or change it once before a rider is assigned.",
+    },
+  },
+  delivery_pin_proposed: {
+    states: ["production", "supplier_self_qc", "ready_for_dispatch"],
+    callout: {
+      tone: "warning",
+      icon: "wallet",
+      title: "Pay the delivery difference",
+      detail: "Open the order for the QR code and receipt upload.",
+    },
+  },
+  delivery_pin_payment_submitted: {
+    states: ["production", "supplier_self_qc", "ready_for_dispatch"],
+    callout: {
+      tone: "info",
+      icon: "clock",
+      title: "Your pin payment is being checked",
+      detail: "Do not pay again.",
+    },
+  },
+  delivery_pin_payment_rejected: {
+    states: ["production", "supplier_self_qc", "ready_for_dispatch"],
+    callout: {
+      tone: "warning",
+      icon: "wallet",
+      title: "Check the reason and send it again",
+      detail: "Your original pin stays in use until a payment is confirmed.",
+    },
+  },
+  // A shop's change request can be answered and paid only while the job is
+  // still being printed (report F9FCD485).
+  order_change_requested: {
+    states: CHANGE_WINDOW_STATES,
+    callout: {
+      tone: "warning",
+      icon: "square-pen",
+      title: "Approve or decline the change",
+      detail: "If you decline, the shop prints your order as placed.",
+    },
+  },
+  order_change_accepted: {
+    states: CHANGE_WINDOW_STATES,
+    callout: {
+      tone: "warning",
+      icon: "wallet",
+      title: "Pay for the change by QR",
+      detail: "Open the order for the QR code and receipt upload.",
+    },
+  },
+  order_change_payment_submitted: {
+    states: CHANGE_WINDOW_STATES,
+    callout: {
+      tone: "info",
+      icon: "clock",
+      title: "Your change payment is being checked",
+      detail: "Do not pay again.",
+    },
+  },
+  order_change_payment_rejected: {
+    states: CHANGE_WINDOW_STATES,
+    callout: {
+      tone: "warning",
+      icon: "wallet",
+      title: "Check the reason and send it again",
+      detail: "The shop prints your order as placed until a payment is confirmed.",
+    },
   },
   order_rate_reminder: {
     states: ["delivered", "issue_window_open", "completed", "payout_released"],
@@ -413,7 +520,12 @@ export function presentNotification(
   const paymentPending = payment != null && payment.amountMinor > 0;
   const collect = isCollect(notification);
   const hold = collectionHeld(notification);
+  // A voucher notice is about the wallet, never a job (gridgo-api#204).
+  const voucher = voucherNotificationCopy(notification.type, notification.body);
+  if (voucher) return presentVoucher(notification, voucher);
   const refund =
+    deliveryPinNotificationCopy(notification.type) ??
+    changeNotificationCopy(notification.type) ??
     refundNotificationCopy(notification.type) ??
     shopRecoveryNotificationCopy(notification) ??
     rescheduleNotificationCopy(notification.type);
@@ -421,8 +533,12 @@ export function presentNotification(
     ? { ...refund, hint: notification.orderId ? "Opens this job" : null }
     : notification.type === "order_rate_reminder"
       ? rateReminderCopy()
+      : isSurveyNotification(notification.type)
+        ? surveyNotificationCopy()
       : notification.type === "order_receipt_ready"
         ? receiptReadyCopy(showServiceFee)
+      : isCallNotificationType(notification.type)
+        ? callCopy(notification.type ?? "")
         : isHubType(notification.type) && notification.orderState === "awaiting_collection" && !hold
           ? hubCopy(notification)
         : isJobComplete(eventState)
@@ -447,6 +563,8 @@ export function presentNotification(
     (notification.type != null && NEED_YOU_TYPES.has(notification.type)) ||
     shopRecoveryNotificationNeedsYou(notification) ||
     rescheduleNotificationNeedsYou(notification.type) ||
+    (isDeliveryPinAsk(notification.type) && calloutFor(notification, false, false) != null) ||
+    (isChangeAsk(notification.type) && calloutFor(notification, false, false) != null) ||
     applicationAsk;
 
   const railKind = eventState
@@ -471,7 +589,51 @@ export function presentNotification(
     collectReady,
     lane: needsYou ? "need_you" : "update",
     hint: paymentPending ? "Opens current payment details" : overlay.hint,
-    callout: applicationAsk ? APPLICATION_SENT_BACK_CALLOUT : calloutFor(notification, hold, collectReady),
+    callout: applicationAsk
+      ? APPLICATION_SENT_BACK_CALLOUT
+      : isSurveyNotification(notification.type)
+        ? surveyCallout(notification.at)
+        : calloutFor(notification, hold, collectReady),
+  };
+}
+
+/**
+ * A voucher notice: the app's own words, a way into the wallet, and the
+ * expiry as the one callout — amber two days out, red on the last day, the
+ * same thresholds as the wallet's countdown.
+ */
+function presentVoucher(
+  notification: Notification,
+  copy: NonNullable<ReturnType<typeof voucherNotificationCopy>>,
+): PresentedNotification {
+  const issued = notification.type === "voucher_issued";
+  return {
+    stamp: null,
+    title: copy.title,
+    body: copy.body,
+    jobLine: null,
+    reference: null,
+    railKind: null,
+    stageIndex: null,
+    stageLabel: null,
+    collectHold: false,
+    collectReady: false,
+    lane: "update",
+    hint: "Opens your vouchers",
+    callout: issued
+      ? {
+          tone: "info",
+          icon: "ticket",
+          // The date goes here, not in the body: the body is cut at two lines.
+          title: copy.expiresAt ? `Use it before ${exactTime(copy.expiresAt)}` : "Comes off at checkout",
+          detail: "It comes off your next order at checkout. One voucher per order.",
+        }
+      : {
+          tone: notification.type === "voucher_expiry_24h" ? "error" : "warning",
+          icon: "clock",
+          title: copy.expiresAt ? `Use it before ${exactTime(copy.expiresAt)}` : "Use it soon",
+          detail: "It cannot be used after that, and it is never paid out as cash.",
+        },
   };
 }
 

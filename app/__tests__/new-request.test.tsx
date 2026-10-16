@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import NewRequestScreen from "@/app/(tabs)/new-request";
 import { useRequestDraft } from "@/store/requestDraft";
+import { agreeArtworkRights } from "@/test/legalGate";
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -99,6 +100,8 @@ function renderInSafeArea(ui: ReactElement) {
 
 describe("NewRequestScreen", () => {
   beforeEach(() => {
+    // The per-order artwork box, ticked by the client (one press per test).
+    agreeArtworkRights("request:stepper");
     mockPush.mockClear();
     mockReplace.mockClear();
     mockNavigate.mockClear();

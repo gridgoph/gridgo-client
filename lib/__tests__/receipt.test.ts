@@ -64,6 +64,19 @@ describe("receiptFromInvoice", () => {
   });
 });
 
+describe("receiptFromInvoice with a voucher (gridgo-api#204)", () => {
+  it("keeps Printing and Delivery as charged and carries the voucher as its own line", () => {
+    const view = receiptFromInvoice({
+      ...invoice,
+      totalMinor: 5400,
+      voucher: { id: "vch_1", label: "GRIDGO-funded voucher", amountMinor: 1500 },
+      voucherDiscountMinor: 1500,
+    });
+    expect(view.money).toMatchObject({ printingMinor: 4400, deliveryFeeMinor: 2500, voucherDiscountMinor: 1500, totalMinor: 5400 });
+    expect(view.money.printingMinor + view.money.deliveryFeeMinor - (view.money.voucherDiscountMinor ?? 0)).toBe(view.money.totalMinor);
+  });
+});
+
 describe("paymentReferenceOf", () => {
   it("reads the downpayment reference first", () => {
     expect(
