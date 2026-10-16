@@ -7,7 +7,7 @@ import type { SpineLine } from "@/lib/coverSpine";
 
 /** The book as drawn: tall enough for a title, narrow enough to read as a spine. */
 const BOOK_HEIGHT = 300;
-const SPINE_WIDTH = 46;
+const SPINE_WIDTH = 52;
 
 type Props = {
   cover: CoverChoice | (string & {}) | null;
@@ -96,16 +96,19 @@ function frontDescription(cover: Props["cover"], lines: SpineLine[], fileName?: 
 /**
  * The spine, lettered top to bottom. A row of text turned a quarter turn
  * clockwise: its left end becomes the top, which is how a spine reads when
- * the book lies face up.
+ * the book lies face up. Author and date share the foot, one over the other,
+ * so the title keeps most of the length.
  */
 function Spine({ lines }: { lines: SpineLine[] }) {
+  const text = (field: SpineLine["field"]) => lines.find((line) => line.field === field)?.text ?? "";
+  const code = lines.find((line) => line.field === "institutionCode" && line.text);
   return (
     <View
       className="overflow-hidden rounded-l-sm border border-outline bg-surface-variant"
       style={{ width: SPINE_WIDTH, height: BOOK_HEIGHT }}
     >
       <View
-        className="flex-row items-center gap-2.5 px-3"
+        className="flex-row items-center gap-3 px-3"
         style={{
           position: "absolute",
           width: BOOK_HEIGHT,
@@ -115,24 +118,19 @@ function Spine({ lines }: { lines: SpineLine[] }) {
           transform: [{ rotate: "90deg" }],
         }}
       >
-        {lines.map((line) => (
-          // The title keeps its room; the shorter lines give theirs up first.
-          <View
-            key={line.field}
-            className="min-w-0 items-center"
-            style={
-              line.field === "title"
-                ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 104 }
-                : { flexShrink: 1, maxWidth: 80 }
-            }
-          >
-            <Lettering
-              text={line.text}
-              placeholder={PLACEHOLDER[line.field]}
-              className={line.field === "title" ? "text-caption font-bold text-text-primary" : "text-caption text-text-secondary"}
-            />
+        {/* Code at the head, the title in the middle, author over date at the foot. */}
+        {code ? (
+          <View className="shrink-0" style={{ maxWidth: 72 }}>
+            <Lettering text={code.text} placeholder="" className="text-caption font-medium text-text-secondary" />
           </View>
-        ))}
+        ) : null}
+        <View className="min-w-0 flex-1 items-center">
+          <Lettering text={text("title")} placeholder={PLACEHOLDER.title} className="text-caption font-bold text-text-primary" />
+        </View>
+        <View className="shrink-0 items-end" style={{ maxWidth: 96 }}>
+          <Lettering text={text("author")} placeholder={PLACEHOLDER.author} className="text-caption text-text-secondary" />
+          <Lettering text={text("date")} placeholder={PLACEHOLDER.date} className="text-caption text-text-secondary" />
+        </View>
       </View>
     </View>
   );
