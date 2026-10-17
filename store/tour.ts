@@ -6,6 +6,7 @@ import {
   arriveAt,
   backStep,
   nextStep,
+  passStep,
   shouldAutoStart,
   skipTour,
   startTour,
@@ -37,6 +38,14 @@ type TourStore = {
    * sets it from a timer.
    */
   settled: TourStepId | null;
+  /**
+   * The settled step whose control has had its time to report where it is.
+   * Past this the card is drawn whether or not it was measured, so a phone
+   * that never reports a position still gets the explanation. In memory only.
+   */
+  overdue: TourStepId | null;
+  /** How many of each step's controls are mounted right now. In memory only. */
+  mounted: Partial<Record<TourStepId, number>>;
 
   /** The first-time start. Does nothing once a tour is on record. */
   autoStart: (accountId: string, firstTime: boolean) => void;
@@ -45,12 +54,18 @@ type TourStore = {
   next: (accountId: string) => void;
   back: (accountId: string) => void;
   skip: (accountId: string) => void;
+  /** Move past `id` because its control never appeared (`passStep`). */
+  pass: (accountId: string, id: TourStepId) => void;
   /** A tour screen came into focus. Returns the token its blur must hand back. */
   arrive: (accountId: string | null, screen: TourScreen) => number;
   leave: (token: number) => void;
   setRect: (id: TourStepId, rect: TourRect) => void;
   clearRect: (id: TourStepId) => void;
+  mount: (id: TourStepId) => void;
+  unmount: (id: TourStepId) => void;
+  /** A new step starts unsettled and not overdue. */
   settle: (id: TourStepId | null) => void;
+  markOverdue: (id: TourStepId) => void;
   reset: () => void;
 };
 
@@ -78,6 +93,8 @@ export const useTour = create<TourStore>()(
       focusToken: 0,
       rects: {},
       settled: null,
+      overdue: null,
+      mounted: {},
 
       autoStart: (accountId, firstTime) => {
         const state = get();
@@ -89,6 +106,7 @@ export const useTour = create<TourStore>()(
       next: (accountId) => set((state) => withProgress(state, accountId, nextStep)),
       back: (accountId) => set((state) => withProgress(state, accountId, backStep)),
       skip: (accountId) => set((state) => withProgress(state, accountId, skipTour)),
+      pass: (accountId, id) => set((state) => withProgress(state, accountId, (p) => passStep(p, id))),
       arrive: (accountId, screen) => {
         const token = get().focusToken + 1;
         set((state) => ({
@@ -121,8 +139,15 @@ export const useTour = create<TourStore>()(
           delete rects[id];
           return { rects };
         }),
-      settle: (id) => set({ settled: id }),
-      reset: () => set({ progress: {}, screen: null, rects: {}, settled: null }),
+      mount: (id) =>
+        set((state) => ({ mounted: { ...state.mounted, [id]: (state.mounted[id] ?? 0) + 1 } })),
+      unmount: (id) =>
+        set((state) => ({
+          mounted: { ...state.mounted, [id]: Math.max(0, (state.mounted[id] ?? 0) - 1) },
+        })),
+      settle: (id) => set(id ? { settled: id } : { settled: null, overdue: null }),
+      markOverdue: (id) => set({ overdue: id }),
+      reset: () => set({ progress: {}, screen: null, rects: {}, settled: null, overdue: null }),
     }),
     {
       name: STORAGE_KEY,

@@ -6,6 +6,7 @@ import {
   fitHoleAbove,
   nextLabel,
   nextStep,
+  passStep,
   placeCard,
   shouldAutoStart,
   skipTour,
@@ -106,6 +107,18 @@ describe("skip", () => {
   });
 });
 
+describe("passing a step whose control never appeared", () => {
+  it("moves on from that step, to the end after the last", () => {
+    expect(passStep(at("home.search"), "home.search")).toEqual(at("home.categories"));
+    expect(passStep(at("checkout"), "checkout")).toEqual({ status: "done" });
+  });
+
+  it("changes nothing once the tour has moved on or ended", () => {
+    expect(passStep(at("when"), "pick")).toEqual(at("when"));
+    expect(passStep({ status: "done" }, "pick")).toEqual({ status: "done" });
+  });
+});
+
 describe("where a step shows", () => {
   it("only on its own screen", () => {
     expect(visibleStep(at("when"), "when")?.id).toBe("when");
@@ -157,10 +170,20 @@ describe("placing the card", () => {
     });
   });
 
-  it("pins to the bottom when the control fills the screen, or there is none", () => {
-    const pinned = { top: 564, side: "pinned" };
-    expect(placeCard({ ...base, target: { x: 0, y: 100, width: 390, height: 600 } })).toEqual(pinned);
-    expect(placeCard({ ...base, target: null })).toEqual(pinned);
+  it("pins to the bottom when the control fills the screen", () => {
+    expect(placeCard({ ...base, target: { x: 0, y: 100, width: 390, height: 600 } })).toEqual({
+      top: 564,
+      side: "pinned",
+    });
+  });
+
+  it("centres the card when there is nothing to light", () => {
+    expect(placeCard({ ...base, target: null })).toEqual({ top: 300, side: "centred" });
+  });
+
+  it("keeps a centred card clear of both edges on a short screen", () => {
+    const short = { ...base, windowHeight: 300, cardHeight: 260 };
+    expect(placeCard({ ...short, target: null })).toEqual({ top: 56, side: "centred" });
   });
 });
 

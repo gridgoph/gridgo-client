@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
+import { Text } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { TourOverlay } from "@/components/TourOverlay";
+import { TourTarget } from "@/components/TourTarget";
 import type { User } from "@/lib/api";
 import { usePushPrompt } from "@/store/pushPrompt";
 import { useSession } from "@/store/session";
@@ -29,7 +31,7 @@ it("draws nothing on a screen the current step does not belong to", async () => 
   // Set directly: arriving at a screen would move the tour up to meet it.
   useTour.setState({ screen: "when" });
   await render(<Overlay />);
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await new Promise((resolve) => setTimeout(resolve, 1400));
   expect(screen.queryByText("Start with what you need")).toBeNull();
 });
 
@@ -37,7 +39,7 @@ it("waits while another prompt is up", async () => {
   usePushPrompt.setState({ open: true });
   useTour.getState().arrive("usr_a", "home");
   await render(<Overlay />);
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await new Promise((resolve) => setTimeout(resolve, 1400));
   expect(screen.queryByText("Start with what you need")).toBeNull();
   usePushPrompt.setState({ open: false });
 });
@@ -46,7 +48,7 @@ it("shows the step on its screen with dots and Skip, and Skip ends the tour", as
   useTour.getState().arrive("usr_a", "home");
   await render(<Overlay />);
 
-  expect(await screen.findByText("Start with what you need")).toBeTruthy();
+  expect(await screen.findByText("Start with what you need", {}, { timeout: 3000 })).toBeTruthy();
   expect(screen.getByLabelText("Tip 1 of 8")).toBeTruthy();
   expect(screen.getByText("Next")).toBeTruthy();
 
@@ -62,6 +64,9 @@ const METRICS = {
 function Overlay() {
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
+      <TourTarget step="home.search">
+        <Text>home.search</Text>
+      </TourTarget>
       <TourOverlay ready />
     </SafeAreaProvider>
   );

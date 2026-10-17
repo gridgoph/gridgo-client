@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   AccessibilityInfo,
+  BackHandler,
   Pressable,
   StyleSheet,
   Text,
@@ -9,7 +10,6 @@ import {
 } from "react-native";
 import Animated, {
   Easing,
-  FadeIn,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -38,7 +38,18 @@ const HOLE_PAD = 6;
 const HOLE_RADIUS = 16;
 /** Wait for a pushed screen to finish sliding in before anything is drawn. */
 const SETTLE_MS = 420;
+/**
+ * How long, once settled, the lit control and the card itself have to report
+ * where they are. Past it the card is drawn anyway — centred when nothing can
+ * be lit — because a dim with no card on it is a screen nobody can leave.
+ */
+const MEASURE_MS = 700;
+/** How long, once settled, a step's control has to appear at all. */
+const MISSING_MS = 2500;
+/** Room the card is given before it has measured itself. */
+const CARD_ESTIMATE = 200;
 const MOVE = { duration: 220, easing: Easing.out(Easing.cubic) };
+const FADE = { duration: 200, easing: Easing.out(Easing.cubic) };
 
 /**
  * The first-order tour, drawn over whichever screen is up.
@@ -50,9 +61,16 @@ const MOVE = { duration: 220, easing: Easing.out(Easing.cubic) };
  *
  * The lit control stays live — a tap on it does what it always does, and the
  * tour follows the client to the next screen. The dim around it swallows taps,
- * so a stray thumb cannot scroll the control out from under its light. Skip is
- * on every card, and the system back works throughout: this is a view, not a
- * modal, and nothing here listens to the back button.
+ * so a stray thumb cannot scroll the control out from under its light — which
+ * is why the dim is never drawn without a card on it that can end the tour.
+ * Skip is on every card, and Android's back button skips too while a card is
+ * up: a screen-wide dim the system back cannot clear reads as a frozen app.
+ *
+ * Three things a phone can fail to report, and what each costs: the card's own
+ * height (it is drawn after `MEASURE_MS` anyway, placed on an estimate); the
+ * lit control's position (the card is drawn centred, over a plain dim); and
+ * the lit control itself, never drawn on this screen (the step is passed after
+ * `MISSING_MS`, so the tour moves on instead of waiting on it).
  *
  * There is no blur. The platform has no blur without a new native module, and
  * a gentle dim does the same job: it quiets everything except the one thing
@@ -69,6 +87,8 @@ export function TourOverlay({ ready }: { ready: boolean }) {
   const updatePrompt = useAppUpdate((s) => s.promptOpen || s.completed !== null);
   const exitQuestion = useCheckoutExit((s) => s.open);
   const settled = useTour((s) => s.settled);
+  const overdue = useTour((s) => s.overdue);
+  const mounted = useTour((s) => (step ? (s.mounted[step.id] ?? 0) > 0 : false));
   const insets = useSafeAreaInsets();
   const [cardHeight, setCardHeight] = useState(0);
 
@@ -76,11 +96,14 @@ export function TourOverlay({ ready }: { ready: boolean }) {
   useEffect(() => {
     useTour.getState().settle(null);
     if (!stepId) return;
-    const timer = setTimeout(() => useTour.getState().settle(stepId), SETTLE_MS);
-    return () => clearTimeout(timer);
+    const timers = [
+      setTimeout(() => useTour.getState().settle(stepId), SETTLE_MS),
+      setTimeout(() => useTour.getState().markOverdue(stepId), SETTLE_MS + MEASURE_MS),
+    ];
+    return () => timers.forEach(clearTimeout);
   }, [stepId]);
 
-  const showing =
+  const eligible =
     ready &&
     !otherPrompt &&
     !updatePrompt &&
@@ -89,6 +112,27 @@ export function TourOverlay({ ready }: { ready: boolean }) {
     step != null &&
     progress?.status === "active" &&
     settled === step.id;
+  const late = overdue != null && overdue === stepId;
+  const showing = eligible && mounted && (measured != null || late);
+
+  // A control this screen never drew: pass its step rather than wait on it.
+  useEffect(() => {
+    if (!eligible || mounted || !stepId || !accountId) return;
+    const timer = setTimeout(() => {
+      const tour = useTour.getState();
+      if (!tour.mounted[stepId]) tour.pass(accountId, stepId);
+    }, MISSING_MS);
+    return () => clearTimeout(timer);
+  }, [eligible, mounted, stepId, accountId]);
+
+  useEffect(() => {
+    if (!showing || !accountId) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      useTour.getState().skip(accountId);
+      return true;
+    });
+    return () => sub.remove();
+  }, [showing, accountId]);
 
   useEffect(() => {
     if (showing && step) AccessibilityInfo.announceForAccessibility(`${step.title}. ${step.body}`);
@@ -99,7 +143,7 @@ export function TourOverlay({ ready }: { ready: boolean }) {
   const padded = rect ? holeFor(rect, width, height) : null;
   const place = placeCard({
     target: padded,
-    cardHeight,
+    cardHeight: cardHeight || CARD_ESTIMATE,
     windowHeight: height,
     insetTop: insets.top,
     insetBottom: insets.bottom,
@@ -113,7 +157,7 @@ export function TourOverlay({ ready }: { ready: boolean }) {
         key={step.id}
         hole={hole}
         place={place}
-        measured={cardHeight > 0}
+        visible={cardHeight > 0 || late}
         onMeasure={setCardHeight}
         title={step.title}
         body={step.body}
@@ -267,7 +311,7 @@ function Absorb(frame: { left: number; top: number; width: number; height: numbe
 function TourCard({
   hole,
   place,
-  measured,
+  visible,
   onMeasure,
   title,
   body,
@@ -279,8 +323,9 @@ function TourCard({
   onSkip,
 }: {
   hole: TourRect | null;
-  place: { top: number; side: "below" | "above" | "pinned" };
-  measured: boolean;
+  place: { top: number; side: "below" | "above" | "pinned" | "centred" };
+  /** Hidden only until the card has measured itself, and never for long. */
+  visible: boolean;
   onMeasure: (height: number) => void;
   title: string;
   body: string;
@@ -302,19 +347,28 @@ function TourCard({
     ? Math.min(Math.max(hole.x + hole.width / 2 - cardLeft - 8, 20), cardWidth - 36)
     : null;
 
+  /*
+    The fade is a shared value, not an `entering` animation. On Android,
+    Reanimated's entering animation remembers the opacity the card was mounted
+    with — 0, while it measured itself — and puts it back when the fade ends,
+    so the card could finish invisible over a dim nobody can tap through.
+  */
+  const fade = useSharedValue(0);
+  useEffect(() => {
+    if (!visible) return;
+    fade.value = reduceMotion ? 1 : withTiming(1, FADE);
+  }, [visible, reduceMotion, fade]);
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
+
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : FadeIn.duration(200)}
+      testID="tour-card"
       onLayout={(event) => onMeasure(event.nativeEvent.layout.height)}
       style={[
         styles.fixed,
         elevation.sheet,
-        {
-          left: cardLeft,
-          width: cardWidth,
-          top: place.top,
-          opacity: measured ? 1 : 0,
-        },
+        { left: cardLeft, width: cardWidth, top: place.top },
+        fadeStyle,
       ]}
     >
       <View className="gap-3 rounded-card border border-outline bg-surface p-4">
@@ -360,7 +414,7 @@ function TourCard({
         </View>
       </View>
       {/* After the card, so it paints over the card's own border. */}
-      {notchX != null && place.side !== "pinned" ? (
+      {notchX != null && (place.side === "below" || place.side === "above") ? (
         <View
           pointerEvents="none"
           style={[
