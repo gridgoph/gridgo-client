@@ -15,7 +15,14 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { Animated, PanResponder, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
 import { OrderReference } from "@/components/OrderReference";
 import { OrderStageRail } from "@/components/OrderStageRail";
@@ -32,16 +39,18 @@ import {
 import type { OrderStatusTone } from "@/lib/orderState";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
 import { formatRelativeTime, formatTimelineStamp } from "@/lib/relativeTime";
+import {
+  markReadOffset,
+  marksRead,
+  ROW_SPRING,
+  SWIPE_ACTIVE_OFFSET_X,
+  SWIPE_FAIL_OFFSET_Y,
+} from "@/lib/swipeRow";
 import { usePlatformSettings } from "@/store/platformSettings";
 
 /** Timeline point: its size, and its drop to sit on the title's first line. */
 const DOT_SIZE = 8;
 const DOT_TOP = 6;
-
-/** Past this much of a drag, letting go marks the row read. */
-const DISMISS_DISTANCE = 96;
-/** Below this the gesture is a scroll, not a swipe. */
-const HORIZONTAL_INTENT = 12;
 
 const CALLOUT_ICONS = {
   wallet: Wallet,
@@ -99,11 +108,10 @@ type Props = {
  * opens the job, and the row carries an accessibility action for anyone who
  * cannot swipe.
  *
- * Built on `PanResponder` rather than react-native-gesture-handler, the same
- * choice `components/Sheet.tsx` makes. A gesture root is mounted now, for the
- * deadline calendar's month strip, so this could move — but a row that opens
- * on tap and carries its own accessibility action gains nothing from tracking
- * a finger off the JavaScript thread, and the change would be churn.
+ * The drag runs in react-native-gesture-handler on the UI thread, the same as
+ * the basket row (`components/SwipeToRemove.tsx`, which says why a
+ * `PanResponder` lost the touch to the list's scroll on iPhone). The physics
+ * are `markReadOffset` / `marksRead` in `lib/swipeRow.ts`.
  */
 export function NotificationCard({ group, read, onOpen, onMarkRead, applicationNoticeId = null }: Props) {
   const notification = group.latest;
@@ -111,9 +119,7 @@ export function NotificationCard({ group, read, onOpen, onMarkRead, applicationN
   const [expanded, setExpanded] = useState(false);
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
-  // State rather than a ref: the value object is read during render for the
-  // transform, and a ref must not be.
-  const [translateX] = useState(() => new Animated.Value(0));
+  const translateX = useSharedValue(0);
   const showServiceFee = usePlatformSettings((state) =>
     serviceFeeVisibleToClient(state.settings),
   );
@@ -127,41 +133,31 @@ export function NotificationCard({ group, read, onOpen, onMarkRead, applicationN
     (notification.orderId ? null : "FROM GRIDGO");
   const exact = formatTimelineStamp(notification.at);
 
-  const responder = useMemo(
+  const pan = useMemo(
     () =>
-      PanResponder.create({
-        // Claim the gesture only once it is clearly sideways, so the list still
-        // scrolls normally through the row.
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          !read &&
-          Math.abs(gesture.dx) > HORIZONTAL_INTENT &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
-        onPanResponderMove: (_event, gesture) => {
-          // Left only. Dragging right does nothing, so the row cannot be left
-          // hanging in a state that means nothing.
-          translateX.setValue(Math.min(0, gesture.dx));
-        },
-        onPanResponderRelease: (_event, gesture) => {
-          if (gesture.dx <= -DISMISS_DISTANCE) {
-            onMarkRead();
-          }
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-            speed: 20,
-            bounciness: 0,
-          }).start();
-        },
-        onPanResponderTerminate: () => {
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-            speed: 20,
-            bounciness: 0,
-          }).start();
-        },
-      }),
+      Gesture.Pan()
+        .withTestId("notification-swipe")
+        .enabled(!read)
+        .activeOffsetX([-SWIPE_ACTIVE_OFFSET_X, SWIPE_ACTIVE_OFFSET_X])
+        .failOffsetY([-SWIPE_FAIL_OFFSET_Y, SWIPE_FAIL_OFFSET_Y])
+        .onUpdate((event) => {
+          "worklet";
+          translateX.set(markReadOffset(event.translationX));
+        })
+        .onEnd(() => {
+          "worklet";
+          if (marksRead(translateX.get())) runOnJS(onMarkRead)();
+        })
+        // Released, refused or cancelled, the card always comes home.
+        .onFinalize(() => {
+          "worklet";
+          translateX.set(withSpring(0, ROW_SPRING));
+        }),
     [read, onMarkRead, translateX],
+  );
+
+  const rowStyle = useAnimatedStyle(() =>
+    reducedMotion ? {} : { transform: [{ translateX: translateX.get() }] },
   );
 
   const spoken = [
@@ -195,132 +191,131 @@ export function NotificationCard({ group, read, onOpen, onMarkRead, applicationN
         </View>
       ) : null}
 
-      <Animated.View
-        style={reducedMotion ? undefined : { transform: [{ translateX }] }}
-        {...(read ? {} : responder.panHandlers)}
-      >
-        <View
-          testID={read ? "notification-card-read" : "notification-card-unread"}
-          className={
-            read
-              ? "gg-card-flush"
-              : "overflow-hidden rounded-card border border-outline bg-surface-high"
-          }
-        >
-          <View className="flex-row">
-            {!read ? (
-              <View
-                testID="notification-unread-spine"
-                style={{ width: 3, backgroundColor: colors.accent }}
-                aria-hidden
-              />
-            ) : null}
-            <View className="min-w-0 flex-1">
-              {/*
-                A row with no job behind it is not a disabled button — announcing it
-                as one tells a screen-reader user something is broken. It keeps its
-                mark-read action and drops the button role entirely.
-              */}
-              <Pressable
-                onPress={onOpen ?? undefined}
-                accessibilityRole={onOpen ? "button" : undefined}
-                accessibilityLabel={spoken}
-                accessibilityHint={onOpen ? presented.hint ?? "Opens this job" : undefined}
-                accessibilityActions={read ? undefined : [{ name: "markRead", label: "Mark read" }]}
-                onAccessibilityAction={(event) => {
-                  if (event.nativeEvent.actionName === "markRead") onMarkRead();
-                }}
-              >
-                {({ pressed }) => (
-                  <>
-                    <View className="gap-3 p-4">
-                      {/* Where the job is, and when it last moved. */}
-                      <View className="min-h-4 flex-row items-center gap-2">
-                        {presented.railKind && presented.stageIndex != null ? (
-                          <OrderStageRail
-                            currentIndex={presented.stageIndex}
-                            kind={presented.railKind}
-                            variant="meter"
-                          />
-                        ) : null}
-                        <Text
-                          className="min-w-0 flex-1 text-overline text-text-muted"
-                          numberOfLines={1}
-                        >
-                          {where ?? ""}
-                        </Text>
-                        <Text className="shrink-0 text-caption text-text-muted">
-                          {formatRelativeTime(notification.at)}
-                        </Text>
-                      </View>
-
-                      <View className="gap-1">
-                        <Text
-                          className={
-                            read
-                              ? "text-body-lg text-text-primary"
-                              : "text-body-lg font-bold text-text-primary"
-                          }
-                          numberOfLines={2}
-                        >
-                          {presented.title}
-                        </Text>
-                        <Text className="text-body text-text-secondary" numberOfLines={2}>
-                          {presented.body}
-                        </Text>
-                      </View>
-
-                      {picture ? (
-                        <Image
-                          testID="notification-picture"
-                          source={{ uri: picture }}
-                          style={{ width: "100%", height: 144, borderRadius: 12 }}
-                          contentFit="cover"
-                        />
-                      ) : null}
-
-                      {presented.callout ? <Callout callout={presented.callout} /> : null}
-
-                      {/*
-                        Which job this is about: its reference as a tag, then its
-                        name. The tag is what a client quotes back to Operations,
-                        so it is the same shape as on the order.
-                      */}
-                      {presented.reference || presented.jobLine || onOpen ? (
-                        <View className="flex-row items-center gap-2">
-                          {presented.reference ? (
-                            <OrderReference id={notification.orderId} />
-                          ) : null}
-                          <Text
-                            className="min-w-0 flex-1 text-caption text-text-secondary"
-                            numberOfLines={1}
-                          >
-                            {presented.jobLine ?? ""}
-                          </Text>
-                          {onOpen ? (
-                            <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
-                          ) : null}
-                        </View>
-                      ) : null}
-                    </View>
-                    {pressed ? (
-                      <View pointerEvents="none" className="gg-pressed absolute inset-0" />
-                    ) : null}
-                  </>
-                )}
-              </Pressable>
-
-              {earlier.length ? (
-                <EarlierUpdates
-                  items={earlier}
-                  expanded={expanded}
-                  onToggle={() => setExpanded((open) => !open)}
+      <GestureDetector gesture={pan}>
+        <Animated.View style={rowStyle}>
+          <View
+            testID={read ? "notification-card-read" : "notification-card-unread"}
+            className={
+              read
+                ? "gg-card-flush"
+                : "overflow-hidden rounded-card border border-outline bg-surface-high"
+            }
+          >
+            <View className="flex-row">
+              {!read ? (
+                <View
+                  testID="notification-unread-spine"
+                  style={{ width: 3, backgroundColor: colors.accent }}
+                  aria-hidden
                 />
               ) : null}
+              <View className="min-w-0 flex-1">
+                {/*
+                  A row with no job behind it is not a disabled button — announcing it
+                  as one tells a screen-reader user something is broken. It keeps its
+                  mark-read action and drops the button role entirely.
+                */}
+                <Pressable
+                  onPress={onOpen ?? undefined}
+                  accessibilityRole={onOpen ? "button" : undefined}
+                  accessibilityLabel={spoken}
+                  accessibilityHint={onOpen ? presented.hint ?? "Opens this job" : undefined}
+                  accessibilityActions={read ? undefined : [{ name: "markRead", label: "Mark read" }]}
+                  onAccessibilityAction={(event) => {
+                    if (event.nativeEvent.actionName === "markRead") onMarkRead();
+                  }}
+                >
+                  {({ pressed }) => (
+                    <>
+                      <View className="gap-3 p-4">
+                        {/* Where the job is, and when it last moved. */}
+                        <View className="min-h-4 flex-row items-center gap-2">
+                          {presented.railKind && presented.stageIndex != null ? (
+                            <OrderStageRail
+                              currentIndex={presented.stageIndex}
+                              kind={presented.railKind}
+                              variant="meter"
+                            />
+                          ) : null}
+                          <Text
+                            className="min-w-0 flex-1 text-overline text-text-muted"
+                            numberOfLines={1}
+                          >
+                            {where ?? ""}
+                          </Text>
+                          <Text className="shrink-0 text-caption text-text-muted">
+                            {formatRelativeTime(notification.at)}
+                          </Text>
+                        </View>
+
+                        <View className="gap-1">
+                          <Text
+                            className={
+                              read
+                                ? "text-body-lg text-text-primary"
+                                : "text-body-lg font-bold text-text-primary"
+                            }
+                            numberOfLines={2}
+                          >
+                            {presented.title}
+                          </Text>
+                          <Text className="text-body text-text-secondary" numberOfLines={2}>
+                            {presented.body}
+                          </Text>
+                        </View>
+
+                        {picture ? (
+                          <Image
+                            testID="notification-picture"
+                            source={{ uri: picture }}
+                            style={{ width: "100%", height: 144, borderRadius: 12 }}
+                            contentFit="cover"
+                          />
+                        ) : null}
+
+                        {presented.callout ? <Callout callout={presented.callout} /> : null}
+
+                        {/*
+                          Which job this is about: its reference as a tag, then its
+                          name. The tag is what a client quotes back to Operations,
+                          so it is the same shape as on the order.
+                        */}
+                        {presented.reference || presented.jobLine || onOpen ? (
+                          <View className="flex-row items-center gap-2">
+                            {presented.reference ? (
+                              <OrderReference id={notification.orderId} />
+                            ) : null}
+                            <Text
+                              className="min-w-0 flex-1 text-caption text-text-secondary"
+                              numberOfLines={1}
+                            >
+                              {presented.jobLine ?? ""}
+                            </Text>
+                            {onOpen ? (
+                              <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+                            ) : null}
+                          </View>
+                        ) : null}
+                      </View>
+                      {pressed ? (
+                        <View pointerEvents="none" className="gg-pressed absolute inset-0" />
+                      ) : null}
+                    </>
+                  )}
+                </Pressable>
+
+                {earlier.length ? (
+                  <EarlierUpdates
+                    items={earlier}
+                    expanded={expanded}
+                    onToggle={() => setExpanded((open) => !open)}
+                  />
+                ) : null}
+              </View>
             </View>
           </View>
-        </View>
-      </Animated.View>
+        </Animated.View>
+      </GestureDetector>
     </View>
   );
 }
