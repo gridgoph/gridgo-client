@@ -5,6 +5,7 @@ import Animated, {
   cancelAnimation,
   Easing,
   runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -16,6 +17,23 @@ import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { type ThemeName } from "@/constants/theme";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
+import {
+  CASCADE_SPAN,
+  DOT_MS,
+  DOT_STAGGER,
+  ENGULF_MS,
+  EXIT_BLUR,
+  EXIT_FIELD_DELAY,
+  EXIT_MS,
+  EXIT_WORDMARK_MS,
+  LEAD_IN,
+  PLAY_START_WAIT_MS,
+  SOUND_WAIT_MS,
+  WORDMARK_MS,
+  introTimeline,
+  reducedTimeline,
+  type IntroTimeline,
+} from "@/lib/brandIntroTiming";
 import { loadBrandStings, type BrandStings } from "@/lib/brandSound";
 
 /**
@@ -30,7 +48,11 @@ import { loadBrandStings, type BrandStings } from "@/lib/brandSound";
  *   2. The top-right dot — the one the mark lights, the job on the grid —
  *      swells until it is the whole screen.
  *   3. GRIDGO fades up on that yellow field, on the outro sting.
- *   4. Everything fades, and the app is underneath.
+ *   4. GRIDGO softens and goes, then the yellow dissolves into the app.
+ *
+ * On a phone the clock starts with the sound, not before it (#237): the
+ * empty canvas waits, briefly, for the stings to load, and the first dot lights
+ * when the intro is heard. `lib/brandIntroTiming.ts` owns every number.
  *
  * The swell is the one bold moment; nothing else on the screen competes with
  * it. The dots resolve to exactly the colours `GridgoMark` draws, so what the
@@ -64,38 +86,17 @@ const LIT_CELL = 2;
 const ORDER = [6, 3, 0, 1, 4, 7, 8, 5, 2] as const;
 const LIT_STEP = ORDER.indexOf(LIT_CELL);
 
-/* ---------------------------------------------------------------------------
-   Timing. Every number is the legacy screen's.
-   --------------------------------------------------------------------------- */
-
-/** A beat on the empty canvas before the first dot. */
-const LEAD_IN = 300;
-/** Gap between one dot starting and the next. */
-const DOT_STAGGER = 90;
-/** How long one dot takes to arrive. */
-const DOT_MS = 400;
 /** How faint a dot is before it lights. */
 const GHOST = 0.08;
-/** The cascade's own clock, in milliseconds: last dot's start plus its run. */
-const CASCADE_SPAN = (ORDER.length - 1) * DOT_STAGGER + DOT_MS;
-
-/** The swell starts while the last dot is still arriving. */
-const ENGULF_AT = LEAD_IN + (ORDER.length - 1) * DOT_STAGGER + 120;
-const ENGULF_MS = 600;
-
-const WORDMARK_AT = ENGULF_AT + 700;
-const WORDMARK_MS = 350;
-
-/** The wordmark holds, then the whole overlay goes. */
-const FADE_AT = WORDMARK_AT + 1500;
-const FADE_MS = 400;
-
-/** Reduced motion gets the finished frame and a short look at it. */
-const REDUCED_HOLD = 900;
 
 /** Flutter's `Curves.easeIn` and `Curves.easeOut`, to the same control points. */
 const EASE_IN = Easing.bezier(0.42, 0, 1, 1);
 const EASE_OUT = Easing.bezier(0, 0, 0.58, 1);
+
+/** Milliseconds since `since`, from the JS clock the cues run on. */
+function elapsed(since: number): number {
+  return Date.now() - since;
+}
 
 function cellCentre(cell: number, size: number): { x: number; y: number } {
   return {
@@ -108,6 +109,18 @@ function cellCentre(cell: number, size: number): { x: number; y: number } {
 function easeOutCubic(t: number): number {
   "worklet";
   return 1 - Math.pow(1 - t, 3);
+}
+
+/** Ease in and out together, so the dissolve neither jumps off nor snaps shut. */
+function easeInOutSine(t: number): number {
+  "worklet";
+  return 0.5 - 0.5 * Math.cos(Math.PI * t);
+}
+
+/** How far `exit` (0 → 1 over `EXIT_MS`) is into a part starting at `from`. */
+function exitPart(exit: number, from: number, length: number): number {
+  "worklet";
+  return Math.min(Math.max((exit * EXIT_MS - from) / length, 0), 1);
 }
 
 /** How far into its own 400ms a dot is, given the shared cascade clock. */
@@ -158,7 +171,8 @@ export function BrandIntro({ onDone }: Props) {
   const cascade = useSharedValue(0);
   const engulf = useSharedValue(0);
   const wordmark = useSharedValue(0);
-  const shell = useSharedValue(1);
+  /** The exit, 0 → 1 over `EXIT_MS`. Wordmark and field each read their part. */
+  const exit = useSharedValue(0);
 
   const markLeft = (width - MARK_SIZE) / 2;
   const markTop = (height - MARK_SIZE) / 2;
@@ -189,82 +203,121 @@ export function BrandIntro({ onDone }: Props) {
   const dotUnit = (dotRadius * 2) / fieldSize;
 
   useEffect(() => {
+    const mountedAt = Date.now();
+    const stings = loadBrandStings();
+    stingsRef.current = stings;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let cancelled = false;
+    let started = false;
+    const at = (ms: number) => Math.max(0, ms - elapsed(mountedAt));
+
+    /** The exit, then the overlay is gone. Both endings call `finish` once. */
+    const leave = (timeline: IntroTimeline) => {
+      exit.value = withDelay(
+        at(timeline.exitAt),
+        withTiming(1, { duration: EXIT_MS, easing: Easing.linear }, (done) => {
+          if (done) runOnJS(finish)();
+        }),
+      );
+      // Reanimated's finishing callback is not reliable on web; without this
+      // the invisible overlay stays mounted and eats every tap on welcome.
+      timers.push(setTimeout(finish, at(timeline.endAt)));
+    };
+
+    /** The whole sequence, from a first dot at `startAt` after mounting. */
+    const run = (startAt: number) => {
+      if (started || cancelled) return;
+      started = true;
+      const timeline = introTimeline(startAt);
+      // One linear clock for the cascade; each dot reads its own slice of it.
+      cascade.value = withDelay(
+        at(timeline.startAt),
+        withTiming(CASCADE_SPAN, { duration: CASCADE_SPAN, easing: Easing.linear }),
+      );
+      engulf.value = withDelay(
+        at(timeline.engulfAt),
+        withTiming(1, { duration: ENGULF_MS, easing: EASE_IN }),
+      );
+      wordmark.value = withDelay(
+        at(timeline.wordmarkAt),
+        withTiming(1, { duration: WORDMARK_MS, easing: EASE_OUT }),
+      );
+      timers.push(setTimeout(() => stings?.outro(), at(timeline.wordmarkAt)));
+      leave(timeline);
+    };
+
+    /** Reduced motion: the finished frame, its sting, and the exit after a look. */
+    const settle = (startAt: number) => {
+      if (started || cancelled) return;
+      started = true;
+      stings?.outro();
+      leave(reducedTimeline(startAt));
+    };
+
     if (reducedMotion) {
-      // No cascade and no swell — the destination, held long enough to read,
-      // with the sting that belongs to it.
+      // No cascade and no swell — the destination, from the first frame.
       cascade.value = CASCADE_SPAN;
       engulf.value = 1;
       wordmark.value = 1;
+    }
+    const begin = reducedMotion ? settle : run;
+    const earliest = reducedMotion ? 0 : LEAD_IN;
 
-      const arrival = loadBrandStings();
-      stingsRef.current = arrival;
-      arrival?.outro();
-
-      shell.value = withDelay(
-        REDUCED_HOLD,
-        withTiming(0, { duration: FADE_MS, easing: EASE_IN }, () => {
-          runOnJS(finish)();
-        }),
+    if (!stings || Platform.OS === "web") {
+      // Nothing to wait for: no audio in this build, or a browser that will
+      // not play before a tap anyway. The cues only remember they were asked.
+      timers.push(
+        setTimeout(() => {
+          if (!reducedMotion) void stings?.intro();
+          begin(earliest);
+        }, earliest),
       );
-      const endAt = setTimeout(finish, REDUCED_HOLD + FADE_MS);
-      return () => {
-        clearTimeout(endAt);
-        cancelAnimation(cascade);
-        cancelAnimation(engulf);
-        cancelAnimation(wordmark);
-        cancelAnimation(shell);
-        stingsRef.current = null;
-        arrival?.release();
-      };
+    } else {
+      // The longest the opening waits for its sound. Past it, it runs silent.
+      const cap = earliest + SOUND_WAIT_MS;
+      timers.push(setTimeout(() => begin(elapsed(mountedAt)), cap));
+      void stings.ready.then((loaded) => {
+        if (cancelled || started) return;
+        const go = () => {
+          if (cancelled || started) return;
+          if (!loaded || reducedMotion) {
+            begin(elapsed(mountedAt));
+            return;
+          }
+          // Too close to the cap to wait for the intro to be heard: the cap
+          // starts the motion silent rather than a sting landing mid-cascade.
+          if (elapsed(mountedAt) > cap - PLAY_START_WAIT_MS) return;
+          // The first dot lights when the intro is actually sounding.
+          void stings.intro().then(() => begin(elapsed(mountedAt)));
+        };
+        timers.push(setTimeout(go, at(earliest)));
+      });
     }
 
-    // Decoded before the first dot, so a cue is a play call and not a load.
-    const stings = loadBrandStings();
-    stingsRef.current = stings;
-    const cues = [
-      setTimeout(() => stings?.intro(), LEAD_IN),
-      setTimeout(() => stings?.outro(), WORDMARK_AT),
-    ];
-
-    // One linear clock for the cascade; each dot reads its own slice of it.
-    cascade.value = withDelay(
-      LEAD_IN,
-      withTiming(CASCADE_SPAN, { duration: CASCADE_SPAN, easing: Easing.linear }),
-    );
-    engulf.value = withDelay(
-      ENGULF_AT,
-      withTiming(1, { duration: ENGULF_MS, easing: EASE_IN }),
-    );
-    wordmark.value = withDelay(
-      WORDMARK_AT,
-      withTiming(1, { duration: WORDMARK_MS, easing: EASE_OUT }),
-    );
-    // The overlay's own fade carries the ending, so there is no second timer
-    // that could finish out of step with what is on screen.
-    shell.value = withDelay(
-      FADE_AT,
-      withTiming(0, { duration: FADE_MS, easing: EASE_IN }, () => {
-        runOnJS(finish)();
-      }),
-    );
-    // Reanimated's finishing callback is not reliable on web; without this
-    // the invisible overlay stays mounted and eats every tap on welcome.
-    const endAt = setTimeout(finish, FADE_AT + FADE_MS);
-
     return () => {
-      for (const cue of cues) clearTimeout(cue);
-      clearTimeout(endAt);
+      cancelled = true;
+      for (const timer of timers) clearTimeout(timer);
       cancelAnimation(cascade);
       cancelAnimation(engulf);
       cancelAnimation(wordmark);
-      cancelAnimation(shell);
+      cancelAnimation(exit);
       stingsRef.current = null;
       // A skip cuts the sound with the picture.
       stings?.release();
     };
-  }, [cascade, engulf, finish, reducedMotion, shell, wordmark]);
+  }, [cascade, engulf, exit, finish, reducedMotion, wordmark]);
 
-  const shellStyle = useAnimatedStyle(() => ({ opacity: shell.value }));
+  /*
+    The yellow dissolves into the app, eased at both ends: the old 400ms
+    ease-in sped up into its last frame, which is what read as a hard cut.
+  */
+  const shellStyle = useAnimatedStyle(() => ({
+    opacity:
+      1 -
+      easeInOutSine(
+        exitPart(exit.value, EXIT_FIELD_DELAY, EXIT_MS - EXIT_FIELD_DELAY),
+      ),
+  }));
 
   /*
     One view plays both the lit dot and the field it becomes: it arrives on the
@@ -282,7 +335,22 @@ export function BrandIntro({ onDone }: Props) {
     };
   });
 
-  const wordmarkStyle = useAnimatedStyle(() => ({ opacity: wordmark.value }));
+  /*
+    The wordmark goes first and softly: it fades, lifts a touch and blurs
+    lightly, so the type is already out of focus when the yellow lets go.
+    Reduced motion keeps the fade only.
+  */
+  const wordmarkStyle = useAnimatedStyle(() => {
+    const going = easeOutCubic(exitPart(exit.value, 0, EXIT_WORDMARK_MS));
+    const blur = reducedMotion ? 0 : EXIT_BLUR * going;
+    return {
+      opacity: wordmark.value * (1 - going),
+      transform: [{ scale: reducedMotion ? 1 : 1 + 0.03 * going }],
+      // No filter at all until there is something to blur: a zero-radius
+      // blur still costs an offscreen pass on Android.
+      filter: blur > 0.05 ? [{ blur }] : [],
+    };
+  });
 
   return (
     <Animated.View
@@ -293,7 +361,7 @@ export function BrandIntro({ onDone }: Props) {
         shellStyle,
       ]}
     >
-      <IntroStatusBar scheme={scheme} />
+      <IntroStatusBar scheme={scheme} engulf={engulf} />
       <Pressable
         pointerEvents={blocking ? "auto" : "none"}
         style={StyleSheet.absoluteFill}
@@ -387,13 +455,23 @@ export function BrandIntro({ onDone }: Props) {
  * once and never again while the animation runs, so nothing competes with the
  * swell for the frame it lands on.
  */
-function IntroStatusBar({ scheme }: { scheme: ThemeName }) {
+function IntroStatusBar({
+  scheme,
+  engulf,
+}: {
+  scheme: ThemeName;
+  engulf: SharedValue<number>;
+}) {
   const [onYellow, setOnYellow] = useState(false);
 
-  useEffect(() => {
-    const flip = setTimeout(() => setOnYellow(true), ENGULF_AT + ENGULF_MS * 0.5);
-    return () => clearTimeout(flip);
-  }, []);
+  // Halfway through the swell, whenever the swell starts: the opening now
+  // waits for its sound, so a fixed timer would flip too early.
+  useAnimatedReaction(
+    () => engulf.value >= 0.5,
+    (yellow, was) => {
+      if (yellow && !was) runOnJS(setOnYellow)(true);
+    },
+  );
 
   return <StatusBar style={onYellow || scheme !== "dark" ? "dark" : "light"} />;
 }
