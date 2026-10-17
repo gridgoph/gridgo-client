@@ -165,9 +165,10 @@ function AppNavigation() {
       dragged: tracking a finger from the UI thread is the difference between
       a page being turned and an animation being played afterwards.
 
-      `Sheet` and `NotificationCard` deliberately stay on PanResponder — a
-      React Native `Modal` renders outside this tree, so a gesture detector in
-      one never fires. Mounting this changes neither.
+      `Sheet` deliberately stays on PanResponder — a React Native `Modal`
+      renders outside this tree, so a gesture detector in one never fires.
+      The swipeable rows (`SwipeToRemove`, `NotificationCard`) are not in a
+      modal and use gesture-handler.
     */
     <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>

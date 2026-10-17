@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react-native";
 import { useCallback, useMemo, type ReactNode } from "react";
-import { PanResponder, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -12,10 +13,12 @@ import Animated, {
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import {
-  isHorizontalSwipe,
   restingOffset,
   REVEAL_WIDTH,
+  ROW_SETTLE_MS,
   ROW_SPRING,
+  SWIPE_ACTIVE_OFFSET_X,
+  SWIPE_FAIL_OFFSET_Y,
   swipeOffset,
   swipeRelease,
 } from "@/lib/swipeRow";
@@ -38,77 +41,75 @@ type Props = {
  * quantity somebody typed, and losing it to a stray thumb on a scrolling list
  * is not a trade worth making for one fewer tap.
  *
- * `PanResponder` rather than gesture-handler, matching `components/Sheet.tsx`:
- * core React Native, no provider to mount, no root-view resolution to get
- * wrong, and the thresholds it reads are pure functions in `lib/swipeRow.ts`
- * that can actually be tested. `onMoveShouldSetPanResponder` only claims a
- * mostly-sideways drag, so the list underneath keeps its scroll.
+ * The drag runs in react-native-gesture-handler, on the UI thread. It used to
+ * be a `PanResponder`, and on iPhone that lost the touch: JavaScript claimed
+ * the swipe a beat after the finger moved, and by then the list's native
+ * scroll recognizer had started and cancelled every JavaScript touch, so the
+ * row snapped shut mid-drag and the question was never asked. A native pan
+ * takes part in iOS's own gesture arbitration instead of arriving after it.
+ * `activeOffsetX` / `failOffsetY` (`lib/swipeRow.ts`) keep the list scrolling.
  *
  * Swiping is not an accessible gesture, so the row also carries a real
- * "Remove" accessibility action and the sheet keeps a visible control of its
+ * "Remove" accessibility action and the screen keeps a visible control of its
  * own. This is the fast path, never the only one.
  */
 export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
   const translateX = useSharedValue(0);
-  // A shared value rather than a ref: the responder is built during render,
-  // and only the value read and written inside its handlers may live here.
   const dragStart = useSharedValue(0);
 
   const settle = useCallback(
     (to: number) => {
       translateX.set(
-        reducedMotion ? withTiming(to, { duration: 160 }) : withSpring(to, ROW_SPRING),
+        reducedMotion ? withTiming(to, { duration: ROW_SETTLE_MS }) : withSpring(to, ROW_SPRING),
       );
     },
     [reducedMotion, translateX],
   );
 
-  /** Close the row, then ask. The question belongs to the dialog, not the row. */
+  /*
+    Close the row, then ask — on the next tick, never inside the gesture's or
+    the press's own frame. The question is a modal, and presenting one while
+    the touch that asked for it is still being delivered risks it arriving
+    half drawn. It no longer waits on the close animation either: a close that
+    was interrupted used to swallow the question entirely.
+  */
   const ask = useCallback(() => {
     settle(0);
-    onRemove();
+    setTimeout(onRemove, 0);
   }, [settle, onRemove]);
 
   const pan = useMemo(
     () =>
-      PanResponder.create({
-        /*
-          Capture as well as bubble. The whole row is a Pressable that opens
-          the listing, so on a swipe the child has already claimed the touch;
-          the capture phase is what lets this take it back mid-gesture. The
-          guard is what keeps that safe — only a mostly-sideways drag is
-          claimed, so a tap still opens the listing and a vertical drag still
-          scrolls the sheet.
-        */
-        onMoveShouldSetPanResponderCapture: (_event, gesture) =>
-          !disabled && isHorizontalSwipe(gesture.dx, gesture.dy),
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          !disabled && isHorizontalSwipe(gesture.dx, gesture.dy),
-        onPanResponderGrant: () => {
+      Gesture.Pan()
+        .withTestId("swipe-to-remove")
+        .enabled(!disabled)
+        .activeOffsetX([-SWIPE_ACTIVE_OFFSET_X, SWIPE_ACTIVE_OFFSET_X])
+        .failOffsetY([-SWIPE_FAIL_OFFSET_Y, SWIPE_FAIL_OFFSET_Y])
+        .onStart(() => {
+          "worklet";
           dragStart.set(translateX.get());
-        },
-        onPanResponderMove: (_event, gesture) => {
-          translateX.set(swipeOffset(dragStart.get(), gesture.dx));
-        },
-        onPanResponderRelease: (_event, gesture) => {
-          const release = swipeRelease(translateX.get(), gesture.vx);
+        })
+        .onUpdate((event) => {
+          "worklet";
+          translateX.set(swipeOffset(dragStart.get(), event.translationX));
+        })
+        .onEnd((event) => {
+          "worklet";
+          const release = swipeRelease(translateX.get(), event.velocityX);
           if (release === "commit") {
-            translateX.set(
-              withTiming(0, { duration: 160 }, (done) => {
-                if (done) runOnJS(onRemove)();
-              }),
-            );
+            runOnJS(ask)();
             return;
           }
-          settle(restingOffset(release));
-        },
-        onPanResponderTerminate: () => {
-          settle(0);
-        },
-      }),
-    [disabled, translateX, dragStart, settle, onRemove],
+          const to = restingOffset(release);
+          translateX.set(
+            reducedMotion
+              ? withTiming(to, { duration: ROW_SETTLE_MS })
+              : withSpring(to, { ...ROW_SPRING, velocity: event.velocityX }),
+          );
+        }),
+    [disabled, reducedMotion, translateX, dragStart, ask],
   );
 
   const rowStyle = useAnimatedStyle(() => ({
@@ -145,16 +146,18 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
         </Pressable>
       </View>
 
-      <Animated.View
-        {...pan.panHandlers}
-        style={rowStyle}
-        accessibilityActions={ACCESSIBILITY_ACTIONS}
-        onAccessibilityAction={(event) => {
-          if (event.nativeEvent.actionName === "remove") ask();
-        }}
-      >
-        {children}
-      </Animated.View>
+      <GestureDetector gesture={pan}>
+        <Animated.View
+          testID="swipe-to-remove-row"
+          style={rowStyle}
+          accessibilityActions={ACCESSIBILITY_ACTIONS}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === "remove") ask();
+          }}
+        >
+          {children}
+        </Animated.View>
+      </GestureDetector>
     </View>
   );
 }
