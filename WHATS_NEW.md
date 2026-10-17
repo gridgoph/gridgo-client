@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.363 (Fix)
+
+- The opening now plays in time with its sound and fades softly into the app.
+
 ## 1.0.358 (Fix)
 
 - On iPhone, notifications only list app updates you can install there, and sheets reach the bottom edge.
