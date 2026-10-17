@@ -4,7 +4,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
 
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -56,23 +55,25 @@ export function ConfirmDialog({
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(0);
 
+  // Restarted on each opening rather than reset on closing, so a closing
+  // dialog keeps its size while the modal fades it out.
   useEffect(() => {
-    if (!visible) {
-      progress.value = 0;
-      return;
-    }
-    progress.value = reducedMotion
-      ? withTiming(1, { duration: 200 })
-      : withSpring(1, { damping: 26, stiffness: 380, mass: 0.8 });
+    if (!visible || reducedMotion) return;
+    progress.value = 0;
+    progress.value = withSpring(1, { damping: 26, stiffness: 380, mass: 0.8 });
   }, [visible, reducedMotion, progress]);
 
-  // Reduced motion keeps the fade and drops the scale — the dialog still
-  // arrives, it just does not move.
+  /*
+    The modal's own fade is the only fade. The card used to fade itself in as
+    well, from fully transparent, on a second clock inside a window the modal
+    had only just presented — so a late first frame could leave the
+    question half drawn over a scrim that was already up, and closing snapped
+    the card away before the scrim had gone. Now the card is always opaque, and
+    the worst a missed frame can do is leave it a few percent small. Reduced
+    motion drops the scale too; the dialog still fades in with the modal.
+  */
   const cardStyle = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: reducedMotion
-      ? []
-      : [{ scale: 0.94 + progress.value * 0.06 }],
+    transform: reducedMotion ? [] : [{ scale: 0.94 + progress.value * 0.06 }],
   }));
 
   const dismissable = tone !== "destructive" && !busy;
