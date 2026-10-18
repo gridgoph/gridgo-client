@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.384 (New feature)
+
+- Message the print shop about your order through GRIDGO. Names stay private and contact details are hidden.
+- Approve each order before it is placed: one tap, or your signature for custom merchandise, kept on the order.
+
 ## 1.0.374 (Fix)
 
 - The first-time tips can no longer leave the screen dimmed with no tip on it; Back now closes them.
