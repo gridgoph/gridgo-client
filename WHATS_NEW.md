@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.391 (New feature)
+
+- Cancelling an order now shows exactly how much comes back before you confirm, and problem reports include your photos.
+- You can now delete a saved address. Orders you already placed keep the address they were placed with.
+
 ## 1.0.384 (New feature)
 
 - Message the print shop about your order through GRIDGO. Names stay private and contact details are hidden.
