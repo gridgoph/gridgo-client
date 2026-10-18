@@ -9,6 +9,13 @@ import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physica
 import type { DevicePlatform, PushTokenProvider } from "@/lib/push";
 import type { InstallChannel } from "@/lib/releasePush";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
+import {
+  shopChatFrom,
+  shopChatMessageFrom,
+  type ShopChat,
+  type ShopChatMessage,
+  type ShopChatReportReason,
+} from "@/lib/shopChat";
 import type { ArtworkColorsEntry, ColorTarget, ColorTargetInput } from "@/lib/colorTargets";
 import { readCall, readCalls, type CallIceConfig, type CallSignal, type OrderCall } from "@/lib/orderCalls";
 import { parseSeasonWindows, type SeasonWindows } from "@/lib/seasonWindows";
@@ -503,6 +510,11 @@ export type Order = {
    * a day after delivery, absent otherwise. Read it through `deliveryChatOf`.
    */
   deliveryChat?: DeliveryChatSummary | null;
+  /**
+   * The masked conversation with the print shop (gridgo-client#246): its
+   * window and the server's reminder, never counts. Read it through `shopChatOf`.
+   */
+  clientShopChat?: unknown;
   /**
    * The rider's six delivery steps, always in order (gridgo-api#217): sent on
    * every delivery order whether or not a position is shared. Absent on an
@@ -4370,6 +4382,53 @@ export async function sendDeliveryMessage(
       ...(options?.attachmentFileIds?.length ? { attachmentFileIds: options.attachmentFileIds } : {}),
     }),
   });
+}
+
+/**
+ * One page of the masked conversation with the print shop (`lib/shopChat.ts`),
+ * oldest first. `after` is the last message already shown; reading a page
+ * marks it read, and `chat.unread` is the count from before.
+ */
+export async function getShopChat(
+  orderId: string,
+  options?: { after?: string | null },
+): Promise<{ chat: ShopChat; messages: ShopChatMessage[]; nextAfter: string | null }> {
+  const query = options?.after ? `?after=${encodeURIComponent(options.after)}` : "";
+  const result = await request<{ chat?: unknown; messages?: unknown[]; nextAfter?: unknown }>(
+    `/orders/${encodeURIComponent(orderId)}/client-shop-chat${query}`,
+  );
+  return {
+    chat: shopChatFrom(result.chat),
+    messages: (result.messages ?? []).flatMap((row) => shopChatMessageFrom(row) ?? []),
+    nextAfter: typeof result.nextAfter === "string" ? result.nextAfter : null,
+  };
+}
+
+/** `attachmentFileIds` are `client_shop_chat_attachment` uploads; a file may be the whole message. */
+export async function sendShopChatMessage(
+  orderId: string,
+  body: string,
+  attachmentFileIds: string[] = [],
+): Promise<{ chat: ShopChat; message: ShopChatMessage | null; warning: string | null }> {
+  const result = await request<{ chat?: unknown; message?: unknown; warning?: unknown }>(
+    `/orders/${encodeURIComponent(orderId)}/client-shop-chat/messages`,
+    { method: "POST", body: JSON.stringify({ body, attachmentFileIds }) },
+  );
+  const chat = shopChatFrom(result.chat);
+  const warning = typeof result.warning === "string" && result.warning.trim() ? result.warning.trim() : chat.warning;
+  return { chat: { ...chat, warning }, message: shopChatMessageFrom(result.message), warning };
+}
+
+/** Flags the conversation for Operations. Repeating it is harmless: the first reason stands. */
+export async function reportShopChatMessage(
+  orderId: string,
+  messageId: string,
+  reason: ShopChatReportReason,
+): Promise<void> {
+  await request(
+    `/orders/${encodeURIComponent(orderId)}/client-shop-chat/messages/${encodeURIComponent(messageId)}/reports`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
 }
 
 // ---------------------------------------------------------------------------

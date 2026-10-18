@@ -19,6 +19,7 @@ import { Platform } from "react-native";
 
 import { CHAT_LIST_ROUTE, isChatThreadId } from "@/lib/chatThreads";
 import { DELIVERY_CHAT_ROUTE } from "@/lib/deliveryChat";
+import { SHOP_CHAT_NOTIFICATION_TYPE, SHOP_CHAT_ROUTE } from "@/lib/shopChat";
 import { APPLICATION_ROUTE, isApplicationNotification } from "@/lib/organization";
 import { receiptNoticeHref } from "@/lib/receipt";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
@@ -254,6 +255,10 @@ export function chatNotificationRoute(notification: {
   }
   if (notification.type === DELIVERY_MESSAGE_PUSH_TYPE && notification.orderId) {
     return `${DELIVERY_CHAT_ROUTE}?orderId=${encodeURIComponent(notification.orderId)}`;
+  }
+  // The print shop or GRIDGO wrote in the order's masked conversation (#246).
+  if (notification.type === SHOP_CHAT_NOTIFICATION_TYPE && notification.orderId) {
+    return `${SHOP_CHAT_ROUTE}?orderId=${encodeURIComponent(notification.orderId)}`;
   }
   return null;
 }

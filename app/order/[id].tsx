@@ -14,6 +14,7 @@ import { DeliveryPinCard } from "@/components/deliveryPin/DeliveryPinCard";
 import { ChangeHistory } from "@/components/orderChange/ChangeHistory";
 import { ChangeRequestCard } from "@/components/orderChange/ChangeRequestCard";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
+import { ShopChatRow } from "@/components/ShopChatRow";
 import { MissedCallNotice } from "@/components/call/MissedCallNotice";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
 import { DeliveryHandoverCard } from "@/components/DeliveryHandoverCard";
@@ -55,6 +56,7 @@ import { formatPhp } from "@/lib/api";
 import { installmentStatusLabel, userFacingError } from "@/lib/copy";
 import { formatDeadline } from "@/lib/deadline";
 import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
+import { shopChatOf, shopChatRoute, showsShopChatEntry } from "@/lib/shopChat";
 import { callWindowOpen, orderHasCalls } from "@/lib/orderCalls";
 import {
   collectsAtOffice,
@@ -373,6 +375,9 @@ export default function OrderDetailScreen() {
   const chatSummary = deliveryChatOf(order);
   const deliveredChat = chatSummary?.status === "read_only" ? chatSummary : null;
   const openRiderChat = () => router.push(deliveryChatRoute(order.id));
+  // From the shop's acceptance until the check window closes, then kept as a record (#246).
+  const shopChat = shopChatOf(order);
+  const shopChatEntryShown = showsShopChatEntry(shopChat) ? shopChat : null;
   /** These zones say their own wait, and offer their own refund. */
   const shopDecision = actionZone === "refund" || actionZone === "recovery" || actionZone === "reschedule";
   /*
@@ -633,6 +638,13 @@ export default function OrderDetailScreen() {
           }
         />
       ) : null}
+      {shopChatEntryShown ? (
+        <ShopChatRow
+          orderId={order.id}
+          chat={shopChatEntryShown}
+          onPress={() => router.push(shopChatRoute(order.id))}
+        />
+      ) : null}
       {deliveredChat ? (
         <DeliveryChatRow
           chat={deliveredChat}
@@ -678,6 +690,7 @@ export default function OrderDetailScreen() {
             refundUntil: refundOffered ? (refund.deadlineAt ?? null) : null,
             refund: refundOffered,
             riderChat: Boolean(deliveredChat),
+            shopChat: Boolean(shopChatEntryShown),
           })}
           icon={LifeBuoy}
           open={helpOpen}

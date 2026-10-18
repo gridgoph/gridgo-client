@@ -400,6 +400,11 @@ function AppNavigation() {
                   name="order/delivery-chat"
                   options={pushedScreenOptions("Messages")}
                 />
+                {/* The client and the print shop, through GRIDGO, while the order is made (#246). */}
+                <Stack.Screen
+                  name="order/shop-chat"
+                  options={pushedScreenOptions("Messages")}
+                />
                 {/*
                   Refunds are pushed screens, not sheets: the request carries
                   uploads and a long explanation, and the status screen is a
