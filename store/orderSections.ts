@@ -15,6 +15,7 @@ export const ORDER_SECTIONS_FOLDED: Record<OrderSectionKey, boolean> = {
   specifications: false,
   artwork: false,
   payment: false,
+  approval: false,
 };
 
 type OrderSectionsStore = {

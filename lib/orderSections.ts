@@ -16,7 +16,7 @@ import { formatPriceRange, orderTotalMinor } from "@/lib/orderState";
 import { describeQuantity } from "@/lib/quantity";
 
 /** Every part of the screen that folds. Remembered per section, per phone. */
-export type OrderSectionKey = "history" | "specifications" | "artwork" | "payment";
+export type OrderSectionKey = "history" | "specifications" | "artwork" | "payment" | "approval";
 
 /** The steps a shop's photo is taken in: on the press, or checking and packing. */
 const MAKING_STATES = ["production", "supplier_self_qc"];

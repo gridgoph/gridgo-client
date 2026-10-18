@@ -186,7 +186,7 @@ describe("OrderDetailScreen", () => {
     // The record's sections open, as a client who keeps them open sees them.
     // Folding itself is tested in order-detail-sections.test.tsx.
     useOrderSections.setState({
-      open: { history: true, specifications: true, artwork: true, payment: true },
+      open: { history: true, specifications: true, artwork: true, payment: true, approval: true },
     });
     // Operations shows the fee, as on dev today; the switch-off case is its own test.
     setServiceFeeSwitch(true);

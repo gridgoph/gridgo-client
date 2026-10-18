@@ -31,6 +31,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { DesignLinkRow } from "@/components/DesignLinkRow";
 import { ExactColoursRecord } from "@/components/ExactColoursRecord";
+import { ApprovalRecordSummary } from "@/components/approval/ApprovalRecordSummary";
 import { FoldSection } from "@/components/FoldSection";
 import { LatestProgressCard } from "@/components/LatestProgressCard";
 import { CoverSpineRecord } from "@/components/CoverSpineRecord";
@@ -91,6 +92,7 @@ import {
 } from "@/lib/orderSections";
 import { canRate } from "@/lib/rating";
 import { readyEarlyLabel } from "@/lib/readyTime";
+import { approvalSummaryLine } from "@/lib/approvalProof";
 import { currentRefund, refundEntry } from "@/lib/refunds";
 import { appliedChangeLine, deliveryPinNeedsClient } from "@/lib/deliveryPin";
 import { changeItemName, changeNeedsClient, changeRequestView, paidChanges } from "@/lib/orderChanges";
@@ -390,6 +392,7 @@ export default function OrderDetailScreen() {
     carries is still here; only where it sits changes.
   */
   const received = showsReceivedView(order, actionZone);
+  const approvalSummary = approvalSummaryLine(order);
   const detailsOpen = detailsFor === order.id;
   const helpOpen = helpFor === order.id;
 
@@ -615,6 +618,17 @@ export default function OrderDetailScreen() {
           }
         />
       </FoldSection>
+
+      {/* What the client approved, kept as evidence (gridgo-client#248). */}
+      {order.approvalProof && approvalSummary ? (
+        <FoldSection section="approval" title="Approval record" summary={approvalSummary} divided>
+          <ApprovalRecordSummary
+            orderId={order.id}
+            proof={order.approvalProof}
+            onOpen={() => router.push({ pathname: "/order/approval", params: { orderId: order.id } })}
+          />
+        </FoldSection>
+      ) : null}
     </View>
   );
 
