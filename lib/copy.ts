@@ -121,6 +121,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "You do not have permission for that action.";
       case "order_not_found":
         return "That order was not found. Open Orders and pick it again.";
+      case "address_not_found":
+        return "That address is no longer saved. Your list has been refreshed.";
       case "dropoff_confirmation_answered":
         return "This drop-off was already answered. Refresh the order to see the saved destination.";
       case "dropoff_confirmation_unavailable":
@@ -263,6 +265,12 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "This job has been signed off, so the issue window is closed. Message Operations if something is still wrong with it.";
       case "invalid_issue":
         return "Describe what is wrong before sending the report — Operations acts on your words alone.";
+      case "invalid_problem_type":
+        return "Choose what kind of problem it is, then send the report again.";
+      case "problem_photos_required":
+        return "Add at least one photo of what is wrong, up to ten, each one only once.";
+      case "invalid_problem_photo":
+        return "One of the photos could not be used. Remove it, add it again, and send once every photo shows Uploaded.";
       case "reason_required":
         return "Say what needs to change. Operations reworks the artwork from this reason.";
       case "proof_decision_not_allowed":
@@ -285,6 +293,18 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "Operations has not confirmed your payment yet, so there is nothing to refund. Ask again once it is confirmed.";
       case "refund_collection_reconciliation_required":
         return "Operations is still checking a payment on this order. Ask again once it is confirmed, or message GRIDGO support.";
+      case "cancellation_quote_stale":
+        return "Something on this order changed while you were deciding. Check the amount shown now, then confirm again.";
+      case "cancellation_quote_mismatch":
+        return "The amount no longer matches what you confirmed. Operations will contact you before anything is settled.";
+      case "cancellation_legacy_review_required":
+      case "cancellation_manual_review_required":
+      case "cancellation_delivery_review_required":
+        return "Operations has to work out the amount on this order by hand. Send the request and they tell you the amount before approving it.";
+      case "cancellation_after_delivery":
+        return "This order has reached you, so it cannot be cancelled. If something is wrong with it, report a problem on the order instead.";
+      case "refund_no_available_funds":
+        return "There is no confirmed payment left on this order to return, so there is nothing to refund.";
       case "refund_stale":
         return "This refund changed while the screen was open. Pull down to load the latest, then try again.";
       case "refund_idempotency_conflict":

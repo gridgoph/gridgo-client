@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import SavedPlacesScreen from "@/app/saved-places";
+import type { ClientAddress } from "@/lib/api";
 
 const mockPush = jest.fn();
 
@@ -49,6 +50,26 @@ describe("Saved Places", () => {
     expect(screen.getByLabelText("Add a new place")).toBeTruthy();
     expect(screen.queryByLabelText("Delete")).toBeNull();
     expect(screen.queryByLabelText(/trash/i)).toBeNull();
+  });
+
+  it("puts a delete control on each saved place, naming it", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const api = require("@/lib/api");
+    const home: ClientAddress = {
+      id: "addr_home",
+      label: "Home",
+      addressLine: "12 Quimpo Blvd, Davao City",
+      point: { lat: 7.049, lng: 125.588 },
+      isDefault: true,
+      version: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    api.listAddresses.mockResolvedValueOnce([home]);
+    await renderInSafeArea(<SavedPlacesScreen />);
+
+    expect(await screen.findByLabelText("Delete Home")).toBeTruthy();
+    expect(screen.getByLabelText("Home, default address")).toBeTruthy();
   });
 
   it("opens the editor to add a new place", async () => {

@@ -76,6 +76,41 @@ describe("IssueWindowCard", () => {
     expect(api.confirmDelivery).not.toHaveBeenCalled();
   });
 
+  it("tells the client their report was received and when the outcome comes", async () => {
+    api.listIssues.mockResolvedValue([
+      {
+        id: "iss_1",
+        orderId: order.id,
+        clientId: "user_client",
+        description: "Colour is washed out across all 200 flyers.",
+        kind: "material_quality",
+        status: "open",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        resolvedAt: null,
+        resolution: null,
+        photoFileIds: ["file_p1", "file_p2"],
+        faultDecision: {
+          id: "idecision_1",
+          fault: "shop",
+          remedy: "reprint",
+          reason: "The reviewed photo shows the colour was wrong before pickup.",
+          status: "approved",
+          recordedAt: new Date().toISOString(),
+        },
+      },
+    ]);
+    await renderInSafeArea(<IssueWindowCard order={order} onUpdated={jest.fn()} />);
+
+    expect(await screen.findByText("Operations received your report.")).toBeTruthy();
+    expect(screen.getByText("2 photos sent")).toBeTruthy();
+    expect(screen.getByText("A reprint")).toBeTruthy();
+    expect(screen.getByText("The reviewed photo shows the colour was wrong before pickup.")).toBeTruthy();
+    // Who was at fault is Operations' working, not the client's line.
+    expect(screen.queryByText(/shop/i)).toBeNull();
+    expect(screen.queryByText("Report a problem")).toBeNull();
+  });
+
   // Two presses, so this test stays last in the file (see AGENTS.md, testing).
   it("closes the job only once the question is answered, and hands the finished order back", async () => {
     const closed: Order = { ...order, state: "completed" };

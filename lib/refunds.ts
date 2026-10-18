@@ -18,14 +18,15 @@
  */
 
 import type {
+  CancellationQuote,
   Order,
   Refund,
+  RefundAmounts,
   RefundDestinationInput,
   RefundKind,
   RefundProvider,
-  RefundSettlement,
 } from "@/lib/api";
-import { formatPhp } from "@/lib/api";
+import { ApiError, formatPhp } from "@/lib/api";
 import { formatDeadline } from "@/lib/deadline";
 import type { OrderStateMeta } from "@/lib/orderState";
 import { orderPrintingMinor } from "@/lib/serviceFee";
@@ -163,6 +164,78 @@ export function refundPolicyCopy(entry: Extract<RefundEntry, { kind: "eligible" 
     headline: entry.beforeProduction ? "You get everything back" : "What you can get back",
     points,
   };
+}
+
+/**
+ * What a cancellation quote means, in words, beside the figures it carries.
+ * Before production nothing has been spent; after it, the shop keeps the part
+ * it was owed for starting, and only that.
+ */
+export function cancellationQuoteCopy(quote: CancellationQuote): { headline: string; detail: string } {
+  const total = formatPhp(quote.refund.totalMinor);
+  return quote.beforeProduction
+    ? {
+        headline: `You get back ${total}`,
+        detail: "Printing has not started, so everything you paid comes back, delivery included.",
+      }
+    : {
+        headline: `You get back ${total}`,
+        detail:
+          "Printing has started, so the part of the price owed for work already done is kept. The rest of what you paid comes back, with delivery if no trip was made.",
+      };
+}
+
+/**
+ * Why there is no exact amount to show, read from the quote's refusal.
+ * `review`: the cancellation can still be sent, and Operations works out the
+ * amount with the client before anything is approved — never presented as a
+ * confirmed quote. `blocked`: cancelling cannot be asked for from here.
+ */
+export type QuoteRefusal = { kind: "review" | "blocked"; code: string; message: string };
+
+const QUOTE_REFUSALS: Record<string, Omit<QuoteRefusal, "code">> = {
+  cancellation_legacy_review_required: {
+    kind: "review",
+    message:
+      "This order was placed under an older payment plan, so Operations works out the amount by hand. Send the request and they tell you the amount before anything is approved.",
+  },
+  cancellation_manual_review_required: {
+    kind: "review",
+    message:
+      "This order has extra work, an adjustment, or a date change on it, so Operations works out the amount by hand. Send the request and they tell you the amount before anything is approved.",
+  },
+  cancellation_delivery_review_required: {
+    kind: "review",
+    message:
+      "A rider is already on this order, so Operations works out what the trip cost before they settle the amount. Send the request and they tell you the amount before anything is approved.",
+  },
+  cancellation_after_delivery: {
+    kind: "blocked",
+    message: "This order has reached you, so it cannot be cancelled. If something is wrong with it, report a problem on the order instead.",
+  },
+  refund_state_conflict: {
+    kind: "blocked",
+    message: "This order already has a cancellation or refund being settled. Open the order to see where it stands.",
+  },
+  refund_already_open: {
+    kind: "blocked",
+    message: "This order already has a refund request open. Open the order to see where it stands.",
+  },
+  refund_collection_reconciliation_required: {
+    kind: "blocked",
+    message: "Operations is still checking a payment on this order. Ask again once it is confirmed, or message GRIDGO support.",
+  },
+  refund_no_available_funds: {
+    kind: "blocked",
+    message: "There is no confirmed payment left on this order to return, so there is nothing to refund.",
+  },
+};
+
+/** The refusal behind a quote error, or null for one that is not about the order (network, sign-in). */
+export function cancellationQuoteRefusal(error: unknown): QuoteRefusal | null {
+  if (!(error instanceof ApiError)) return null;
+  const known = QUOTE_REFUSALS[error.message];
+  return known ? { ...known, code: error.message } : null;
 }
 
 export const REFUND_CLOSED_COPY =
@@ -362,7 +435,7 @@ export type RefundBreakdown = {
  * same shape as the order's own money card.
  */
 export function refundBreakdown(
-  settlement: RefundSettlement,
+  settlement: RefundAmounts,
   order: Pick<
     Order,
     "payments" | "subtotalMinor" | "serviceFeeMinor" | "deliveryFeeMinor" | "totalMinor" | "fulfillmentMode"

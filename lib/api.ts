@@ -1046,6 +1046,24 @@ export type DeliveryMilestone = {
   at: string | null;
 };
 
+/**
+ * Operations' finding on a problem report, as the client may read it
+ * (gridgo-api `docs/REFUNDS_AND_FAULT_API.md`). Open strings: `fault` is
+ * `shop | rider | gridgo | client`, `remedy` is `reprint | replacement |
+ * partial_refund | full_refund | none`, `status` is `approved |
+ * awaiting_approval`. Funding and who recorded it are never sent to a client.
+ */
+export type IssueFaultDecision = {
+  id: string;
+  fault: string;
+  remedy: string;
+  /** Written for the client to read. */
+  reason: string;
+  status: string;
+  recordedAt: string;
+  approvedAt?: string | null;
+};
+
 export type Issue = {
   id: string;
   orderId: string;
@@ -1057,6 +1075,9 @@ export type Issue = {
   updatedAt: string;
   resolvedAt: string | null;
   resolution: string | null;
+  /** The client's own problem photos. Absent on a report from an older build. */
+  photoFileIds?: string[];
+  faultDecision?: IssueFaultDecision | null;
 };
 
 export type Notification = {
@@ -3162,6 +3183,22 @@ export async function saveAddress(input: {
   return result.address;
 }
 
+/**
+ * `DELETE /me/addresses/:id` — removes one of the client's own saved addresses.
+ *
+ * `defaultCleared` says it was the default; GRIDGO picks no replacement, so
+ * the app asks. Orders, baskets and receipts keep their own copy of where they
+ * were going. Unknown, already deleted and another client's ids are all
+ * `404 address_not_found`.
+ */
+export async function deleteAddress(addressId: string): Promise<{ defaultCleared: boolean }> {
+  const result = await request<{ ok: boolean; defaultCleared?: boolean }>(
+    `/me/addresses/${encodeURIComponent(addressId)}`,
+    { method: "DELETE" },
+  );
+  return { defaultCleared: result.defaultCleared === true };
+}
+
 // ---------------------------------------------------------------------------
 // The account itself
 //
@@ -4285,6 +4322,23 @@ export type RefundPayment = {
 
 export type RefundHistoryEntry = { kind: string; reason: string; at: string };
 
+/**
+ * The exact cash a cancellation returns right now
+ * (`GET /orders/:id/cancellation-quote`, gridgo-api
+ * `docs/REFUNDS_AND_FAULT_API.md`). `refund` has the shape of a settlement's
+ * amounts, and is drawn the same way: the fee inside Printing, never alone.
+ * The token is opaque and stands for the order's facts as quoted; confirming
+ * with it after they change is refused as `409 cancellation_quote_stale`.
+ */
+export type CancellationQuote = {
+  policyVersion: string;
+  quoteToken: string;
+  beforeProduction: boolean;
+  refund: RefundAmounts;
+};
+
+export type RefundAmounts = Pick<RefundSettlement, "principalMinor" | "feeMinor" | "deliveryMinor" | "totalMinor">;
+
 export type Refund = {
   id: string;
   orderId: string;
@@ -4304,6 +4358,8 @@ export type Refund = {
   history: RefundHistoryEntry[];
   settlement: RefundSettlement | null;
   payment: RefundPayment | null;
+  /** The quote the client confirmed. Absent on a request filed without one. */
+  cancellationQuote?: CancellationQuote | null;
 };
 
 export type RefundDestinationInput = {
@@ -4318,7 +4374,21 @@ export type RefundRequestInput = {
   reason: string;
   evidenceFileIds: string[];
   destination: RefundDestinationInput;
+  /** Only on a cancellation, and only the token of the quote the client just confirmed. */
+  cancellationQuoteToken?: string;
 };
+
+/**
+ * What cancelling returns now. Refused with the contract's codes when there
+ * is no automatic quote (`cancellationQuoteRefusal` in `lib/refunds.ts`).
+ * Reserves nothing and changes nothing.
+ */
+export async function getCancellationQuote(orderId: string): Promise<CancellationQuote> {
+  const result = await request<{ quote: CancellationQuote }>(
+    `/orders/${encodeURIComponent(orderId)}/cancellation-quote`,
+  );
+  return result.quote;
+}
 
 /** Every refund on one order, oldest first as the API keeps them. */
 export async function listOrderRefunds(orderId: string): Promise<Refund[]> {
@@ -4686,10 +4756,14 @@ export async function listOrderCallSignals(
   return { signals, cursor, call: readCall(result?.call) };
 }
 
-/** Report a material issue while the order's issue window is open. */
+/**
+ * Report a problem while the order's issue window is open. The photos are
+ * `refund_evidence` uploads; GRIDGO gathers the rest of the case itself, and
+ * that bundle is Operations' only — it is never sent to, or asked of, a client.
+ */
 export async function reportIssue(
   orderId: string,
-  input: { kind: string; description: string },
+  input: { problemType: string; description: string; photoFileIds: string[] },
 ): Promise<{ issue: Issue }> {
   return request(`/orders/${orderId}/issues`, {
     method: "POST",
