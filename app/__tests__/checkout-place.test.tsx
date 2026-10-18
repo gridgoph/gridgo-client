@@ -224,6 +224,8 @@ describe("placing the order", () => {
           method: "checkbox",
           versionIds: ["acceptable-use-1"],
         }),
+        // A basket from an API that names no approval method sends none.
+        null,
       ),
     );
     expect(api.setCartFulfilment).not.toHaveBeenCalled();

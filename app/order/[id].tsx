@@ -14,6 +14,7 @@ import { DeliveryPinCard } from "@/components/deliveryPin/DeliveryPinCard";
 import { ChangeHistory } from "@/components/orderChange/ChangeHistory";
 import { ChangeRequestCard } from "@/components/orderChange/ChangeRequestCard";
 import { DeliveryChatRow } from "@/components/DeliveryChatRow";
+import { ShopChatRow } from "@/components/ShopChatRow";
 import { MissedCallNotice } from "@/components/call/MissedCallNotice";
 import { PickupCounterCard } from "@/components/PickupCounterCard";
 import { DeliveryHandoverCard } from "@/components/DeliveryHandoverCard";
@@ -31,6 +32,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { ArtworkPanel } from "@/components/ArtworkPanel";
 import { DesignLinkRow } from "@/components/DesignLinkRow";
 import { ExactColoursRecord } from "@/components/ExactColoursRecord";
+import { ApprovalRecordSummary } from "@/components/approval/ApprovalRecordSummary";
 import { FoldSection } from "@/components/FoldSection";
 import { LatestProgressCard } from "@/components/LatestProgressCard";
 import { CoverSpineRecord } from "@/components/CoverSpineRecord";
@@ -55,6 +57,7 @@ import { formatPhp } from "@/lib/api";
 import { installmentStatusLabel, userFacingError } from "@/lib/copy";
 import { formatDeadline } from "@/lib/deadline";
 import { deliveryChatOf, deliveryChatRoute } from "@/lib/deliveryChat";
+import { shopChatOf, shopChatRoute, showsShopChatEntry } from "@/lib/shopChat";
 import { callWindowOpen, orderHasCalls } from "@/lib/orderCalls";
 import {
   collectsAtOffice,
@@ -91,6 +94,7 @@ import {
 } from "@/lib/orderSections";
 import { canRate } from "@/lib/rating";
 import { readyEarlyLabel } from "@/lib/readyTime";
+import { approvalSummaryLine } from "@/lib/approvalProof";
 import { currentRefund, refundEntry } from "@/lib/refunds";
 import { appliedChangeLine, deliveryPinNeedsClient } from "@/lib/deliveryPin";
 import { changeItemName, changeNeedsClient, changeRequestView, paidChanges } from "@/lib/orderChanges";
@@ -373,6 +377,9 @@ export default function OrderDetailScreen() {
   const chatSummary = deliveryChatOf(order);
   const deliveredChat = chatSummary?.status === "read_only" ? chatSummary : null;
   const openRiderChat = () => router.push(deliveryChatRoute(order.id));
+  // From the shop's acceptance until the check window closes, then kept as a record (#246).
+  const shopChat = shopChatOf(order);
+  const shopChatEntryShown = showsShopChatEntry(shopChat) ? shopChat : null;
   /** These zones say their own wait, and offer their own refund. */
   const shopDecision = actionZone === "refund" || actionZone === "recovery" || actionZone === "reschedule";
   /*
@@ -390,6 +397,7 @@ export default function OrderDetailScreen() {
     carries is still here; only where it sits changes.
   */
   const received = showsReceivedView(order, actionZone);
+  const approvalSummary = approvalSummaryLine(order);
   const detailsOpen = detailsFor === order.id;
   const helpOpen = helpFor === order.id;
 
@@ -615,6 +623,17 @@ export default function OrderDetailScreen() {
           }
         />
       </FoldSection>
+
+      {/* What the client approved, kept as evidence (gridgo-client#248). */}
+      {order.approvalProof && approvalSummary ? (
+        <FoldSection section="approval" title="Approval record" summary={approvalSummary} divided>
+          <ApprovalRecordSummary
+            orderId={order.id}
+            proof={order.approvalProof}
+            onOpen={() => router.push({ pathname: "/order/approval", params: { orderId: order.id } })}
+          />
+        </FoldSection>
+      ) : null}
     </View>
   );
 
@@ -631,6 +650,13 @@ export default function OrderDetailScreen() {
           onRequest={() =>
             router.push({ pathname: "/order/refund-request", params: { orderId: order.id } })
           }
+        />
+      ) : null}
+      {shopChatEntryShown ? (
+        <ShopChatRow
+          orderId={order.id}
+          chat={shopChatEntryShown}
+          onPress={() => router.push(shopChatRoute(order.id))}
         />
       ) : null}
       {deliveredChat ? (
@@ -678,6 +704,7 @@ export default function OrderDetailScreen() {
             refundUntil: refundOffered ? (refund.deadlineAt ?? null) : null,
             refund: refundOffered,
             riderChat: Boolean(deliveredChat),
+            shopChat: Boolean(shopChatEntryShown),
           })}
           icon={LifeBuoy}
           open={helpOpen}

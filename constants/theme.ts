@@ -110,10 +110,11 @@ export const colors = {
 export type ColorToken = keyof typeof colors.light;
 
 /**
- * The handover claim slip's paper and ink — the one surface that does not
- * switch with the theme. A QR scans as dark modules on light paper, and a
- * code shown to a rider in daylight wants the most contrast there is. Mirrors
- * the `slip-*` colours in `global.css`.
+ * Paper and ink that do not switch with the theme: the handover claim slip,
+ * and the signature pad and its previews. A QR scans as dark modules on light
+ * paper, a code shown to a rider in daylight wants the most contrast there
+ * is, and a signature is kept as black ink on white, so the pad shows exactly
+ * that. Mirrors the `slip-*` colours in `global.css`.
  */
 export const claimSlip = {
   paper: "#FFFFFF",

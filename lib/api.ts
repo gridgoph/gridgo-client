@@ -9,6 +9,13 @@ import type { PhysicalInvoiceDraft, PhysicalInvoiceRequest } from "@/lib/physica
 import type { DevicePlatform, PushTokenProvider } from "@/lib/push";
 import type { InstallChannel } from "@/lib/releasePush";
 import type { DeliveryChatMessage, DeliveryChatSummary } from "@/lib/deliveryChat";
+import {
+  shopChatFrom,
+  shopChatMessageFrom,
+  type ShopChat,
+  type ShopChatMessage,
+  type ShopChatReportReason,
+} from "@/lib/shopChat";
 import type { ArtworkColorsEntry, ColorTarget, ColorTargetInput } from "@/lib/colorTargets";
 import { readCall, readCalls, type CallIceConfig, type CallSignal, type OrderCall } from "@/lib/orderCalls";
 import { parseSeasonWindows, type SeasonWindows } from "@/lib/seasonWindows";
@@ -504,6 +511,11 @@ export type Order = {
    */
   deliveryChat?: DeliveryChatSummary | null;
   /**
+   * The masked conversation with the print shop (gridgo-client#246): its
+   * window and the server's reminder, never counts. Read it through `shopChatOf`.
+   */
+  clientShopChat?: unknown;
+  /**
    * The rider's six delivery steps, always in order (gridgo-api#217): sent on
    * every delivery order whether or not a position is shared. Absent on an
    * older API — read through `deliveryMilestonesOf` (`lib/tracking.ts`).
@@ -530,6 +542,12 @@ export type Order = {
   artworkFileIds?: string[];
   mockupFileIds?: string[];
   productionItems?: ProductionItem[];
+  /**
+   * The approval record's summary (gridgo-api `docs/APPROVAL_PROOF_API.md`):
+   * what the order requires and the records kept. The full records are read
+   * through `getApprovalProof`. Absent on an API from before it.
+   */
+  approvalProof?: OrderApprovalProof | null;
   /**
    * Whether the client collects this order or has it delivered.
    *
@@ -2877,6 +2895,11 @@ export type CartLineRecord = {
   coverSpine?: CoverSpineRecord | null;
   /** True when checkout will refuse this line without its cover and spine. */
   coverSpineRequired?: boolean;
+  /**
+   * How the client approves this line at checkout: a drawn signature for
+   * custom merchandise, one tap otherwise. Absent on an API from before.
+   */
+  approvalMethod?: ApprovalMethod;
 };
 
 /**
@@ -2913,7 +2936,10 @@ export type CartGroup = {
 export type Cart = {
   id: string;
   state: "draft" | "checked_out";
+  /** Moves on every change. Checkout's approval names the version reviewed. */
   version: number;
+  /** Whether GRIDGO refuses checkout without an approval. Absent on older APIs. */
+  approvalProofRequired?: boolean;
   serviceLevel: ServiceLevel;
   scheduledFor: string | null;
   /**
@@ -3565,6 +3591,7 @@ export async function checkoutCart(
   cartId: string,
   payment: { reference: string; proofFileId: string },
   artworkRights?: ArtworkRightsBody | null,
+  approval?: ApprovalBody | null,
 ): Promise<{ order: MatchedOrder; invoice: Invoice; basket?: Basket }> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
     method: "POST",
@@ -3575,6 +3602,8 @@ export async function checkoutCart(
       ...(artworkRights
         ? { legalConsentVersion: LEGAL_CONSENT_VERSION, artworkRights }
         : {}),
+      // One approval for the whole basket; GRIDGO keeps a record per order.
+      ...(approval ? { approval } : {}),
     }),
   });
 }
@@ -3851,6 +3880,156 @@ export async function answerCheckoutExitPrompt(
     method: "POST",
     body: JSON.stringify(answer),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Approval proof — see docs/APPROVAL_PROOF_API.md in gridgo-api
+// ---------------------------------------------------------------------------
+
+/** `one_tap` is "I approve this order"; `drawn` is a handwritten signature. */
+export type ApprovalMethod = "one_tap" | "drawn";
+
+/** What an order was told to collect, snapshotted when it was placed. */
+export type ApprovalRequirement = {
+  version: number;
+  required: boolean;
+  method: ApprovalMethod;
+};
+
+export type ApprovalDevice = { id: string; platform: string; appVersion: string };
+
+/** Sent with checkout, or with the sample decision. */
+export type ApprovalBody = {
+  accepted: true;
+  method: ApprovalMethod;
+  signatureFileId?: string;
+  samplePhotoFileId?: string;
+  expectedCartVersion?: number;
+  expectedSnapshotSha256?: string;
+  device: ApprovalDevice;
+};
+
+/** One item as it was approved. Fields an older order never had stay absent. */
+export type ApprovalSnapshotItem = {
+  id?: string;
+  itemNameSnapshot?: string;
+  descriptionSnapshot?: string;
+  quantity?: number;
+  quantityMode?: QuantityMode | null;
+  measurement?: ProductionItem["measurement"];
+  documentPages?: DocumentPages | null;
+  structuredSpecSnapshot?: Record<string, unknown>;
+  artworkFileId?: string | null;
+  artworkAttachments?: ArtworkAttachment[];
+  artworkLinks?: ArtworkLink[];
+  mockupFileId?: string | null;
+  printLayout?: PrintLayoutCode | null;
+  colorTargets?: ColorTarget[];
+  coverSpine?: CoverSpineRecord | null;
+  specialInstructions?: string;
+  artworkGuidance?: ArtworkGuidance | null;
+  options?: { groupNameSnapshot?: string; optionLabelSnapshot?: string; groupKindSnapshot?: string }[];
+  colourPricing?: { pages?: { pageNumber?: number; page?: number; tier?: string }[] } & Record<string, unknown>;
+};
+
+export type ApprovalSnapshotFile = {
+  fileId: string;
+  contentSha256?: string;
+  originalFilename?: string;
+  detectedContentType?: string;
+  size?: number;
+};
+
+/** The frozen specification a record holds. Never rebuilt from live data. */
+export type ApprovalSnapshot = {
+  orderId?: string;
+  basketId?: string | null;
+  quoteVersion?: number | null;
+  sampleRoundAt?: string | null;
+  items?: ApprovalSnapshotItem[];
+  quoteLines?: {
+    productId?: string;
+    label?: string;
+    quantity?: number;
+    size?: string;
+    material?: string;
+    finish?: string;
+    specialInstructions?: string;
+  }[];
+  specification?: {
+    title?: string;
+    quantity?: number;
+    size?: string;
+    material?: string;
+    finish?: string;
+    specialInstructions?: string;
+    artworkLinks?: ArtworkLink[];
+    artworkGuidance?: ArtworkGuidance | null;
+  };
+  artwork?: ApprovalSnapshotFile[];
+};
+
+export type ApprovalProofRecord = {
+  id: string;
+  version: number;
+  phase: "checkout" | "sample" | (string & {});
+  /** `legacy_unrecorded` means no approval was collected — never "approved". */
+  status: "approved" | "legacy_unrecorded" | (string & {});
+  method: ApprovalMethod | null;
+  at: string;
+  account?: { id?: string; name?: string; email?: string; accountType?: string } | null;
+  device?: ApprovalDevice | null;
+  userAgent?: string;
+  statement: string | null;
+  signatureFileId: string | null;
+  samplePhotoFileId: string | null;
+  sampleRoundAt?: string | null;
+  evidence?: { fileId: string; purpose: string; contentSha256?: string; detectedContentType?: string; size?: number }[];
+  snapshot: ApprovalSnapshot;
+  snapshotSha256: string;
+};
+
+/** What an ordinary order read carries: the requirement and one line per record. */
+export type OrderApprovalProof = {
+  requirement: ApprovalRequirement | null;
+  records: Pick<ApprovalProofRecord, "id" | "phase" | "status" | "method" | "at" | "snapshotSha256">[];
+  readUrl?: string;
+  downloadUrl?: string;
+};
+
+export type ApprovalProofRead = {
+  requirement: ApprovalRequirement | null;
+  approvalProofs: ApprovalProofRecord[];
+  /** The current candidate for a new approval — not evidence of one. */
+  review: { snapshot: ApprovalSnapshot; snapshotSha256: string };
+};
+
+/** `GET /orders/:id/approval-proof` — every record, and the current review. */
+export async function getApprovalProof(orderId: string): Promise<ApprovalProofRead> {
+  const result = await request<Partial<ApprovalProofRead>>(
+    `/orders/${encodeURIComponent(orderId)}/approval-proof`,
+  );
+  return {
+    requirement: result.requirement ?? null,
+    approvalProofs: Array.isArray(result.approvalProofs) ? result.approvalProofs : [],
+    review: result.review ?? { snapshot: {}, snapshotSha256: "" },
+  };
+}
+
+/** The signed-in request for the approval record PDF, for `lib/fileSave.ts`. */
+export async function approvalProofDownloadRequest(
+  orderId: string,
+): Promise<{ url: string; headers: Record<string, string> }> {
+  const token = await getAuthToken();
+  const headers: Record<string, string> = { Accept: "application/pdf" };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+    headers["X-GRIDGO-Role"] = "client";
+  }
+  return {
+    url: `${getApiBase()}/orders/${encodeURIComponent(orderId)}/approval-proof/download`,
+    headers,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -4370,6 +4549,53 @@ export async function sendDeliveryMessage(
       ...(options?.attachmentFileIds?.length ? { attachmentFileIds: options.attachmentFileIds } : {}),
     }),
   });
+}
+
+/**
+ * One page of the masked conversation with the print shop (`lib/shopChat.ts`),
+ * oldest first. `after` is the last message already shown; reading a page
+ * marks it read, and `chat.unread` is the count from before.
+ */
+export async function getShopChat(
+  orderId: string,
+  options?: { after?: string | null },
+): Promise<{ chat: ShopChat; messages: ShopChatMessage[]; nextAfter: string | null }> {
+  const query = options?.after ? `?after=${encodeURIComponent(options.after)}` : "";
+  const result = await request<{ chat?: unknown; messages?: unknown[]; nextAfter?: unknown }>(
+    `/orders/${encodeURIComponent(orderId)}/client-shop-chat${query}`,
+  );
+  return {
+    chat: shopChatFrom(result.chat),
+    messages: (result.messages ?? []).flatMap((row) => shopChatMessageFrom(row) ?? []),
+    nextAfter: typeof result.nextAfter === "string" ? result.nextAfter : null,
+  };
+}
+
+/** `attachmentFileIds` are `client_shop_chat_attachment` uploads; a file may be the whole message. */
+export async function sendShopChatMessage(
+  orderId: string,
+  body: string,
+  attachmentFileIds: string[] = [],
+): Promise<{ chat: ShopChat; message: ShopChatMessage | null; warning: string | null }> {
+  const result = await request<{ chat?: unknown; message?: unknown; warning?: unknown }>(
+    `/orders/${encodeURIComponent(orderId)}/client-shop-chat/messages`,
+    { method: "POST", body: JSON.stringify({ body, attachmentFileIds }) },
+  );
+  const chat = shopChatFrom(result.chat);
+  const warning = typeof result.warning === "string" && result.warning.trim() ? result.warning.trim() : chat.warning;
+  return { chat: { ...chat, warning }, message: shopChatMessageFrom(result.message), warning };
+}
+
+/** Flags the conversation for Operations. Repeating it is harmless: the first reason stands. */
+export async function reportShopChatMessage(
+  orderId: string,
+  messageId: string,
+  reason: ShopChatReportReason,
+): Promise<void> {
+  await request(
+    `/orders/${encodeURIComponent(orderId)}/client-shop-chat/messages/${encodeURIComponent(messageId)}/reports`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
 }
 
 // ---------------------------------------------------------------------------

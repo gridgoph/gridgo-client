@@ -35,6 +35,15 @@ describe("chat pushes (gridgo-client#231)", () => {
     expect(pushTargetRoute(push("delivery_message", "ord 7"))).toBe("/order/delivery-chat?orderId=ord%207");
   });
 
+  it("opens a message from the print shop or GRIDGO in the order's masked conversation (#246)", () => {
+    expect(pushTargetRoute(push("client_shop_chat_message", "ord 7"))).toBe("/order/shop-chat?orderId=ord%207");
+    expect(chatNotificationRoute({ type: "client_shop_chat_message", orderId: "ord_1" })).toBe(
+      "/order/shop-chat?orderId=ord_1",
+    );
+    // No order, no conversation to open: the inbox explains itself.
+    expect(pushTargetRoute(push("client_shop_chat_message"))).toBe("/(tabs)/notifications");
+  });
+
   it("opens an Operations message in chat history until its thread is read back", () => {
     // The push names no thread, and the newest thread may be another conversation.
     expect(pushTargetRoute(push("support_message"))).toBe("/chat");

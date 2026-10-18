@@ -146,5 +146,11 @@ describe("the received view (report 5A28D524)", () => {
     expect(helpSummary({ refund: false, refundUntil: null, riderChat: false })).toBe(
       "Message GRIDGO about this order",
     );
+    expect(helpSummary({ refund: false, refundUntil: null, riderChat: false, shopChat: true })).toBe(
+      "Message the print shop or GRIDGO",
+    );
+    expect(helpSummary({ refund: true, refundUntil: null, riderChat: true, shopChat: true })).toBe(
+      "Request a refund, or message the print shop, your rider or GRIDGO",
+    );
   });
 });

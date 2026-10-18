@@ -200,7 +200,7 @@ describe("OrderDetailScreen, paid in full", () => {
     // The record's sections open, as a client who keeps them open sees them.
     // Folding itself is tested in order-detail-sections.test.tsx.
     useOrderSections.setState({
-      open: { history: true, specifications: true, artwork: true, payment: true },
+      open: { history: true, specifications: true, artwork: true, payment: true, approval: true },
     });
     mockStackOptions.mockClear();
     mockCanGoBack.mockReturnValue(true);

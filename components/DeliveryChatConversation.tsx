@@ -2,29 +2,22 @@ import { useCallback, useContext, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { HeaderHeightContext } from "expo-router/react-navigation";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import {
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-  type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from "react-native";
-import { Bike, ImagePlus, Lock, Send, X } from "lucide-react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Bike, ImagePlus, Lock } from "lucide-react-native";
 
 import { ChatPhoto } from "@/components/ChatPhoto";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { OrderChatBubble } from "@/components/OrderChatBubble";
+import { OrderChatComposer } from "@/components/OrderChatComposer";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock } from "@/components/Skeleton";
-import { TextField } from "@/components/form/TextField";
+import { useChatTranscriptEnd } from "@/hooks/useChatTranscriptEnd";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { addChatPhotos } from "@/lib/chatImages";
-import { isAtChatEnd, shouldRepinOnResize } from "@/lib/chatScroll";
 import {
   DELIVERY_CHAT_IMAGE_PURPOSE,
   DELIVERY_CHAT_POLL_MS,
@@ -60,10 +53,8 @@ export function DeliveryChatConversation({
   onOpenOrder: () => void;
 }) {
   const colors = useThemeColors();
-  const listRef = useRef<ScrollView>(null);
+  const { listRef, trackEnd, keepEndInView, keepEndOnGrow, followNewMessages, jumpToEnd } = useChatTranscriptEnd();
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
-  const followingEnd = useRef(true);
-  const viewportHeight = useRef<number | null>(null);
   const sequence = useRef(0);
   const [chat, setChat] = useState<DeliveryChatSummary | null>(null);
   const [messages, setMessages] = useState<DeliveryChatMessage[]>([]);
@@ -85,9 +76,7 @@ export function DeliveryChatConversation({
       setLoadError(null);
       setMessages((previous) => {
         const grew = result.messages.length !== previous.length;
-        if (grew && followingEnd.current) {
-          requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: previous.length > 0 }));
-        }
+        if (grew) followNewMessages(previous.length > 0);
         return grew || result.messages.some((row, index) => row.id !== previous[index]?.id)
           ? result.messages
           : previous;
@@ -106,7 +95,7 @@ export function DeliveryChatConversation({
     } finally {
       if (current === sequence.current) setLoading(false);
     }
-  }, [orderId]);
+  }, [followNewMessages, orderId]);
 
   useLiveRefresh(["notifications", "orders"], load, { refreshOnFocus: false });
 
@@ -120,23 +109,6 @@ export function DeliveryChatConversation({
       };
     }, [load]),
   );
-
-  const trackEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
-    followingEnd.current = isAtChatEnd({
-      offsetY: contentOffset.y,
-      viewportHeight: layoutMeasurement.height,
-      contentHeight: contentSize.height,
-    });
-  }, []);
-
-  const keepEndInView = useCallback((event: LayoutChangeEvent) => {
-    const next = event.nativeEvent.layout.height;
-    if (shouldRepinOnResize(viewportHeight.current, next, followingEnd.current)) {
-      listRef.current?.scrollToEnd({ animated: false });
-    }
-    viewportHeight.current = next;
-  }, []);
 
   const pickPhoto = useCallback(async () => {
     const picker = getDocumentPickerNative();
@@ -179,8 +151,7 @@ export function DeliveryChatConversation({
       setMessages((current) =>
         current.some((row) => row.id === posted.message.id) ? current : [...current, posted.message],
       );
-      followingEnd.current = true;
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+      jumpToEnd();
     } catch (err) {
       setSendError(deliverySendError(err));
       // A refusal can mean the delivery just finished; re-read to say so.
@@ -188,9 +159,8 @@ export function DeliveryChatConversation({
     } finally {
       setSending(false);
     }
-  }, [draft, load, orderId, pending, sending]);
+  }, [draft, jumpToEnd, load, orderId, pending, sending]);
 
-  const canSend = !sending && Boolean(draft.trim() || pending.length);
   const open = chat?.status === "open";
 
   if (unavailable) {
@@ -258,6 +228,7 @@ export function DeliveryChatConversation({
               onScroll={trackEnd}
               scrollEventThrottle={32}
               onLayout={keepEndInView}
+              onContentSizeChange={keepEndOnGrow}
             >
               {loading && !chat ? (
                 <View className="gap-3">
@@ -271,36 +242,15 @@ export function DeliveryChatConversation({
                 />
               ) : (
                 messages.map((message) => (
-                  <View
+                  <OrderChatBubble
                     key={message.id}
-                    className={message.mine ? "max-w-[80%] items-end self-end" : "max-w-[80%] items-start self-start"}
-                  >
-                    <View
-                      className="rounded-card px-3 py-2"
-                      style={{
-                        backgroundColor: message.mine ? colors.accent : colors.surface,
-                        borderWidth: message.mine ? 0 : 1,
-                        borderColor: colors.outline,
-                      }}
-                    >
-                      {message.body ? (
-                        <Text
-                          className="text-body"
-                          style={{ color: message.mine ? colors.accentOn : colors.textPrimary }}
-                        >
-                          {message.body}
-                        </Text>
-                      ) : null}
-                      {message.attachments?.map((attachment) => (
-                        <View key={attachment.fileId} className={message.body ? "mt-2" : undefined}>
-                          <ChatPhoto attachment={attachment} />
-                        </View>
-                      ))}
-                    </View>
-                    <Text className="mt-1 text-caption text-text-muted">
-                      {senderLabel(message)} · {timeOf(message.createdAt)}
-                    </Text>
-                  </View>
+                    mine={message.mine}
+                    body={message.body}
+                    attachments={message.attachments?.map((attachment) => (
+                      <ChatPhoto key={attachment.fileId} attachment={attachment} />
+                    ))}
+                    caption={`${senderLabel(message)} · ${timeOf(message.createdAt)}`}
+                  />
                 ))
               )}
             </ScrollView>
@@ -312,65 +262,31 @@ export function DeliveryChatConversation({
             </Text>
           ) : null}
 
-          {open && pending.length ? (
-            <View className="flex-row items-center gap-2">
-              <Text className="min-w-0 flex-1 text-caption text-text-muted" numberOfLines={1}>
-                {pending.length === 1 ? pending[0].name : `${pending.length} photos ready to send`}
-              </Text>
-              <Pressable
-                onPress={() => setPending([])}
-                disabled={sending}
-                accessibilityRole="button"
-                accessibilityLabel={pending.length === 1 ? "Remove the photo" : "Remove the photos"}
-                className="gg-touch h-11 w-11 items-center justify-center"
-              >
-                <X size={16} color={colors.textMuted} strokeWidth={2} aria-hidden />
-              </Pressable>
-            </View>
-          ) : null}
-          {open && pending.length ? (
-            <WhyWeAsk>Your rider and GRIDGO Operations see these photos, to help with this delivery.</WhyWeAsk>
-          ) : null}
-
           {open ? (
-            <View className="flex-row items-end gap-2">
-              <Pressable
-                onPress={() => void pickPhoto()}
-                disabled={sending}
-                accessibilityRole="button"
-                accessibilityLabel="Add photos"
-                accessibilityState={{ disabled: sending }}
-                className="gg-touch h-12 w-12 items-center justify-center rounded-field"
-                style={{ borderWidth: 1, borderColor: colors.outline, opacity: sending ? 0.38 : 1 }}
-              >
-                <ImagePlus size={18} color={colors.textPrimary} strokeWidth={2} aria-hidden />
-              </Pressable>
-              <View className="min-w-0 flex-1">
-                <TextField
-                  value={draft}
-                  onChangeText={setDraft}
-                  placeholder="Write to your rider"
-                  accessibilityLabel="Message your rider"
-                  multiline
-                  maxLength={DELIVERY_MESSAGE_MAX}
-                  multilineMinHeight={48}
-                  editable={!sending}
-                  returnKeyType="send"
-                  onSubmitEditing={() => void send()}
-                />
-              </View>
-              <Pressable
-                onPress={() => void send()}
-                disabled={!canSend}
-                accessibilityRole="button"
-                accessibilityLabel="Send"
-                accessibilityState={{ disabled: !canSend }}
-                className="gg-touch h-12 w-12 items-center justify-center rounded-field bg-accent"
-                style={{ opacity: canSend ? 1 : 0.38 }}
-              >
-                <Send size={18} color={colors.accentOn} strokeWidth={2} aria-hidden />
-              </Pressable>
-            </View>
+            <OrderChatComposer
+              draft={draft}
+              onChangeDraft={setDraft}
+              onSend={() => void send()}
+              onAttach={() => void pickPhoto()}
+              sending={sending}
+              maxLength={DELIVERY_MESSAGE_MAX}
+              placeholder="Write to your rider"
+              fieldLabel="Message your rider"
+              attachIcon={ImagePlus}
+              attachLabel="Add photos"
+              pendingSummary={
+                pending.length === 0
+                  ? null
+                  : pending.length === 1
+                    ? pending[0].name
+                    : `${pending.length} photos ready to send`
+              }
+              clearPendingLabel={pending.length === 1 ? "Remove the photo" : "Remove the photos"}
+              onClearPending={() => setPending([])}
+              pendingNote={
+                <WhyWeAsk>Your rider and GRIDGO Operations see these photos, to help with this delivery.</WhyWeAsk>
+              }
+            />
           ) : chat ? (
             <SecondaryButton label="Back to the order" onPress={onOpenOrder} />
           ) : null}
