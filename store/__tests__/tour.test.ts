@@ -116,3 +116,31 @@ describe("screens", () => {
     expect(progress("usr_a")).toEqual({ status: "active", step: 0 });
   });
 });
+
+describe("controls that never show up", () => {
+  it("counts a control while it is mounted", () => {
+    useTour.getState().mount("pick");
+    useTour.getState().mount("pick");
+    useTour.getState().unmount("pick");
+    expect(useTour.getState().mounted.pick).toBe(1);
+    useTour.getState().unmount("pick");
+    useTour.getState().unmount("pick");
+    expect(useTour.getState().mounted.pick).toBe(0);
+  });
+
+  it("a new step is neither settled nor overdue", () => {
+    useTour.getState().settle("when");
+    useTour.getState().markOverdue("when");
+    useTour.getState().settle(null);
+    expect(useTour.getState().settled).toBeNull();
+    expect(useTour.getState().overdue).toBeNull();
+  });
+
+  it("passes only the step it was asked about", () => {
+    useTour.getState().autoStart("usr_a", true);
+    useTour.getState().pass("usr_a", "home.categories");
+    expect(progress("usr_a")).toEqual({ status: "active", step: 0 });
+    useTour.getState().pass("usr_a", "home.search");
+    expect(progress("usr_a")).toEqual({ status: "active", step: 1 });
+  });
+});

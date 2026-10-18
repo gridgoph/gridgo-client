@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
+import { Text } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import OrderReceiptScreen from "@/app/order/receipt";
 import { TourOverlay } from "@/components/TourOverlay";
+import { TourTarget } from "@/components/TourTarget";
 import type { Invoice, User } from "@/lib/api";
 import { holdPlacedReceipt, receiptFromCheckout } from "@/lib/receipt";
 import { TOUR_LENGTH } from "@/lib/tour";
@@ -134,11 +136,15 @@ it("drops the checkout card once the order is placed, and never blocks the print
     wrap(
       <>
         <OrderReceiptScreen />
+        {/* Checkout's Place order, still mounted under the receipt as it closes. */}
+        <TourTarget step="checkout">
+          <Text>Place order</Text>
+        </TourTarget>
         <TourOverlay ready />
       </>,
     ),
   );
-  expect(await screen.findByText(CHECKOUT_CARD)).toBeTruthy();
+  expect(await screen.findByText(CHECKOUT_CARD, {}, { timeout: 3000 })).toBeTruthy();
 
   // Placing the order dismisses checkout, and its blur hands the screen back.
   await act(() => useTour.getState().leave(checkoutFocus));

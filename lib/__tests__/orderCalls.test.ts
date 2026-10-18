@@ -5,6 +5,7 @@ import {
   callWindowOpen,
   endCopy,
   endReasonFor,
+  partyRoleWords,
   formatCallDuration,
   latestMissedCall,
   missedCallNotice,
@@ -141,21 +142,42 @@ describe("call states and endings", () => {
     [{ state: "cancelled", mine: false }, "missed"],
     [{ state: "ended", mine: true }, "ended"],
   ] as const)("says why %o ended: %s", (input, reason) => {
-    expect(endReasonFor({ ...input, endedByMe: false, connectionLost: false })).toBe(reason);
+    expect(endReasonFor({ ...input, endedByMe: false })).toBe(reason);
   });
 
-  it("tells a hang-up from a dropped connection", () => {
-    expect(endReasonFor({ state: "ended", mine: true, endedByMe: true, connectionLost: false })).toBe("ended_by_you");
-    expect(endReasonFor({ state: "ended", mine: true, endedByMe: false, connectionLost: true })).toBe("network_lost");
+  it("tells this phone's hang-up from theirs", () => {
+    expect(endReasonFor({ state: "ended", mine: true, endedByMe: true })).toBe("ended_by_you");
+    expect(endReasonFor({ state: "ended", mine: false, endedByMe: false })).toBe("ended");
   });
 
   it("has a plain sentence for each ending, and offers to call again where it helps", () => {
-    expect(endCopy("declined", "Sam", null)).toMatchObject({ title: "Sam declined", callAgain: true });
+    expect(endCopy("declined", "Sam", null)).toMatchObject({ title: "Sam declined", callAgain: true, message: true });
     expect(endCopy("no_answer", "Sam", null)).toMatchObject({ title: "No answer", callAgain: true });
     expect(endCopy("missed", "Sam", null)).toMatchObject({ title: "Missed call", callAgain: true });
-    expect(endCopy("network_lost", "Sam", 5_000)).toMatchObject({ title: "Connection lost", icon: "wifi-off" });
-    expect(endCopy("ended", "Sam", 65_000).detail).toBe("Sam ended the call · 1:05");
+    expect(endCopy("network_lost", "Sam", 5_000)).toMatchObject({
+      title: "Connection lost",
+      icon: "wifi-off",
+      duration: "0:05",
+      callAgain: true,
+    });
     expect(endCopy("unavailable", "Sam", null).callAgain).toBe(false);
+  });
+
+  it("says who hung up in role words, with the talk time, and offers Call again", () => {
+    expect(endCopy("ended", "Sam", 65_000, "rider")).toEqual({
+      title: "Call ended",
+      detail: "The rider ended the call.",
+      icon: "phone-off",
+      duration: "1:05",
+      callAgain: true,
+      message: false,
+    });
+    expect(endCopy("ended", "Sam", null, "supplier").detail).toBe("The shop ended the call.");
+    expect(endCopy("ended", "Sam", null, "client").detail).toBe("The customer ended the call.");
+    expect(endCopy("ended", "Sam", null, "").detail).toBe("They ended the call.");
+    expect(endCopy("ended", "Sam", null).duration).toBeNull();
+    expect(endCopy("ended_by_you", "Sam", 7_000)).toMatchObject({ detail: "You ended the call.", duration: "0:07", callAgain: false });
+    expect(partyRoleWords("rider")).toBe("The rider");
   });
 
   it("words a refused start", () => {

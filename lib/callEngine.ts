@@ -85,6 +85,15 @@ export type CallEngineDeps = {
 
 /** How long a dropped audio path may try to come back before the call is given up. */
 export const RECONNECT_GRACE_MS = 15_000;
+/**
+ * How long a failed audio path waits for GRIDGO to say why.
+ *
+ * Hanging up closes the audio first and tells GRIDGO a beat later, so on the
+ * other phone the path dies before the call reads `ended`. A failed path
+ * cannot come back, but it is not a lost connection until GRIDGO, asked
+ * again, still has the call running.
+ */
+export const DROP_SETTLE_MS = 4_000;
 /** A ringing call nobody can reach the server about is given up this long after its deadline. */
 const RING_SLACK_MS = 10_000;
 
@@ -107,7 +116,9 @@ export class CallEngine {
   private polling = false;
   private pollAgain = false;
   private endedByMe = false;
-  private connectionLost = false;
+  /** When the audio path dropped, while it is down. Talk time stops here. */
+  private droppedAt: number | null = null;
+  private dropDeadline: number | null = null;
   private finished = false;
 
   constructor(
@@ -355,22 +366,45 @@ export class CallEngine {
     if (state === "connected" || state === "completed") {
       if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
-      this.connectionLost = false;
+      this.droppedAt = this.dropDeadline = null;
       this.update({ phase: "connected", connectedAt: this.snapshot.connectedAt ?? this.now() });
       return;
     }
     if (state === "disconnected" && this.snapshot.phase === "connected") {
-      this.connectionLost = true;
-      this.update({ phase: "reconnecting" });
-      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = setTimeout(() => this.endFromHere("network_lost"), RECONNECT_GRACE_MS);
+      this.awaitDrop(RECONNECT_GRACE_MS);
       return;
     }
     if (state === "failed") {
-      // One negotiation per call: a dead path cannot be restarted, only redialled.
-      this.connectionLost = true;
-      this.endFromHere("network_lost");
+      // One negotiation per call: a dead path cannot be restarted, only
+      // redialled. But the other side hanging up looks exactly like this.
+      this.awaitDrop(DROP_SETTLE_MS);
     }
+  }
+
+  /**
+   * The audio path is down. Ask GRIDGO now, keep asking on the usual poll, and
+   * call it a lost connection only if the call is still running once `graceMs`
+   * is up — a drop that GRIDGO reads as `ended` is the other side hanging up.
+   */
+  private awaitDrop(graceMs: number): void {
+    const deadline = this.now() + graceMs;
+    if (this.dropDeadline != null && this.dropDeadline <= deadline) return;
+    this.droppedAt ??= this.now();
+    this.dropDeadline = deadline;
+    if (this.snapshot.phase === "connected") this.update({ phase: "reconnecting" });
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => void this.giveUpDrop(), graceMs);
+    this.schedulePoll(0);
+  }
+
+  private async giveUpDrop(): Promise<void> {
+    this.reconnectTimer = null;
+    const call = this.snapshot.call;
+    if (this.finished || !call) return;
+    const latest = await this.deps.api.getOrderCall(call.orderId, call.id).catch(() => null);
+    if (this.finished) return;
+    if (latest && isTerminalCall(latest)) return this.applyCall(latest);
+    this.endFromHere("network_lost");
   }
 
   /** Signals go out one at a time and in order; one retry covers a dropped response. */
@@ -451,12 +485,7 @@ export class CallEngine {
     this.adoptCall(call);
     if (isTerminalCall(call)) {
       this.finish(
-        endReasonFor({
-          state: call.state,
-          mine: call.mine,
-          endedByMe: this.endedByMe,
-          connectionLost: this.connectionLost,
-        }),
+        endReasonFor({ state: call.state, mine: call.mine, endedByMe: this.endedByMe }),
       );
       return;
     }
@@ -555,11 +584,12 @@ export class CallEngine {
     this.finished = true;
     this.release();
     const connectedAt = this.snapshot.connectedAt;
+    const stoppedAt = this.droppedAt ?? this.now();
     this.update({
       phase: "ended",
       ending: {
         reason,
-        durationMs: connectedAt != null ? this.now() - connectedAt : null,
+        durationMs: connectedAt != null ? Math.max(0, stoppedAt - connectedAt) : null,
         problem,
       },
     });

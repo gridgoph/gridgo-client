@@ -137,6 +137,17 @@ export function nextStep(progress: TourProgress): TourProgress {
 }
 
 /**
+ * A step whose control never appeared on its screen — the list it lights did
+ * not load, or this screen is drawn without it. The tour moves past it rather
+ * than dim a screen with nothing to explain. Only `id` is passed: a timer that
+ * fires after the client has already moved on changes nothing.
+ */
+export function passStep(progress: TourProgress, id: TourStepId): TourProgress {
+  if (progress.status !== "active" || TOUR_STEPS[progress.step]?.id !== id) return progress;
+  return nextStep(progress);
+}
+
+/**
  * Back only moves within the screen the client is on. The step before this
  * screen's first lives on the screen they came from, and the tour does not
  * navigate — the system back does that.
@@ -188,7 +199,9 @@ export type TourRect = { x: number; y: number; width: number; height: number };
 /**
  * Where the instruction card goes: under the lit control when it fits there,
  * over it when it fits there instead, and pinned to the bottom edge when the
- * control fills the screen. Coordinates are window pixels.
+ * control fills the screen. With nothing to light — the control is scrolled
+ * away, or this phone never reported where it is — the card sits in the middle
+ * of the screen, where it cannot be missed. Coordinates are window pixels.
  */
 export function placeCard({
   target,
@@ -204,10 +217,14 @@ export function placeCard({
   insetTop: number;
   insetBottom: number;
   gap?: number;
-}): { top: number; side: "below" | "above" | "pinned" } {
+}): { top: number; side: "below" | "above" | "pinned" | "centred" } {
   const floor = windowHeight - insetBottom - gap;
-  const pinned = { top: Math.max(insetTop + gap, floor - cardHeight), side: "pinned" as const };
-  if (!target) return pinned;
+  const ceiling = insetTop + gap;
+  const pinned = { top: Math.max(ceiling, floor - cardHeight), side: "pinned" as const };
+  if (!target) {
+    const middle = (windowHeight - cardHeight) / 2;
+    return { top: Math.max(ceiling, Math.min(middle, floor - cardHeight)), side: "centred" };
+  }
 
   const below = target.y + target.height + gap;
   if (below + cardHeight <= floor) return { top: below, side: "below" };
