@@ -103,7 +103,6 @@ describe("IssueWindowCard", () => {
     await renderInSafeArea(<IssueWindowCard order={order} onUpdated={jest.fn()} />);
 
     expect(await screen.findByText("Operations received your report.")).toBeTruthy();
-    expect(screen.getByText(/outcome within 2 business days/)).toBeTruthy();
     expect(screen.getByText("2 photos sent")).toBeTruthy();
     expect(screen.getByText("A reprint")).toBeTruthy();
     expect(screen.getByText("The reviewed photo shows the colour was wrong before pickup.")).toBeTruthy();

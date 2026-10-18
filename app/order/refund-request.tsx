@@ -15,6 +15,7 @@ import { RefundAccountFields } from "@/components/refund/RefundAccountFields";
 import { RefundBreakdownCard } from "@/components/refund/RefundBreakdownCard";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonLine, SkeletonList } from "@/components/Skeleton";
+import { StatusChip } from "@/components/StatusChip";
 import * as api from "@/lib/api";
 import type { RefundKind } from "@/lib/api";
 import { refundErrorMessage } from "@/lib/copy";
@@ -276,8 +277,8 @@ export default function RefundRequestScreen() {
     >
       <View className="gg-page gap-8 pb-8 pt-4">
         {quoteNotice ? (
-          <View className="gg-panel gap-1" accessibilityLiveRegion="polite">
-            <Text className="text-body-lg font-medium text-text-primary">Check the amount again</Text>
+          <View className="gg-panel items-start gap-2" accessibilityLiveRegion="polite">
+            <StatusChip tone="warning" label="Check the amount again" icon="triangle-alert" />
             <Text className="text-body text-text-secondary">{quoteNotice}</Text>
           </View>
         ) : null}

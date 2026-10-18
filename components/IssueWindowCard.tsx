@@ -202,7 +202,8 @@ export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
           </View>
         ) : null}
         <Text className="text-h3 text-text-primary">{status.headline}</Text>
-        <Text className="text-body text-text-secondary">{status.detail}</Text>
+        {/* Once Operations has a finding, it is the answer the detail promised. */}
+        {decision ? null : <Text className="text-body text-text-secondary">{status.detail}</Text>}
         {!liveClock && (status.elapsedLabel || status.remainingLabel) ? (
           <Text className="text-caption text-text-muted">
             {[status.elapsedLabel, status.remainingLabel].filter(Boolean).join(" · ")}
