@@ -80,4 +80,36 @@ it("says the connection was lost", async () => {
     <CallScreen {...handlers} session={snapshot({ phase: "ended", ending: { reason: "network_lost", durationMs: 30_000, problem: null } })} />,
   );
   expect(screen.getByText("Connection lost")).toBeTruthy();
+  expect(screen.getByText("0:30")).toBeTruthy();
+  expect(screen.getByText("Call again")).toBeTruthy();
+});
+
+it("says the rider ended the call, for how long, with Call again and Close", async () => {
+  const ended = {
+    id: "call_1",
+    orderId: "ord_example",
+    pair: "delivery",
+    state: "ended",
+    caller: { firstName: "Alex", role: "client" },
+    callee: { firstName: "Sam", role: "rider" },
+    mine: true,
+    createdAt: "2026-10-08T08:00:00.000Z",
+    ringExpiresAt: null,
+    acceptedAt: "2026-10-08T08:00:05.000Z",
+    endedAt: "2026-10-08T08:02:19.000Z",
+    leaseExpiresAt: null,
+  };
+  await render(
+    <CallScreen
+      {...handlers}
+      session={snapshot({ phase: "ended", call: ended, ending: { reason: "ended", durationMs: 134_000, problem: null } })}
+    />,
+  );
+  expect(screen.getByLabelText("Call ended. The rider ended the call. Call length 2:14")).toBeTruthy();
+  expect(screen.getByText("The rider ended the call.")).toBeTruthy();
+  expect(screen.getByText("2:14")).toBeTruthy();
+  expect(screen.getByText("Call again")).toBeTruthy();
+  expect(screen.getByText("Close")).toBeTruthy();
+  expect(screen.queryByText("Connection lost")).toBeNull();
+  expect(screen.queryByText("Send a message")).toBeNull();
 });
