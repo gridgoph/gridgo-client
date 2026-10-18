@@ -191,6 +191,8 @@ export type PlaceOrderBlocker =
   | "reference"
   | "proof"
   | "rights"
+  | "approval"
+  | "approval_signature"
   | "settings";
 
 /** Quiet helper on the basket lines. Swipe is not the only remove path. */
@@ -223,6 +225,7 @@ export function placeOrderBlockers({
   hasProof,
   hasSettings,
   rightsAgreed = true,
+  approval = "given",
 }: {
   lineCount: number;
   /**
@@ -280,6 +283,12 @@ export function placeOrderBlockers({
   hasSettings: boolean;
   /** The per-order artwork rights box (`docs/LEGAL_API.md`). */
   rightsAgreed?: boolean;
+  /**
+   * The client's approval of the basket (gridgo-client#248): `given` once
+   * they tapped or signed for exactly this version, else what is still asked.
+   * An API that names no approval method asks nothing.
+   */
+  approval?: "given" | "one_tap" | "drawn";
 }): PlaceOrderBlocker[] {
   const blockers: PlaceOrderBlocker[] = [];
   if (lineCount === 0) blockers.push("empty");
@@ -297,6 +306,8 @@ export function placeOrderBlockers({
   if (!hasProof) blockers.push("proof");
   if (!referenceOk) blockers.push("reference");
   if (!rightsAgreed) blockers.push("rights");
+  if (approval === "one_tap") blockers.push("approval");
+  if (approval === "drawn") blockers.push("approval_signature");
   if (!hasSettings) blockers.push("settings");
   return blockers;
 }
@@ -353,6 +364,10 @@ export function blockerLine(blocker: PlaceOrderBlocker, detail?: string): string
       return "Enter the reference number from your payment receipt.";
     case "rights":
       return "Tick the box to say you have the right to print this artwork.";
+    case "approval":
+      return "Tick \"I approve this order\" at the end of this page.";
+    case "approval_signature":
+      return "Sign to approve your order at the end of this page.";
     case "settings":
       return "GRIDGO could not read its current charges. Try again in a moment.";
   }

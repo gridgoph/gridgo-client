@@ -395,6 +395,21 @@ function AppNavigation() {
                   name="order/physical-invoice"
                   options={pushedScreenOptions("Physical invoice")}
                 />
+                {/*
+                  Approving an order (gridgo-client#248): the record of what
+                  was approved, the received-sample approval, and the screen
+                  the client signs on — a page of its own that never scrolls,
+                  so nothing competes with the pen.
+                */}
+                <Stack.Screen
+                  name="order/approval"
+                  options={pushedScreenOptions("Approval record")}
+                />
+                <Stack.Screen
+                  name="order/approve-sample"
+                  options={pushedScreenOptions("Approve the sample")}
+                />
+                <Stack.Screen name="approval/sign" options={pushedScreenOptions("Sign to approve")} />
                 {/* The client and their rider, during one delivery (#198). */}
                 <Stack.Screen
                   name="order/delivery-chat"

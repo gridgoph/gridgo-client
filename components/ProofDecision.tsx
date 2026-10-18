@@ -61,6 +61,10 @@ export function ProofDecision({
     (record) => (record.file.warnings ?? []).length > 0,
   );
   const several = new Set(checks.map((record) => record.itemName)).size > 1;
+  // GRIDGO records this approval (gridgo-client#248): it is signed by hand,
+  // with a photo of the sample received, on a screen of its own. An API from
+  // before approval records keeps the one-question confirmation.
+  const signsApproval = Boolean(order.approvalProof);
 
   const approve = async () => {
     setBusy(true);
@@ -155,8 +159,17 @@ export function ProofDecision({
         <PrimaryButton
           label="Approve & continue"
           disabled={busy}
-          onPress={() => setConfirmApprove(true)}
+          onPress={() =>
+            signsApproval
+              ? router.push({ pathname: "/order/approve-sample", params: { orderId: order.id } })
+              : setConfirmApprove(true)
+          }
         />
+        {signsApproval ? (
+          <Text className="text-caption text-text-muted">
+            You will add a photo of the sample you received and sign to approve it.
+          </Text>
+        ) : null}
         <SecondaryButton
           label="Request changes"
           disabled={busy}

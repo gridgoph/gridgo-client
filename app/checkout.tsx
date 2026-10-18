@@ -25,6 +25,7 @@ import {
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 
+import { CheckoutApproval } from "@/components/approval/CheckoutApproval";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DeliveryZonesHelp } from "@/components/DeliveryZonesHelp";
 import { EmptyState } from "@/components/EmptyState";
@@ -134,6 +135,14 @@ import { useNotificationNudge } from "@/store/notificationNudge";
 import { useVouchers } from "@/store/vouchers";
 import { voucherDiscountOf, voucherErrorMessage } from "@/lib/vouchers";
 import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
+import {
+  approvalDevice,
+  approvalErrorMessage,
+  approvalIsStale,
+  approvalRefusalCode,
+  basketApprovalMethod,
+} from "@/lib/approvalProof";
+import { approvalStatus, cartApprovalScope, useApproval } from "@/store/approval";
 
 /**
  * The checkout sheet.
@@ -183,6 +192,7 @@ export default function CheckoutScreen() {
   const [attempted, setAttempted] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const [showQr, setShowQr] = useState(false);
   const [viewingProof, setViewingProof] = useState(false);
   // The line a swipe or a Remove tap has asked about. Nothing leaves the
@@ -190,7 +200,7 @@ export default function CheckoutScreen() {
   const [removing, setRemoving] = useState<CartLineRecord | null>(null);
   const scrollRef = useRef<{ scrollTo?: (opts: { y: number; animated?: boolean }) => void }>(null);
   const contentRef = useRef<View>(null);
-  const fields = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference" | "rights", View | null>>>({});
+  const fields = useRef<Partial<Record<"artwork" | "address" | "proof" | "reference" | "rights" | "approval", View | null>>>({});
   const placedOrder = useRef(false);
 
   // One funnel visit per time checkout opens. Fixing artwork, the address or a
@@ -319,6 +329,14 @@ export default function CheckoutScreen() {
   const referenceCheck = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
   const shopClosed = lines.filter((line) => shopPaused(line.listing?.shopHours));
+  // How GRIDGO wants this basket approved (gridgo-client#248), and whether the
+  // client has approved exactly this version of it. Any change to the basket
+  // moves its version, so an approval given before it no longer counts.
+  const approvalMethod = basketApprovalMethod(cart);
+  const approvalScope = cartId ? cartApprovalScope(cartId) : null;
+  const reviewedVersion = cart ? String(cart.version) : "";
+  const approvalDraft = useApproval((state) => (approvalScope ? state.drafts[approvalScope] : undefined));
+  const approvalState = approvalMethod ? approvalStatus(approvalDraft, approvalMethod, reviewedVersion) : "given";
   const blockers = placeOrderBlockers({
     lineCount: lines.length,
     linesShopClosed: shopClosed.length,
@@ -338,6 +356,7 @@ export default function CheckoutScreen() {
     hasProof: Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
     rightsAgreed,
+    approval: approvalMethod && approvalState !== "given" ? approvalMethod : "given",
   });
 
   /** Every basket change goes through GRIDGO and stores what comes back. */
@@ -514,7 +533,9 @@ export default function CheckoutScreen() {
               ? "reference"
               : blocker === "rights"
                 ? "rights"
-                : null;
+                : blocker === "approval" || blocker === "approval_signature"
+                  ? "approval"
+                  : null;
     if (!key) return;
     const content = contentRef.current;
     if (!content) return;
@@ -547,11 +568,17 @@ export default function CheckoutScreen() {
     if (blockers.length || ocrReading || placing || !cartId || !proof.state.fileId) return;
     setPlacing(true);
     setPlaceError(null);
+    setApprovalError(null);
     try {
+      // The version the client approved. Setting the default level below is
+      // GRIDGO's own default, not a change to what they approved, so the
+      // approval follows the version that write answers with.
+      let approvedVersion = cart?.version ?? null;
       // The cart already carries when the job is wanted. Checkout does not
       // ask again. A basket with no level at all is the platform default.
       if (!cart?.serviceLevel) {
-        await api.setCartFulfilment(cartId, { serviceLevel: "standard" });
+        const after = await api.setCartFulfilment(cartId, { serviceLevel: "standard" });
+        approvedVersion = after.version;
       }
       // A voucher can run out or be released between the screen and the tap,
       // and GRIDGO then writes the order at the full price. The payment the
@@ -568,6 +595,20 @@ export default function CheckoutScreen() {
           return;
         }
       }
+      // One approval for the basket; GRIDGO records it against every order
+      // the basket becomes. A drawn one sends its signature first.
+      const approval: api.ApprovalBody | null =
+        approvalMethod && approvalScope && approvedVersion != null
+          ? {
+              accepted: true,
+              method: approvalMethod,
+              ...(approvalMethod === "drawn"
+                ? { signatureFileId: await useApproval.getState().signatureFileId(approvalScope) }
+                : {}),
+              expectedCartVersion: approvedVersion,
+              device: await approvalDevice(),
+            }
+          : null;
       // The order's own notices land while its receipt prints: no chime over the print.
       useNotificationNudge.getState().hush(PLACE_HUSH_MS);
       const { order, invoice, basket } = await api.checkoutCart(
@@ -578,6 +619,7 @@ export default function CheckoutScreen() {
         },
         // Recorded by GRIDGO against every order this basket becomes.
         await artworkRightsPayload(),
+        approval,
       );
       placedOrder.current = true;
       void api.recordFunnel({ kind: "paid", orderId: order.id });
@@ -587,11 +629,30 @@ export default function CheckoutScreen() {
       const placed = receiptFromCheckout(invoice, order, reference);
       holdPlacedReceipt(placed && basket?.groups ? withBasket(placed, basket) : placed);
       resetPayment();
+      if (approvalScope) useApproval.getState().withdraw(approvalScope);
       useBasketGroupTarget.getState().clear();
       clearCart();
       clearOrderFlow();
       openReceiptAfterCheckout(router, order.id);
     } catch (e) {
+      // The approval was refused: said beside the approval, where the fix is.
+      // A basket that changed since it was approved is read again and asked
+      // for again, the same as GRIDGO asks.
+      const approvalCode = approvalRefusalCode(e);
+      if (approvalCode || (e instanceof Error && e.message === "signature_missing")) {
+        const message =
+          approvalErrorMessage(approvalCode) ??
+          "Your signature did not reach GRIDGO. Sign again and place the order once more.";
+        if (approvalIsStale(approvalCode) || !approvalCode) {
+          if (approvalScope) useApproval.getState().withdraw(approvalScope);
+          void loadCart();
+        }
+        setAttempted(true);
+        setApprovalError(message);
+        setPlaceError(message);
+        scrollToBlocker(approvalMethod === "drawn" ? "approval_signature" : "approval");
+        return;
+      }
       // The artwork was turned down (#122): the reason belongs on the line
       // and on its Artwork screen, where the fix is, not only in the footer.
       const refusal = e instanceof api.ApiError ? artworkRefusalOf(e.body) : null;
@@ -1385,6 +1446,40 @@ export default function CheckoutScreen() {
                   {blockerLine("rights")}
                 </Text>
               ) : null}
+            </View>
+          </Section>
+        ) : null}
+
+        {/*
+          The approval GRIDGO keeps with the order (gridgo-client#248): what is
+          being approved, then the tap or the signature. Last, because it
+          covers everything above it.
+        */}
+        {approvalMethod && approvalScope ? (
+          <Section title="APPROVE YOUR ORDER">
+            <View collapsable={false} ref={(node) => { fields.current.approval = node; }}>
+              <CheckoutApproval
+                method={approvalMethod}
+                lines={lines}
+                status={approvalState}
+                signature={approvalDraft?.signature ?? null}
+                onTap={(approved) => {
+                  setApprovalError(null);
+                  if (approved) useApproval.getState().approve(approvalScope, reviewedVersion);
+                  else useApproval.getState().withdraw(approvalScope);
+                }}
+                onSign={() => {
+                  setApprovalError(null);
+                  router.push({ pathname: "/approval/sign", params: { scope: approvalScope, reviewed: reviewedVersion } });
+                }}
+                error={
+                  approvalError ??
+                  (attempted && (blockers.includes("approval") || blockers.includes("approval_signature"))
+                    ? blockerLine(blockers.includes("approval") ? "approval" : "approval_signature")
+                    : null)
+                }
+                disabled={placing}
+              />
             </View>
           </Section>
         ) : null}

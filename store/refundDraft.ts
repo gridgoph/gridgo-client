@@ -1,8 +1,8 @@
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
-import { artworkErrorMessage, normalizeFileName } from "@/lib/artworkUpload";
-import { FILE_PICKER_NEEDS_REBUILD, getDocumentPickerNative } from "@/lib/nativeModules";
+import { artworkErrorMessage } from "@/lib/artworkUpload";
+import { pickImage as pickAnyImage } from "@/lib/pickImage";
 import {
   MAX_REFUND_EVIDENCE,
   REFUND_EVIDENCE_MAX_MIB,
@@ -73,41 +73,15 @@ const EMPTY: Draft = {
   error: null,
 };
 
-const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const REFUND_UNREADABLE = "That image could not be read. Take the screenshot again, or pick it from Photos.";
+const pickImage = () => pickAnyImage(REFUND_UNREADABLE);
+
 const handles = new Map<string, api.UploadHandle>();
 let uploadSeq = 0;
 
 function cancelAll() {
   for (const handle of handles.values()) handle.cancel();
   handles.clear();
-}
-
-type Picked = { asset: api.UploadAsset & { size?: number } } | { error: string } | null;
-
-async function pickImage(): Promise<Picked> {
-  const picker = getDocumentPickerNative();
-  if (!picker) return { error: FILE_PICKER_NEEDS_REBUILD };
-  try {
-    const result = await picker.getDocumentAsync({
-      type: IMAGE_TYPES,
-      multiple: false,
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled) return null;
-    const asset = result.assets?.[0];
-    if (!asset?.uri) return { error: "That image could not be read. Take the screenshot again, or pick it from Photos." };
-    return {
-      asset: {
-        uri: asset.uri,
-        name: normalizeFileName(asset.name),
-        mimeType: asset.mimeType ?? null,
-        file: "file" in asset ? (asset as { file?: Blob }).file : undefined,
-        size: typeof asset.size === "number" ? asset.size : undefined,
-      },
-    };
-  } catch {
-    return { error: "The picker did not open. Try again, and check GRIDGO has access to your photos." };
-  }
 }
 
 export const useRefundDraft = create<Draft & Actions>((set, get) => {
