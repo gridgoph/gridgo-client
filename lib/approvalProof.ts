@@ -33,6 +33,7 @@ import { lineName, lineOptionLabels } from "@/lib/basket";
 import { quantityUnit } from "@/lib/colourPricing";
 import { linkDisplay, linkLabel, lineArtworkLinks } from "@/lib/designLink";
 import { installationId } from "@/lib/legalContext";
+import { quantityLine as listingQuantityLine } from "@/lib/listing";
 import { layoutLabel } from "@/lib/printLayout";
 
 /** The words a one-tap approval records, exactly as GRIDGO stores them. */
@@ -157,7 +158,10 @@ export function cartLineReview(line: CartLineRecord): ApprovalReviewItem {
   return {
     key: line.id,
     name: lineName(line),
-    quantity: quantityLine(line.quantity, line.quantityMode),
+    quantity:
+      !line.quantityMode && line.listing?.pricingUnit === "per_package"
+        ? listingQuantityLine(line.listing, line.quantity)
+        : quantityLine(line.quantity, line.quantityMode),
     specs,
     artwork,
     instructions: line.specialInstructions?.trim() || null,
@@ -284,7 +288,7 @@ export function approvalRecordView(record: RecordLike): ApprovalRecordView {
       approved: false,
       statusLabel: "No approval recorded",
       methodLabel: null,
-      body: "This order was placed before GRIDGO asked for approval, so no approval was collected. GRIDGO kept a copy of what was ordered.",
+      body: "No approval was collected when this order was placed. GRIDGO kept a copy of what was ordered.",
     };
   }
   return { title, approved: false, statusLabel: "Not recorded", methodLabel: null, body: null };

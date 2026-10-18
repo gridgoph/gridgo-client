@@ -13,7 +13,7 @@ import { useApproval } from "@/store/approval";
 /**
  * Signing an approval by hand (gridgo-client#248).
  *
- * A page of its own, with nothing on it that scrolls: on a scrolling sheet a
+ * A page of its own, with nothing on it that scrolls: on a scrolling page a
  * downstroke and a scroll are the same gesture, and one of them loses. The
  * client signs under the one sentence GRIDGO records, keeps the signature,
  * and goes back to the screen that asked — checkout, or the sample approval —

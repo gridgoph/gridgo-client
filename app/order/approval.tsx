@@ -83,6 +83,7 @@ export default function ApprovalRecordScreen() {
   }
 
   const records = [...proof.approvalProofs].reverse();
+  const anyApproved = records.some((record) => approvalRecordView(record).approved);
 
   return (
     <Screen edges={["bottom"]}>
@@ -91,8 +92,9 @@ export default function ApprovalRecordScreen() {
           <Text className="text-h2 text-text-primary">Approval record</Text>
           {orderId ? <OrderReference id={orderId} /> : null}
           <Text className="text-body text-text-secondary">
-            What you approved, kept by GRIDGO exactly as it was when you approved it. If there is ever a
-            disagreement about the print, this record is what a correct print is.
+            {anyApproved
+              ? "What you approved, kept by GRIDGO exactly as it was when you approved it. If there is ever a disagreement about the print, this record is what a correct print is."
+              : "What GRIDGO kept of this order when it was placed."}
           </Text>
         </View>
 
@@ -159,7 +161,8 @@ function RecordCard({ record }: { record: api.ApprovalProofRecord }) {
         {view.approved && device ? <SpecRow label="Device" value={device} /> : null}
       </View>
 
-      {view.approved && record.statement ? (
+      {/* One tap's How already quotes the statement. */}
+      {view.approved && record.statement && record.method !== "one_tap" ? (
         <Text className="text-body-lg text-text-primary">&quot;{record.statement}&quot;</Text>
       ) : null}
 

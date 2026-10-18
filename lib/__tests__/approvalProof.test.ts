@@ -77,6 +77,7 @@ describe("what the client is shown before approving", () => {
         optionIds: ["o_a4"],
         listing: checkoutListing({
           name: "Event shirts",
+          pricingUnit: "per_unit",
           optionGroups: [
             {
               id: "g", name: "Size", kind: "spec", helpText: null, required: true, selectionMode: "single",
@@ -111,6 +112,13 @@ describe("what the client is shown before approving", () => {
       instructions: "Logo on the left chest",
       acceptedWarnings: ["Lower resolution than recommended · accepted 18 Oct, 2:00 PM"],
     });
+  });
+
+  it("counts a packaged product in packs and pieces, as the order screen did", () => {
+    const review = cartLineReview(
+      line({ quantity: 2, listing: checkoutListing({ name: "Business cards", pricingUnit: "per_package", packageQty: 100 }) }),
+    );
+    expect(review.quantity).toBe("2 packs · 200 pieces");
   });
 });
 
@@ -187,7 +195,7 @@ describe("the approval record", () => {
     const view = approvalRecordView({ phase: "checkout", status: "legacy_unrecorded", method: null });
     expect(view.approved).toBe(false);
     expect(view.statusLabel).toBe("No approval recorded");
-    expect(view.body).toMatch(/no approval was collected/);
+    expect(view.body).toMatch(/No approval was collected/);
   });
 
   it("sums the record up in one line under the folded heading", () => {

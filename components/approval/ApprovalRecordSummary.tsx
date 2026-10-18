@@ -34,6 +34,8 @@ export function ApprovalRecordSummary({ orderId, proof, onOpen }: Props) {
     );
   }
 
+  const anyApproved = proof.records.some((record) => approvalRecordView(record).approved);
+
   const download = async () => {
     setSaving(true);
     const result = await downloadApprovalProof(orderId);
@@ -72,7 +74,9 @@ export function ApprovalRecordSummary({ orderId, proof, onOpen }: Props) {
       >
         <View className="min-w-0 flex-1">
           <Text className="text-body font-medium text-text-primary">View the approval record</Text>
-          <Text className="text-caption text-text-muted">What you approved, with your signature or tap.</Text>
+          <Text className="text-caption text-text-muted">
+            {anyApproved ? "What you approved, with your signature or tap." : "What GRIDGO kept when this order was placed."}
+          </Text>
         </View>
         <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} aria-hidden />
       </Pressable>

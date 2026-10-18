@@ -81,7 +81,8 @@ it("says plainly when no approval was collected", async () => {
   await renderScreen(<ApprovalRecordScreen />);
 
   expect(await screen.findByText("No approval recorded")).toBeTruthy();
-  expect(screen.getByText(/no approval was collected/)).toBeTruthy();
+  expect(screen.getByText("No approval was collected when this order was placed. GRIDGO kept a copy of what was ordered.")).toBeTruthy();
+  expect(screen.getByText("What GRIDGO kept of this order when it was placed.")).toBeTruthy();
   expect(screen.getByText("WHAT WAS ORDERED")).toBeTruthy();
   expect(screen.queryByText("Signed")).toBeNull();
   expect(screen.queryByText('"I approve this order"')).toBeNull();

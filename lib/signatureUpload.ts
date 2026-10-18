@@ -3,7 +3,7 @@
  *
  * The PNG is made in memory (`lib/signature.ts`) and is small — a few hundred
  * kilobytes at most — so unlike artwork it can be held whole. The web hands
- * `FormData` a Blob; a phone writes the bytes to the cache first, because
+ * `FormData` a named File; a phone writes the bytes to the cache first, because
  * React Native's `FormData` streams a file part from a URI.
  */
 
@@ -20,7 +20,9 @@ async function signatureAsset(png: Uint8Array): Promise<api.UploadAsset> {
   if (Platform.OS === "web") {
     const copy = new Uint8Array(png.length);
     copy.set(png);
-    return { uri: name, name, mimeType: "image/png", file: new Blob([copy.buffer], { type: "image/png" }) };
+    // A File, not a bare Blob: a Blob goes up named "blob", and GRIDGO refuses
+    // a file whose name, bytes and type do not agree.
+    return { uri: name, name, mimeType: "image/png", file: new File([copy.buffer], name, { type: "image/png" }) };
   }
   const base64 = bytesToBase64(png);
   const FileSystem = getFileSystemLegacyNative();

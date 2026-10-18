@@ -3,8 +3,8 @@
  * approval record.
  *
  * The bytes are fetched with the session's bearer, so they cannot be opened as
- * a plain link. No new library: the web downloads a blob, iOS offers the share
- * sheet (React Native's `Share` takes a file URL there), and Android asks for a
+ * a plain link. No new library: the web downloads a blob, iOS opens its share
+ * panel (React Native's `Share` takes a file URL there), and Android asks for a
  * folder through the Storage Access Framework that `expo-file-system` already
  * carries.
  */

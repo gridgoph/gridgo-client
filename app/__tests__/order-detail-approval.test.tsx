@@ -73,6 +73,7 @@ it("opens onto each record, the full record and the PDF", async () => {
   expect(screen.getByText("Signed")).toBeTruthy();
   expect(screen.getByText("Signed by hand · 18 Oct 2026, 2:30 PM")).toBeTruthy();
   expect(screen.getByRole("button", { name: "View the approval record" })).toBeTruthy();
+  expect(screen.getByText("What you approved, with your signature or tap.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Download the approval record as a PDF" })).toBeTruthy();
 });
 
@@ -82,6 +83,8 @@ it("never reads an order placed without an approval as approved", async () => {
   expect((await screen.findAllByText("No approval recorded")).length).toBe(2);
   expect(screen.queryByText("Signed")).toBeNull();
   expect(screen.queryByText("Approved")).toBeNull();
+  expect(screen.getByText("What GRIDGO kept when this order was placed.")).toBeTruthy();
+  expect(screen.queryByText("What you approved, with your signature or tap.")).toBeNull();
 });
 
 it("draws no approval section on an API from before approval records", async () => {
