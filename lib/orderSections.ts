@@ -167,16 +167,20 @@ export function helpSummary({
   refund,
   refundUntil,
   riderChat,
+  shopChat = false,
 }: {
   refund: boolean;
   /** `deadlineAt` of an eligible refund entry, when it has one. */
   refundUntil: string | null;
   riderChat: boolean;
+  /** The masked conversation with the print shop is there to open (#246). */
+  shopChat?: boolean;
 }): string {
-  const others = riderChat ? "message your rider or GRIDGO" : "message GRIDGO";
-  if (refund && refundUntil) return `Request a refund until ${formatDeadline(refundUntil)}, or ${others}`;
-  if (refund) return `Request a refund, or ${others}`;
-  return riderChat ? "Message your rider or GRIDGO" : "Message GRIDGO about this order";
+  const people = [shopChat ? "the print shop" : null, riderChat ? "your rider" : null, "GRIDGO"].filter(Boolean);
+  const who = people.length > 2 ? `${people.slice(0, -1).join(", ")} or ${people.at(-1)}` : people.join(" or ");
+  if (refund && refundUntil) return `Request a refund until ${formatDeadline(refundUntil)}, or message ${who}`;
+  if (refund) return `Request a refund, or message ${who}`;
+  return people.length > 1 ? `Message ${who}` : "Message GRIDGO about this order";
 }
 
 /** What View details holds, said while it is folded. */
