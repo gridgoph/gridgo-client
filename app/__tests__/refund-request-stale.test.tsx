@@ -49,7 +49,7 @@ it("shows the new amount and asks again when the quote went stale, never sending
     reason: "We moved the event, so we no longer need the flyers.",
     evidence: [],
     qr: stored("q1", "file_client_qr"),
-    provider: "gcash",
+    provider: "other",
     accountName: "Ana Santos",
     ownershipConfirmed: true,
   });
