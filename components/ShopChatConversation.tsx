@@ -63,10 +63,12 @@ const MAX_PAGES = 20;
  */
 export function ShopChatConversation({ orderId, onOpenOrder }: { orderId: string; onOpenOrder: () => void }) {
   const colors = useThemeColors();
-  const { listRef, trackEnd, keepEndInView, followNewMessages, jumpToEnd } = useChatTranscriptEnd();
+  const { listRef, trackEnd, keepEndInView, keepEndOnGrow, followNewMessages, jumpToEnd } = useChatTranscriptEnd();
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
   const sequence = useRef(0);
   const lastId = useRef<string | null>(null);
+  /** The newest message on screen, so its notices are read even if they arrive late. */
+  const seenUntil = useRef<string | null>(null);
   const [chat, setChat] = useState<ShopChat | null>(null);
   const [messages, setMessages] = useState<ShopChatMessage[]>([]);
   const [newFromId, setNewFromId] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export function ShopChatConversation({ orderId, onOpenOrder }: { orderId: string
 
   const markNoticesRead = useCallback(() => {
     const { items, readIds, markManyRead } = useNotifications.getState();
-    const ids = unreadShopChatNoticeIds(items, readIds, orderId);
+    const ids = unreadShopChatNoticeIds(items, readIds, orderId, seenUntil.current);
     if (ids.length) void markManyRead(ids);
   }, [orderId]);
 
@@ -106,6 +108,7 @@ export function ShopChatConversation({ orderId, onOpenOrder }: { orderId: string
       setUnavailable(null);
       setLoadError(null);
       lastId.current = after;
+      if (page.length) seenUntil.current = page[page.length - 1].createdAt;
       if (page.length) {
         setMessages((previous) => {
           const next = mergeMessages(previous, page);
@@ -114,10 +117,9 @@ export function ShopChatConversation({ orderId, onOpenOrder }: { orderId: string
         });
         // Said once, on opening: anything arriving while it is in front is read as it lands.
         if (first) setNewFromId(firstUnreadId(page, unreadBefore ?? 0));
-        markNoticesRead();
-      } else if (first) {
-        markNoticesRead();
       }
+      // Every read, not only one that brought messages: a notice can land after its message.
+      markNoticesRead();
     } catch (err) {
       if (current !== sequence.current) return;
       const code = (err as { body?: { error?: unknown } } | null)?.body?.error;
@@ -194,6 +196,7 @@ export function ShopChatConversation({ orderId, onOpenOrder }: { orderId: string
       if (message) {
         setMessages((current) => mergeMessages(current, [message]));
         lastId.current = message.id;
+        seenUntil.current = message.createdAt;
       }
       jumpToEnd();
     } catch (err) {
@@ -280,6 +283,7 @@ export function ShopChatConversation({ orderId, onOpenOrder }: { orderId: string
               onScroll={trackEnd}
               scrollEventThrottle={32}
               onLayout={keepEndInView}
+              onContentSizeChange={keepEndOnGrow}
             >
               {loading && !chat ? (
                 <View className="gap-3">
@@ -293,7 +297,7 @@ export function ShopChatConversation({ orderId, onOpenOrder }: { orderId: string
                     chat?.status === "unavailable"
                       ? "You can message the print shop once it accepts this order."
                       : open
-                        ? "Ask the print shop about your job: a colour, a finish, a file it needs. Names and contact details stay hidden on both sides."
+                        ? `Ask the print shop about your job: a colour, a finish, a file it needs. ${SHOP_CHAT_CHANGE_HELP}`
                         : "Nobody wrote while this conversation was open."
                   }
                 />
@@ -331,11 +335,9 @@ export function ShopChatConversation({ orderId, onOpenOrder }: { orderId: string
 
           {open ? (
             <>
-              <View className="flex-row items-start gap-2" accessible accessibilityLabel={`${chat.reminder} ${SHOP_CHAT_CHANGE_HELP}`}>
+              <View className="flex-row items-start gap-2" accessible accessibilityLabel={chat.reminder}>
                 <Info size={14} color={colors.info} strokeWidth={2} style={{ marginTop: 3 }} aria-hidden />
-                <Text className="flex-1 text-caption text-text-secondary">
-                  {chat.reminder} {SHOP_CHAT_CHANGE_HELP}
-                </Text>
+                <Text className="flex-1 text-caption text-text-secondary">{chat.reminder}</Text>
               </View>
               <OrderChatComposer
                 draft={draft}

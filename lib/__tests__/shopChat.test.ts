@@ -174,13 +174,16 @@ describe("unread", () => {
 
   it("finds this order's unread message notices", () => {
     const items = [
-      { id: "n1", type: "client_shop_chat_message", orderId: "ord_1", read: false },
-      { id: "n2", type: "client_shop_chat_message", orderId: "ord_1", read: true },
-      { id: "n3", type: "client_shop_chat_message", orderId: "ord_2", read: false },
-      { id: "n4", type: "order_progress", orderId: "ord_1", read: false },
-      { id: "n5", type: "client_shop_chat_message", orderId: "ord_1", read: false },
+      { id: "n1", type: "client_shop_chat_message", orderId: "ord_1", read: false, at: "2026-10-17T04:00:00.000Z" },
+      { id: "n2", type: "client_shop_chat_message", orderId: "ord_1", read: true, at: "2026-10-17T04:00:00.000Z" },
+      { id: "n3", type: "client_shop_chat_message", orderId: "ord_2", read: false, at: "2026-10-17T04:00:00.000Z" },
+      { id: "n4", type: "order_progress", orderId: "ord_1", read: false, at: "2026-10-17T04:00:00.000Z" },
+      { id: "n5", type: "client_shop_chat_message", orderId: "ord_1", read: false, at: "2026-10-17T04:00:00.000Z" },
+      { id: "n6", type: "client_shop_chat_message", orderId: "ord_1", read: false, at: "2026-10-17T04:09:00.000Z" },
     ];
-    expect(unreadShopChatNoticeIds(items, ["n5"], "ord_1")).toEqual(["n1"]);
+    expect(unreadShopChatNoticeIds(items, ["n5"], "ord_1")).toEqual(["n1", "n6"]);
+    // Only notices about messages already on screen, however late they arrived.
+    expect(unreadShopChatNoticeIds(items, ["n5"], "ord_1", "2026-10-17T04:05:00.000Z")).toEqual(["n1"]);
   });
 });
 

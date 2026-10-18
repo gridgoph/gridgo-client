@@ -53,7 +53,7 @@ export function DeliveryChatConversation({
   onOpenOrder: () => void;
 }) {
   const colors = useThemeColors();
-  const { listRef, trackEnd, keepEndInView, followNewMessages, jumpToEnd } = useChatTranscriptEnd();
+  const { listRef, trackEnd, keepEndInView, keepEndOnGrow, followNewMessages, jumpToEnd } = useChatTranscriptEnd();
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
   const sequence = useRef(0);
   const [chat, setChat] = useState<DeliveryChatSummary | null>(null);
@@ -228,6 +228,7 @@ export function DeliveryChatConversation({
               onScroll={trackEnd}
               scrollEventThrottle={32}
               onLayout={keepEndInView}
+              onContentSizeChange={keepEndOnGrow}
             >
               {loading && !chat ? (
                 <View className="gap-3">

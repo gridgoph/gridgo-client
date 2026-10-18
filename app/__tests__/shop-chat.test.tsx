@@ -89,7 +89,7 @@ it("shows the conversation with only the three labels, the masking said out loud
   // Two messages from the others, none on the client's own.
   expect(screen.getAllByLabelText("Report this message")).toHaveLength(2);
   expect(screen.getByText(/You appear as Client and the shop as Print shop/)).toBeTruthy();
-  expect(screen.getByText(new RegExp(`${REMINDER} If the shop needs to change something`))).toBeTruthy();
+  expect(screen.getByText(REMINDER)).toBeTruthy();
   expect(screen.getByPlaceholderText("Write to the print shop")).toBeTruthy();
   expect(screen.getByLabelText("Attach photos or a PDF")).toBeTruthy();
   // Neither side can reach the other outside GRIDGO: no call control at all.
@@ -101,7 +101,7 @@ it("invites the first message while the conversation is open and empty", async (
   await renderScreen(<ShopChatScreen />);
 
   expect(await screen.findByText("No messages yet")).toBeTruthy();
-  expect(screen.getByText(/Ask the print shop about your job/)).toBeTruthy();
+  expect(screen.getByText(/Ask the print shop about your job.+change request that you answer on the order\./)).toBeTruthy();
   expect(screen.getByPlaceholderText("Write to the print shop")).toBeTruthy();
 });
 

@@ -30,6 +30,11 @@ export function useChatTranscriptEnd() {
     viewportHeight.current = next;
   }, []);
 
+  /** A photo that loads after the scroll grows the transcript: stay on the newest message. */
+  const keepEndOnGrow = useCallback(() => {
+    if (followingEnd.current) listRef.current?.scrollToEnd({ animated: false });
+  }, []);
+
   /** After new messages land: follow them only if the reader was at the end. */
   const followNewMessages = useCallback((animated: boolean) => {
     if (followingEnd.current) requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated }));
@@ -41,5 +46,5 @@ export function useChatTranscriptEnd() {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, []);
 
-  return { listRef, trackEnd, keepEndInView, followNewMessages, jumpToEnd };
+  return { listRef, trackEnd, keepEndInView, keepEndOnGrow, followNewMessages, jumpToEnd };
 }

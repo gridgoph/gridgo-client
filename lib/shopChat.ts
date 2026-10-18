@@ -252,19 +252,26 @@ export function mergeMessages(current: readonly ShopChatMessage[], page: readonl
   return fresh.length ? [...current, ...fresh] : (current as ShopChatMessage[]);
 }
 
-/** Unread inbox notices about this order's conversation, so opening it can mark them read. */
+/**
+ * Unread inbox notices about this order's conversation. With `seenUntil`, only
+ * those about messages already on screen: a notice can reach the phone after
+ * the conversation read the message it is about, and must not stay unread.
+ */
 export function unreadShopChatNoticeIds(
-  items: readonly Pick<Notification, "id" | "type" | "orderId" | "read">[],
+  items: readonly Pick<Notification, "id" | "type" | "orderId" | "read" | "at">[],
   readIds: readonly string[],
   orderId: string,
+  seenUntil?: string | null,
 ): string[] {
+  const until = seenUntil ? Date.parse(seenUntil) : null;
   return items
     .filter(
       (item) =>
         item.type === SHOP_CHAT_NOTIFICATION_TYPE &&
         item.orderId === orderId &&
         !item.read &&
-        !readIds.includes(item.id),
+        !readIds.includes(item.id) &&
+        (until == null || Date.parse(item.at) <= until),
     )
     .map((item) => item.id);
 }
