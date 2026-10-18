@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
+import { Text } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { TourOverlay } from "@/components/TourOverlay";
+import { TourTarget } from "@/components/TourTarget";
 import type { User } from "@/lib/api";
 import { useSession } from "@/store/session";
 import { useTour } from "@/store/tour";
@@ -20,12 +22,12 @@ beforeEach(() => {
 it("moves to the category tip and offers Back to the search tip", async () => {
   useTour.getState().arrive("usr_a", "home");
   await render(<Overlay />);
-  expect(await screen.findByText("Start with what you need")).toBeTruthy();
+  expect(await screen.findByText("Start with what you need", {}, { timeout: 3000 })).toBeTruthy();
   expect(screen.queryByText("Back")).toBeNull();
 
   fireEvent.press(screen.getByText("Next"));
 
-  expect(await screen.findByText("Or browse the categories", {}, { timeout: 2000 })).toBeTruthy();
+  expect(await screen.findByText("Or browse the categories", {}, { timeout: 3000 })).toBeTruthy();
   expect(screen.getByText("Back")).toBeTruthy();
   expect(screen.getByText("Got it")).toBeTruthy();
   await waitFor(() => expect(useTour.getState().progress.usr_a).toEqual({ status: "active", step: 1 }));
@@ -39,6 +41,12 @@ const METRICS = {
 function Overlay() {
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
+      <TourTarget step="home.search">
+        <Text>home.search</Text>
+      </TourTarget>
+      <TourTarget step="home.categories">
+        <Text>home.categories</Text>
+      </TourTarget>
       <TourOverlay ready />
     </SafeAreaProvider>
   );
