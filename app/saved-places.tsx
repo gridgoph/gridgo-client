@@ -1,8 +1,9 @@
 import { Briefcase, ChevronRight, Home, MapPin, Plus } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 
+import { AddressDeletion, DeleteAddressButton } from "@/components/AddressDeletion";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { SkeletonBlock } from "@/components/Skeleton";
@@ -10,14 +11,16 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import type { ClientAddress } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
+import { withoutRemoved } from "@/lib/addressDeletion";
 import { groupSavedPlaces } from "@/lib/savedPlaces";
+import { useAddressDeletion } from "@/store/addressDeletion";
 
 /**
  * Saved Places — Grab's Home / Work / named list, GRIDGO chrome.
  *
  * Reached from Account. Tapping a row opens the same editor checkout uses;
- * it does not silently apply a drop-off. There is no trash: live gridgo-api
- * has GET/POST /me/addresses only.
+ * it does not silently apply a drop-off. The trash at the end of a row asks
+ * before it deletes (`store/addressDeletion.ts`).
  */
 export default function SavedPlacesScreen() {
   const [addresses, setAddresses] = useState<ClientAddress[] | null>(null);
@@ -41,7 +44,18 @@ export default function SavedPlacesScreen() {
     }, [load]),
   );
 
-  const grouped = groupSavedPlaces(addresses ?? []);
+  // Re-read after every delete, so the list is GRIDGO's again.
+  useEffect(
+    () =>
+      useAddressDeletion.subscribe((state, previous) => {
+        if (state.version !== previous.version) void load();
+      }),
+    [load],
+  );
+  const removed = useAddressDeletion((state) => state.removed);
+
+  const visible = withoutRemoved(addresses ?? [], removed);
+  const grouped = groupSavedPlaces(visible);
 
   return (
     <FormScreen>
@@ -51,6 +65,8 @@ export default function SavedPlacesScreen() {
         </Text>
 
         {error ? <ErrorState label="Saved places" body={error} onRetry={() => void load()} /> : null}
+
+        <AddressDeletion owner="saved-places" />
 
         {addresses === null && !error ? (
           <View className="gap-3">
@@ -62,6 +78,7 @@ export default function SavedPlacesScreen() {
             {grouped.home ? (
               <PlaceRow
                 address={grouped.home}
+                all={visible}
                 icon="home"
                 onPress={() =>
                   router.push({ pathname: "/saved-place", params: { addressId: grouped.home!.id } })
@@ -78,6 +95,7 @@ export default function SavedPlacesScreen() {
             {grouped.work ? (
               <PlaceRow
                 address={grouped.work}
+                all={visible}
                 icon="work"
                 onPress={() =>
                   router.push({ pathname: "/saved-place", params: { addressId: grouped.work!.id } })
@@ -101,6 +119,7 @@ export default function SavedPlacesScreen() {
               <PlaceRow
                 key={address.id}
                 address={address}
+                all={visible}
                 icon="named"
                 onPress={() =>
                   router.push({ pathname: "/saved-place", params: { addressId: address.id } })
@@ -123,40 +142,52 @@ export default function SavedPlacesScreen() {
 
 function PlaceRow({
   address,
+  all,
   icon,
   onPress,
 }: {
   address: ClientAddress;
+  all: ClientAddress[];
   icon: "home" | "work" | "named";
   onPress: () => void;
 }) {
   const colors = useThemeColors();
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={address.label}
-      accessibilityHint="Opens this place so you can confirm the pin and street"
-      className="gg-card-flush flex-row items-center gap-3 p-4"
-    >
-      {({ pressed }) => (
-        <>
-          <PlaceIcon kind={icon} color={colors.textMuted} />
-          <View className="min-w-0 flex-1">
-            <Text className="text-body-lg font-medium text-text-primary">{address.label}</Text>
-            <Text className="text-caption text-text-muted" numberOfLines={2}>
-              {address.addressLine}
-            </Text>
-          </View>
-          <ChevronRight
-            size={20}
-            color={colors.textMuted}
-            aria-hidden
-          />
-          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
-        </>
-      )}
-    </Pressable>
+    <View className="gg-card-flush flex-row items-center pr-2">
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={address.isDefault ? `${address.label}, default address` : address.label}
+        accessibilityHint="Opens this place so you can confirm the pin and street"
+        className="min-w-0 flex-1 flex-row items-center gap-3 p-4"
+      >
+        {({ pressed }) => (
+          <>
+            <PlaceIcon kind={icon} color={colors.textMuted} />
+            <View className="min-w-0 flex-1">
+              <View className="flex-row items-center gap-2">
+                <Text className="text-body-lg font-medium text-text-primary">{address.label}</Text>
+                {address.isDefault ? (
+                  <Text className="rounded-pill bg-surface-variant px-2 text-caption text-text-secondary">
+                    Default
+                  </Text>
+                ) : null}
+              </View>
+              <Text className="text-caption text-text-muted" numberOfLines={2}>
+                {address.addressLine}
+              </Text>
+            </View>
+            <ChevronRight
+              size={20}
+              color={colors.textMuted}
+              aria-hidden
+            />
+            {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
+          </>
+        )}
+      </Pressable>
+      <DeleteAddressButton owner="saved-places" address={address} all={all} />
+    </View>
   );
 }
 

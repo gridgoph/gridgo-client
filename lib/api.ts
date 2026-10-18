@@ -3183,6 +3183,22 @@ export async function saveAddress(input: {
   return result.address;
 }
 
+/**
+ * `DELETE /me/addresses/:id` — removes one of the client's own saved addresses.
+ *
+ * `defaultCleared` says it was the default; GRIDGO picks no replacement, so
+ * the app asks. Orders, baskets and receipts keep their own copy of where they
+ * were going. Unknown, already deleted and another client's ids are all
+ * `404 address_not_found`.
+ */
+export async function deleteAddress(addressId: string): Promise<{ defaultCleared: boolean }> {
+  const result = await request<{ ok: boolean; defaultCleared?: boolean }>(
+    `/me/addresses/${encodeURIComponent(addressId)}`,
+    { method: "DELETE" },
+  );
+  return { defaultCleared: result.defaultCleared === true };
+}
+
 // ---------------------------------------------------------------------------
 // The account itself
 //

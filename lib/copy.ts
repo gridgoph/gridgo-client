@@ -121,6 +121,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "You do not have permission for that action.";
       case "order_not_found":
         return "That order was not found. Open Orders and pick it again.";
+      case "address_not_found":
+        return "That address is no longer saved. Your list has been refreshed.";
       case "dropoff_confirmation_answered":
         return "This drop-off was already answered. Refresh the order to see the saved destination.";
       case "dropoff_confirmation_unavailable":
