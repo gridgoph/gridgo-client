@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react-native";
 
-import { Dimensions, StyleSheet, Text } from "react-native";
+import { Dimensions, Text } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { TourOverlay } from "@/components/TourOverlay";
@@ -35,7 +35,7 @@ it("draws the card centred and visible when nothing could be measured", async ()
   const card = screen.getByTestId("tour-card");
   // Centred on the 200 the card is given before it has measured itself.
   const { height } = Dimensions.get("window");
-  expect(StyleSheet.flatten(card.props.style).top).toBe((height - 200) / 2);
+  expect(card).toHaveStyle({ top: (height - 200) / 2 });
   await waitFor(() => expect(card).toHaveAnimatedStyle({ opacity: 1 }), { timeout: 2000 });
 });
 
