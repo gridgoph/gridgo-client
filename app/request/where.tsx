@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
+import { AddressDeletion, DeleteAddressButton } from "@/components/AddressDeletion";
 import { DropoffDetails } from "@/components/DropoffDetails";
 import { DropoffLocator } from "@/components/DropoffLocator";
 import { ErrorState } from "@/components/ErrorState";
@@ -12,9 +13,11 @@ import { useDropoffEditor } from "@/hooks/useDropoffEditor";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import type { ClientAddress, OrderPoint } from "@/lib/api";
+import { withoutRemoved } from "@/lib/addressDeletion";
 import { userFacingError } from "@/lib/copy";
 import { prefetchMatch } from "@/lib/matchPrefetch";
 import { deliveryChoice } from "@/lib/requestFulfilment";
+import { useAddressDeletion } from "@/store/addressDeletion";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
 import { useJobFulfilment } from "@/store/jobFulfilment";
@@ -68,6 +71,13 @@ export default function WhereScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const removed = useAddressDeletion((state) => state.removed);
+  const deletions = useAddressDeletion((state) => state.version);
+  useEffect(() => {
+    if (deletions) void load();
+  }, [deletions, load]);
+  const listed = saved ? withoutRemoved(saved, removed) : null;
 
   /** Put the drop-off on the basket, then carry on where this came from. */
   const applyDropoff = useCallback(
@@ -125,7 +135,7 @@ export default function WhereScreen() {
         label: editor.saveLabel,
         addressLine: editor.addressLine,
         point: { ...editor.point, label: editor.addressLine },
-        isDefault: (saved?.length ?? 0) === 0,
+        isDefault: (listed?.length ?? 0) === 0,
       });
       await applyDropoff({ ...address.point, label: address.addressLine });
     } catch (error) {
@@ -158,19 +168,22 @@ export default function WhereScreen() {
           <ErrorState label="Saved addresses" body={loadError} onRetry={() => void load()} />
         ) : null}
 
-        {saved?.length ? (
+        {listed?.length ? (
           <View className="gap-3">
             <Text className="text-overline text-text-muted">YOUR ADDRESSES</Text>
-            {saved.map((address) => (
+            {listed.map((address) => (
               <SavedAddressRow
                 key={address.id}
                 address={address}
+                all={listed}
                 disabled={busy}
                 onUse={() => void chooseSaved(address)}
               />
             ))}
           </View>
         ) : null}
+
+        <AddressDeletion owner="where" />
 
         <DropoffDetails editor={editor} />
 
@@ -199,48 +212,55 @@ export default function WhereScreen() {
 
 function SavedAddressRow({
   address,
+  all,
   disabled,
   onUse,
 }: {
   address: ClientAddress;
+  all: ClientAddress[];
   disabled: boolean;
   onUse: () => void;
 }) {
   const colors = useThemeColors();
 
   return (
-    <Pressable
-      onPress={onUse}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={`Deliver to ${address.label}`}
-      accessibilityState={{ disabled }}
+    <View
       className={
         disabled
-          ? "gg-card-flush gg-disabled flex-row items-center gap-3 p-4"
-          : "gg-card-flush flex-row items-center gap-3 p-4"
+          ? "gg-card-flush gg-disabled flex-row items-center pr-2"
+          : "gg-card-flush flex-row items-center pr-2"
       }
     >
-      {({ pressed }) => (
-        <>
-          <MapPin
-            size={18}
-            color={colors.textMuted}
-            strokeWidth={2}
-            aria-hidden
-          />
-          <View className="min-w-0 flex-1">
-            <Text className="text-body-lg font-medium text-text-primary">{address.label}</Text>
-            <Text className="text-caption text-text-muted" numberOfLines={2}>
-              {address.addressLine}
-            </Text>
-          </View>
-          {address.isDefault ? (
-            <Check size={18} color={colors.textPrimary} strokeWidth={2.5} />
-          ) : null}
-          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
-        </>
-      )}
-    </Pressable>
+      <Pressable
+        onPress={onUse}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={`Deliver to ${address.label}`}
+        accessibilityState={{ disabled }}
+        className="min-w-0 flex-1 flex-row items-center gap-3 p-4"
+      >
+        {({ pressed }) => (
+          <>
+            <MapPin
+              size={18}
+              color={colors.textMuted}
+              strokeWidth={2}
+              aria-hidden
+            />
+            <View className="min-w-0 flex-1">
+              <Text className="text-body-lg font-medium text-text-primary">{address.label}</Text>
+              <Text className="text-caption text-text-muted" numberOfLines={2}>
+                {address.addressLine}
+              </Text>
+            </View>
+            {address.isDefault ? (
+              <Check size={18} color={colors.textPrimary} strokeWidth={2.5} />
+            ) : null}
+            {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
+          </>
+        )}
+      </Pressable>
+      <DeleteAddressButton owner="where" address={address} all={all} disabled={disabled} />
+    </View>
   );
 }

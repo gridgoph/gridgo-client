@@ -3,9 +3,9 @@
  *
  * Grab's information architecture — Home, Work, then named spots — on top of
  * `GET /me/addresses`. Matching is by label, case-insensitive, because a
- * client who typed "home" still meant Home. The API has no PATCH/DELETE on
- * the addresses collection this app talks to, so this module never invents a
- * remove.
+ * client who typed "home" still meant Home. Deleting one is
+ * `lib/addressDeletion.ts`; there is no PATCH, so a place is never edited in
+ * place.
  */
 
 import type { ClientAddress } from "@/lib/api";

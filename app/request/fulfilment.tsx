@@ -1,8 +1,9 @@
 import { Check, ChevronRight, MapPin, Package, Plus, Truck, type LucideIcon } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
+import { AddressDeletion, DeleteAddressButton } from "@/components/AddressDeletion";
 import { ErrorState } from "@/components/ErrorState";
 import { HubPickupPanel } from "@/components/HubPickupPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -12,6 +13,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import type { ClientAddress, FulfilmentMode, OrderPoint } from "@/lib/api";
+import { withoutRemoved } from "@/lib/addressDeletion";
 import { userFacingError } from "@/lib/copy";
 import { hubFeeLabel, hubPickupOf, hubPickupEnabled } from "@/lib/hubPickup";
 import { prefetchMatch } from "@/lib/matchPrefetch";
@@ -21,6 +23,7 @@ import {
   fulfilmentBlurb,
   fulfilmentTitle,
 } from "@/lib/requestFulfilment";
+import { useAddressDeletion } from "@/store/addressDeletion";
 import { useJobDeadline } from "@/store/jobDeadline";
 import { useJobFulfilment, withJobFulfilment } from "@/store/jobFulfilment";
 import { withJobRanking } from "@/store/orderRanking";
@@ -104,9 +107,25 @@ export default function FulfilmentScreen() {
     }
   }
 
+  // A deleted address leaves the list at once, and stops being the pick if it
+  // was one — adopted in render, before the re-read lands without it.
+  const removed = useAddressDeletion((state) => state.removed);
+  const deletions = useAddressDeletion((state) => state.version);
+  const [seenDeletions, setSeenDeletions] = useState(deletions);
+  if (seenDeletions !== deletions) {
+    setSeenDeletions(deletions);
+    if (dropoff && addresses?.some((address) => removed.includes(address.id) && samePoint(address.point, dropoff))) {
+      setDropoff(null);
+    }
+  }
+  useEffect(() => {
+    if (deletions) void loadAddresses();
+  }, [deletions, loadAddresses]);
+  const listed = addresses ? withoutRemoved(addresses, removed) : null;
+
   // Delivery with nothing picked yet starts on the client's default address,
   // the one they would have typed anyway.
-  const fallback = addresses?.find((address) => address.isDefault) ?? addresses?.[0] ?? null;
+  const fallback = listed?.find((address) => address.isDefault) ?? listed?.[0] ?? null;
   const chosen = dropoff ?? (fallback ? pointOf(fallback) : null);
 
   const hub = hubPickupOf(settings);
@@ -122,7 +141,7 @@ export default function FulfilmentScreen() {
   const proceed = () => {
     // Delivery with nothing saved to choose from: the address is the next
     // thing to do, so the button goes there rather than scolding.
-    if (mode === "delivery" && !chosen && addresses?.length === 0) {
+    if (mode === "delivery" && !chosen && listed?.length === 0) {
       addAddress();
       return;
     }
@@ -180,14 +199,15 @@ export default function FulfilmentScreen() {
             {loadError ? (
               <ErrorState label="Saved addresses" body={loadError} onRetry={() => void loadAddresses()} />
             ) : null}
-            {addresses == null ? (
+            <AddressDeletion owner="fulfilment" />
+            {listed == null ? (
               <View className="gg-card-flush gap-2 p-4" accessibilityLabel="Reading your addresses">
                 <SkeletonLine width="w-1/3" />
                 <SkeletonLine width="w-2/3" />
               </View>
             ) : (
               <View className="gg-card-flush">
-                {[...addresses, ...extraPoint(addresses, dropoff)].map((address, index) => (
+                {[...listed, ...extraPoint(listed, dropoff)].map((address, index) => (
                   <AddressRow
                     key={address.id}
                     title={address.label}
@@ -195,6 +215,11 @@ export default function FulfilmentScreen() {
                     selected={chosen != null && samePoint(chosen, address.point)}
                     first={index === 0}
                     onPress={() => setDropoff(pointOf(address))}
+                    remove={
+                      address.id === EXTRA_POINT_ID ? null : (
+                        <DeleteAddressButton owner="fulfilment" address={address} all={listed} />
+                      )
+                    }
                   />
                 ))}
                 <Pressable
@@ -202,7 +227,7 @@ export default function FulfilmentScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Add a new address"
                   className={
-                    addresses.length || dropoff
+                    listed.length || dropoff
                       ? "gg-touch flex-row items-center gap-3 border-t border-outline-subtle p-4"
                       : "gg-touch flex-row items-center gap-3 p-4"
                   }
@@ -210,7 +235,7 @@ export default function FulfilmentScreen() {
                 >
                   <Plus size={18} color={colors.textPrimary} strokeWidth={2.25} aria-hidden />
                   <Text className="min-w-0 flex-1 text-body font-medium text-text-primary">
-                    {addresses.length ? "Add a new address" : "Add your delivery address"}
+                    {listed.length ? "Add a new address" : "Add your delivery address"}
                   </Text>
                   <ChevronRight size={16} color={colors.textMuted} strokeWidth={2} aria-hidden />
                 </Pressable>
@@ -233,7 +258,7 @@ export default function FulfilmentScreen() {
 
       <View className="gg-page gap-2 pb-2 pt-2">
         <PrimaryButton
-          label={ready || !mode ? "Continue" : addresses?.length === 0 ? "Add an address" : "Choose an address"}
+          label={ready || !mode ? "Continue" : listed?.length === 0 ? "Add an address" : "Choose an address"}
           onPress={proceed}
         />
         {attempted && !ready ? (
@@ -254,6 +279,8 @@ function samePoint(left: OrderPoint, right: OrderPoint): boolean {
   return left.lat === right.lat && left.lng === right.lng;
 }
 
+const EXTRA_POINT_ID = "chosen-point";
+
 /**
  * A point chosen on the pin editor that is not (yet) in the saved list — the
  * save may still be settling — drawn as its own row so the selection is seen.
@@ -262,7 +289,7 @@ function extraPoint(addresses: ClientAddress[], dropoff: OrderPoint | null): Cli
   if (!dropoff || addresses.some((address) => samePoint(address.point, dropoff))) return [];
   return [
     {
-      id: "chosen-point",
+      id: EXTRA_POINT_ID,
       label: "New address",
       addressLine: dropoff.label ?? "",
       point: dropoff,
@@ -337,37 +364,43 @@ function AddressRow({
   selected,
   first,
   onPress,
+  remove,
 }: {
   title: string;
   line: string;
   selected: boolean;
   first: boolean;
   onPress: () => void;
+  /** The delete control, for a saved address. */
+  remove: ReactNode;
 }) {
   const colors = useThemeColors();
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ selected, checked: selected }}
-      accessibilityLabel={`Deliver to ${title}${line ? `, ${line}` : ""}`}
+    <View
       className={
-        first
-          ? "gg-touch flex-row items-center gap-3 p-4"
-          : "gg-touch flex-row items-center gap-3 border-t border-outline-subtle p-4"
+        first ? "flex-row items-center pr-2" : "flex-row items-center border-t border-outline-subtle pr-2"
       }
-      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
     >
-      <MapPin size={18} color={selected ? colors.textPrimary : colors.textMuted} strokeWidth={2} aria-hidden />
-      <View className="min-w-0 flex-1">
-        <Text className="text-body font-medium text-text-primary">{title}</Text>
-        {line ? (
-          <Text className="text-caption text-text-muted" numberOfLines={2}>
-            {line}
-          </Text>
-        ) : null}
-      </View>
-      {selected ? <Check size={18} color={colors.textPrimary} strokeWidth={2.5} aria-hidden /> : null}
-    </Pressable>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="radio"
+        accessibilityState={{ selected, checked: selected }}
+        accessibilityLabel={`Deliver to ${title}${line ? `, ${line}` : ""}`}
+        className="gg-touch min-w-0 flex-1 flex-row items-center gap-3 p-4"
+        style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+      >
+        <MapPin size={18} color={selected ? colors.textPrimary : colors.textMuted} strokeWidth={2} aria-hidden />
+        <View className="min-w-0 flex-1">
+          <Text className="text-body font-medium text-text-primary">{title}</Text>
+          {line ? (
+            <Text className="text-caption text-text-muted" numberOfLines={2}>
+              {line}
+            </Text>
+          ) : null}
+        </View>
+        {selected ? <Check size={18} color={colors.textPrimary} strokeWidth={2.5} aria-hidden /> : null}
+      </Pressable>
+      {remove}
+    </View>
   );
 }
