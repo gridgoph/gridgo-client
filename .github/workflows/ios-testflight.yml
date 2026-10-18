@@ -261,7 +261,7 @@ jobs:
           RELEASE_VERSION: ${{ steps.build.outputs.announce_version }}
         run: node scripts/announce-release.mjs
 
-      - name: Remove the App Store Connect key
+      - name: Remove the credentials and the IPA
         if: always()
         run: |
           rm -rf "$RUNNER_TEMP/private_keys" "$RUNNER_TEMP/GoogleService-Info.plist" \
