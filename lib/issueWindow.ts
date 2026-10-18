@@ -88,6 +88,53 @@ export function checkIssueDescription(description: string): {
   return { ok: true, reason: null };
 }
 
+/** The problem report asks for at least one photo, and takes up to ten (`refund_evidence`). */
+export const MIN_PROBLEM_PHOTOS = 1;
+export const MAX_PROBLEM_PHOTOS = 10;
+export const PROBLEM_PHOTO_MAX_MIB = 15;
+
+/** What happens once a report is sent, said before and after sending it. */
+export const PROBLEM_OUTCOME_COPY =
+  "Operations reviews your photos with what GRIDGO recorded on this job, and gives you the outcome within 2 business days.";
+
+/** The first thing stopping the photos from going with the report, or null. */
+export function checkProblemPhotos(photos: readonly { phase: string }[]): string | null {
+  if (photos.some((photo) => photo.phase === "sending")) return "Wait for the photos to finish uploading.";
+  const stored = photos.filter((photo) => photo.phase === "stored").length;
+  if (stored < MIN_PROBLEM_PHOTOS) return "Add at least one photo that shows what is wrong.";
+  if (stored > MAX_PROBLEM_PHOTOS) return `Send at most ${MAX_PROBLEM_PHOTOS} photos.`;
+  return null;
+}
+
+const REMEDY_LABELS: Record<string, string> = {
+  reprint: "A reprint",
+  replacement: "A replacement",
+  partial_refund: "A partial refund",
+  full_refund: "A full refund",
+  none: "No change to the order",
+};
+
+/**
+ * Operations' finding as the client reads it: the remedy and their reason.
+ * Who was at fault is Operations' working, not a line for the client; a
+ * finding still waiting on approval is said to be, never shown as decided.
+ */
+export function issueDecisionView(
+  decision: { remedy: string; reason: string; status: string } | null | undefined,
+): { headline: string; reason: string | null } | null {
+  if (!decision) return null;
+  if (decision.status !== "approved") {
+    return {
+      headline: "Operations has reached a finding and is getting it approved",
+      reason: null,
+    };
+  }
+  return {
+    headline: REMEDY_LABELS[decision.remedy] ?? "Operations has decided",
+    reason: decision.reason.trim() || null,
+  };
+}
+
 export type IssueWindowStatus = {
   /** True when the API will accept a report right now. */
   canReport: boolean;
@@ -227,9 +274,8 @@ export function summarizeIssueWindow({
   if (hasOpenIssue) {
     return {
       canReport: false,
-      headline: "Your report is with Operations.",
-      detail:
-        "The supplier payout is held while they review it. You will get a notification when there is a decision.",
+      headline: "Operations received your report.",
+      detail: `${PROBLEM_OUTCOME_COPY} The supplier payout is held meanwhile, and you get a notification when there is a decision.`,
       elapsedLabel,
       remainingLabel,
     };

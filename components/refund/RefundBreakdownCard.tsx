@@ -2,7 +2,7 @@ import { Text, View } from "react-native";
 
 import { ServiceFeeRow } from "@/components/ServiceFeeRow";
 import { SpecRow } from "@/components/SpecRow";
-import { formatPhp, type Order, type RefundSettlement } from "@/lib/api";
+import { formatPhp, type Order, type RefundAmounts } from "@/lib/api";
 import { refundBreakdown } from "@/lib/refunds";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
@@ -13,7 +13,7 @@ import { usePlatformSettings } from "@/store/platformSettings";
  * Total. The service-fee row explains and carries no amount, exactly as on
  * checkout and the receipt; GRIDGO's cut never appears in pesos.
  */
-export function RefundBreakdownCard({ settlement, order }: { settlement: RefundSettlement; order: Order }) {
+export function RefundBreakdownCard({ settlement, order }: { settlement: RefundAmounts; order: Order }) {
   const settings = usePlatformSettings((state) => state.settings);
   const breakdown = refundBreakdown(settlement, order);
   const delivered = order.fulfillmentMode !== "pickup";

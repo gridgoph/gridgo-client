@@ -128,7 +128,8 @@ describe("summarizeIssueWindow", () => {
       now: NOW,
     });
     expect(status.canReport).toBe(false);
-    expect(status.headline).toMatch(/with Operations/i);
+    expect(status.headline).toMatch(/Operations received your report/i);
+    expect(status.detail).toMatch(/outcome within 2 business days/);
   });
 
   it("closes the window once the job moves on", () => {

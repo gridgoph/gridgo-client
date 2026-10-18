@@ -8,22 +8,32 @@ import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { ErrorState } from "@/components/ErrorState";
+import { EvidencePhotoList } from "@/components/EvidencePhotoList";
 import { IssueWindowCountdown } from "@/components/IssueWindowCountdown";
 import { StatusChip } from "@/components/StatusChip";
 import type { Issue, Order } from "@/lib/api";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
+import { storedFileIds, type ImageUpload } from "@/lib/imageUpload";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import {
   checkIssueDescription,
+  checkProblemPhotos,
   DEFAULT_ISSUE_WINDOW_HOURS,
+  issueDecisionView,
   issueKindLabel,
   issueWindowOpenedAt,
   ISSUE_KINDS,
+  MAX_PROBLEM_PHOTOS,
+  PROBLEM_OUTCOME_COPY,
+  PROBLEM_PHOTO_MAX_MIB,
   summarizeIssueWindow,
   type IssueKind,
 } from "@/lib/issueWindow";
+import { useProblemReport } from "@/store/problemReport";
 import { useSurvey } from "@/store/survey";
+
+const NO_PHOTOS: ImageUpload[] = [];
 
 type Props = {
   order: Order;
@@ -46,6 +56,11 @@ type Props = {
  * the order arrived as agreed, the job closes now, and the screen becomes the
  * finished job. Reporting a problem is the quieter second choice, and takes
  * the yellow only once its form is open — the screen never carries two.
+ *
+ * A report carries the problem's type, the client's words and at least one
+ * photo. GRIDGO gathers the rest of the case itself — the approved details,
+ * the file, printing and delivery checks — but that bundle is Operations'
+ * only: the card says it happens and never shows or asks for any of it.
  */
 export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -70,6 +85,10 @@ export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
   const [closingAsFine, setClosingAsFine] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Another order's photos are never this report's.
+  const photos = useProblemReport((state) => (state.orderId === order.id ? state.photos : NO_PHOTOS));
+  const addPhoto = useProblemReport((state) => state.addPhoto);
+  const removePhoto = useProblemReport((state) => state.removePhoto);
 
   const load = useCallback(async () => {
     try {
@@ -105,6 +124,8 @@ export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
     hasOpenIssue: Boolean(openIssue),
   });
   const check = checkIssueDescription(description);
+  const photoProblem = checkProblemPhotos(photos);
+  const decision = issueDecisionView(openIssue?.faultDecision);
   const liveClock =
     order.state === "issue_window_open" && Number.isFinite(Date.parse(order.issueWindowExpiresAt ?? ""));
 
@@ -132,10 +153,15 @@ export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await api.reportIssue(order.id, { kind, description: description.trim() });
+      await api.reportIssue(order.id, {
+        problemType: kind,
+        description: description.trim(),
+        photoFileIds: storedFileIds(photos),
+      });
       setConfirming(false);
       setOpen(false);
       setDescription("");
+      useProblemReport.getState().reset();
       await load();
     } catch (e) {
       setConfirming(false);
@@ -190,6 +216,19 @@ export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
             {issueKindLabel(openIssue.kind)} · reported {formatRelativeTime(openIssue.createdAt)}
           </Text>
           <Text className="text-body text-text-primary">{openIssue.description}</Text>
+          {openIssue.photoFileIds?.length ? (
+            <Text className="text-caption text-text-muted">
+              {openIssue.photoFileIds.length === 1 ? "1 photo sent" : `${openIssue.photoFileIds.length} photos sent`}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {decision ? (
+        <View className="gg-panel gap-1" accessibilityLiveRegion="polite">
+          <Text className="text-caption text-text-muted">Operations&apos; finding</Text>
+          <Text className="text-body-lg font-medium text-text-primary">{decision.headline}</Text>
+          {decision.reason ? <Text className="text-body text-text-secondary">{decision.reason}</Text> : null}
         </View>
       ) : null}
 
@@ -253,9 +292,25 @@ export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
             />
           </FormField>
 
+          <FormField
+            label="Photos"
+            helper={`At least one photo of what is wrong, up to ${MAX_PROBLEM_PHOTOS}. JPEG, PNG or WebP, ${PROBLEM_PHOTO_MAX_MIB} MB each. Only you and Operations see them.`}
+          >
+            <EvidencePhotoList
+              photos={photos}
+              max={MAX_PROBLEM_PHOTOS}
+              disabled={busy}
+              onAdd={() => void addPhoto(order.id)}
+              onRemove={removePhoto}
+            />
+          </FormField>
+
+          <Text className="text-caption text-text-muted">{PROBLEM_OUTCOME_COPY}</Text>
+          {check.ok && photoProblem ? <Text className="text-caption text-text-muted">{photoProblem}</Text> : null}
+
           <PrimaryButton
             label="Send this to Operations"
-            disabled={!check.ok || busy}
+            disabled={!check.ok || Boolean(photoProblem) || busy}
             onPress={() => setConfirming(true)}
           />
           <SecondaryButton
@@ -283,7 +338,7 @@ export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
       <ConfirmDialog
         visible={confirming}
         question={`Report "${issueKindLabel(kind).toLowerCase()}" on ${order.title}?`}
-        body="This holds your supplier's payout while Operations reviews it, and cannot be withdrawn from the app. Only one report can be open on a job at a time."
+        body="This holds your supplier's payout while Operations reviews it, and cannot be withdrawn from the app. You get the outcome within 2 business days. Only one report can be open on a job at a time."
         confirmLabel="Send report"
         cancelLabel="Keep checking"
         busy={busy}

@@ -1,26 +1,31 @@
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
-import { artworkErrorMessage } from "@/lib/artworkUpload";
+import type { CancellationQuote, RefundKind, RefundProvider } from "@/lib/api";
+import { refundErrorMessage } from "@/lib/copy";
+import { failedUpload, uploadImage, writeSlot, type ImageUpload, type SlotWrite } from "@/lib/imageUpload";
 import { pickImage as pickAnyImage } from "@/lib/pickImage";
 import {
   MAX_REFUND_EVIDENCE,
   REFUND_EVIDENCE_MAX_MIB,
   REFUND_QR_MAX_MIB,
+  cancellationQuoteRefusal,
+  type QuoteRefusal,
 } from "@/lib/refunds";
-import type { RefundKind, RefundProvider } from "@/lib/api";
 
 /** One picked image on its way to (or stored on) GRIDGO. */
-export type RefundUpload = {
-  key: string;
-  phase: "sending" | "stored" | "failed";
-  fileName: string;
-  localUri: string | null;
-  /** Only a `201` with an id sets this. Transfer progress is not success. */
-  fileId: string | null;
-  progress: number | null;
-  error: string | null;
-};
+export type RefundUpload = ImageUpload;
+
+/**
+ * The cancellation quote as the screen draws it. Only `ready` carries an
+ * amount the client may confirm; `refused` says why there is none.
+ */
+export type QuoteRead =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "ready"; quote: CancellationQuote }
+  | { phase: "refused"; refusal: QuoteRefusal }
+  | { phase: "failed"; message: string };
 
 type Draft = {
   /** `request:<orderId>` or `account:<refundId>`. A new scope starts empty. */
@@ -40,6 +45,9 @@ type Draft = {
   /** Raised by the tap that sends, lowered in its `finally`. */
   busy: boolean;
   error: string | null;
+  quote: QuoteRead;
+  /** Said once the amount was checked again after a stale confirmation. */
+  quoteNotice: string | null;
 };
 
 type Actions = {
@@ -57,6 +65,15 @@ type Actions = {
   keyForSend: () => string;
   setBusy: (busy: boolean) => void;
   setError: (error: string | null) => void;
+  /**
+   * Read what cancelling returns now. A new token is a new body, so it
+   * clears the idempotency key. Resolves the quote, or null when there is none.
+   */
+  loadQuote: (orderId: string) => Promise<CancellationQuote | null>;
+  /** The quote the client was shown went stale: read it again and say what changed. */
+  requote: (orderId: string, shown: CancellationQuote | null) => Promise<void>;
+  /** A refusal that arrived with the send rather than the read. */
+  setQuoteRefusal: (refusal: QuoteRefusal) => void;
 };
 
 const EMPTY: Draft = {
@@ -71,13 +88,14 @@ const EMPTY: Draft = {
   idempotencyKey: null,
   busy: false,
   error: null,
+  quote: { phase: "idle" },
+  quoteNotice: null,
 };
 
 const REFUND_UNREADABLE = "That image could not be read. Take the screenshot again, or pick it from Photos.";
 const pickImage = () => pickAnyImage(REFUND_UNREADABLE);
 
 const handles = new Map<string, api.UploadHandle>();
-let uploadSeq = 0;
 
 function cancelAll() {
   for (const handle of handles.values()) handle.cancel();
@@ -90,42 +108,18 @@ export const useRefundDraft = create<Draft & Actions>((set, get) => {
     asset: api.UploadAsset & { size?: number },
     purpose: "refund_qr" | "refund_evidence",
     maxMiB: number,
-    write: (slot: RefundUpload | ((slot: RefundUpload) => RefundUpload)) => void,
+    write: SlotWrite,
   ) => {
-    const key = `upload-${++uploadSeq}`;
-    const base: RefundUpload = {
-      key,
-      phase: "sending",
-      fileName: asset.name,
-      localUri: asset.uri,
-      fileId: null,
-      progress: 0,
-      error: null,
-    };
-    if (asset.size != null && asset.size > maxMiB * 1024 * 1024) {
-      write({ ...base, phase: "failed", progress: null, error: `This image is over ${maxMiB} MB. Send a screenshot rather than a full photo.` });
-      return;
-    }
-    write(base);
     const scope = get().scope;
-    const handle = api.uploadFile(asset, purpose, (fraction) => {
-      if (get().scope === scope) write((slot) => (slot.key === key && slot.phase === "sending" ? { ...slot, progress: fraction } : slot));
+    const { key, handle } = uploadImage({
+      asset,
+      purpose,
+      maxMiB,
+      write,
+      stillCurrent: () => get().scope === scope,
+      onSettled: (settled) => handles.delete(settled),
     });
-    handles.set(key, handle);
-    handle.done
-      .then((file) => {
-        if (get().scope !== scope) return;
-        write((slot) => (slot.key === key ? { ...slot, phase: "stored", fileId: file.fileId, progress: 1 } : slot));
-      })
-      .catch((error: unknown) => {
-        if (get().scope !== scope) return;
-        write((slot) =>
-          slot.key === key
-            ? { ...slot, phase: "failed", progress: null, error: `${artworkErrorMessage(error)} GRIDGO takes JPEG, PNG or WebP images.` }
-            : slot,
-        );
-      })
-      .finally(() => handles.delete(key));
+    if (handle) handles.set(key, handle);
   };
 
   const edited = { idempotencyKey: null, error: null };
@@ -152,7 +146,7 @@ export const useRefundDraft = create<Draft & Actions>((set, get) => {
       const previous = get().qr;
       if (previous) handles.get(previous.key)?.cancel();
       if ("error" in picked) {
-        set({ qr: { key: `upload-${++uploadSeq}`, phase: "failed", fileName: "", localUri: null, fileId: null, progress: null, error: picked.error }, ...edited });
+        set({ qr: failedUpload(picked.error), ...edited });
         return;
       }
       set(edited);
@@ -172,20 +166,11 @@ export const useRefundDraft = create<Draft & Actions>((set, get) => {
         return;
       }
       set(edited);
-      let key: string | null = null;
+      let key = "";
       upload(picked.asset, "refund_evidence", REFUND_EVIDENCE_MAX_MIB, (next) =>
         set((state) => {
-          if (typeof next !== "function") {
-            key = next.key;
-            const exists = state.evidence.some((slot) => slot.key === next.key);
-            return {
-              evidence: exists
-                ? state.evidence.map((slot) => (slot.key === next.key ? next : slot))
-                : [...state.evidence, next],
-              idempotencyKey: null,
-            };
-          }
-          return { evidence: state.evidence.map((slot) => (slot.key === key ? next(slot) : slot)), idempotencyKey: null };
+          if (typeof next !== "function") key = next.key;
+          return { evidence: writeSlot(state.evidence, key, next), idempotencyKey: null };
         }),
       );
     },
@@ -203,5 +188,40 @@ export const useRefundDraft = create<Draft & Actions>((set, get) => {
     },
     setBusy: (busy) => set({ busy }),
     setError: (error) => set({ error }),
+    loadQuote: async (orderId) => {
+      const scope = get().scope;
+      set({ quote: { phase: "loading" }, idempotencyKey: null });
+      try {
+        const quote = await api.getCancellationQuote(orderId);
+        if (get().scope === scope) set({ quote: { phase: "ready", quote }, idempotencyKey: null });
+        return quote;
+      } catch (error) {
+        if (get().scope !== scope) return null;
+        const refusal = cancellationQuoteRefusal(error);
+        set({
+          quote: refusal
+            ? { phase: "refused", refusal }
+            : {
+                phase: "failed",
+                message: refundErrorMessage(error, "GRIDGO could not work out the refund just now. Check your connection and try again."),
+              },
+          idempotencyKey: null,
+        });
+        return null;
+      }
+    },
+    requote: async (orderId, shown) => {
+      set({ quoteNotice: null });
+      const fresh = await get().loadQuote(orderId);
+      if (!fresh) return;
+      const amount = api.formatPhp(fresh.refund.totalMinor);
+      set({
+        quoteNotice:
+          shown && shown.refund.totalMinor === fresh.refund.totalMinor
+            ? `Something on this order changed while you were deciding. GRIDGO checked again: you still get back ${amount}. Confirm again to send it.`
+            : `The amount changed while you were deciding. You now get back ${amount} — check it below, then confirm again.`,
+      });
+    },
+    setQuoteRefusal: (refusal) => set({ quote: { phase: "refused", refusal }, idempotencyKey: null }),
   };
 });

@@ -22,6 +22,7 @@ import {
   canWithdrawRefund,
   currentRefund,
   isDeliveryCredit,
+  isRefundActive,
   refundHeadline,
   refundHistoryRow,
   refundKindLabel,
@@ -188,6 +189,19 @@ export default function RefundScreen() {
                 evidence that the money was sent — not an official receipt.
               </Text>
             </View>
+          </View>
+        ) : null}
+
+        {/* A confirmed cancellation already has its exact amount; until
+            Operations settles it, that is the figure the client agreed to. */}
+        {!refund.settlement && refund.cancellationQuote && isRefundActive(refund) ? (
+          <View className="gap-3">
+            <Text className="text-overline text-text-muted">WHAT COMES BACK</Text>
+            <RefundBreakdownCard settlement={refund.cancellationQuote.refund} order={order} />
+            <Text className="text-caption text-text-muted">
+              The amount you confirmed when you cancelled. Operations settles exactly this amount, then
+              sends it by hand.
+            </Text>
           </View>
         ) : null}
 
