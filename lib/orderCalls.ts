@@ -254,15 +254,13 @@ export type CallEndReason =
  * Why a call that reached a terminal state ended, as this phone should say it.
  *
  * The server says `ended` both for a hang-up and for a window that closed, so
- * the phone's own knowledge — it pressed End, or its audio path failed — is
- * what tells them apart.
+ * the phone's own knowledge — it pressed End — is what tells them apart. A
+ * dropped audio path never makes an `ended` call a lost one: hanging up closes
+ * the audio a beat before GRIDGO hears about it, so on the other phone the
+ * path always dies first (`lib/callEngine.ts` asks GRIDGO before it says
+ * "Connection lost").
  */
-export function endReasonFor(input: {
-  state: string;
-  mine: boolean;
-  endedByMe: boolean;
-  connectionLost: boolean;
-}): CallEndReason {
+export function endReasonFor(input: { state: string; mine: boolean; endedByMe: boolean }): CallEndReason {
   if (input.endedByMe) return "ended_by_you";
   switch (input.state) {
     case "declined":
@@ -273,7 +271,24 @@ export function endReasonFor(input: {
     case "cancelled":
       return input.mine ? "ended_by_you" : "missed";
     default:
-      return input.connectionLost ? "network_lost" : "ended";
+      return "ended";
+  }
+}
+
+/**
+ * Who they are, in role words: "The rider". The same words in all three apps,
+ * so a hang-up reads the same from either end.
+ */
+export function partyRoleWords(role: string | null | undefined): string {
+  switch (role) {
+    case "rider":
+      return "The rider";
+    case "supplier":
+      return "The shop";
+    case "client":
+      return "The customer";
+    default:
+      return "They";
   }
 }
 
@@ -281,56 +296,84 @@ export type CallEndCopy = {
   title: string;
   detail: string;
   icon: "phone-off" | "phone-missed" | "wifi-off";
+  /** Talk time ("2:14"), when the call connected. */
+  duration: string | null;
   /** Offer to call again from the ending. */
   callAgain: boolean;
+  /** Offer a message instead, where the call did not get through. */
+  message: boolean;
 };
 
-export function endCopy(reason: CallEndReason, name: string, durationMs: number | null): CallEndCopy {
-  const length = durationMs != null && durationMs > 0 ? formatCallDuration(durationMs) : null;
+export function endCopy(
+  reason: CallEndReason,
+  name: string,
+  durationMs: number | null,
+  role: string | null = "rider",
+): CallEndCopy {
+  const duration = durationMs != null && durationMs > 0 ? formatCallDuration(durationMs) : null;
   switch (reason) {
     case "declined":
       return {
         title: `${name} declined`,
         detail: "They may be driving. Send a message, or try again in a minute.",
         icon: "phone-off",
+        duration: null,
         callAgain: true,
+        message: true,
       };
     case "no_answer":
       return {
         title: "No answer",
         detail: `${name} did not pick up. They will see that you called.`,
         icon: "phone-missed",
+        duration: null,
         callAgain: true,
+        message: true,
       };
     case "missed":
       return {
         title: "Missed call",
         detail: `${name} called about your delivery.`,
         icon: "phone-missed",
+        duration: null,
         callAgain: true,
+        message: true,
       };
     case "network_lost":
       return {
         title: "Connection lost",
         detail: "The call dropped. Check your mobile data or Wi-Fi, then call again.",
         icon: "wifi-off",
+        duration,
         callAgain: true,
+        message: true,
       };
     case "unavailable":
       return {
         title: "Call ended",
         detail: "Calls are open only while your rider has the delivery.",
         icon: "phone-off",
+        duration,
         callAgain: false,
+        message: false,
       };
     case "ended_by_you":
-      return { title: "Call ended", detail: length ?? "", icon: "phone-off", callAgain: false };
+      return {
+        title: "Call ended",
+        detail: "You ended the call.",
+        icon: "phone-off",
+        duration,
+        callAgain: false,
+        message: false,
+      };
     default:
       return {
         title: "Call ended",
-        detail: length ? `${name} ended the call · ${length}` : `${name} ended the call.`,
+        detail: `${partyRoleWords(role)} ended the call.`,
         icon: "phone-off",
-        callAgain: false,
+        duration,
+        callAgain: true,
+        message: false,
       };
   }
 }

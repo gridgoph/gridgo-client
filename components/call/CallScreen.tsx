@@ -1,5 +1,6 @@
 import {
   ChevronDown,
+  Clock,
   MessageCircle,
   Mic,
   MicOff,
@@ -36,6 +37,7 @@ import {
   CALL_PRIVACY_LINE,
   endCopy,
   formatCallDuration,
+  otherParty,
   phaseLabel,
   type CallEndCopy,
 } from "@/lib/orderCalls";
@@ -119,18 +121,56 @@ function Ringing({ active, color }: { active: boolean; color: string }) {
   );
 }
 
-function EndingBlock({ copy }: { copy: CallEndCopy }) {
+type EndTone = "textSecondary" | "warning" | "error";
+
+function endTone(copy: CallEndCopy): EndTone {
+  return copy.icon === "wifi-off" ? "error" : copy.icon === "phone-missed" ? "warning" : "textSecondary";
+}
+
+/**
+ * The ending's mark, pinned to the avatar: a hung-up handset, a missed one, or
+ * no signal. A soft disc of its own colour on a canvas ring, so it reads as
+ * part of the person rather than a second picture.
+ */
+function EndBadge({ copy }: { copy: CallEndCopy }) {
   const colors = useThemeColors();
   const Icon = END_ICONS[copy.icon];
-  const tone = copy.icon === "phone-off" ? colors.textSecondary : copy.icon === "wifi-off" ? colors.error : colors.warning;
+  const color = colors[endTone(copy)];
   return (
-    <View className="items-center gap-2" accessibilityLiveRegion="assertive" accessible>
-      <View className="flex-row items-center gap-2">
-        <Icon size={22} color={tone} strokeWidth={2} aria-hidden />
-        <Text className="text-h2 text-text-primary">{copy.title}</Text>
-      </View>
+    <View
+      aria-hidden
+      className="absolute h-11 w-11 items-center justify-center rounded-pill bg-surface"
+      style={{ right: -4, bottom: -4, borderWidth: 3, borderColor: colors.canvas }}
+    >
+      <View pointerEvents="none" className="absolute inset-0 rounded-pill" style={{ backgroundColor: color, opacity: 0.14 }} />
+      <Icon size={20} color={color} strokeWidth={2} />
+    </View>
+  );
+}
+
+/**
+ * Why it ended, who ended it, and for how long: one announcement. The talk
+ * time is its own quiet figure, the way it was the large one a moment ago.
+ */
+function EndingBlock({ copy }: { copy: CallEndCopy }) {
+  const colors = useThemeColors();
+  const label = [copy.title, copy.detail, copy.duration ? `Call length ${copy.duration}` : null]
+    .filter((part): part is string => Boolean(part))
+    .map((part) => part.replace(/\.$/, ""))
+    .join(". ");
+  return (
+    <View className="items-center gap-3" accessibilityLiveRegion="assertive" accessible accessibilityLabel={label}>
+      <Text className="text-h2 text-text-primary">{copy.title}</Text>
       {copy.detail ? (
         <Text className="max-w-[320px] text-center text-body-lg text-text-secondary">{copy.detail}</Text>
+      ) : null}
+      {copy.duration ? (
+        <View className="flex-row items-center gap-2 rounded-pill border border-outline bg-surface px-3 py-1.5">
+          <Clock size={16} color={colors.textMuted} strokeWidth={2} aria-hidden />
+          <Text className="text-body font-medium text-text-primary" style={TABULAR}>
+            {copy.duration}
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -172,8 +212,15 @@ export function CallScreen({
   const reference = orderReference(session.orderId);
   const endingCopy: CallEndCopy | null = ended && ending
     ? ending.problem
-      ? { title: ending.problem.title, detail: ending.problem.body, icon: "phone-off", callAgain: false }
-      : endCopy(ending.reason, peerName, ending.durationMs)
+      ? {
+          title: ending.problem.title,
+          detail: ending.problem.body,
+          icon: "phone-off",
+          duration: null,
+          callAgain: false,
+          message: false,
+        }
+      : endCopy(ending.reason, peerName, ending.durationMs, session.call ? otherParty(session.call).role : "rider")
     : null;
 
   const status = talking && phase === "connected" ? formatCallDuration(elapsed) : phaseLabel(phase);
@@ -203,7 +250,10 @@ export function CallScreen({
       <View className="flex-1 items-center justify-center gap-5 px-4">
         <View className="items-center justify-center" style={{ width: AVATAR * 1.6, height: AVATAR * 1.6 }}>
           <Ringing active={ringing} color={incoming ? colors.success : colors.textMuted} />
-          <ChatAvatar name={peerName} size={AVATAR} />
+          <View style={{ width: AVATAR, height: AVATAR }}>
+            <ChatAvatar name={peerName} size={AVATAR} />
+            {endingCopy ? <EndBadge copy={endingCopy} /> : null}
+          </View>
         </View>
 
         <View className="items-center gap-1">
@@ -289,7 +339,7 @@ export function CallScreen({
             {endingCopy?.callAgain && canCallAgain ? (
               <PrimaryButton label="Call again" onPress={onCallAgain} />
             ) : null}
-            {endingCopy?.callAgain ? (
+            {endingCopy?.message ? (
               <SecondaryButton label="Send a message" onPress={onMessage} />
             ) : null}
             <SecondaryButton label="Close" onPress={onClose} />

@@ -1,4 +1,4 @@
-import { CallEngine, RECONNECT_GRACE_MS, type CallApi, type CallSnapshot } from "@/lib/callEngine";
+import { CallEngine, DROP_SETTLE_MS, RECONNECT_GRACE_MS, type CallApi, type CallSnapshot } from "@/lib/callEngine";
 import type { CallAudio, CallMedia, CallPeer, CallTrack } from "@/lib/callMedia";
 import { CALL_HEARTBEAT_MS, CALL_POLL_MS, type OrderCall } from "@/lib/orderCalls";
 
@@ -293,6 +293,27 @@ describe("a call that is talking", () => {
     expect(api.actOnOrderCall).toHaveBeenCalledWith(ORDER, ID, "end");
   });
 
+  it("asks GRIDGO before calling a dead path a lost connection", async () => {
+    const { engine, peers, api } = await connected();
+    api.listOrderCallSignals.mockRejectedValue(new Error("Network request failed"));
+    api.getOrderCall.mockRejectedValue(new Error("Network request failed"));
+    peers[0]!.ice("failed");
+    expect(engine.state.phase).toBe("reconnecting");
+    await jest.advanceTimersByTimeAsync(DROP_SETTLE_MS);
+    expect(engine.state.ending?.reason).toBe("network_lost");
+    expect(api.getOrderCall).toHaveBeenCalledWith(ORDER, ID);
+    expect(peers[0]!.closed).toBe(true);
+  });
+
+  it("calls it lost when GRIDGO still has the call running after the drop", async () => {
+    const { engine, peers, api } = await connected();
+    api.getOrderCall.mockResolvedValue(call({ state: "accepted" }));
+    peers[0]!.ice("failed");
+    await jest.advanceTimersByTimeAsync(DROP_SETTLE_MS);
+    expect(engine.state.ending?.reason).toBe("network_lost");
+    expect(api.actOnOrderCall).toHaveBeenCalledWith(ORDER, ID, "end");
+  });
+
   it("fails closed once its lease has passed without reaching GRIDGO", async () => {
     const { engine, api, track } = await connected();
     api.listOrderCallSignals.mockRejectedValue(new Error("Network request failed"));
@@ -309,6 +330,42 @@ describe("a call that is talking", () => {
     await jest.advanceTimersByTimeAsync(CALL_POLL_MS);
     expect(engine.state.ending?.reason).toBe("ended");
     expect(engine.state.ending?.durationMs).toBeGreaterThanOrEqual(1_000);
+  });
+
+  describe("when the rider hangs up, the audio drops before GRIDGO says ended", () => {
+    it.each(["disconnected", "failed"])("a %s path the next poll reads as ended is their hang-up", async (state) => {
+      const { engine, peers, api } = await connected();
+      await jest.advanceTimersByTimeAsync(5_000);
+      peers[0]!.ice(state);
+      expect(engine.state.phase).toBe("reconnecting");
+      // Their End lands a beat after their audio closed.
+      api.listOrderCallSignals.mockRejectedValue({ status: 409, body: { error: "call_not_active" } });
+      api.getOrderCall.mockResolvedValue(call({ state: "ended" }));
+      await jest.advanceTimersByTimeAsync(CALL_POLL_MS);
+      expect(engine.state.ending?.reason).toBe("ended");
+      // Talk time stops when the audio did, not when GRIDGO was next asked.
+      expect(engine.state.ending?.durationMs).toBe(5_000);
+      expect(api.actOnOrderCall).not.toHaveBeenCalledWith(ORDER, ID, "end");
+      expect(peers[0]!.closed).toBe(true);
+    });
+
+    it("a failed path that GRIDGO reads as ended only at the last check is still their hang-up", async () => {
+      const { engine, peers, api } = await connected();
+      api.listOrderCallSignals.mockRejectedValue(new Error("Network request failed"));
+      peers[0]!.ice("failed");
+      api.getOrderCall.mockResolvedValue(call({ state: "ended" }));
+      await jest.advanceTimersByTimeAsync(DROP_SETTLE_MS);
+      expect(engine.state.ending?.reason).toBe("ended");
+    });
+
+    it("an ended call read before the path drops stays ended", async () => {
+      const { engine, peers, api } = await connected();
+      api.listOrderCallSignals.mockResolvedValueOnce({ signals: [], cursor: 0, call: call({ state: "ended" }) });
+      await jest.advanceTimersByTimeAsync(CALL_POLL_MS);
+      peers[0]!.ice("failed");
+      await jest.advanceTimersByTimeAsync(DROP_SETTLE_MS);
+      expect(engine.state.ending?.reason).toBe("ended");
+    });
   });
 });
 
