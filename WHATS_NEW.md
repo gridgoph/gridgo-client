@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.374 (Fix)
+
+- The first-time tips can no longer leave the screen dimmed with no tip on it; Back now closes them.
+- When your rider hangs up, the call now says the rider ended it and for how long, not "Connection lost".
+
 ## 1.0.367 (Fix)
 
 - Swiping a basket item or an update now follows your finger smoothly, and Remove always asks first.
