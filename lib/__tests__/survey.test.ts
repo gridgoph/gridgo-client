@@ -174,8 +174,12 @@ describe("words", () => {
   it("explains a missing reward instead of leaving it out silently", () => {
     expect(noRewardLine(survey())).toBeNull();
     expect(noRewardLine(survey({ rewardEligible: false, nextRewardAt: "2026-10-18T08:00:00.000Z" }))).toMatch(
-      /does not come with a voucher/,
+      /does not come with a voucher: you had one in the last 7 days/,
     );
+  });
+
+  it("claims no earlier voucher for a survey that never carries one (store-review client, gridgo-api#284)", () => {
+    expect(noRewardLine(survey({ rewardEligible: false, nextRewardAt: null }))).toBeNull();
   });
 });
 
@@ -201,10 +205,19 @@ describe("thanks", () => {
       rewardIssued: true,
       body: expect.stringContaining("₱15.00 voucher is in your wallet"),
     });
-    expect(surveyThanks(survey({ status: "submitted", rewardStatus: "cooldown" }))).toMatchObject({
+    expect(
+      surveyThanks(survey({ status: "submitted", rewardStatus: "cooldown", nextRewardAt: "2026-10-18T08:00:00.000Z" })),
+    ).toMatchObject({
       rewardIssued: false,
-      body: expect.stringContaining("last 7 days"),
+      body: "Your answers reached GRIDGO. You already had a survey voucher in the last 7 days, so this one does not add another.",
     });
+  });
+
+  it("thanks a store-review client plainly, with no voucher said to have come before", () => {
+    const thanks = surveyThanks(
+      survey({ status: "submitted", rewardStatus: "cooldown", rewardEligible: false, nextRewardAt: null }),
+    );
+    expect(thanks).toEqual({ title: "Thank you", body: "Your answers reached GRIDGO.", rewardIssued: false });
   });
 });
 
@@ -224,9 +237,17 @@ describe("routes and the inbox", () => {
   });
 
   it("stops offering the reward once the invitation is a week old", () => {
-    expect(surveyNotificationCallout("2026-10-14T08:00:00.000Z", NOW)?.title).toBe(
+    expect(surveyNotificationCallout("2026-10-14T08:00:00.000Z", true, NOW)?.title).toBe(
       "₱15.00 voucher for the first three answers",
     );
-    expect(surveyNotificationCallout("2026-10-01T08:00:00.000Z", NOW)).toBeNull();
+    expect(surveyNotificationCallout("2026-10-01T08:00:00.000Z", true, NOW)).toBeNull();
+  });
+
+  it("offers no voucher when the survey cannot earn one, or has not been read", () => {
+    for (const eligible of [false, null]) {
+      const callout = surveyNotificationCallout("2026-10-14T08:00:00.000Z", eligible, NOW);
+      expect(callout).toEqual({ title: "Three quick questions", detail: "The rest are optional." });
+      expect(JSON.stringify(callout)).not.toMatch(/voucher|₱/i);
+    }
   });
 });

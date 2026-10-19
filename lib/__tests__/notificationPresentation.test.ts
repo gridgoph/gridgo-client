@@ -245,20 +245,20 @@ describe("presentNotification rating reminder", () => {
     expect(view.hint).toMatch(/rate/i);
   });
 
+  const surveyNote = () =>
+    note({
+      title: "How did your order go?",
+      body: "Share your experience in a short optional survey. Survey reward limits apply.",
+      type: "order_survey_available",
+      orderId: "ord_1",
+      orderTitle: "Flyers",
+      orderState: "completed",
+      fulfillmentMode: "delivery",
+      at: new Date(Date.now() - 3_600_000).toISOString(),
+    });
+
   it("words the survey invitation as optional, with the reward and its limit (report 81CA4493)", () => {
-    const at = new Date(Date.now() - 3_600_000).toISOString();
-    const view = presentNotification(
-      note({
-        title: "How did your order go?",
-        body: "Share your experience in a short optional survey. Survey reward limits apply.",
-        type: "order_survey_available",
-        orderId: "ord_1",
-        orderTitle: "Flyers",
-        orderState: "completed",
-        fulfillmentMode: "delivery",
-        at,
-      }),
-    );
+    const view = presentNotification(surveyNote(), { surveyRewardEligible: true });
 
     expect(view.title).toBe("How did your order go?");
     expect(view.body).toMatch(/optional/);
@@ -266,6 +266,14 @@ describe("presentNotification rating reminder", () => {
     expect(view.lane).toBe("update");
     expect(view.hint).toBe("Opens the survey");
     expect(view.callout).toMatchObject({ tone: "info", icon: "ticket", detail: "One survey voucher every 7 days." });
+  });
+
+  it("offers no voucher on a survey that cannot earn one, or has not been read", () => {
+    for (const surveyRewardEligible of [false, null]) {
+      const view = presentNotification(surveyNote(), { surveyRewardEligible });
+      expect(view.callout).toMatchObject({ icon: "star", title: "Three quick questions", detail: "The rest are optional." });
+      expect(`${view.title} ${view.body} ${view.callout?.title} ${view.callout?.detail}`).not.toMatch(/voucher|₱/i);
+    }
   });
 });
 

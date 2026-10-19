@@ -394,12 +394,19 @@ export function rewardOffer(survey: Pick<OrderSurvey, "rewardEligible">): string
     : null;
 }
 
-/** Why there is no reward offer, so its absence is never a mystery. */
+/**
+ * Why there is no reward offer, so its absence is never a mystery. Only the
+ * weekly limit is explained: with no next reward date the survey carries no
+ * voucher at all (a store-review account, gridgo-api#284), and saying the
+ * client already had one would be untrue.
+ */
 export function noRewardLine(survey: Pick<OrderSurvey, "rewardEligible" | "nextRewardAt">): string | null {
-  if (survey.rewardEligible) return null;
-  return survey.nextRewardAt && Date.parse(survey.nextRewardAt) > 0
-    ? `This survey does not come with a voucher: you had one in the last 7 days. Your next survey can earn one from ${exactTime(survey.nextRewardAt)}.`
-    : "This survey does not come with a voucher: survey vouchers are limited to one every 7 days.";
+  if (survey.rewardEligible || !hasNextReward(survey)) return null;
+  return `This survey does not come with a voucher: you had one in the last 7 days. Your next survey can earn one from ${exactTime(survey.nextRewardAt ?? "")}.`;
+}
+
+function hasNextReward(survey: Pick<OrderSurvey, "nextRewardAt">): boolean {
+  return survey.nextRewardAt != null && Date.parse(survey.nextRewardAt) > 0;
 }
 
 export type SurveyThanks = {
@@ -418,7 +425,9 @@ export function surveyThanks(survey: OrderSurvey): SurveyThanks {
       rewardIssued: true,
     };
   }
-  if (survey.rewardStatus === "cooldown") {
+  // GRIDGO also answers "cooldown" for a survey that never carried a voucher;
+  // only a next reward date says one really came this week.
+  if (survey.rewardStatus === "cooldown" && hasNextReward(survey)) {
     return {
       title: "Thank you",
       body: "Your answers reached GRIDGO. You already had a survey voucher in the last 7 days, so this one does not add another.",
@@ -491,16 +500,22 @@ export function surveyNotificationCopy(): { title: string; body: string; hint: s
 const SURVEY_OPEN_MS = 7 * 24 * 3_600_000;
 
 /**
- * The reward callout under the invitation, while the survey can still be open.
- * The row carries no survey state, so its own age is the honest limit: a
- * week after the invitation the survey has closed and nothing is offered.
+ * The callout under the invitation, while the survey can still be open. The
+ * row carries no survey state, so its own age is the honest limit: a week
+ * after the invitation the survey has closed and nothing is offered. The
+ * voucher is offered only when this survey, as last read, can earn one;
+ * unknown or not eligible reads as a plain invitation.
  */
 export function surveyNotificationCallout(
   at: string,
+  rewardEligible: boolean | null = null,
   now: number = Date.now(),
 ): { title: string; detail: string } | null {
   const sent = Date.parse(at);
   if (Number.isFinite(sent) && now - sent >= SURVEY_OPEN_MS) return null;
+  if (rewardEligible !== true) {
+    return { title: "Three quick questions", detail: "The rest are optional." };
+  }
   return {
     title: `${formatPhp(SURVEY_REWARD_MINOR)} voucher for the first three answers`,
     detail: "One survey voucher every 7 days.",
