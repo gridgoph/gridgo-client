@@ -351,7 +351,14 @@ useSession.subscribe((state, previous) => {
   // while the session restores, and forgetting the basket then is #150.
   if (state.signingOut && !previous.signingOut) useCart.getState().reset();
   const id = state.user?.id ?? null;
-  if (id === (previous.user?.id ?? null)) return;
+  if (id === (previous.user?.id ?? null)) {
+    // The Founding Tester label just arrived (a survey, a resume, a handover):
+    // its voucher is in the wallet now, so the wallet is read again with it.
+    const awardedAt = state.user?.foundingTester?.awardedAt ?? null;
+    if (id && awardedAt && awardedAt !== (previous.user?.foundingTester?.awardedAt ?? null))
+      void useVouchers.getState().load();
+    return;
+  }
   if (id) useCart.getState().claim(id);
   useCheckoutPayment.getState().reset();
   useOrderPayment.getState().reset();

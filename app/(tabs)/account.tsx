@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TabScreen } from "@/components/TabScreen";
 import { ClientMonogram } from "@/components/ClientMonogram";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { FoundingTesterCard, FoundingTesterChip } from "@/components/FoundingTesterCard";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -20,6 +21,7 @@ import {
   canApplyAsBusiness,
 } from "@/lib/accountProfile";
 import type { ClientOrganization } from "@/lib/api";
+import { foundingTesterView } from "@/lib/foundingTester";
 import { officerState } from "@/lib/organization";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
 import { accountTypeOption } from "@/lib/signup";
@@ -88,6 +90,7 @@ export default function AccountScreen() {
   const subName = accountSubName(user);
   const typeLabel = accountTypeOption(user?.accountType ?? "individual").label;
   const applicationPending = businessApplicationPending(user);
+  const foundingTester = foundingTesterView(user);
   // Clerk always serves an imageUrl, including the generated initials avatar.
   // `hasImage` is what tells a real photo from that placeholder — same rule
   // as Your details. RN Image draws it; the picker is not on this screen.
@@ -156,8 +159,25 @@ export default function AccountScreen() {
                   <Text className="text-caption text-text-secondary">Application pending</Text>
                 </View>
               ) : null}
+              {/*
+                The Founding Tester label, once GRIDGO has stamped it. The
+                client's own: no shop or rider app reads this projection.
+              */}
+              {foundingTester?.kind === "earned" ? <FoundingTesterChip label={foundingTester.label} /> : null}
             </View>
           </Pressable>
+
+          {/*
+            The missions, while the account can still earn the label. Once it
+            has, the chip above is all that is left of them, and the voucher
+            sits in the wallet row below.
+          */}
+          {foundingTester?.kind === "missions" ? (
+            <View className="gap-2">
+              <Text className="text-overline text-text-muted">FOUNDING TESTER</Text>
+              <FoundingTesterCard view={foundingTester} />
+            </View>
+          ) : null}
 
           <View className="gap-2">
             <Text className="text-overline text-text-muted">YOUR ACCOUNT</Text>

@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TabScreen } from "@/components/TabScreen";
 import { ErrorState } from "@/components/ErrorState";
+import { FoundingTesterCard } from "@/components/FoundingTesterCard";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { HomeCategoryRow } from "@/components/HomeCategoryRow";
@@ -29,6 +30,7 @@ import { useTourAutoStart, useTourScreen } from "@/hooks/useTourScreen";
 import { useVisibleTourStep } from "@/hooks/useTourStep";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
+import { foundingTesterView } from "@/lib/foundingTester";
 import { featuredPrintsFrom, type HomeSample } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
 import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
@@ -78,6 +80,7 @@ export default function HomeScreen() {
   const draftTitle = useRequestDraft((s) => s.title || s.productName);
   const hasDraft = useRequestDraft(draftHasContent);
   const refreshNotifications = useNotifications((s) => s.refresh);
+  const refreshAccount = useSession((s) => s.refresh);
   const startJob = useStartPrintJob();
   const loadCart = useCart((s) => s.load);
   const seasons = useSeasonWindows((s) => s.seasons);
@@ -164,7 +167,10 @@ export default function HomeScreen() {
     // has changed.
     void loadCart();
     void loadSeasons();
-  }, [refreshNotifications, loadCart, loadSamples, loadSeasons]);
+    // The Founding Tester missions ride on the account, and a confirmed
+    // payment or a handover is exactly the order change that ticks one.
+    void refreshAccount();
+  }, [refreshNotifications, loadCart, loadSamples, loadSeasons, refreshAccount]);
 
   useLiveRefresh(["orders", "catalog", "services", "availability", "settings", "credits"], load, { refreshOnFocus: false });
 
@@ -179,6 +185,7 @@ export default function HomeScreen() {
   );
 
   const jobs = homeJobs(orders);
+  const foundingTester = foundingTesterView(user);
   // Held until the phone has read its dismissals back, or a banner already
   // put away would flash on every cold start.
   const seasonToday = davaoToday();
@@ -411,6 +418,20 @@ export default function HomeScreen() {
                   </View>
                 ))}
               </View>
+            </View>
+          ) : null}
+
+          {/*
+            The Founding Tester missions, while the account can still earn the
+            label. After the jobs, because a job waiting on the client outranks
+            a reward; on an empty Home that puts it straight under the
+            greeting, where the first mission is the next thing to do. Gone
+            from Home once earned: the label lives on Account.
+          */}
+          {foundingTester?.kind === "missions" ? (
+            <View className="mt-8 gap-3">
+              <SectionHead label="FOUNDING TESTER" />
+              <FoundingTesterCard view={foundingTester} />
             </View>
           ) : null}
 

@@ -10,6 +10,7 @@ import {
   toSubmission,
   type SurveyDraft,
 } from "@/lib/survey";
+import { useSession } from "@/store/session";
 import { useVouchers } from "@/store/vouchers";
 
 /**
@@ -127,8 +128,11 @@ export const useSurvey = create<SurveyState>()((set, get) => ({
         delete drafts[orderId];
         return { drafts, busy: { ...state.busy, [orderId]: null } };
       });
-      // The voucher is in the wallet now; Account and the wallet say so.
+      // The voucher is in the wallet now; Account and the wallet say so. The
+      // account is read too: a survey can be the Founding Tester mission that
+      // earns the label, and the celebration reads it from there.
       void useVouchers.getState().load();
+      void useSession.getState().refresh();
       return true;
     } catch (error) {
       if (mine !== generation) return false;
