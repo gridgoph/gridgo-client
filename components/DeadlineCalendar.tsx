@@ -1,4 +1,13 @@
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info } from "lucide-react-native";
+import {
+  CalendarCheck,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Info,
+  TriangleAlert,
+  Zap,
+} from "lucide-react-native";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -19,6 +28,7 @@ import {
   choiceLabel,
   dayReasonLine,
   monthKeyOf,
+  readyByLine,
   shiftMonth,
   shopClock,
   type CalendarDay,
@@ -91,8 +101,13 @@ function paletteFor(light: boolean) {
   return light ? PALETTE.light : PALETTE.dark;
 }
 
-/** Open and tight keep their own paint; cannot is drawn as past. */
+/**
+ * Open and tight keep their own paint; cannot is drawn as past. Rush is an
+ * open disc with a bolt on it: the date is there, at a faster speed's price,
+ * and a third fill would be read against the two meanings already here.
+ */
 function paintedChoice(choice: DayChoice): "open" | "tight" | "past" {
+  if (choice === "rush") return "open";
   return choice === "open" || choice === "tight" ? choice : "past";
 }
 
@@ -137,6 +152,7 @@ export function DeadlineCalendar({
   canStepForward,
   seasons = [],
   earliest = null,
+  cutoffMinute = null,
 }: {
   /** Builds a month's cells. Called for the month either side as well. */
   daysFor: (month: Date) => CalendarDay[];
@@ -153,6 +169,8 @@ export function DeadlineCalendar({
   seasons?: SeasonWindow[];
   /** GRIDGO's earliest possible promise, named when a too-soon day is tapped. */
   earliest?: string | null;
+  /** GRIDGO's dispatch cutoff (`GET /settings`), named when today is too late. */
+  cutoffMinute?: number | null;
 }) {
   const colors = useThemeColors();
   const light = useThemeName() !== "dark";
@@ -252,6 +270,9 @@ export function DeadlineCalendar({
     () => seasonsInMonth(monthKeyOf(month), seasons),
     [month, seasons],
   );
+  const chosen = days.find((day) => day.dayKey === selectedDayKey && day.inMonth && day.selectable) ?? null;
+  // The bolt is only explained where one is drawn.
+  const showsRush = days.some((day) => day.inMonth && day.choice === "rush");
 
   /*
     A carousel, anchored on the middle of a three-month strip.
@@ -464,6 +485,7 @@ export function DeadlineCalendar({
               selectedDayKey={selectedDayKey}
               explainedDayKey={explainedHere?.dayKey ?? null}
               earliest={earliest}
+              cutoffMinute={cutoffMinute}
               onSelectDay={tapDay}
               interactive={entry.current}
             />
@@ -477,7 +499,7 @@ export function DeadlineCalendar({
           className="gg-panel mt-3 flex-row gap-3"
           accessible
           accessibilityLiveRegion="polite"
-          accessibilityLabel={`${chosenLabel(explainedHere.dayKey)}. ${dayReasonLine(explainedHere.reason, earliest)}`}
+          accessibilityLabel={`${chosenLabel(explainedHere.dayKey)}. ${dayReasonLine(explainedHere.reason, earliest, cutoffMinute)}`}
           testID="day-reason"
         >
           <Info size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
@@ -486,10 +508,12 @@ export function DeadlineCalendar({
               {chosenLabel(explainedHere.dayKey)}
             </Text>
             <Text className="text-body text-text-secondary">
-              {dayReasonLine(explainedHere.reason, earliest)}
+              {dayReasonLine(explainedHere.reason, earliest, cutoffMinute)}
             </Text>
           </View>
         </View>
+      ) : chosen ? (
+        <ChosenDay day={chosen} />
       ) : null}
 
       {/*
@@ -498,25 +522,30 @@ export function DeadlineCalendar({
         is in it too, with the tap that explains one.
       */}
       <View className="mt-4 flex-row flex-wrap gap-x-5 gap-y-2">
-        {(["open", "tight", "cannot"] as const).map((choice) => (
-          <View key={choice} className="flex-row items-center gap-2">
-            <View
-              style={{
-                width: 11,
-                height: 11,
-                borderRadius: 999,
-                backgroundColor: discColour(choice, light),
-                // At this size the quiet disc needs its own edge, or in Dark it
-                // disappears into the canvas.
-                borderWidth: (choice === "open" && light) || choice === "cannot" ? 1 : 0,
-                borderColor: choice === "cannot" ? numeralColour(choice, light) : colors.textPrimary,
-              }}
-            />
-            <Text className="text-caption text-text-secondary">
-              {choice === "cannot" ? "Not possible, tap one for why" : choiceLabel(choice)}
-            </Text>
-          </View>
-        ))}
+        {(showsRush ? (["open", "tight", "rush", "cannot"] as const) : (["open", "tight", "cannot"] as const)).map(
+          (choice) => (
+            <View key={choice} className="flex-row items-center gap-2">
+              <View
+                style={{
+                  width: 11,
+                  height: 11,
+                  borderRadius: 999,
+                  backgroundColor: discColour(choice, light),
+                  // At this size the quiet disc needs its own edge, or in Dark it
+                  // disappears into the canvas.
+                  borderWidth: (paintedChoice(choice) === "open" && light) || choice === "cannot" ? 1 : 0,
+                  borderColor: choice === "cannot" ? numeralColour(choice, light) : colors.textPrimary,
+                }}
+              />
+              {choice === "rush" ? (
+                <Zap size={12} color={colors.textPrimary} fill={colors.textPrimary} strokeWidth={1.5} aria-hidden />
+              ) : null}
+              <Text className="text-caption text-text-secondary">
+                {choice === "cannot" ? "Not possible: tap to see why" : choiceLabel(choice)}
+              </Text>
+            </View>
+          ),
+        )}
       </View>
 
       {monthSeasons.length ? (
@@ -532,6 +561,47 @@ export function DeadlineCalendar({
 
 /** Space round each disc; the season track fills it. */
 const DISC_INSET = 4;
+
+/** What a chosen day means: its ready time in Davao, then why it is that status. */
+const CHOSEN_NOTE: Record<"open" | "tight" | "rush", string> = {
+  open: "Secured: the shop's usual time makes this date.",
+  tight: "Tight: quicker than the shop's usual time, so the shop may decline.",
+  rush: "Rush, costs more: only a faster speed makes this date. Its price shows on your match.",
+};
+
+/**
+ * The chosen day's ready time, under the month (report 45F0B547).
+ *
+ * Same-day work used to be a date with no time. "Today, ready by 3:00 PM" is
+ * GRIDGO's own `readyBy`, never worked out here; an older API sends none, and
+ * then only the status is said.
+ */
+function ChosenDay({ day }: { day: CalendarDay }) {
+  const colors = useThemeColors();
+  if (day.choice !== "open" && day.choice !== "tight" && day.choice !== "rush") return null;
+  const ready = readyByLine(day.readyBy);
+  const note = CHOSEN_NOTE[day.choice];
+  const Icon = day.choice === "open" ? CalendarCheck : day.choice === "tight" ? TriangleAlert : Zap;
+  const tone = day.choice === "tight" ? colors.warning : day.choice === "open" ? colors.success : colors.textPrimary;
+
+  return (
+    <View
+      className="gg-panel mt-3 flex-row gap-3"
+      accessible
+      accessibilityLiveRegion="polite"
+      accessibilityLabel={`${chosenLabel(day.dayKey)}. ${ready ? `${ready}. ` : ""}${note}`}
+      testID="day-ready"
+    >
+      <Icon size={18} color={tone} strokeWidth={2} aria-hidden />
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text className="text-body font-medium text-text-primary">
+          {ready ?? chosenLabel(day.dayKey)}
+        </Text>
+        <Text className="text-body text-text-secondary">{note}</Text>
+      </View>
+    </View>
+  );
+}
 
 /**
  * The seasons that touch the month on screen, each with its level in words.
@@ -637,6 +707,7 @@ const MonthPage = memo(function MonthPage({
   selectedDayKey,
   explainedDayKey,
   earliest,
+  cutoffMinute,
   onSelectDay,
   interactive,
 }: {
@@ -647,6 +718,7 @@ const MonthPage = memo(function MonthPage({
   selectedDayKey: string | null;
   explainedDayKey: string | null;
   earliest: string | null;
+  cutoffMinute: number | null;
   onSelectDay: (day: CalendarDay) => void;
   interactive: boolean;
 }) {
@@ -665,6 +737,7 @@ const MonthPage = memo(function MonthPage({
           selected={day.dayKey === selectedDayKey}
           explained={day.dayKey === explainedDayKey}
           earliest={earliest}
+          cutoffMinute={cutoffMinute}
           // The day itself, not a closure over it: an arrow made here is a new
           // function every render and would defeat the cell's own memo.
           onSelect={onSelectDay}
@@ -709,6 +782,7 @@ const DayCell = memo(function DayCell({
   selected,
   explained,
   earliest,
+  cutoffMinute,
   onSelect,
 }: {
   day: CalendarDay;
@@ -718,6 +792,7 @@ const DayCell = memo(function DayCell({
   /** The unreachable day whose reason is open under the month. */
   explained: boolean;
   earliest: string | null;
+  cutoffMinute: number | null;
   onSelect: (day: CalendarDay) => void;
 }) {
   const colors = useThemeColors();
@@ -730,10 +805,11 @@ const DayCell = memo(function DayCell({
   // A day nobody can make still answers a tap — with why, and with its
   // season's message — never with a selection.
   const pressable = day.selectable || (day.inMonth && (day.season !== null || day.reason !== null));
-  const reasonText = day.inMonth && day.reason ? dayReasonLine(day.reason, earliest) : null;
+  const reasonText = day.inMonth && day.reason ? dayReasonLine(day.reason, earliest, cutoffMinute) : null;
+  const readyText = day.inMonth ? readyByLine(day.readyBy) : null;
   // A white disc on a white page is not a disc. It becomes an outlined circle
   // there instead, which is what vacant looks like anyway.
-  const needsEdge = day.choice === "open" && light;
+  const needsEdge = paintedChoice(day.choice) === "open" && light;
 
   return (
     <Pressable
@@ -742,7 +818,7 @@ const DayCell = memo(function DayCell({
       accessibilityRole="button"
       accessibilityState={{ selected, disabled: !day.selectable }}
       // The whole answer: a screen reader gets no colour and no shape.
-      accessibilityLabel={[`${day.day}: ${choiceLabel(day.choice)}`, reasonText?.replace(/\.$/, ""), seasonText]
+      accessibilityLabel={[`${day.day}: ${choiceLabel(day.choice)}`, readyText, reasonText?.replace(/\.$/, ""), seasonText]
         .filter(Boolean)
         .join(". ")}
       style={({ pressed }) => ({
@@ -855,6 +931,15 @@ const DayCell = memo(function DayCell({
         >
           {day.day}
         </Text>
+        {day.choice === "rush" ? (
+          // Under the numeral, inside the disc: on the edge it read as a smudge.
+          <View
+            pointerEvents="none"
+            style={{ position: "absolute", bottom: Math.round(disc * 0.1), left: 0, right: 0, alignItems: "center" }}
+          >
+            <Zap size={Math.max(9, Math.round(disc * 0.2))} color={ink} fill={ink} strokeWidth={1.5} aria-hidden />
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );

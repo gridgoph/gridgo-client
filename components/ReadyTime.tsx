@@ -1,6 +1,7 @@
 import { Text, View } from "react-native";
 
 import { StatusChip } from "@/components/StatusChip";
+import { nearReadyLine } from "@/lib/deadlineCalendar";
 import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 
 /**
@@ -12,6 +13,7 @@ import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
  */
 export function ReadyTime({ promiseBy, early }: { promiseBy?: string | null; early?: string | null }) {
   const date = readyByDate(promiseBy);
+  const near = nearReadyLine(promiseBy);
   if (!date) return early ? <StatusChip tone="success" label={early} icon="clock-check" /> : null;
   return (
     <View className="gap-1">
@@ -21,6 +23,8 @@ export function ReadyTime({ promiseBy, early }: { promiseBy?: string | null; ear
         </View>
       ) : null}
       <Text className="text-body text-text-primary">Ready by {date}</Text>
+      {/* Same-day work names its clock the way the calendar and match did. */}
+      {near ? <Text className="text-body font-medium text-text-primary">{near}</Text> : null}
       <Text className="text-caption text-text-muted">{READY_TIME_EXPLANATION}</Text>
     </View>
   );

@@ -77,14 +77,14 @@ describe("choosing a day", () => {
     // Whichever day the month opens on, the first one GRIDGO said it could
     // make. Naming a date here would tie the test to the day it is run.
     await waitFor(() =>
-      expect(screen.getAllByLabelText(/: We can make this$/).length).toBeGreaterThan(0),
+      expect(screen.getAllByLabelText(/: Secured$/).length).toBeGreaterThan(0),
     );
     expect(
-      screen.getByText("Earliest a printer can have these ready: Wed 23 Sep"),
+      screen.getByText("Earliest ready: Wed 23 Sep, 12:00 PM."),
     ).toBeTruthy();
     expect(screen.queryByText("Not this day")).toBeNull();
     expect(JSON.stringify(screen.toJSON())).not.toMatch(/#C62828|#B33A3A/i);
-    fireEvent.press(screen.getAllByLabelText(/: We can make this$/)[0]);
+    fireEvent.press(screen.getAllByLabelText(/: Secured$/)[0]);
 
     await waitFor(() => expect(screen.getByText("Continue")).toBeTruthy());
     expect(screen.queryByText("Pick a date")).toBeNull();

@@ -83,7 +83,18 @@ describe("homeJobs", () => {
     ]);
     expect(ids(jobs.inProgress)).toEqual(["live"]);
     expect(jobs.inProgressTotal).toBe(1);
-    expect(ids(jobs.finished)).toEqual(["c1", "c2", "c3"]);
+    expect(ids(jobs.finished)).toEqual(["c1", "c2"]);
+  });
+
+  it("keeps the latest finished jobs, whatever order the API sent them in", () => {
+    const jobs = homeJobs([
+      order("first", "completed", { updatedAt: "2026-08-01T10:00:00+08:00" }),
+      order("latest", "completed", { updatedAt: "2026-08-04T10:00:00+08:00" }),
+      order("middle", "delivered", { updatedAt: "2026-08-02T10:00:00+08:00" }),
+      order("second", "completed", { updatedAt: "2026-08-03T10:00:00+08:00" }),
+    ]);
+    expect(HOME_FINISHED_LIMIT).toBe(2);
+    expect(ids(jobs.finished)).toEqual(["latest", "second"]);
   });
 
   it("names only the end states as finished", () => {

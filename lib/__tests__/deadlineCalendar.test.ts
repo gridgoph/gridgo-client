@@ -83,19 +83,24 @@ describe("what a day is called", () => {
   it("describes what a narrow day costs the client, never how few shops are left", () => {
     // A client is never told how many print something. "Fewer printers free"
     // would be a count by implication.
-    for (const label of [choiceLabel("open"), choiceLabel("tight"), choiceLabel("cannot")]) {
-      expect(label).not.toMatch(/shop|printer|press/i);
+    // "The shop" in Tight is the one GRIDGO matches, never a count of them.
+    for (const label of ["open", "tight", "rush", "cannot"].map((choice) => choiceLabel(choice as "open"))) {
+      expect(label).not.toMatch(/shops|printers|presses/i);
       expect(label).not.toMatch(/\d/);
     }
-    expect(choiceLabel("tight")).toContain("choice");
+    expect(choiceLabel("open")).toBe("Secured");
+    expect(choiceLabel("tight")).toBe("Tight: the shop may decline");
+    expect(choiceLabel("rush")).toBe("Rush, costs more");
+    expect(choiceLabel("cannot")).toBe("Not possible");
   });
 });
 
 describe("the earliest-ready line", () => {
   it("names the day a printer can first have this ready", () => {
     expect(formatEarliestDay("2026-09-23T12:00:00+08:00")).toBe("Wed 23 Sep");
-    expect(earliestReadyLine("2026-09-23T12:00:00+08:00")).toBe(
-      "Earliest a printer can have these ready: Wed 23 Sep",
+    expect(earliestReadyLine("2026-09-23T12:00:00+08:00")).toBe("Earliest ready: Wed 23 Sep, 12:00 PM.");
+    expect(earliestReadyLine("2026-09-23T15:00:00+08:00", "Mon–Sat, 8:00 AM – 5:00 PM")).toBe(
+      "Earliest ready: Wed 23 Sep, 3:00 PM. Our team reviews artwork Mon–Sat, 8:00 AM – 5:00 PM.",
     );
   });
 

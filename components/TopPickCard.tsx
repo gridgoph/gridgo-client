@@ -3,10 +3,12 @@ import { Pressable, Text, View } from "react-native";
 
 import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { StatusChip } from "@/components/StatusChip";
 import { ShopHoursLine } from "@/components/ShopHoursLine";
 import { ZoneRatingLine } from "@/components/ZoneRatingLine";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { MatchListing, MatchResult } from "@/lib/api";
+import { nearReadyLine } from "@/lib/deadlineCalendar";
 import { ratingLabel, zoneLine } from "@/lib/distanceZone";
 import { startsFromBase } from "@/lib/gridgoPrice";
 import { samplePhotoUri, unitLine } from "@/lib/listing";
@@ -14,6 +16,7 @@ import { matchBadge, placeLabel, placeOrdinal, readyInLine } from "@/lib/match";
 import { printerCapLine } from "@/lib/printerWidth";
 import { readyByDate } from "@/lib/readyTime";
 import { reviewStartsLine } from "@/lib/operatingHours";
+import { rushPriceLine, schedulingChip } from "@/lib/scheduling";
 import { shopHoursSpoken, shopHoursView } from "@/lib/shopHours";
 import { useServiceFeeRateBps } from "@/store/platformSettings";
 
@@ -56,9 +59,14 @@ export function TopPickCard({ match, listing, onPress, onStalePhoto }: Props) {
   const placeInLine =
     listing.placeInLine ?? (match.queue ? match.queue.jobsAhead + 1 : null);
   const place = placeOrdinal(placeInLine);
-  const promise = listing.readyBy ?? match.promiseBy ?? null;
+  const scheduling = listing.scheduling ?? match.scheduling ?? null;
+  const promise = listing.readyBy ?? match.promiseBy ?? scheduling?.readyBy ?? null;
   const readyBy = readyByDate(promise);
-  const readyIn = readyInLine(promise);
+  // Same-day work says its clock time in words, the way the calendar did.
+  const readyIn = nearReadyLine(promise) ?? readyInLine(promise);
+  const chip = schedulingChip(scheduling);
+  // Only the price GRIDGO sent for the faster speed; never worked out here.
+  const rushPrice = scheduling?.status === "rush" ? rushPriceLine(scheduling.rushTier, unitLine(listing)) : null;
   // Out of hours the date already waits for GRIDGO's review; say from when.
   const reviewStarts = reviewStartsLine(listing.review ?? match.operatingStatus);
   const cap = printerCapLine(listing);
@@ -76,6 +84,8 @@ export function TopPickCard({ match, listing, onPress, onStalePhoto }: Props) {
     placeLabel(placeInLine),
     readyBy ? `ready by ${readyBy}` : null,
     readyIn,
+    chip?.label,
+    rushPrice,
     reviewStarts,
     zoneLine(zone, listing.distanceKm),
     ratingLabel(rating),
@@ -153,6 +163,12 @@ export function TopPickCard({ match, listing, onPress, onStalePhoto }: Props) {
                 {readyBy ?? "GRIDGO confirms"}
               </Text>
               {readyIn ? <Text className="text-caption text-text-muted">{readyIn}</Text> : null}
+              {chip ? (
+                <View className="mt-1 flex-row">
+                  <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
+                </View>
+              ) : null}
+              {rushPrice ? <Text className="text-caption text-text-secondary">{rushPrice}</Text> : null}
               {reviewStarts ? (
                 <Text className="text-caption text-text-muted">{reviewStarts}</Text>
               ) : null}

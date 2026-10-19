@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import ReportProblemScreen from "@/app/report-problem";
 import { BUG_REPORT_HEADING } from "@/lib/bugReport";
+import { pickerReturns } from "@/test/reportProblemHarness";
 
 const mockReplace = jest.fn();
 let mockParams: { orderId?: string } = {};
@@ -28,6 +29,11 @@ jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
   return { ...actual, listOrders: jest.fn(), sendSupportChatMessage: jest.fn() };
 });
+
+const mockGetDocumentAsync = jest.fn();
+jest.mock("@/lib/nativeModules", () => ({
+  getDocumentPickerNative: () => ({ getDocumentAsync: (...args: unknown[]) => mockGetDocumentAsync(...args) }),
+}));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
@@ -86,6 +92,17 @@ describe("Report a problem", () => {
     );
     expect(screen.getByText("Not about an order")).toBeTruthy();
     expect(api.sendSupportChatMessage).not.toHaveBeenCalled();
+  });
+
+  it("stops at three screenshots and says why", async () => {
+    mockParams = {};
+    pickerReturns(mockGetDocumentAsync, ["a.png", "b.png", "c.png", "d.png"]);
+    await renderInSafeArea(<ReportProblemScreen />);
+
+    fireEvent.press(screen.getByLabelText("Add screenshot"));
+
+    expect(await screen.findByText("A report can include up to 3 screenshots.")).toBeTruthy();
+    expect(screen.queryByLabelText("Screenshot 1")).toBeNull();
   });
 
   it("sends a marked report into a new conversation and opens it", async () => {

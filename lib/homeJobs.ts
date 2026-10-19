@@ -7,15 +7,19 @@
  * to know where it has got to. Finished: nothing more will happen, so it is a
  * quiet line the client can reopen, never a card competing with live work.
  *
- * Order within each group is the API's own, the same order Orders shows.
+ * Waiting and in-progress jobs keep the API's own order. Finished jobs are
+ * the latest ones — whatever finished last, the way Orders sorts by default —
+ * because a client looking back wants the job that just came in, not the
+ * first one they ever placed.
  */
 
 import type { Order } from "@/lib/api";
+import { sortOrders } from "@/lib/orderList";
 import { orderNeedsClient } from "@/lib/orderState";
 
 /** Cards and rows Home draws per group. Orders is one tap away for the rest. */
 export const HOME_IN_PROGRESS_LIMIT = 3;
-export const HOME_FINISHED_LIMIT = 3;
+export const HOME_FINISHED_LIMIT = 2;
 
 /**
  * States after which nothing more happens to the job from the client's side.
@@ -55,6 +59,6 @@ export function homeJobs(orders: Order[]): HomeJobs {
     needsYou,
     inProgress: active.slice(0, HOME_IN_PROGRESS_LIMIT),
     inProgressTotal: active.length,
-    finished: done.slice(0, HOME_FINISHED_LIMIT),
+    finished: sortOrders(done, "recent").slice(0, HOME_FINISHED_LIMIT),
   };
 }
