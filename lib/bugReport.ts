@@ -14,9 +14,9 @@ import { orderStateMeta } from "@/lib/orderState";
  * also what the desk's thread preview shows, and the facts appended under the
  * client's own words that they would otherwise be asked for one at a time.
  *
- * The chat carries text only (`POST /support-chat/me/messages` takes `body`),
- * so a screenshot has nowhere to go yet. The form does not offer one: a picker
- * whose image silently never arrives is worse than no picker.
+ * Screenshots travel the way a photo does in Chat: each is uploaded as a
+ * `support_chat_image` and the report carries their ids as
+ * `attachmentFileIds`, so Operations sees them under the report's text.
  */
 
 /** First line of every report. The desk's preview starts here. */
@@ -26,6 +26,13 @@ export const BUG_REPORT_HEADING = "Bug report from the client app";
 export const HAPPENED_MIN = 10;
 export const HAPPENED_MAX = 1500;
 export const EXPECTED_MAX = 1000;
+
+/** Screenshots one report may carry. Fewer than a chat message's four. */
+export const REPORT_SCREENSHOTS_MAX = 3;
+export const REPORT_SCREENSHOTS_LIMIT = {
+  max: REPORT_SCREENSHOTS_MAX,
+  error: `A report can include up to ${REPORT_SCREENSHOTS_MAX} screenshots.`,
+};
 
 /** Most recent orders offered in "Which order?" — a report is about now. */
 export const ORDER_CHOICES_MAX = 8;

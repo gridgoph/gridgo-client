@@ -15,6 +15,13 @@ describe("addChatPhotos", () => {
     expect(result).toEqual({ ok: true, pending: [photo("a.jpg"), { uri: "file:///cache/b.jpg", name: "b.jpg", mimeType: "image/jpeg" }] });
   });
 
+  it("stops at a caller's own limit", () => {
+    const three = ["a", "b", "c"].map((n) => photo(`${n}.jpg`));
+    const limit = { max: 3, error: "A report can include up to 3 screenshots." };
+    expect(addChatPhotos(three, [photo("d.jpg")], keep, limit)).toEqual({ ok: false, error: limit.error });
+    expect(addChatPhotos(three.slice(1), [photo("d.jpg")], keep, limit).ok).toBe(true);
+  });
+
   it("stops at four photos a message", () => {
     const four = ["a", "b", "c", "d"].map((n) => photo(`${n}.jpg`));
     expect(addChatPhotos(four, [photo("e.jpg")], keep)).toEqual({ ok: false, error: "A message can include up to 4 photos." });
