@@ -28,6 +28,7 @@ import { AppUpdateSheet } from "@/components/AppUpdateSheet";
 import { BrandIntro } from "@/components/BrandIntro";
 import { CallOverlay } from "@/components/call/CallOverlay";
 import { CheckoutExitQuestion } from "@/components/CheckoutExitQuestion";
+import { FoundingTesterCelebration } from "@/components/FoundingTesterCelebration";
 import { PushExplainerSheet } from "@/components/PushExplainerSheet";
 import { SessionShell } from "@/components/SessionShell";
 import { TourOverlay } from "@/components/TourOverlay";
@@ -575,6 +576,8 @@ function AppNavigation() {
             <TourOverlay ready={!introPlaying && fontsReady} />
             {/* "What stopped you from ordering?": last in line, behind every prompt above. */}
             <CheckoutExitQuestion ready={!introPlaying && fontsReady} />
+            {/* "You're a Founding Tester", once per account on this phone; it waits behind every prompt above. */}
+            <FoundingTesterCelebration ready={!introPlaying && fontsReady} />
             {/* Calls with the rider: above every screen and prompt, because a ringing call outranks them. */}
             <CallOverlay />
           </SessionShell>

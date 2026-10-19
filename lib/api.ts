@@ -73,6 +73,28 @@ export type User = {
    * Attached from `GET /me` or the `business_client` row on `GET /auth/me`.
    */
   approvalCase?: ApprovalCaseSummary | null;
+  /**
+   * Founding Tester missions and label (gridgo-api#293). Absent on an API
+   * that predates them; read it only through `lib/foundingTester.ts`.
+   */
+  foundingTester?: FoundingTester | null;
+};
+
+/**
+ * The account's Founding Tester progress, as `GET /auth/me` and `GET /me`
+ * project it (gridgo-api `docs/VOUCHERS_API.md#founding-tester-missions`).
+ * `label`, `awardedAt` and `reward` stay null until all three missions count.
+ */
+export type FoundingTester = {
+  eligible: boolean;
+  label: string | null;
+  /** When the label was earned. The celebration is keyed on it. */
+  awardedAt: string | null;
+  missions: { placed: boolean; received: boolean; rated: boolean };
+  completedCount: number;
+  /** `pending | ineligible | issued | existing_survey_reward`; kept open. */
+  rewardStatus: string | null;
+  reward: { id: string; valueMinor: number; expiresAt: string } | null;
 };
 
 /** A map point on an order. Absent until the platform knows one. */
