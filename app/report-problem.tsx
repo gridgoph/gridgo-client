@@ -1,6 +1,6 @@
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { ReportScreenshots } from "@/components/ReportScreenshots";
 import { SpecRow } from "@/components/SpecRow";
 import { FormField } from "@/components/form/FormField";
 import { OptionPicker, type PickerOption } from "@/components/form/OptionPicker";
@@ -16,13 +17,17 @@ import * as api from "@/lib/api";
 import {
   EXPECTED_MAX,
   HAPPENED_MAX,
+  REPORT_SCREENSHOTS_LIMIT,
+  REPORT_SCREENSHOTS_MAX,
   bugReportProblem,
   composeBugReport,
   currentDevice,
   recentOrdersForReport,
 } from "@/lib/bugReport";
+import { SUPPORT_CHAT_IMAGE_PURPOSE, addChatPhotos } from "@/lib/chatImages";
 import { chatThreadRoute } from "@/lib/chatThreads";
 import { userFacingError } from "@/lib/copy";
+import { getDocumentPickerNative } from "@/lib/nativeModules";
 import { orderReference } from "@/lib/orderReference";
 import { orderStateMeta } from "@/lib/orderState";
 
@@ -34,7 +39,7 @@ const NO_ORDER = "";
  * It is a chat message to Operations, not a ticket: the report opens a new
  * conversation on the desk they already work, and the client lands in that
  * conversation, which is where the reply will appear. See `lib/bugReport.ts`
- * for what the message says and why there is no screenshot.
+ * for what the message says and how its screenshots travel.
  *
  * The facts Operations would otherwise ask for — app version, phone, system,
  * the order — are shown before sending, not attached behind the client's back.
@@ -54,6 +59,10 @@ export default function ReportProblemScreen() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [screenshots, setScreenshots] = useState<api.UploadAsset[]>([]);
+  const [screenshotError, setScreenshotError] = useState<string | null>(null);
+  // A retry after a failed send must not upload the same screenshot twice.
+  const uploaded = useRef(new Map<string, string>());
 
   // The order list is a convenience. A failed read hides the field rather than
   // standing between a client and a report about, quite possibly, that failure.
@@ -91,8 +100,37 @@ export default function ReportProblemScreen() {
     })),
   ];
 
-  const hasWork = !sent && !sending && (happened.trim().length > 0 || expected.trim().length > 0);
+  const hasWork =
+    !sent &&
+    !sending &&
+    (happened.trim().length > 0 || expected.trim().length > 0 || screenshots.length > 0);
   usePreventRemove(hasWork, () => setConfirmDiscard(true));
+
+  const addScreenshot = useCallback(async () => {
+    const picker = getDocumentPickerNative();
+    if (!picker) {
+      setScreenshotError("This build cannot pick a photo. Install a development build that includes the file picker.");
+      return;
+    }
+    const picked = await picker.getDocumentAsync({
+      type: ["image/jpeg", "image/png", "image/webp"],
+      copyToCacheDirectory: true,
+      multiple: true,
+    });
+    if (picked.canceled || !picked.assets?.length) return;
+    const added = addChatPhotos(screenshots, picked.assets, (asset) => asset, REPORT_SCREENSHOTS_LIMIT);
+    if (!added.ok) {
+      setScreenshotError(added.error);
+      return;
+    }
+    setScreenshotError(null);
+    setScreenshots(added.pending);
+  }, [screenshots]);
+
+  const removeScreenshot = useCallback((index: number) => {
+    setScreenshotError(null);
+    setScreenshots((current) => current.filter((_, i) => i !== index));
+  }, []);
 
   const send = useCallback(async () => {
     if (sending) return;
@@ -102,11 +140,31 @@ export default function ReportProblemScreen() {
     }
     setSending(true);
     setError(null);
+    let fileIds: string[];
+    try {
+      fileIds = [];
+      for (const shot of screenshots) {
+        let fileId = uploaded.current.get(shot.uri);
+        if (!fileId) {
+          fileId = (await api.uploadFile(shot, SUPPORT_CHAT_IMAGE_PURPOSE).done).fileId;
+          uploaded.current.set(shot.uri, fileId);
+        }
+        fileIds.push(fileId);
+      }
+    } catch {
+      // Said as an upload, whatever the cause: a bare "cannot reach the server"
+      // would not tell the client the screenshots are what to drop if it persists.
+      setError(
+        "A screenshot did not upload, so nothing was sent. Check this phone’s connection and send it again — what you wrote and your screenshots are still here. If it keeps failing, remove the screenshots and send without them.",
+      );
+      setSending(false);
+      return;
+    }
     try {
       const posted = await api.sendSupportChatMessage(
         composeBugReport({ happened, expected }, device, order),
         undefined,
-        { newThread: true },
+        fileIds.length ? { newThread: true, attachmentFileIds: fileIds } : { newThread: true },
       );
       setSent(true);
       setSending(false);
@@ -123,7 +181,7 @@ export default function ReportProblemScreen() {
       );
       setSending(false);
     }
-  }, [device, expected, happened, order, problem, router, sending]);
+  }, [device, expected, happened, order, problem, router, screenshots, sending]);
 
   const showOrders = ordersLoading || choices.length > 0;
 
@@ -147,6 +205,7 @@ export default function ReportProblemScreen() {
               setConfirmDiscard(false);
               setHappened("");
               setExpected("");
+              setScreenshots([]);
               requestAnimationFrame(() => router.back());
             }}
             onCancel={() => setConfirmDiscard(false)}
@@ -187,6 +246,21 @@ export default function ReportProblemScreen() {
             maxLength={EXPECTED_MAX}
             editable={!sending}
             accessibilityLabel="What you expected"
+          />
+        </FormField>
+
+        <FormField
+          label="Screenshots"
+          optional
+          helper={`Up to ${REPORT_SCREENSHOTS_MAX}. Only GRIDGO Operations see them.`}
+          error={screenshotError}
+        >
+          <ReportScreenshots
+            screenshots={screenshots}
+            max={REPORT_SCREENSHOTS_MAX}
+            disabled={sending}
+            onAdd={() => void addScreenshot()}
+            onRemove={removeScreenshot}
           />
         </FormField>
 
