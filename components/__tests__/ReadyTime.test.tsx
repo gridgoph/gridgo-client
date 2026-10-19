@@ -20,3 +20,26 @@ describe("ReadyTime", () => {
     expect(screen.queryByText("Ready early")).toBeNull();
   });
 });
+
+describe("ReadyTime on a same-day order (gridgo-api#292)", () => {
+  const davao = (hour: number, plusDays: number) => {
+    const day = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+    return new Date(Date.parse(`${day}T${String(hour).padStart(2, "0")}:00:00+08:00`) + plusDays * 86_400_000).toISOString();
+  };
+
+  it("names today's clock time beside the date", async () => {
+    await render(<ReadyTime promiseBy={davao(15, 0)} />);
+    expect(screen.getByText("Today, ready by 3:00 PM")).toBeTruthy();
+    expect(screen.getByText(/^Ready by /)).toBeTruthy();
+  });
+
+  it("names tomorrow's, and nothing further out", async () => {
+    await render(<ReadyTime promiseBy={davao(11, 1)} />);
+    expect(screen.getByText("Tomorrow, ready by 11:00 AM")).toBeTruthy();
+  });
+
+  it("adds no near line for a later date", async () => {
+    await render(<ReadyTime promiseBy={davao(11, 5)} />);
+    expect(screen.queryByText(/^(Today|Tomorrow), ready by/)).toBeNull();
+  });
+});

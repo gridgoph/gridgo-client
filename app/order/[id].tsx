@@ -578,7 +578,7 @@ export default function OrderDetailScreen() {
         )}
         <SpecRow label="Area" value={zoneName(zones, order.zone)} />
         <View className="pt-3">
-          <ReadyTime promiseBy={order.promiseBy} early={readyEarlyLabel(order)} />
+          <ReadyTime promiseBy={order.promiseBy ?? order.scheduling?.readyBy} early={readyEarlyLabel(order)} />
         </View>
         <ChangeHistory order={order} />
       </FoldSection>

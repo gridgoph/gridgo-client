@@ -9,6 +9,7 @@ import {
   TrendingUp,
   TriangleAlert,
   Wrench,
+  Zap,
   type LucideIcon,
 } from "lucide-react-native";
 import { Text, View } from "react-native";
@@ -38,6 +39,8 @@ const ICONS = {
   sparkles: Sparkles,
   "trending-up": TrendingUp,
   wrench: Wrench,
+  // "Rush, costs more" (gridgo-api#292): only a faster listed speed makes the date.
+  zap: Zap,
 } satisfies Record<string, LucideIcon>;
 
 export type StatusIconName = keyof typeof ICONS;

@@ -41,11 +41,11 @@ it("says why an unreachable day cannot be had, without anyone tapping", async ()
 
   expect(
     screen.getByLabelText(
-      "13: Not this day. Too soon. Artwork review, printing and delivery take until Mon 19 Oct",
+      "13: Not possible. Too soon. Artwork review, printing and delivery take until Mon 19 Oct",
     ),
   ).toBeTruthy();
-  expect(screen.getByLabelText("20: We can make this")).toBeTruthy();
-  expect(screen.getByText("Not possible, tap one for why")).toBeTruthy();
+  expect(screen.getByLabelText("20: Secured")).toBeTruthy();
+  expect(screen.getByText("Not possible: tap to see why")).toBeTruthy();
   expect(screen.queryByTestId("day-reason")).toBeNull();
 });
 
@@ -55,7 +55,7 @@ it("opens the reason under the month for a tapped unreachable day, without choos
   await renderCalendar(onSelectDay);
 
   fireEvent.press(
-    screen.getByLabelText("13: Not this day. Too soon. Artwork review, printing and delivery take until Mon 19 Oct"),
+    screen.getByLabelText("13: Not possible. Too soon. Artwork review, printing and delivery take until Mon 19 Oct"),
   );
 
   expect(await screen.findByTestId("day-reason")).toBeTruthy();

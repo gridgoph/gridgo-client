@@ -10,18 +10,34 @@
  * hints at who is behind a date — the same rule the match card follows.
  */
 
-import type { DeadlineDay, DeadlineDayReason } from "@/lib/api";
+import type { CatalogSpeedTier, DeadlineDay, DeadlineDayReason } from "@/lib/api";
 import { MAX_LEAD_DAYS, parseDeadline } from "@/lib/deadline";
 import { busiestLevel, seasonsOn, type DemandLevel, type SeasonWindow } from "@/lib/seasonWindows";
 
-export type DayChoice = "cannot" | "tight" | "open" | "past";
+/**
+ * What a day is (gridgo-api#292): `open` is Secured — a shop's ordinary time
+ * meets it; `tight` is between the shop's shortest and ordinary time, so the
+ * shop may decline; `rush` only a listed faster speed reaches, at its price.
+ */
+export type DayChoice = "cannot" | "tight" | "open" | "rush" | "past";
 
 /**
- * Why a day in the month cannot be had (gridgo-api#203). Never about shops:
- * the reason is the time the work takes, or that nothing prints this yet —
- * not how many presses are busy.
+ * Why a day in the month cannot be had. Never about shops: the reason is
+ * GRIDGO's own calendar, the time the work takes, or that nothing prints this
+ * yet — not how many presses are busy.
+ *
+ * `too_soon` is gridgo-api#203's one reason, kept for an older API.
  */
-export type DayReason = "too_soon" | "no_listing" | "not_checked" | "unavailable";
+export type DayReason =
+  | "closed_sunday"
+  | "closed"
+  | "closed_now"
+  | "after_cutoff"
+  | "before_shortest"
+  | "too_soon"
+  | "no_listing"
+  | "not_checked"
+  | "unavailable";
 
 /**
  * A day inside one or more season windows.
@@ -48,6 +64,10 @@ export type CalendarDay = {
   selectable: boolean;
   /** Why a future `cannot` day is one; null on every other day. */
   reason: DayReason | null;
+  /** When the work would be ready for this day's status; null when not known. */
+  readyBy: string | null;
+  /** The faster speed a Rush day needs. */
+  rushTier: CatalogSpeedTier | null;
   /** The season windows over this day, or null outside every season. */
   season: SeasonMark | null;
 };
@@ -102,7 +122,8 @@ export function monthGrid({
     // rather than a guess drawn as a choice.
     const known = states.get(dayKey);
     const choice: DayChoice =
-      dayKey < todayKey ? "past" : known === undefined ? "cannot" : known.state;
+      dayKey < todayKey ? "past" : known === undefined ? "cannot" : dayChoiceOf(known);
+    const live = choice !== "past" && choice !== "cannot";
 
     cells.push({
       dayKey,
@@ -110,8 +131,10 @@ export function monthGrid({
       inMonth,
       isToday: dayKey === todayKey,
       choice,
-      selectable: inMonth && (choice === "open" || choice === "tight"),
+      selectable: inMonth && live,
       reason: choice === "cannot" ? dayReasonOf(known?.reason, known !== undefined) : null,
+      readyBy: live ? (known?.readyBy ?? null) : null,
+      rushTier: choice === "rush" ? (known?.rushTier ?? null) : null,
       season: null,
     });
   }
@@ -140,22 +163,96 @@ function withSeasons(cells: CalendarDay[], seasons: SeasonWindow[]): CalendarDay
   });
 }
 
+/**
+ * A day's answer as the calendar draws it. `status` when GRIDGO sent one
+ * (gridgo-api#292); an older API's `state` otherwise, which has no Rush.
+ * An unknown status is read from `state`, never guessed.
+ */
+export function dayChoiceOf(entry: Pick<DeadlineDay, "state" | "status">): Exclude<DayChoice, "past"> {
+  switch (entry.status) {
+    case "secured":
+      return "open";
+    case "tight":
+      return "tight";
+    case "rush":
+      return "rush";
+    case "not_possible":
+      return "cannot";
+    default:
+      return entry.state === "open" || entry.state === "tight" ? entry.state : "cannot";
+  }
+}
+
+/** Whether a client could choose this day at all. */
+export function isPossibleDay(entry: Pick<DeadlineDay, "state" | "status">): boolean {
+  return dayChoiceOf(entry) !== "cannot";
+}
+
 export function dayReasonOf(
   reason: DeadlineDayReason | null | undefined,
   answered: boolean,
 ): DayReason {
   if (!answered) return "not_checked";
-  if (reason === "review_production_delivery_exceeds_deadline") return "too_soon";
-  if (reason === "no_eligible_listing") return "no_listing";
-  return "unavailable";
+  switch (reason) {
+    case "gridgo_closed_sunday":
+      return "closed_sunday";
+    case "gridgo_closed":
+      return "closed";
+    case "outside_operating_hours":
+      return "closed_now";
+    case "after_dispatch_cutoff":
+      return "after_cutoff";
+    case "before_shortest_time":
+      return "before_shortest";
+    case "review_production_delivery_exceeds_deadline":
+      return "too_soon";
+    case "no_eligible_listing":
+      return "no_listing";
+    default:
+      return "unavailable";
+  }
+}
+
+/** "4:00 PM" — minutes after Davao midnight, as a clock. */
+export function cutoffClock(minute: number | null | undefined): string | null {
+  if (minute == null || !Number.isInteger(minute) || minute < 0 || minute > 1439) return null;
+  const hours = Math.floor(minute / 60);
+  const minutes = String(minute % 60).padStart(2, "0");
+  const suffix = hours < 12 ? "AM" : "PM";
+  return `${hours % 12 === 0 ? 12 : hours % 12}:${minutes} ${suffix}`;
 }
 
 /**
  * The reason, said when a client taps a day they cannot have. A grey disc on
  * its own reads as "broken"; a sentence turns it into a plan.
+ *
+ * `cutoffMinute` is GRIDGO's dispatch cutoff from `GET /settings`; without it
+ * the cutoff is still named, just not its time.
  */
-export function dayReasonLine(reason: DayReason, earliest: string | null): string {
+export function dayReasonLine(
+  reason: DayReason,
+  earliest: string | null,
+  cutoffMinute?: number | null,
+): string {
   switch (reason) {
+    case "closed_sunday":
+      return "GRIDGO is closed on Sundays.";
+    case "closed":
+      return "GRIDGO is closed this day.";
+    case "closed_now":
+      return "Not today: GRIDGO is closed right now.";
+    case "after_cutoff": {
+      const clock = cutoffClock(cutoffMinute);
+      return clock
+        ? `Too late for today: the ${clock} cutoff has passed.`
+        : "Too late for today: today's cutoff has passed.";
+    }
+    case "before_shortest": {
+      const day = formatEarliestDay(earliest);
+      return day
+        ? `Before the shop's shortest time. The earliest is ${day}.`
+        : "Before the shop's shortest time.";
+    }
     case "too_soon": {
       const day = formatEarliestDay(earliest);
       return day
@@ -182,14 +279,57 @@ export function dayReasonLine(reason: DayReason, earliest: string | null): strin
 export function choiceLabel(choice: DayChoice): string {
   switch (choice) {
     case "open":
-      return "We can make this";
+      return "Secured";
     case "tight":
-      return "Tight — less choice";
+      return "Tight: the shop may decline";
+    case "rush":
+      return "Rush, costs more";
     case "cannot":
-      return "Not this day";
+      return "Not possible";
     case "past":
       return "Gone";
   }
+}
+
+/** Davao's day number of an instant; Davao keeps +08:00 all year. */
+function davaoDayNumber(at: number): number {
+  return Math.floor((at + 8 * 3_600_000) / 86_400_000);
+}
+
+/** "3:00 PM" in Davao. */
+function davaoClock(at: Date): string {
+  return at.toLocaleTimeString("en-PH", {
+    timeZone: SHOP_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * "Today, ready by 3:00 PM", "Tomorrow, ready by 11:00 AM", or "Ready by
+ * Wed 21 Oct, 3:00 PM" — GRIDGO's ready time for a day, in Davao.
+ *
+ * Same-day work was a date with no time (report 45F0B547); the clock is the
+ * answer a client ordering this morning actually needs. Null without one.
+ */
+export function readyByLine(readyBy: string | null | undefined, now: Date = new Date()): string | null {
+  const at = parseDeadline(readyBy ?? null);
+  if (!at) return null;
+  return nearReadyLine(readyBy, now) ?? `Ready by ${formatEarliestDay(at)}, ${davaoClock(at)}`;
+}
+
+/**
+ * "Today, ready by 3:00 PM" or "Tomorrow, ready by 11:00 AM"; null for any
+ * other day. The match card and the order screen say a near ready time this
+ * way, beside the full date they already show.
+ */
+export function nearReadyLine(readyBy: string | null | undefined, now: Date = new Date()): string | null {
+  const at = parseDeadline(readyBy ?? null);
+  if (!at) return null;
+  const gap = davaoDayNumber(at.getTime()) - davaoDayNumber(now.getTime());
+  if (gap === 0) return `Today, ready by ${davaoClock(at)}`;
+  if (gap === 1) return `Tomorrow, ready by ${davaoClock(at)}`;
+  return null;
 }
 
 /**
@@ -276,15 +416,20 @@ export function formatEarliestDay(value: string | Date | null | undefined): stri
 }
 
 /**
- * The line that replaced the red discs: when a printer can first have this
- * ready, or that nobody can within the window.
+ * The line that replaced the red discs: when this can first be ready, to the
+ * minute, and when GRIDGO's own team reviews the artwork that every date
+ * waits on. Or that nobody can within the window.
+ *
+ * `reviewHours` is "Mon–Sat, 8:00 AM – 5:00 PM" from `GET /settings`; without
+ * it the hours are left out rather than invented.
  */
-export function earliestReadyLine(earliest: string | null): string {
-  const day = formatEarliestDay(earliest);
-  if (!day) {
+export function earliestReadyLine(earliest: string | null, reviewHours?: string | null): string {
+  const at = parseDeadline(earliest);
+  if (!at) {
     return `No printer can make this within the next ${MAX_LEAD_DAYS} days. Try No rush to see anyone.`;
   }
-  return `Earliest a printer can have these ready: ${day}`;
+  const line = `Earliest ready: ${formatEarliestDay(at)}, ${davaoClock(at)}.`;
+  return reviewHours ? `${line} Our team reviews artwork ${reviewHours}.` : line;
 }
 
 
@@ -328,7 +473,7 @@ export function shiftMonth(month: Date, step: number): Date {
  * forward would help.
  */
 export function openingMonth(availability: DeadlineDay[], now: Date = new Date()): Date {
-  const first = availability.find((entry) => entry.state !== "cannot");
+  const first = availability.find(isPossibleDay);
   if (!first) return new Date(now.getFullYear(), now.getMonth(), 1);
   const [year, month] = first.day.split("-").map(Number);
   return new Date(year, month - 1, 1);
@@ -368,7 +513,7 @@ export function nextMonthWithADay(
 ): Date | null {
   const shown = monthKeyOf(month);
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const usable = availability.filter((entry) => entry.state !== "cannot" && entry.day >= todayKey);
+  const usable = availability.filter((entry) => isPossibleDay(entry) && entry.day >= todayKey);
   if (usable.some((entry) => entry.day.slice(0, 7) === shown)) return null;
 
   const later = usable.find((entry) => entry.day.slice(0, 7) > shown);

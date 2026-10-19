@@ -22,6 +22,7 @@ import { fulfilmentStepFor } from "@/lib/requestFulfilment";
 import { userFacingError } from "@/lib/copy";
 import { closedNowLine } from "@/lib/operatingHours";
 import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
+import { useReviewCalendar } from "@/hooks/useReviewCalendar";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
@@ -33,6 +34,7 @@ import {
   canStep,
   deadlineFor,
   earliestReadyLine,
+  isPossibleDay,
   monthGrid,
   monthName,
   nextMonthWithADay,
@@ -118,6 +120,8 @@ export default function WhenScreen() {
     void loadSeasons();
   }, [loadSeasons]);
   useTourScreen("when");
+  // Review hours and the cutoff, for the header and a too-late today.
+  const { reviewHours, cutoffMinute } = useReviewCalendar();
   const [availability, setAvailability] = useState<api.DeadlineDay[] | null>(null);
   const [earliest, setEarliest] = useState<string | null>(null);
   const [operatingStatus, setOperatingStatus] = useState<api.OperatingStatus | null>(null);
@@ -205,7 +209,7 @@ export default function WhenScreen() {
 
   /** A day the availability answer allows; any day while there is no answer. */
   const pickable = (dayKey: string) =>
-    !availability || availability.some((entry) => entry.day === dayKey && entry.state !== "cannot");
+    !availability || availability.some((entry) => entry.day === dayKey && isPossibleDay(entry));
 
   /** A date already in the order: chosen, and its month brought into view. */
   const pickInOrder = (entry: BasketDate) => {
@@ -311,19 +315,20 @@ export default function WhenScreen() {
           </Text>
         ) : null}
         {/*
-          One line, not three. The old paragraph explained the rule this
-          calendar now simply shows — a day nobody can make sits quiet, like
-          the past — and spent a third of the screen saying it. The earliest
-          date is the line that replaced the red discs.
+          One line, not three. The calendar shows the rule — a day nobody can
+          make sits quiet, like the past — so the header says only when this
+          can first be ready, to the minute, and when GRIDGO reviews artwork
+          (gridgo-api#292).
         */}
-        <Text className="mt-1 text-body text-text-secondary">
-          Only the days a printer can actually make.
-        </Text>
         {availability && !availabilityFailed ? (
           <Text className="mt-1 text-body text-text-secondary">
-            {earliestReadyLine(earliest)}
+            {earliestReadyLine(earliest, reviewHours)}
           </Text>
-        ) : null}
+        ) : (
+          <Text className="mt-1 text-body text-text-secondary">
+            Only the days a printer can actually make.
+          </Text>
+        )}
         {/*
           Why the earliest is later than a client expects at 9 PM: nothing is
           reviewed until GRIDGO opens, and every date here already counts it
@@ -354,6 +359,7 @@ export default function WhenScreen() {
             canStepForward={canStep(month, 1, availability ?? [], new Date())}
             seasons={seasons}
             earliest={availability ? earliest : null}
+            cutoffMinute={cutoffMinute}
           />
           ) : (
             <DeadlineCalendarSkeleton />
