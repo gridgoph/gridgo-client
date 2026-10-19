@@ -23,6 +23,7 @@ import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import { useArtworkUpload } from "@/hooks/useArtworkUpload";
 import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
+import { ProhibitedItemsNote } from "@/components/legal/ProhibitedItemsNote";
 import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { artworkRightsPayload, useArtworkRights } from "@/store/artworkRights";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -383,6 +384,7 @@ export default function NewRequestScreen() {
                   onRetry={() => void artwork.retry()}
                   onCancel={artwork.cancel}
                 />
+                <ProhibitedItemsNote onOpen={(href) => router.push(href)} />
                 {draft.artworkFileId ? (
                   <ProductPreview
                     family={draft.family}

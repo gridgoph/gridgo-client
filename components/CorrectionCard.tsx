@@ -6,6 +6,7 @@ import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ErrorState } from "@/components/ErrorState";
 import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
+import { ProhibitedItemsNote } from "@/components/legal/ProhibitedItemsNote";
 import { useArtworkUpload } from "@/hooks/useArtworkUpload";
 import type { Order } from "@/lib/api";
 import * as api from "@/lib/api";
@@ -99,6 +100,8 @@ export function CorrectionCard({ order, onUpdated, onOpen }: Props) {
         onRetry={() => void artwork.retry()}
         onCancel={artwork.cancel}
       />
+
+      <ProhibitedItemsNote onOpen={onOpen} />
 
       {replacementReady ? <ArtworkRightsBox scope={rightsScope} onOpen={onOpen} disabled={busy} /> : null}
 
