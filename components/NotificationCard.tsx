@@ -47,6 +47,7 @@ import {
   SWIPE_FAIL_OFFSET_Y,
 } from "@/lib/swipeRow";
 import { usePlatformSettings } from "@/store/platformSettings";
+import { useSurvey } from "@/store/survey";
 
 /** Timeline point: its size, and its drop to sit on the title's first line. */
 const DOT_SIZE = 8;
@@ -123,7 +124,12 @@ export function NotificationCard({ group, read, onOpen, onMarkRead, applicationN
   const showServiceFee = usePlatformSettings((state) =>
     serviceFeeVisibleToClient(state.settings),
   );
-  const presented = presentNotification(notification, { showServiceFee, applicationNoticeId });
+  // Read, never fetched: the inbox offers the voucher only once this order's
+  // survey has said it can earn one.
+  const surveyRewardEligible = useSurvey((state) =>
+    notification.orderId ? (state.surveys[notification.orderId]?.rewardEligible ?? null) : null,
+  );
+  const presented = presentNotification(notification, { showServiceFee, applicationNoticeId, surveyRewardEligible });
   const picture = notificationImageUrl(notification.imageUrl);
   // A row with no job is GRIDGO speaking, and says so rather than leaving the
   // strip empty beside its time.
