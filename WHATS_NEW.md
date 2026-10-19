@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.401 (New feature)
+
+- The artwork step now reminds you what GRIDGO cannot print, with a link to the policy.
+
 ## 1.0.396 (Fix)
 
 - The order survey no longer says you already got a voucher when the survey simply has none.
