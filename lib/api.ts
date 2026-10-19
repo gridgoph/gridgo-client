@@ -531,6 +531,11 @@ export type Order = {
   /** Client promise, projected by GRIDGO with the queue and working calendar. */
   promiseBy?: string | null;
   /**
+   * The Tight, Secured or Rush answer checkout snapshotted (gridgo-api#292).
+   * `promiseBy` stays the promise: a reschedule moves it, never this.
+   */
+  scheduling?: Scheduling | null;
+  /**
    * Printing finished before the shop's own deadline (gridgo-api#219). Says
    * nothing about dispatch; `readyLabel` is the API's words for it.
    */
@@ -753,6 +758,13 @@ export type OperatingHours = {
   schedule: HubSchedule;
   /** Working minutes an artwork review takes. */
   artworkReviewMinutes: number;
+  /** Review time for work shorter than a shop's working day (gridgo-api#292). */
+  sameDayReviewMinutes?: number;
+  /**
+   * Minutes after Davao midnight from which today is no longer a ready date
+   * (default 960 = 4:00 PM). Absent on an older API.
+   */
+  priorityDispatchCutoffMinute?: number;
 };
 
 /**
@@ -2689,6 +2701,8 @@ export type MatchedListingFields = {
   pickupFeeMinor?: number | null;
   /** When the artwork would be reviewed, already counted inside `readyBy`. */
   review?: OperatingStatus | null;
+  /** Tight, Secured or Rush for this listing (gridgo-api#292). Absent on an older API. */
+  scheduling?: Scheduling | null;
 };
 
 /** A listing on the Top Pick's own board, as the match returns it. */
@@ -2771,6 +2785,8 @@ export type MatchResult = {
   requestFulfillment?: RequestFulfilment | null;
   /** Artwork review timing behind every `readyBy` here (gridgo-api#203). */
   operatingStatus?: OperatingStatus | null;
+  /** The Top Pick's Tight, Secured or Rush answer (gridgo-api#292). */
+  scheduling?: Scheduling | null;
   /** On a pick-up match: the hub's point, hours and fee as they stand now. */
   hubPickup?: HubPickup | null;
   /** How many other shops could have printed it. */
@@ -2952,6 +2968,8 @@ export type CartGroup = {
   voucherDiscountMinor?: number;
   /** The group's client promise; null when GRIDGO cannot estimate it yet. */
   readyBy?: string | null;
+  /** Tight, Secured or Rush for this group (gridgo-api#292). */
+  scheduling?: Scheduling | null;
 };
 
 export type Cart = {
@@ -3515,28 +3533,68 @@ export type DeadlineDay = {
   /** Local calendar day, `YYYY-MM-DD`. */
   day: string;
   /**
+   * The legacy answer, still sent beside `status`:
    * `cannot` — nobody could finish by then.
-   * `tight`  — somebody could, but the choice is narrow.
+   * `tight`  — somebody could, but the choice is narrow (Rush is `tight` too).
    * `open`   — comfortably achievable.
    *
    * Never a count. A client is not told how many shops print something.
    */
   state: "cannot" | "tight" | "open";
   /**
-   * Why a `cannot` day cannot (gridgo-api#203): review, printing and delivery
-   * run past it, or nobody offers this at all. Null when reachable; absent on
-   * an older API.
+   * Tight, Secured or Rush (gridgo-api#292, `docs/SCHEDULING_API.md`).
+   * Absent on an older API — read through `dayChoiceOf`.
+   */
+  status?: SchedulingStatus;
+  /**
+   * Why a `cannot` day cannot: GRIDGO is closed, the cutoff passed, it is
+   * before the shop's shortest time, or nobody offers this at all. Null when
+   * reachable; absent on an older API.
    */
   reason?: DeadlineDayReason | null;
+  /** The ready time behind this day's status; null on an impossible day. */
+  readyBy?: string | null;
+  /** The faster speed a Rush day needs. Carries no shop. */
+  rushTier?: CatalogSpeedTier | null;
 };
 
+export type SchedulingStatus = "not_possible" | "tight" | "secured" | "rush" | (string & {});
+
 export type DeadlineDayReason =
-  | "review_production_delivery_exceeds_deadline"
+  | "gridgo_closed_sunday"
+  | "gridgo_closed"
+  | "outside_operating_hours"
+  | "after_dispatch_cutoff"
+  | "before_shortest_time"
   | "no_eligible_listing"
+  /** gridgo-api#203's single reason, before #292 split it. */
+  | "review_production_delivery_exceeds_deadline"
   | (string & {});
+
+/**
+ * Tight, Secured or Rush for one listing, group or order (gridgo-api#292).
+ * Every instant is a client estimate, never the shop's production deadline.
+ */
+export type Scheduling = {
+  version?: number;
+  status: SchedulingStatus;
+  reason?: DeadlineDayReason | null;
+  earliestReadyBy?: string | null;
+  securedReadyBy?: string | null;
+  /** The ready time for the date asked for. */
+  readyBy?: string | null;
+  sameDay?: boolean;
+  tightDeadline?: boolean;
+  /** "Tight deadline" — GRIDGO's own words. */
+  label?: string | null;
+  /** The listed faster speed this answer needs, with its client prices. */
+  rushTier?: CatalogSpeedTier | null;
+  expressListing?: boolean;
+};
 
 export type DeadlineDays = {
   days: DeadlineDay[];
+  /** The earliest ready instant, whatever the display horizon. */
   earliest: string | null;
   /** Artwork review timing the days were counted from. */
   operatingStatus?: OperatingStatus | null;

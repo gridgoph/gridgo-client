@@ -58,9 +58,9 @@ it("names the month's season with its level and dates, and says it blocks nothin
 it("says a season day's season aloud, and keeps it pickable", async () => {
   await renderCalendar(null);
 
-  const day = screen.getByLabelText("13: We can make this. Peak season, Graduation");
+  const day = screen.getByLabelText("13: Secured. Peak season, Graduation");
   expect(day.props.accessibilityState).toMatchObject({ disabled: false });
-  expect(screen.getByLabelText("11: We can make this")).toBeTruthy();
+  expect(screen.getByLabelText("11: Secured")).toBeTruthy();
 });
 
 it("opens the season's message when the chosen day is inside it", async () => {
@@ -80,7 +80,7 @@ it("shows the message for a tapped season day nobody can make, without choosing 
   const onSelectDay = jest.fn();
   await renderCalendar(null, onSelectDay);
 
-  fireEvent.press(screen.getByLabelText("16: Not this day. No printer can finish by this day. Peak season, Graduation"));
+  fireEvent.press(screen.getByLabelText("16: Not possible. No printer can finish by this day. Peak season, Graduation"));
 
   expect(await screen.findByText(graduation.message)).toBeTruthy();
   expect(onSelectDay).not.toHaveBeenCalled();

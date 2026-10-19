@@ -85,6 +85,17 @@ export function openingHoursLines(
   return hubHoursLines(settings?.operatingHours?.schedule);
 }
 
+/**
+ * "Mon–Sat, 8:00 AM – 5:00 PM" — when GRIDGO's team reviews artwork, as one
+ * phrase for the date step's header. Null on an API without the setting.
+ */
+export function reviewHoursPhrase(
+  settings: Pick<PlatformSettings, "operatingHours"> | null | undefined,
+): string | null {
+  const lines = openingHoursLines(settings);
+  return lines?.length ? lines.map((line) => line.replace(" · ", ", ")).join("; ") : null;
+}
+
 /** Closures in the next month, "Closed 25–26 Dec". */
 export function upcomingClosures(
   hours: OperatingHours | null | undefined,
