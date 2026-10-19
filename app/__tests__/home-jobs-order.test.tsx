@@ -133,8 +133,9 @@ describe("Home's jobs, live before finished", () => {
     // Finished rows: name plus the word and when, nothing else.
     expect(screen.getByText("Menu boards")).toBeTruthy();
     expect(screen.getByText("Shop signage")).toBeTruthy();
-    expect(screen.getByText("Staff shirts")).toBeTruthy();
     expect(screen.getByText(/^Delivered /)).toBeTruthy();
+    // Only the latest two finished jobs; the rest are on Orders.
+    expect(screen.queryByText("Staff shirts")).toBeNull();
 
     // One way to the full list, on the first of the two sections.
     expect(screen.getAllByText("View all")).toHaveLength(1);

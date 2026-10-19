@@ -1,5 +1,5 @@
 /**
- * What Home shows a client who has nothing on press: FEATURED PRINTS.
+ * What Home shows every client below their jobs: FEATURED PRINTS.
  *
  * The row is curated. GRIDGO's staff pick which approved products appear and
  * in what order (gridgo-api `docs/FEATURED_PRINTS_API.md`); the app draws that
