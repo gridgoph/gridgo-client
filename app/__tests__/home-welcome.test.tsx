@@ -199,14 +199,77 @@ describe("Home with nothing on press", () => {
     expect(api.listCatalogShops).not.toHaveBeenCalled();
   });
 
-  it("says none of it once the client has a job, and reads no featured list at all", async () => {
+  it("drops the greeting once the client has a job, and still reads the featured list", async () => {
     api.listOrders.mockResolvedValue([order()]);
 
     await renderInSafeArea(<HomeScreen />);
 
     expect(await screen.findByText("Grand opening tarpaulin")).toBeTruthy();
     expect(screen.queryByText("Hello, Rina")).toBeNull();
+    expect(await screen.findByText("Flyers")).toBeTruthy();
+  });
+});
+
+/**
+ * FEATURED PRINTS used to be read only for a client with nothing on press, so
+ * the list staff curate never reached a returning client (report 876B533C).
+ * It is now on every Home, after the jobs: nothing waiting on the client is
+ * pushed below it.
+ */
+describe("FEATURED PRINTS for a returning client", () => {
+  function finished(index: number): Order {
+    return {
+      ...order(),
+      id: `ord_done_${index}`,
+      title: `Finished job ${index}`,
+      state: "completed",
+      updatedAt: `2026-08-1${index}T10:00:00.000Z`,
+    };
+  }
+
+  it("shows the row below a job in progress", async () => {
+    api.listOrders.mockResolvedValue([order()]);
+
+    await renderInSafeArea(<HomeScreen />);
+
+    expect(await screen.findByText("FEATURED PRINTS")).toBeTruthy();
+    expect(screen.getByText("IN PROGRESS")).toBeTruthy();
+    // Drawn after the job in the column, never above it.
+    const column = screen
+      .getAllByText(/^(Grand opening tarpaulin|FEATURED PRINTS)$/)
+      .map((node) => node.props.children);
+    expect(column).toEqual(["Grand opening tarpaulin", "FEATURED PRINTS"]);
+    expect(screen.getByText("START A PRINT")).toBeTruthy();
+  });
+
+  it("shows the row to a client with only finished jobs, under the latest two of them", async () => {
+    api.listOrders.mockResolvedValue([finished(1), finished(2), finished(3), finished(4)]);
+
+    await renderInSafeArea(<HomeScreen />);
+
+    expect(await screen.findByText("FEATURED PRINTS")).toBeTruthy();
+    expect(await screen.findByText("Flyers")).toBeTruthy();
+    expect(screen.getByText("RECENTLY FINISHED")).toBeTruthy();
+    // The two that finished last, not the first two the API listed.
+    expect(screen.getByText("Finished job 4")).toBeTruthy();
+    expect(screen.getByText("Finished job 3")).toBeTruthy();
+    expect(screen.queryByText("Finished job 2")).toBeNull();
+    expect(screen.queryByText("Finished job 1")).toBeNull();
+    // The rest are on Orders.
+    expect(screen.getByLabelText("View all 4 jobs")).toBeTruthy();
+    expect(screen.queryByText("Hello, Rina")).toBeNull();
+  });
+
+  it("leaves the row out for a returning client when the curated list is empty", async () => {
+    api.listOrders.mockResolvedValue([order()]);
+    api.getFeaturedPrints.mockResolvedValue(EMPTY);
+
+    await renderInSafeArea(<HomeScreen />);
+
+    expect(await screen.findByText("Grand opening tarpaulin")).toBeTruthy();
+    await waitFor(() => expect(api.getFeaturedPrints).toHaveBeenCalled());
     expect(screen.queryByText("FEATURED PRINTS")).toBeNull();
-    expect(api.getFeaturedPrints).not.toHaveBeenCalled();
+    expect(screen.getByText("START A PRINT")).toBeTruthy();
+    expect(api.listCatalogShops).not.toHaveBeenCalled();
   });
 });

@@ -20,7 +20,7 @@ type Props = {
 };
 
 /**
- * FEATURED PRINTS: the products GRIDGO's staff chose, on a client's first screen.
+ * FEATURED PRINTS: the products GRIDGO's staff chose, on every client's Home.
  *
  * A Home with nothing on press was a category menu and a search bar: it asked
  * a brand-new client what they wanted without ever showing them one thing the

@@ -53,8 +53,9 @@ import { useSession } from "@/store/session";
  * because the question there is "which of these, and what do I do". Jobs in
  * progress are the other question, "where has it got to", so they are cards
  * led by the state in words, with the compact stage rail and what happens
- * next. Finished jobs are one quiet line each: three finished cards used to
- * look exactly like live work and push the start menu off the first screen.
+ * next. Finished jobs are one quiet line each, the latest two: three finished
+ * cards used to look exactly like live work and push the start menu off the
+ * first screen, and an uncapped list of rows piled up the same way.
  * Each group is capped; the rest live on Orders, one tap away through
  * "View all".
  *
@@ -93,11 +94,13 @@ export default function HomeScreen() {
   const [samplesLoading, setSamplesLoading] = useState(false);
 
   /**
-   * FEATURED PRINTS, read only for a client with nothing on press.
+   * FEATURED PRINTS, read for every client.
    *
-   * A returning client's Home is already answering a question, so it does not
-   * spend a phone's data on a browse strip nobody asked for. The list is the
-   * one GRIDGO's staff curated (`GET /featured-prints`); an empty or failed
+   * It used to be read only for a client with nothing on press, which meant
+   * the list staff curate never reached anyone who had ordered before (issue
+   * report 876B533C). It sits after the jobs, so a job waiting on the client
+   * still leads. The list is the one GRIDGO's staff curated
+   * (`GET /featured-prints`); an empty or failed
    * read leaves the row out rather than showing an empty shelf, and never
    * falls back to anything else — the start board under it answers
    * everything the row does, one tap further along.
@@ -138,7 +141,7 @@ export default function HomeScreen() {
       if (sequence !== loadSequence.current) return;
       setOrders(list);
       setError(null);
-      if (list.length === 0) void loadSamples(sequence);
+      void loadSamples(sequence);
     } catch (e) {
       if (sequence !== loadSequence.current) return;
       setOrders([]);
@@ -191,7 +194,7 @@ export default function HomeScreen() {
   // rather than report on it.
   const welcoming = !loading && !error && orders.length === 0;
   const shownSamples = samples ?? [];
-  const showSamples = welcoming && (samplesLoading || shownSamples.length > 0);
+  const showSamples = showJobs && (samplesLoading || shownSamples.length > 0);
 
   /*
     The first-order tour starts here, once, for a client with nothing on
@@ -425,7 +428,9 @@ export default function HomeScreen() {
             Real work, before the menu that describes it. A first screen that
             only lists families never shows a client one thing GRIDGO makes,
             and a photograph of a printed tarpaulin at a real starting price
-            does more for that than any amount of copy. FEATURED PRINTS is
+            does more for that than any amount of copy, for a returning client
+            as much as a new one. It comes after every job section, so nothing
+            waiting on the client is pushed down by it. FEATURED PRINTS is
             GRIDGO's own curated list — never what other clients are printing —
             so its heading is the same quiet SectionHead as the board below it.
           */}
