@@ -21,6 +21,12 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.408 (New feature)
+
+- Home now shows Featured prints to every client, and only your two latest finished jobs.
+- You can add up to three screenshots when you report a problem, so Operations sees what you saw.
+- The date calendar now marks Tight, Secured and Rush days, skips closed days, and shows same-day ready times.
+
 ## 1.0.401 (New feature)
 
 - The artwork step now reminds you what GRIDGO cannot print, with a link to the policy.
