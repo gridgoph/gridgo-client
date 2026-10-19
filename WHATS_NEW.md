@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.396 (Fix)
+
+- The order survey no longer says you already got a voucher when the survey simply has none.
+
 ## 1.0.391 (New feature)
 
 - Cancelling an order now shows exactly how much comes back before you confirm, and problem reports include your photos.
