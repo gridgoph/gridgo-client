@@ -70,6 +70,7 @@ import { type OrderStepId } from "@/lib/orderSteps";
 import { MOCKUP_LABEL } from "@/lib/productPreview";
 import { layoutAdvice, layoutLabel, lineNeedsLayout, offeredLayouts, paperChange, type KnownLayout } from "@/lib/printLayout";
 import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
+import { ProhibitedItemsNote } from "@/components/legal/ProhibitedItemsNote";
 import { cartRightsScope, useArtworkRights } from "@/store/artworkRights";
 import { useArtworkAttachments, type PendingUpload } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
@@ -605,6 +606,10 @@ export default function ArtworkScreen() {
               : "Upload the files you want printed."}{" "}
           Add a front and a back, or a separate logo, each with its own label.
         </Text>
+
+        <View className="mt-3">
+          <ProhibitedItemsNote onOpen={(href) => router.push(href)} />
+        </View>
 
         {/* Before the files: what this product type wants, from GRIDGO's targets. */}
         {guide && takesFiles ? (
