@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { useState } from "react";
-import { Text } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { State } from "react-native-gesture-handler";
 import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 
@@ -63,6 +63,33 @@ it("takes no swipe while the basket is busy", async () => {
   expect(getByGestureTestId("swipe-to-remove").config.enabled).toBe(false);
 });
 
+// Issue #325: the Remove layer is the same size and radius as the card, so its
+// red border bled through the card's anti-aliased rounded corners at rest.
+it("draws nothing of the Remove layer while the row is closed", async () => {
+  await render(
+    <SwipeToRemove label="Flyers" onRemove={jest.fn()}>
+      <Text>Flyers</Text>
+    </SwipeToRemove>,
+  );
+
+  expect(screen.getByTestId("swipe-to-remove-action")).toHaveAnimatedStyle({ opacity: 0 });
+});
+
+// Android leaves a view under an alpha-0 ancestor out of TalkBack, so only the
+// drawing inside the closed Remove button may fade — never the button itself.
+it("keeps the closed Remove button and everything above it at full opacity", async () => {
+  await render(
+    <SwipeToRemove label="Flyers" onRemove={jest.fn()}>
+      <Text>Flyers</Text>
+    </SwipeToRemove>,
+  );
+
+  const button = screen.getByLabelText("Remove Flyers");
+  for (let node: typeof button | null = button; node; node = node.parent) {
+    expect(StyleSheet.flatten(node.props.style)?.opacity ?? 1).not.toBe(0);
+  }
+});
+
 describe("swiping a basket row", () => {
   it("asks once a long drag lets go, and removes nothing by itself", async () => {
     const onRemoved = jest.fn();
@@ -92,6 +119,45 @@ describe("swiping a basket row", () => {
     });
 
     expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it("shows the Remove layer once the row is swiped open", async () => {
+    await render(
+      <SwipeToRemove label="Flyers" onRemove={jest.fn()}>
+        <Text>Flyers</Text>
+      </SwipeToRemove>,
+    );
+
+    drag(-(REVEAL_WIDTH - 20));
+    await act(async () => {
+      jest.runAllTimers();
+    });
+
+    expect(screen.getByTestId("swipe-to-remove-action")).toHaveAnimatedStyle({ opacity: 1 });
+  });
+
+  it("shows the Remove layer while the row is pulled right of rest", async () => {
+    await render(
+      <SwipeToRemove label="Flyers" onRemove={jest.fn()}>
+        <Text>Flyers</Text>
+      </SwipeToRemove>,
+    );
+    // Reanimated starts each animated style's mapper one macrotask after mount.
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+
+    // Mid-drag, no release: the resisted pull leaves the row a point right of rest.
+    const { handlers } = getByGestureTestId("swipe-to-remove");
+    await act(async () => {
+      handlers.onStart?.({} as never);
+      handlers.onUpdate?.({ translationX: 4 } as never);
+    });
+
+    expect(screen.getByTestId("swipe-to-remove-row")).toHaveAnimatedStyle({
+      transform: [{ translateX: 1 }],
+    });
+    expect(screen.getByTestId("swipe-to-remove-action")).toHaveAnimatedStyle({ opacity: 1 });
   });
 
   it("does not ask on a drag that stops short of the commit distance", async () => {
