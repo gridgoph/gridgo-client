@@ -63,8 +63,10 @@ import {
   linesMissingDropoff,
   linesUnpriced,
   printRuns,
+  type PrintRun,
 } from "@/lib/basket";
 import {
+  addMoreFromLabel,
   groupDeliveryNote,
   groupMoneyLabel,
   groupsHeading,
@@ -72,6 +74,7 @@ import {
   MULTI_SHOP_PAYMENT_TITLE,
   multiShopPaymentNote,
   shopGroups,
+  SINGLE_GROUP_LABEL,
   type ShopGroupView,
 } from "@/lib/basketGroups";
 import { noteCheckoutVisit } from "@/lib/checkoutExit";
@@ -465,6 +468,20 @@ export default function CheckoutScreen() {
   const addToGroup = (groupId: string, label: string, deadline: string | null) => {
     useBasketGroupTarget.getState().set(groupId, label, deadline);
     router.push("/request/add-more");
+  };
+
+  /**
+   * A one-shop checkout adds more the same way (report 75DCBF4A): that group's
+   * own products, never the category picker. The client has only ever seen
+   * "what GRIDGO is printing" here, so the group is "this shop" rather than a
+   * letter. An older cart without groups still opens the picker.
+   */
+  const addToRun = (run: PrintRun) => {
+    const group = groups.find((candidate) =>
+      candidate.lines.some((line) => run.lines.some((runLine) => runLine.id === line.id)),
+    );
+    if (group) addToGroup(group.id, SINGLE_GROUP_LABEL, group.deadline);
+    else router.push("/request/category");
   };
 
   /** Move one group's products to another date — or give a "no rush" group one. */
@@ -1036,11 +1053,11 @@ export default function CheckoutScreen() {
                 make.
               */}
               <Pressable
-                onPress={() => router.push("/request/category")}
+                onPress={() => addToRun(run)}
                 accessibilityRole="button"
                 accessibilityLabel={
                   runs.length === 1
-                    ? "Add more to this print run"
+                    ? addMoreFromLabel(SINGLE_GROUP_LABEL)
                     : `Add more to ${run.runLabel.toLowerCase()}`
                 }
                 className="gg-btn-secondary"
@@ -1048,7 +1065,9 @@ export default function CheckoutScreen() {
               >
                 <Plus size={16} color={colors.textPrimary} strokeWidth={2.5} />
                 <Text className="text-button text-text-primary">
-                  {runs.length === 1 ? "Add more to this run" : `Add more to ${run.runLabel.toLowerCase()}`}
+                  {runs.length === 1
+                    ? addMoreFromLabel(SINGLE_GROUP_LABEL)
+                    : `Add more to ${run.runLabel.toLowerCase()}`}
                 </Text>
               </Pressable>
             </View>
