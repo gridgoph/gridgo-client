@@ -63,6 +63,19 @@ it("takes no swipe while the basket is busy", async () => {
   expect(getByGestureTestId("swipe-to-remove").config.enabled).toBe(false);
 });
 
+// Issue #325: the Remove layer is the same size and radius as the card, so its
+// red border bled through the card's anti-aliased rounded corners at rest.
+it("draws nothing of the Remove layer while the row is closed", async () => {
+  await render(
+    <SwipeToRemove label="Flyers" onRemove={jest.fn()}>
+      <Text>Flyers</Text>
+    </SwipeToRemove>,
+  );
+
+  expect(screen.getByTestId("swipe-to-remove-action")).toHaveAnimatedStyle({ opacity: 0 });
+  expect(screen.getByLabelText("Remove Flyers")).toBeTruthy();
+});
+
 describe("swiping a basket row", () => {
   it("asks once a long drag lets go, and removes nothing by itself", async () => {
     const onRemoved = jest.fn();
@@ -92,6 +105,21 @@ describe("swiping a basket row", () => {
     });
 
     expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it("shows the Remove layer once the row is swiped open", async () => {
+    await render(
+      <SwipeToRemove label="Flyers" onRemove={jest.fn()}>
+        <Text>Flyers</Text>
+      </SwipeToRemove>,
+    );
+
+    drag(-(REVEAL_WIDTH - 20));
+    await act(async () => {
+      jest.runAllTimers();
+    });
+
+    expect(screen.getByTestId("swipe-to-remove-action")).toHaveAnimatedStyle({ opacity: 1 });
   });
 
   it("does not ask on a drag that stops short of the commit distance", async () => {

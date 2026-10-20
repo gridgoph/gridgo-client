@@ -116,6 +116,16 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
     transform: [{ translateX: translateX.get() }],
   }));
 
+  /*
+    The action is drawn only while the row is off its resting place. It is the
+    card's own size and radius, so at rest its red border sat under the card's
+    anti-aliased rounded corners and tinted them (#325). Hiding it closed
+    changes nothing about the swipe: the first point of travel uncovers it.
+  */
+  const actionStyle = useAnimatedStyle(() => ({
+    opacity: translateX.get() < 0 ? 1 : 0,
+  }));
+
   return (
     <View className="relative">
       {/*
@@ -123,9 +133,20 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
         sliding in from the side — so what the client drags is the thing they
         are acting on, and the control is already fully drawn when it appears.
       */}
-      <View
-        className="absolute bottom-0 right-0 top-0 flex-row items-stretch"
-        style={{ width: REVEAL_WIDTH }}
+      <Animated.View
+        testID="swipe-to-remove-action"
+        style={[
+          {
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: REVEAL_WIDTH,
+            flexDirection: "row",
+            alignItems: "stretch",
+          },
+          actionStyle,
+        ]}
       >
         <Pressable
           onPress={ask}
@@ -144,7 +165,7 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
           />
           <Text className="text-button text-error">Remove</Text>
         </Pressable>
-      </View>
+      </Animated.View>
 
       <GestureDetector gesture={pan}>
         <Animated.View
