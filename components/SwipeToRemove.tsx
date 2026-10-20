@@ -121,9 +121,13 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
     card's own size and radius, so at rest its red border sat under the card's
     anti-aliased rounded corners and tinted them (#325). Hiding it closed
     changes nothing about the swipe: the first point of travel uncovers it.
+
+    Only the drawing fades. The button and everything above it stay at full
+    opacity, because Android hides a view under an alpha-0 ancestor from
+    TalkBack, and the closed Remove button must stay reachable.
   */
   const actionStyle = useAnimatedStyle(() => ({
-    opacity: translateX.get() < 0 ? 1 : 0,
+    opacity: translateX.get() !== 0 ? 1 : 0,
   }));
 
   return (
@@ -133,20 +137,9 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
         sliding in from the side — so what the client drags is the thing they
         are acting on, and the control is already fully drawn when it appears.
       */}
-      <Animated.View
-        testID="swipe-to-remove-action"
-        style={[
-          {
-            position: "absolute",
-            top: 0,
-            right: 0,
-            bottom: 0,
-            width: REVEAL_WIDTH,
-            flexDirection: "row",
-            alignItems: "stretch",
-          },
-          actionStyle,
-        ]}
+      <View
+        className="absolute bottom-0 right-0 top-0 flex-row items-stretch"
+        style={{ width: REVEAL_WIDTH }}
       >
         <Pressable
           onPress={ask}
@@ -154,18 +147,22 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
           accessibilityRole="button"
           accessibilityLabel={`Remove ${label}`}
           accessibilityState={{ disabled: Boolean(disabled) }}
-          className="flex-1 items-center justify-center gap-1 rounded-card border border-error bg-surface"
+          className="flex-1"
           style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
         >
-          <Trash2
-            size={18}
-            color={colors.error}
-            strokeWidth={2}
-            aria-hidden
-          />
-          <Text className="text-button text-error">Remove</Text>
+          <Animated.View testID="swipe-to-remove-action" style={[{ flex: 1 }, actionStyle]}>
+            <View className="flex-1 items-center justify-center gap-1 rounded-card border border-error bg-surface">
+              <Trash2
+                size={18}
+                color={colors.error}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <Text className="text-button text-error">Remove</Text>
+            </View>
+          </Animated.View>
         </Pressable>
-      </Animated.View>
+      </View>
 
       <GestureDetector gesture={pan}>
         <Animated.View
