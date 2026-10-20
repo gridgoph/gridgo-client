@@ -15,6 +15,7 @@ export const AUTHENTICATED_ROOT_SCREENS = [
   "order/[id]",
   "order/receipt",
   "order/physical-invoice",
+  "order/acknowledgement-receipt",
   "order/approval",
   "order/approve-sample",
   "approval/sign",

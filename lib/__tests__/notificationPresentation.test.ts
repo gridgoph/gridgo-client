@@ -287,6 +287,28 @@ describe("presentNotification rating reminder", () => {
   });
 });
 
+describe("presentNotification acknowledgement receipt ready", () => {
+  it("says the delivery receipt is ready, and that it is not an official receipt", () => {
+    const view = presentNotification(
+      note({
+        title: "Acknowledgement receipt ready",
+        body: "Your delivery acknowledgement receipt is available on the order.",
+        type: "acknowledgement_receipt_ready",
+        orderId: "ord_1",
+        orderTitle: "Flyers",
+        orderState: "out_for_delivery",
+      }),
+    );
+
+    expect(view.title).toBe("Your acknowledgement receipt is ready");
+    expect(view.body).toBe(
+      "It lists what is on your delivery, the total and your payment reference. It is not an official receipt.",
+    );
+    expect(view.hint).toBe("Opens the acknowledgement receipt");
+    expect(view.lane).toBe("update");
+  });
+});
+
 describe("presentNotification receipt ready", () => {
   it("points at the acknowledgement receipt", () => {
     const view = presentNotification(

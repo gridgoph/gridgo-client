@@ -186,6 +186,12 @@ describe("pushTargetRoute", () => {
     ).toBe("/order/receipt?orderId=ord_demo_1&from=notice");
   });
 
+  it("opens the delivery acknowledgement receipt the rider issued at the door", () => {
+    expect(
+      pushTargetRoute(parsePushData({ type: "acknowledgement_receipt_ready", orderId: "ord_demo_1" })),
+    ).toBe("/order/acknowledgement-receipt?orderId=ord_demo_1");
+  });
+
   it.each(["shop_recovery", "order_reschedule_requested", "order_reschedule_declined"])(
     "opens the job, where the decision lives, for %s",
     (type) => {

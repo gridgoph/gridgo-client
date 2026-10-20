@@ -6,6 +6,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-rou
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Screen } from "@/components/Screen";
 
+import { AcknowledgementReceiptEntry } from "@/components/AcknowledgementReceiptEntry";
 import { BasketGroupsCard } from "@/components/BasketGroupsCard";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
@@ -110,6 +111,7 @@ import { mayHaveSurvey } from "@/lib/foundingTester";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
+import { readsAcknowledgementReceipt } from "@/lib/acknowledgementReceipt";
 
 /**
  * One print job, end to end.
@@ -141,6 +143,12 @@ export default function OrderDetailScreen() {
    * something to guess at, so a failure says so and offers a retry.
    */
   const [handover, setHandover] = useState<api.OrderHandover | null | "error">(null);
+  /**
+   * The delivery acknowledgement receipt (gridgo-rider#152). Not inlined on
+   * the order, so it is read beside it once the job has left the shop: null
+   * when none is issued, `"error"` when the read failed.
+   */
+  const [ackReceipt, setAckReceipt] = useState<api.AcknowledgementReceipt | null | "error">(null);
   const [error, setError] = useState<string | null>(null);
   /*
     Which order's View details and Get help are open on the received view.
@@ -173,20 +181,22 @@ export default function OrderDetailScreen() {
       ]);
       if (sequence !== loadSequence.current) return;
       // A failed basket read costs the other groups' states, never the order.
-      const group = current.basketId
-        ? await api.getBasket(current.basketId).catch(() => null)
-        : null;
-      if (sequence !== loadSequence.current) return;
-      // Read with the order, so the claim code lands with the screen rather
-      // than popping in under it. Only asked for when it can exist.
-      const credential = handoverKind(current)
-        ? await api.getOrderHandover(current.id).catch(() => "error" as const)
-        : null;
+      // The claim code is read with the order, so it lands with the screen
+      // rather than popping in under it, and so is the acknowledgement
+      // receipt. Each is only asked for when it can exist.
+      const [group, credential, receipt] = await Promise.all([
+        current.basketId ? api.getBasket(current.basketId).catch(() => null) : null,
+        handoverKind(current) ? api.getOrderHandover(current.id).catch(() => "error" as const) : null,
+        readsAcknowledgementReceipt(current)
+          ? api.getAcknowledgementReceipt(current.id).catch(() => "error" as const)
+          : null,
+      ]);
       if (sequence !== loadSequence.current) return;
       // The post-order survey lives in its own store, read alongside the
       // order so a completed hand-over, a skip or a send shows on return.
       if (mayHaveSurvey(useSession.getState().user, current)) void useSurvey.getState().load(current.id);
       setHandover(credential);
+      setAckReceipt(receipt);
       setBasket(group);
       setOrder(current);
       setProduct(catalog.find((entry) => entry.id === current.productId) ?? null);
@@ -534,6 +544,18 @@ export default function OrderDetailScreen() {
     <SurveyCard orderId={order.id} primary={!actionZone} />
   ) : null;
 
+  /* The delivery acknowledgement receipt, once the rider has issued it at the door. */
+  const ackReceiptEntry = readsAcknowledgementReceipt(order) ? (
+    <AcknowledgementReceiptEntry
+      order={order}
+      receipt={ackReceipt}
+      onOpen={() =>
+        router.push({ pathname: "/order/acknowledgement-receipt", params: { orderId: order.id } })
+      }
+      onRetry={() => void load()}
+    />
+  ) : null;
+
   /* A call the client missed, with the way to call back, ahead of the map it is about. */
   const missedCalls = orderHasCalls(order) ? <MissedCallNotice order={order} /> : null;
 
@@ -704,6 +726,8 @@ export default function OrderDetailScreen() {
       {finished && order.rated ? <RatedNote /> : null}
       {survey}
 
+      {ackReceiptEntry}
+
       <View className="gap-3">
         <OrderDisclosure
           title="Get help?"
@@ -833,6 +857,8 @@ export default function OrderDetailScreen() {
           screen belongs to it, so nothing is offered.
         */}
         {!nextAction && !finished ? <PushEnableCard /> : null}
+
+        {ackReceiptEntry}
 
         {record}
 
