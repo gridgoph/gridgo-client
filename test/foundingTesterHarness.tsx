@@ -4,7 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { FoundingTesterCelebration } from "@/components/FoundingTesterCelebration";
 import type { FoundingTester } from "@/lib/api";
 import { useAppUpdate } from "@/store/appUpdate";
-import { useFoundingTester } from "@/store/foundingTester";
+import { useFoundingTester, type InstallationStatus } from "@/store/foundingTester";
 import { usePushPrompt } from "@/store/pushPrompt";
 import { useSession } from "@/store/session";
 
@@ -16,21 +16,32 @@ export const EARNED: FoundingTester = {
   eligible: true,
   label: "Founding Tester",
   awardedAt: AWARDED_AT,
-  missions: { placed: true, received: true, rated: true },
-  completedCount: 3,
+  missions: { added: true, placed: true, tracked: true, received: true, rated: true },
+  completedCount: 5,
   rewardStatus: "issued",
   reward: { id: "vch_1", valueMinor: 1500, expiresAt: "2026-11-19T08:00:00.000Z" },
 };
 
 export const CELEBRATION_TITLE = "You're a Founding Tester";
 
-export function setUpCelebration(foundingTester: FoundingTester | null = EARNED, celebrated: Record<string, string> = {}) {
+/**
+ * A signed-in account whose label has arrived. By default this installation
+ * saw the account before the label (`seenOpen`) and GRIDGO has heard which
+ * installation it is — the two things the celebration waits on.
+ */
+export function setUpCelebration(
+  foundingTester: FoundingTester | null = EARNED,
+  celebrated: Record<string, string> = {},
+  { seenOpen = { u1: true }, installation = "settled" }: { seenOpen?: Record<string, boolean>; installation?: InstallationStatus } = {},
+) {
   useAppUpdate.getState().reset();
   usePushPrompt.setState({ hydrated: true, lastOfferedAt: Date.now(), open: false, mode: "ask" });
-  useFoundingTester.setState({ hydrated: true, celebrated, showing: null });
+  useFoundingTester.setState({ hydrated: true, celebrated, seenOpen, showing: null });
   useSession.setState({
     user: { id: "u1", email: "client@gridgo.local", name: "Client", role: "client", foundingTester },
   } as never);
+  // After the session: an account change resets the installation state.
+  useFoundingTester.setState({ installation: { userId: "u1", status: installation } });
 }
 
 export function renderCelebration(ready = true) {

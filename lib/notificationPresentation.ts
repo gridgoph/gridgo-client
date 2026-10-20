@@ -224,8 +224,8 @@ function deliveryStamp(state: string | undefined): string | null {
   return null;
 }
 
-function surveyCallout(at: string, rewardEligible: boolean | null): NotificationCallout | null {
-  const callout = surveyNotificationCallout(at, rewardEligible);
+function surveyCallout(at: string, rewardEligible: boolean | null, rewardProgram: string | null): NotificationCallout | null {
+  const callout = surveyNotificationCallout(at, rewardEligible, Date.now(), rewardProgram);
   // The ticket is the voucher's glyph; a plain invitation does not borrow it.
   return callout ? { tone: "info", icon: rewardEligible === true ? "ticket" : "star", ...callout } : null;
 }
@@ -528,11 +528,13 @@ export type PresentOptions = {
   applicationNoticeId?: string | null;
   /** The survey's `rewardEligible` as last read; null when it has not been read. */
   surveyRewardEligible?: boolean | null;
+  /** The survey's `rewardProgram` as last read: a Founding Tester survey names no amount. */
+  surveyRewardProgram?: string | null;
 };
 
 export function presentNotification(
   notification: Notification,
-  { showServiceFee = false, applicationNoticeId = null, surveyRewardEligible = null }: PresentOptions = {},
+  { showServiceFee = false, applicationNoticeId = null, surveyRewardEligible = null, surveyRewardProgram = null }: PresentOptions = {},
 ): PresentedNotification {
   const applicationAsk = notification.type === "approval_rejected" && notification.id === applicationNoticeId;
   const eventState = notification.eventState ?? notification.orderState;
@@ -613,7 +615,7 @@ export function presentNotification(
     callout: applicationAsk
       ? APPLICATION_SENT_BACK_CALLOUT
       : isSurveyNotification(notification.type)
-        ? surveyCallout(notification.at, surveyRewardEligible)
+        ? surveyCallout(notification.at, surveyRewardEligible, surveyRewardProgram)
         : calloutFor(notification, hold, collectReady),
   };
 }

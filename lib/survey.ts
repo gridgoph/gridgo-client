@@ -387,11 +387,66 @@ export function openUntilLine(survey: Pick<OrderSurvey, "expiresAt">): string {
   return `Open until ${exactTime(survey.expiresAt)}`;
 }
 
+/** A Founding Tester survey: its voucher is the one for all five steps, not a survey voucher. */
+export function isFoundingTesterSurvey(survey: Pick<OrderSurvey, "rewardProgram"> | null | undefined): boolean {
+  return survey?.rewardProgram === "founding_tester";
+}
+
+/**
+ * What answering can earn. The survey programme's fixed voucher is named with
+ * its amount, as that contract defines it. A Founding Tester survey names
+ * none: its voucher comes with all five steps, may wait on GRIDGO's budget,
+ * and its amount is read only from the wallet once it is issued.
+ */
+export type SurveyReward = { kind: "survey"; amount: string } | { kind: "founding_tester" } | null;
+
+export function surveyReward(survey: Pick<OrderSurvey, "rewardEligible" | "rewardProgram">): SurveyReward {
+  if (!survey.rewardEligible) return null;
+  return isFoundingTesterSurvey(survey) ? { kind: "founding_tester" } : { kind: "survey", amount: formatPhp(SURVEY_REWARD_MINOR) };
+}
+
+/** The card's one line about the voucher, or null when this survey cannot earn one now. */
+export function rewardBadge(survey: Pick<OrderSurvey, "rewardEligible" | "rewardProgram">): string | null {
+  const reward = surveyReward(survey);
+  if (!reward) return null;
+  return reward.kind === "founding_tester"
+    ? "Counts as your Founding Tester survey step. Your voucher comes with all five steps."
+    : `${reward.amount} voucher for the first three answers`;
+}
+
 /** The reward line before answering, or null when this survey cannot earn one now. */
-export function rewardOffer(survey: Pick<OrderSurvey, "rewardEligible">): string | null {
-  return survey.rewardEligible
-    ? `Answer the first three questions and GRIDGO adds a ${formatPhp(SURVEY_REWARD_MINOR)} voucher to your wallet.`
-    : null;
+export function rewardOffer(survey: Pick<OrderSurvey, "rewardEligible" | "rewardProgram">): string | null {
+  const reward = surveyReward(survey);
+  if (!reward) return null;
+  return reward.kind === "founding_tester"
+    ? "Answer the first three questions to finish your Founding Tester survey step. Your voucher comes with all five steps."
+    : `Answer the first three questions and GRIDGO adds a ${reward.amount} voucher to your wallet.`;
+}
+
+/** The meter's words as the three counted questions are answered. */
+export function rewardMeterLine(answered: number, reward: SurveyReward): string {
+  const left = SURVEY_REQUIRED - answered;
+  const more = left === 1 ? "One more" : `${left} more`;
+  if (reward?.kind === "founding_tester") {
+    return answered >= SURVEY_REQUIRED
+      ? "Ready to send. It finishes your Founding Tester survey step."
+      : `${answered} of ${SURVEY_REQUIRED} answered. ${more} to finish your Founding Tester survey step.`;
+  }
+  if (reward?.kind === "survey") {
+    return answered >= SURVEY_REQUIRED
+      ? `Ready to send. Your ${reward.amount} voucher comes with it.`
+      : `${answered} of ${SURVEY_REQUIRED} answered. ${more} for your ${reward.amount} voucher.`;
+  }
+  return answered >= SURVEY_REQUIRED ? "Ready to send." : `${answered} of ${SURVEY_REQUIRED} answered.`;
+}
+
+/**
+ * The voucher these answers brought, as GRIDGO answered: a survey voucher
+ * (`issued`), or the Founding Tester voucher once all five steps earned it
+ * (`founding_tester` with the wallet item). Null otherwise.
+ */
+export function issuedSurveyReward(survey: Pick<OrderSurvey, "rewardStatus" | "reward">): OrderSurvey["reward"] {
+  return (survey.rewardStatus === "issued" || survey.rewardStatus === "founding_tester") && survey.reward ? survey.reward : null;
 }
 
 /**
@@ -418,11 +473,19 @@ export type SurveyThanks = {
 
 /** What the screen says once the answers are in. */
 export function surveyThanks(survey: OrderSurvey): SurveyThanks {
-  if (survey.rewardStatus === "issued" && survey.reward) {
+  const issued = issuedSurveyReward(survey);
+  if (issued) {
     return {
       title: "Thank you",
-      body: `Your ${formatPhp(survey.reward.valueMinor)} voucher is in your wallet. It comes off a future order at checkout.`,
+      body: `Your ${formatPhp(issued.valueMinor)} voucher is in your wallet. It comes off a future order at checkout.`,
       rewardIssued: true,
+    };
+  }
+  if (survey.rewardStatus === "founding_tester") {
+    return {
+      title: "Thank you",
+      body: "Your answers reached GRIDGO. Your Founding Tester voucher comes once GRIDGO counts all five steps.",
+      rewardIssued: false,
     };
   }
   // GRIDGO also answers "cooldown" for a survey that never carried a voucher;
@@ -510,11 +573,15 @@ export function surveyNotificationCallout(
   at: string,
   rewardEligible: boolean | null = null,
   now: number = Date.now(),
+  rewardProgram: string | null = null,
 ): { title: string; detail: string } | null {
   const sent = Date.parse(at);
   if (Number.isFinite(sent) && now - sent >= SURVEY_OPEN_MS) return null;
   if (rewardEligible !== true) {
     return { title: "Three quick questions", detail: "The rest are optional." };
+  }
+  if (rewardProgram === "founding_tester") {
+    return { title: "Your Founding Tester survey step", detail: "Your voucher comes with all five steps." };
   }
   return {
     title: `${formatPhp(SURVEY_REWARD_MINOR)} voucher for the first three answers`,

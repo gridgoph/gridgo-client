@@ -268,6 +268,16 @@ describe("presentNotification rating reminder", () => {
     expect(view.callout).toMatchObject({ tone: "info", icon: "ticket", detail: "One survey voucher every 7 days." });
   });
 
+  it("names no fixed voucher on a Founding Tester survey: its voucher comes with all five steps", () => {
+    const view = presentNotification(surveyNote(), { surveyRewardEligible: true, surveyRewardProgram: "founding_tester" });
+    expect(view.callout).toMatchObject({
+      tone: "info",
+      title: "Your Founding Tester survey step",
+      detail: "Your voucher comes with all five steps.",
+    });
+    expect(`${view.callout?.title} ${view.callout?.detail}`).not.toMatch(/₱/);
+  });
+
   it("offers no voucher on a survey that cannot earn one, or has not been read", () => {
     for (const surveyRewardEligible of [false, null]) {
       const view = presentNotification(surveyNote(), { surveyRewardEligible });
