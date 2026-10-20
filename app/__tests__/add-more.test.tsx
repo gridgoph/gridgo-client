@@ -92,3 +92,19 @@ it("says what failed, with a retry, when the list cannot load", async () => {
   expect(await screen.findByText("These products did not load")).toBeTruthy();
   expect(screen.getByText("That shop group is no longer in your order. Add this as a new product instead.")).toBeTruthy();
 });
+
+it("names a one-shop order's group as this shop, even when GRIDGO calls it Shop A", async () => {
+  useBasketGroupTarget.getState().set("cline_0", "this shop", null);
+  api.getCartGroupListings.mockResolvedValue({
+    groupId: "cline_0",
+    label: "Shop A",
+    deadline: null,
+    listings: [],
+    emptyReason: "no_orderable_listings",
+  });
+  await renderScreen(<AddMoreScreen />);
+
+  expect(await screen.findByText("Nothing more to add from this shop")).toBeTruthy();
+  expect(screen.getByText(/No products are currently available to add from this shop/)).toBeTruthy();
+  expect(screen.queryByText(/Shop A/)).toBeNull();
+});

@@ -4228,6 +4228,90 @@ export async function approvalProofDownloadRequest(
 }
 
 // ---------------------------------------------------------------------------
+// Acknowledgement receipts — gridgo-api docs/ACKNOWLEDGEMENT_RECEIPTS_API.md
+// ---------------------------------------------------------------------------
+
+/** One checkout line, frozen at issue. `unitPriceMinor: null` means none was recorded. */
+export type AcknowledgementReceiptLine = {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPriceMinor: number | null;
+  subtotalMinor: number;
+};
+
+/** A nonzero checkout installment as GRIDGO recorded it. */
+export type AcknowledgementReceiptPayment = {
+  code: string;
+  /** `digital`, `cash` or `unknown`; kept open so a new value cannot crash a read. */
+  type: string;
+  method: string | null;
+  reference: string | null;
+  amountMinor: number;
+  amountReceivedMinor: number | null;
+  changeMinor: number | null;
+};
+
+/**
+ * The delivery acknowledgement receipt: an immutable snapshot of the original
+ * checkout, numbered in one running AR series. Never an official receipt.
+ */
+export type AcknowledgementReceipt = {
+  version: number;
+  orderId: string;
+  orderNumber: string;
+  arNumber: string;
+  issuedAt: string;
+  issuedTo: string;
+  currency: string;
+  lines: AcknowledgementReceiptLine[];
+  deliveryFeeMinor: number;
+  organizationDiscountMinor: number;
+  voucherDiscountMinor: number;
+  /** Signed; returned even when zero. */
+  roundingAdjustmentMinor: number;
+  grandTotalMinor: number;
+  payments: AcknowledgementReceiptPayment[];
+  note: string;
+};
+
+/**
+ * `GET /orders/:id/acknowledgement-receipt`. Null when GRIDGO has not issued
+ * one (`acknowledgement_receipt_not_found`) — pick-up work, an order not yet
+ * at the door, or one delivered before receipts existed. Every other refusal
+ * throws, so a failed read is never mistaken for "no receipt".
+ */
+export async function getAcknowledgementReceipt(orderId: string): Promise<AcknowledgementReceipt | null> {
+  try {
+    const result = await request<{ receipt: AcknowledgementReceipt }>(
+      `/orders/${encodeURIComponent(orderId)}/acknowledgement-receipt`,
+    );
+    return result.receipt;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404 && error.message === "acknowledgement_receipt_not_found") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/** The signed-in request for the receipt PDF, for `lib/fileSave.ts`. */
+export async function acknowledgementReceiptDownloadRequest(
+  orderId: string,
+): Promise<{ url: string; headers: Record<string, string> }> {
+  const token = await getAuthToken();
+  const headers: Record<string, string> = { Accept: "application/pdf" };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+    headers["X-GRIDGO-Role"] = "client";
+  }
+  return {
+    url: `${getApiBase()}/orders/${encodeURIComponent(orderId)}/acknowledgement-receipt/download`,
+    headers,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Files — see docs/STORAGE_API.md in gridgo-api for the authoritative contract
 // ---------------------------------------------------------------------------
 

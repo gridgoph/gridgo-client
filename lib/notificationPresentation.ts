@@ -2,6 +2,7 @@ import { formatPhp, type Notification } from "@/lib/api";
 import { deliveryPinNotificationCopy, isDeliveryPinAsk } from "@/lib/deliveryPin";
 import { CHANGE_WINDOW_STATES, changeNotificationCopy, isChangeAsk } from "@/lib/orderChanges";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
+import { ACK_RECEIPT_NOTIFICATION_TYPE } from "@/lib/acknowledgementReceipt";
 import { isJobComplete } from "@/lib/jobComplete";
 import { orderReference } from "@/lib/orderReference";
 import { isApplicationNotification } from "@/lib/organization";
@@ -255,6 +256,15 @@ function callCopy(type: string): { title: string; body: string; hint: string } {
         body: "Open the order to call back while they have the delivery. Your phone number stays private.",
         hint: "Opens this job",
       };
+}
+
+/** The delivery acknowledgement receipt, issued at the door (gridgo-rider#152). */
+function acknowledgementReadyCopy(): { title: string; body: string; hint: string } {
+  return {
+    title: "Your acknowledgement receipt is ready",
+    body: "It lists what is on your delivery, the total and your payment reference. It is not an official receipt.",
+    hint: "Opens the acknowledgement receipt",
+  };
 }
 
 function receiptReadyCopy(showServiceFee: boolean): { title: string; body: string; hint: string } {
@@ -560,6 +570,8 @@ export function presentNotification(
         ? surveyNotificationCopy()
       : notification.type === "order_receipt_ready"
         ? receiptReadyCopy(showServiceFee)
+      : notification.type === ACK_RECEIPT_NOTIFICATION_TYPE
+        ? acknowledgementReadyCopy()
       : isCallNotificationType(notification.type)
         ? callCopy(notification.type ?? "")
         : isHubType(notification.type) && notification.orderState === "awaiting_collection" && !hold

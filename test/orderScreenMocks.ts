@@ -26,6 +26,8 @@ export function orderScreenApiMock() {
     getOrderHandover: jest.fn(async () => null),
     requestHubRedelivery: jest.fn(),
     escalateHandover: jest.fn(),
+    // No acknowledgement receipt unless a test gives one (gridgo-rider#152).
+    getAcknowledgementReceipt: jest.fn(async () => null),
     // No post-order survey unless a test gives one (gridgo-api SURVEY_API.md).
     getOrderSurvey: jest.fn(async () => ({ serverTime: new Date().toISOString(), survey: null })),
     dismissOrderSurvey: jest.fn(),

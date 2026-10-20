@@ -250,7 +250,7 @@ describe("CheckoutScreen", () => {
     expect(screen.queryByText(/Lovis/i)).toBeNull();
     expect(screen.queryByLabelText(/Lovis/i)).toBeNull();
     expect(screen.queryByText(/Bajada/i)).toBeNull();
-    expect(screen.getByText("Add more to this run")).toBeTruthy();
+    expect(screen.getByText("Add more from this shop")).toBeTruthy();
   });
 
   it("shows GRIDGO printing, delivery and total without adding the fee twice", async () => {

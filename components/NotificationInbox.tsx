@@ -16,6 +16,7 @@ import { chatNotificationRoute } from "@/lib/push";
 import { appInstallChannel } from "@/lib/buildDistribution";
 import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
 import { RECEIPT_FROM_NOTICE } from "@/lib/receipt";
+import { ACK_RECEIPT_NOTIFICATION_TYPE } from "@/lib/acknowledgementReceipt";
 import { userFacingError } from "@/lib/copy";
 import {
   APPLICATION_ROUTE,
@@ -124,6 +125,13 @@ export function NotificationInbox() {
                   router.push({
                     pathname: "/order/receipt",
                     params: { orderId: notification.orderId, from: RECEIPT_FROM_NOTICE },
+                  });
+                  return;
+                }
+                if (notification.type === ACK_RECEIPT_NOTIFICATION_TYPE) {
+                  router.push({
+                    pathname: "/order/acknowledgement-receipt",
+                    params: { orderId: notification.orderId },
                   });
                   return;
                 }

@@ -116,6 +116,20 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
     transform: [{ translateX: translateX.get() }],
   }));
 
+  /*
+    The action is drawn only while the row is off its resting place. It is the
+    card's own size and radius, so at rest its red border sat under the card's
+    anti-aliased rounded corners and tinted them (#325). Hiding it closed
+    changes nothing about the swipe: the first point of travel uncovers it.
+
+    Only the drawing fades. The button and everything above it stay at full
+    opacity, because Android hides a view under an alpha-0 ancestor from
+    TalkBack, and the closed Remove button must stay reachable.
+  */
+  const actionStyle = useAnimatedStyle(() => ({
+    opacity: translateX.get() !== 0 ? 1 : 0,
+  }));
+
   return (
     <View className="relative">
       {/*
@@ -133,16 +147,20 @@ export function SwipeToRemove({ label, onRemove, disabled, children }: Props) {
           accessibilityRole="button"
           accessibilityLabel={`Remove ${label}`}
           accessibilityState={{ disabled: Boolean(disabled) }}
-          className="flex-1 items-center justify-center gap-1 rounded-card border border-error bg-surface"
+          className="flex-1"
           style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
         >
-          <Trash2
-            size={18}
-            color={colors.error}
-            strokeWidth={2}
-            aria-hidden
-          />
-          <Text className="text-button text-error">Remove</Text>
+          <Animated.View testID="swipe-to-remove-action" style={[{ flex: 1 }, actionStyle]}>
+            <View className="flex-1 items-center justify-center gap-1 rounded-card border border-error bg-surface">
+              <Trash2
+                size={18}
+                color={colors.error}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <Text className="text-button text-error">Remove</Text>
+            </View>
+          </Animated.View>
         </Pressable>
       </View>
 

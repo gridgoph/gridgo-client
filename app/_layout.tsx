@@ -396,6 +396,11 @@ function AppNavigation() {
                   name="order/physical-invoice"
                   options={pushedScreenOptions("Physical invoice")}
                 />
+                {/* The delivery acknowledgement receipt, issued at the door (gridgo-rider#152). */}
+                <Stack.Screen
+                  name="order/acknowledgement-receipt"
+                  options={pushedScreenOptions("Acknowledgement receipt")}
+                />
                 {/*
                   Approving an order (gridgo-client#248): the record of what
                   was approved, the received-sample approval, and the screen
