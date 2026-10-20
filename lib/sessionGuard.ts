@@ -31,6 +31,7 @@ export const AUTHENTICATED_ROOT_SCREENS = [
   "saved-places",
   "saved-place",
   "vouchers",
+  "invite",
 ] as const;
 
 /**

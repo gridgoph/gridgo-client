@@ -525,6 +525,8 @@ function AppNavigation() {
                 />
                 {/* The voucher wallet (gridgo-api#204), from Account. */}
                 <Stack.Screen name="vouchers" options={pushedScreenOptions("Vouchers")} />
+                {/* Founding Tester invites (client#323), from the path card and Account. */}
+                <Stack.Screen name="invite" options={pushedScreenOptions("Invite a friend")} />
                 {/*
                   The two halves of the sign-in that take steps rather than
                   keystrokes. The band names the thing being changed, because

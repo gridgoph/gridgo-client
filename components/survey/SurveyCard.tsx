@@ -8,7 +8,8 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { useServerNow } from "@/hooks/useVoucherClock";
 import { formatPhp } from "@/lib/api";
 import {
-  SURVEY_REWARD_MINOR,
+  issuedSurveyReward,
+  rewardBadge,
   openUntilLine,
   surveyRoute,
   surveyView,
@@ -49,7 +50,7 @@ export function SurveyCard({ orderId, primary }: { orderId: string; primary: boo
   const open = () => router.push(surveyRoute(orderId, "order") as Href);
 
   if (view.kind === "invite") {
-    const reward = view.survey.rewardEligible;
+    const reward = rewardBadge(view.survey);
     return (
       <View className="gg-card gap-4" testID="survey-card">
         <View className="gap-2">
@@ -62,7 +63,7 @@ export function SurveyCard({ orderId, primary }: { orderId: string; primary: boo
           <View className="flex-row items-center gap-3 rounded-field bg-surface-variant px-3 py-2">
             <Ticket size={18} color={colors.textPrimary} strokeWidth={2} aria-hidden />
             <Text className="flex-1 text-body text-text-primary">
-              {formatPhp(SURVEY_REWARD_MINOR)} voucher for the first three answers
+              {reward}
             </Text>
           </View>
         ) : null}
@@ -91,11 +92,11 @@ export function SurveyCard({ orderId, primary }: { orderId: string; primary: boo
   }
 
   const sent = view.kind === "sent";
-  const issued = sent && view.survey.rewardStatus === "issued" && view.survey.reward;
+  const issued = sent ? issuedSurveyReward(view.survey) : null;
   const title = sent ? "Survey sent. Thank you." : "Order survey";
   const detail = sent
     ? issued
-      ? `Your ${formatPhp(view.survey.reward?.valueMinor ?? SURVEY_REWARD_MINOR)} voucher is in your wallet. Open for its code.`
+      ? `Your ${formatPhp(issued.valueMinor)} voucher is in your wallet. Open for its code.`
       : "Your answers reached GRIDGO."
     : `Skipped. You can still answer it. ${openUntilLine(view.survey)}.`;
   return (

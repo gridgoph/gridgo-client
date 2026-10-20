@@ -21,12 +21,15 @@ import {
   canApplyAsBusiness,
 } from "@/lib/accountProfile";
 import type { ClientOrganization } from "@/lib/api";
-import { foundingTesterView } from "@/lib/foundingTester";
+import { canInvite, foundingTesterView, INVITE_ROUTE, INVITE_TITLE } from "@/lib/foundingTester";
+import { startPrintHref } from "@/lib/startPrint";
 import { officerState } from "@/lib/organization";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
 import { accountTypeOption } from "@/lib/signup";
+import { cartIsOpen, useCart } from "@/store/cart";
 import { useIsApprovedOrganization, useOwnOrganization } from "@/store/organization";
 import { usePriorities } from "@/store/priorities";
+import { useInstallationSettled } from "@/store/foundingTester";
 import { useSession } from "@/store/session";
 import { useTour } from "@/store/tour";
 import { useVouchers } from "@/store/vouchers";
@@ -91,6 +94,9 @@ export default function AccountScreen() {
   const typeLabel = accountTypeOption(user?.accountType ?? "individual").label;
   const applicationPending = businessApplicationPending(user);
   const foundingTester = foundingTesterView(user);
+  // Invites wait until GRIDGO has heard which installation this is (or failed to).
+  const installationSettled = useInstallationSettled();
+  const cartOpen = useCart(cartIsOpen);
   // Clerk always serves an imageUrl, including the generated initials avatar.
   // `hasImage` is what tells a real photo from that placeholder — same rule
   // as Your details. RN Image draws it; the picker is not on this screen.
@@ -175,7 +181,7 @@ export default function AccountScreen() {
           {foundingTester?.kind === "missions" ? (
             <View className="gap-2">
               <Text className="text-overline text-text-muted">FOUNDING TESTER</Text>
-              <FoundingTesterCard view={foundingTester} />
+              <FoundingTesterCard view={foundingTester} context={{ cartOpen, startHref: startPrintHref() }} />
             </View>
           ) : null}
 
@@ -201,6 +207,17 @@ export default function AccountScreen() {
               detail={walletSummary(vouchers, now)}
               onPress={() => router.push(VOUCHERS_ROUTE)}
             />
+            {/*
+              Founding Tester invites (client#323), for an account the
+              programme is open to or one that earned the label.
+            */}
+            {canInvite(user) && installationSettled ? (
+              <DestinationRow
+                title={INVITE_TITLE}
+                detail="Share your link. When a friend finishes all five steps, you can each get a voucher"
+                onPress={() => router.push(INVITE_ROUTE)}
+              />
+            ) : null}
             {/*
               Offered only while the account is still personal. After the
               upgrade the row has nothing left to do, and the identity card

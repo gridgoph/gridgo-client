@@ -7,6 +7,7 @@ import { useNotifications } from "@/store/notifications";
 import { useVouchers } from "@/store/vouchers";
 import { useSurvey } from "@/store/survey";
 import { useCheckoutExit } from "@/store/checkoutExit";
+import { useFoundingTester } from "@/store/foundingTester";
 import { useOrderRanking } from "@/store/orderRanking";
 import { setLiveOwner } from "@/lib/live";
 import { clearBoardCache } from "@/lib/shopBoards";
@@ -377,5 +378,10 @@ useSession.subscribe((state, previous) => {
   useVouchers.getState().reset();
   useSurvey.getState().reset();
   useCheckoutExit.getState().reset();
+  useFoundingTester.getState().resetAccount();
+  // The installation goes with every account that signs in on it. Invites
+  // and the reward celebration wait on `installation` settling
+  // (gridgo-api docs/FOUNDING_TESTER_API.md).
+  if (id) void useFoundingTester.getState().registerInstallation();
   setLiveOwner(id);
 });

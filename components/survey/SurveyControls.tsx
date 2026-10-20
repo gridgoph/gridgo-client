@@ -2,7 +2,7 @@ import { Check } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
 import { useThemeColors } from "@/hooks/useTheme";
-import { PRICE_FEELINGS, SURVEY_REQUIRED, tagLabel } from "@/lib/survey";
+import { PRICE_FEELINGS, rewardMeterLine, SURVEY_REQUIRED, tagLabel, type SurveyReward } from "@/lib/survey";
 
 /**
  * The survey's own controls. Monochrome throughout: the stars are the
@@ -272,15 +272,8 @@ export function RecommendScale({ value, onChange }: { value: number | null; onCh
  * The words say the same thing — colour and fill never carry it alone — and
  * when this survey cannot earn a voucher the words count answers only.
  */
-export function RewardMeter({ answered, reward }: { answered: number; reward: string | null }) {
-  const line =
-    answered >= SURVEY_REQUIRED
-      ? reward
-        ? `Ready to send. Your ${reward} voucher comes with it.`
-        : "Ready to send."
-      : reward
-        ? `${answered} of ${SURVEY_REQUIRED} answered. ${SURVEY_REQUIRED - answered === 1 ? "One more" : `${SURVEY_REQUIRED - answered} more`} for your ${reward} voucher.`
-        : `${answered} of ${SURVEY_REQUIRED} answered.`;
+export function RewardMeter({ answered, reward }: { answered: number; reward: SurveyReward }) {
+  const line = rewardMeterLine(answered, reward);
   return (
     <View className="gap-2" accessible accessibilityRole="progressbar" accessibilityLabel={line}
       accessibilityValue={{ min: 0, max: SURVEY_REQUIRED, now: answered }}>

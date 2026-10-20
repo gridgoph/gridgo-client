@@ -35,7 +35,7 @@ import {
   REPORT_PROBLEM_LABEL,
   REPORT_PROBLEM_TITLE,
   SURVEY_NOTE_MAX,
-  SURVEY_REWARD_MINOR,
+  surveyReward,
   canSend,
   directShopLabel,
   directShopOptionsFor,
@@ -239,7 +239,7 @@ export default function OrderSurveyScreen() {
   const ready = canSend(draft);
   const priceProblem = expectedPriceProblem(draft.expectedPrice);
   const missing = missingLine(draft, kind);
-  const reward = view.survey.rewardEligible ? formatPhp(SURVEY_REWARD_MINOR) : null;
+  const reward = surveyReward(view.survey);
   const noReward = noRewardLine(view.survey);
   const total = order ? orderTotalMinor(order) : null;
   const skipped = view.kind === "skipped";

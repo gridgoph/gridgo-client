@@ -255,6 +255,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "The balance opens once Operations confirms your downpayment. You get a notification when that happens.";
       case "downpayment_not_available":
         return "Payment is not open on this job yet. Pull it down to see what it is waiting on.";
+      case "tester_client_required":
+        return "Invites are not open on this account. Message GRIDGO if you think that is a mistake.";
       case "issue_already_open":
         return "You already have a report open on this job. Operations is reviewing it — add anything else to that one rather than opening a second.";
       case "issue_window_not_open":
