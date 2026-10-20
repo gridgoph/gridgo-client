@@ -21,6 +21,7 @@ import { CHAT_LIST_ROUTE, isChatThreadId } from "@/lib/chatThreads";
 import { DELIVERY_CHAT_ROUTE } from "@/lib/deliveryChat";
 import { SHOP_CHAT_NOTIFICATION_TYPE, SHOP_CHAT_ROUTE } from "@/lib/shopChat";
 import { APPLICATION_ROUTE, isApplicationNotification } from "@/lib/organization";
+import { ACK_RECEIPT_NOTIFICATION_TYPE, acknowledgementReceiptHref } from "@/lib/acknowledgementReceipt";
 import { receiptNoticeHref } from "@/lib/receipt";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { isVoucherNotification, VOUCHERS_ROUTE } from "@/lib/vouchers";
@@ -231,6 +232,8 @@ export function pushTargetRoute(data: PushData): string {
   if (isSurveyNotification(data.type)) return surveyRoute(data.orderId);
   // Opening the notice is the receipt being issued, so it prints (#229).
   if (data.type === "order_receipt_ready") return receiptNoticeHref(data.orderId);
+  // The rider issued the acknowledgement receipt at the door (gridgo-rider#152).
+  if (data.type === ACK_RECEIPT_NOTIFICATION_TYPE) return acknowledgementReceiptHref(data.orderId);
   return `/order/${data.orderId}`;
 }
 
