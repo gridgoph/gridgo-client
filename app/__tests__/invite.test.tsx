@@ -32,12 +32,14 @@ it("asks GRIDGO for the code and shows the link, the counts and who earns what",
   expect(api.createTesterInvite).toHaveBeenCalledWith(expect.stringMatching(/^[0-9a-f-]{36}$/));
   expect(
     screen.getByText(
-      "When your friend signs up with your link and finishes all five Founding Tester steps, you each get a ₱15 voucher, valid 30 days. Signing up alone does not earn a voucher.",
+      "When a friend signs up with your link and finishes all five Founding Tester steps, you each get an invite voucher, valid 30 days. Your friend's comes on top of their own Founding Tester voucher. Signing up alone does not earn one.",
     ),
   ).toBeTruthy();
   expect(screen.getByLabelText("Invited: 3. Sent the sign-up form with your code")).toBeTruthy();
   expect(screen.getByLabelText("Joined: 2. Have a GRIDGO account")).toBeTruthy();
-  expect(screen.getByLabelText("Completed: 1. Finished all five steps")).toBeTruthy();
+  expect(screen.getByLabelText("Completed: 1. Finished all five steps. Vouchers still depend on GRIDGO's checks")).toBeTruthy();
+  expect(screen.getByText(/GRIDGO also has a monthly voucher budget/)).toBeTruthy();
+  expect(screen.queryByText(/₱/)).toBeNull();
   expect(screen.getByRole("button", { name: "Share" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "Copy link" })).toBeEnabled();
 });

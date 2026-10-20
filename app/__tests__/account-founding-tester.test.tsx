@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import AccountScreen from "@/app/(tabs)/account";
 import type { FoundingTester } from "@/lib/api";
+import { useFoundingTester } from "@/store/foundingTester";
 import { usePriorities } from "@/store/priorities";
 import { useSession } from "@/store/session";
 import { EARNED } from "@/test/foundingTesterHarness";
@@ -51,6 +52,8 @@ function signedIn(foundingTester?: FoundingTester | null) {
   api.getAccount.mockResolvedValue(user);
   usePriorities.setState({ ranking: null, loaded: true, loading: false, error: null });
   useSession.setState({ user, source: "clerk", loading: false, error: null, signingOut: false });
+  // GRIDGO has heard which installation this is; invites wait on that.
+  useFoundingTester.setState({ installation: { userId: user.id, status: "settled" } });
 }
 
 async function renderAccount() {
@@ -103,7 +106,7 @@ it("puts the earned label on the account and lets the missions go", async () => 
   expect(screen.getByRole("button", { name: "Invite a friend" })).toBeTruthy();
 });
 
-it("shows nothing new to an ineligible account or an API without the field", async () => {
+it("shows no missions to a client who joined after the launch date, and still lets them invite (review finding 3)", async () => {
   signedIn({ ...EARNED, eligible: false, label: null, awardedAt: null, reward: null, rewardStatus: "ineligible" });
   await renderAccount();
 
@@ -111,5 +114,5 @@ it("shows nothing new to an ineligible account or an API without the field", asy
   expect(screen.queryByTestId("founding-tester-card")).toBeNull();
   expect(screen.queryByTestId("founding-tester-chip")).toBeNull();
   expect(screen.queryByText(/Founding Tester/)).toBeNull();
-  expect(screen.queryByText("Invite a friend")).toBeNull();
+  expect(screen.getByRole("button", { name: "Invite a friend" })).toBeTruthy();
 });

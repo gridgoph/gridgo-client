@@ -4000,6 +4000,11 @@ export async function getOrderSurvey(orderId: string): Promise<OrderSurveyRead> 
   return request(`/orders/${encodeURIComponent(orderId)}/survey`);
 }
 
+/** `GET /me/surveys` — every survey open to the client now, dismissed ones included. */
+export async function listOpenSurveys(): Promise<{ serverTime: string; options?: SurveyOptions; surveys: OrderSurvey[] }> {
+  return request("/me/surveys");
+}
+
 /** `POST /orders/:id/survey/dismiss` — hides the automatic prompt; idempotent, answers stay possible. */
 export async function dismissOrderSurvey(orderId: string): Promise<OrderSurveyRead> {
   return request(`/orders/${encodeURIComponent(orderId)}/survey/dismiss`, { method: "POST" });

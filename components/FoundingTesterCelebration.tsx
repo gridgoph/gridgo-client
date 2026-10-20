@@ -26,7 +26,7 @@ import {
 import { VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { useAppUpdate } from "@/store/appUpdate";
 import { useCheckoutExit } from "@/store/checkoutExit";
-import { useFoundingTester } from "@/store/foundingTester";
+import { useFoundingTester, useInstallationSettled } from "@/store/foundingTester";
 import { usePushPrompt } from "@/store/pushPrompt";
 import { useSession } from "@/store/session";
 
@@ -54,6 +54,8 @@ export function FoundingTesterCelebration({ ready }: { ready: boolean }) {
   const user = useSession((s) => s.user);
   const hydrated = useFoundingTester((s) => s.hydrated);
   const celebrated = useFoundingTester((s) => s.celebrated);
+  const seenOpen = useFoundingTester((s) => s.seenOpen);
+  const installationSettled = useInstallationSettled();
   const showing = useFoundingTester((s) => s.showing);
   const close = useFoundingTester((s) => s.close);
   const pushPrompt = usePushPrompt((s) => s.open);
@@ -64,8 +66,15 @@ export function FoundingTesterCelebration({ ready }: { ready: boolean }) {
 
   const userId = user?.id ?? null;
   const view = foundingTesterView(user);
-  const due = celebrationDue(userId, view, celebrated);
-  const clear = ready && hydrated && onScreen && !pushPrompt && !updatePrompt && !exitQuestion && !tourShowing;
+  const due = celebrationDue(userId, view, celebrated, seenOpen);
+  const clear =
+    ready && hydrated && onScreen && installationSettled && !pushPrompt && !updatePrompt && !exitQuestion && !tourShowing;
+
+  // What this installation has seen of the account, once its memory is back:
+  // an award already there on first sight is history, never celebrated.
+  useEffect(() => {
+    if (hydrated && userId) useFoundingTester.getState().observe(userId, view);
+  }, [hydrated, userId, view]);
 
   useEffect(() => {
     if (!due || !clear || !userId || view?.kind !== "earned") return;
@@ -78,7 +87,10 @@ export function FoundingTesterCelebration({ ready }: { ready: boolean }) {
     if (showing && !userId) close();
   }, [showing, userId, close]);
 
-  const copy = showing ? celebrationCopy(showing) : null;
+  // The moment is latched; what it says about the voucher follows GRIDGO's
+  // latest answer for the same award (a void, a used or expired voucher).
+  const latest = view?.kind === "earned" && showing && view.awardedAt === showing.awardedAt ? view : showing;
+  const copy = latest ? celebrationCopy(latest) : null;
 
   return (
     <Sheet open={Boolean(showing) && ready} title={copy?.title ?? ""} onClose={close} maxHeightRatio={0.9}>

@@ -3,7 +3,13 @@ import { persist } from "zustand/middleware";
 
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
-import { shouldAcknowledgeTracking, type EarnedView } from "@/lib/foundingTester";
+import {
+  awardIsHistory,
+  foundingTesterView,
+  openSurveyOrderIds,
+  shouldAcknowledgeTracking,
+  type EarnedView,
+} from "@/lib/foundingTester";
 import { installationId } from "@/lib/installationId";
 import { createPersistStorage } from "@/lib/persistStorage";
 import { useSession } from "@/store/session";
@@ -11,6 +17,13 @@ import { useSession } from "@/store/session";
 const STORAGE_KEY = "gridgo.client.foundingTester.v1";
 
 type InviteStatus = "idle" | "loading" | "ready" | "error";
+
+/**
+ * Where telling GRIDGO about this installation stands for the account signed
+ * in. `failed` is retried by the next invite read; `settled` includes an
+ * installation with no ID to send (storage refused), which the contract allows.
+ */
+export type InstallationStatus = "pending" | "settled" | "failed";
 
 export type InviteNotice = "copied" | "copy_failed" | null;
 
@@ -22,13 +35,25 @@ type FoundingTesterStore = {
    * celebration must not play again for it.
    */
   celebrated: Record<string, string>;
+  /**
+   * Accounts this installation has read before they had the label. Persisted:
+   * only an award seen to arrive is celebrated, so a reinstall or a new phone
+   * does not replay an old one.
+   */
+  seenOpen: Record<string, boolean>;
+  /** Records what this installation has seen of the account; an award it never saw arrive is marked celebrated. */
+  observe: (userId: string, view: ReturnType<typeof foundingTesterView>) => void;
   /** The celebration on screen, latched as it opened. In memory only. */
   showing: EarnedView | null;
   /** Opens the celebration and records it in the same step. */
   celebrate: (userId: string, view: EarnedView) => void;
   close: () => void;
 
-  /** The invite counts and link, as GRIDGO last answered. In memory only. */
+  /**
+   * The invite counts and link, as GRIDGO last answered. In memory only.
+   * Current only while `inviteStatus` is `ready`: after a failed refresh they
+   * are last known, and the link is not offered to share.
+   */
   invites: api.TesterInvites | null;
   inviteStatus: InviteStatus;
   inviteError: string | null;
@@ -38,16 +63,26 @@ type FoundingTesterStore = {
   loadInvite: () => Promise<void>;
   setNotice: (notice: InviteNotice) => void;
 
-  /** Tells GRIDGO which installation this account is using. Once per account per launch. */
+  /** For the account signed in; null before any attempt. */
+  installation: { userId: string; status: InstallationStatus } | null;
+  /**
+   * Tells GRIDGO which installation this account is using. Once per account
+   * per launch; a failed attempt is tried again by the next call. Resolves
+   * once settled either way.
+   */
   registerInstallation: () => Promise<void>;
+
+  /** Orders whose survey is open now, from `GET /me/surveys`. Null until read. */
+  openSurveys: string[] | null;
+  loadOpenSurveys: () => Promise<void>;
   /** "Track your order": the tracking screen opened this order. */
   acknowledgeTracking: (order: api.Order) => Promise<void>;
   /** The account changed: nothing read for the last one is kept. */
   resetAccount: () => void;
 };
 
-/** Accounts this launch has already registered the installation for. */
-const registered = new Set<string>();
+/** Accounts this launch has registered the installation for, or is registering it. */
+const registered = new Map<string, Promise<void>>();
 /** `<user>:<order>` already acknowledged, or in flight, this launch. */
 const acknowledged = new Set<string>();
 let inviteSequence = 0;
@@ -78,9 +113,18 @@ function applyRead(ownerId: string, read: api.FoundingTesterRead) {
  */
 export const useFoundingTester = create<FoundingTesterStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       hydrated: false,
       celebrated: {},
+      seenOpen: {},
+      observe: (userId, view) => {
+        const state = get();
+        if (view && view.kind !== "earned" && !state.seenOpen[userId]) {
+          set({ seenOpen: { ...state.seenOpen, [userId]: true } });
+        } else if (view?.kind === "earned" && awardIsHistory(userId, view, state.celebrated, state.seenOpen)) {
+          set({ celebrated: { ...state.celebrated, [userId]: view.awardedAt } });
+        }
+      },
       showing: null,
       celebrate: (userId, view) =>
         set((state) => ({
@@ -97,8 +141,10 @@ export const useFoundingTester = create<FoundingTesterStore>()(
         const ownerId = useSession.getState().user?.id;
         if (!ownerId) return;
         const sequence = ++inviteSequence;
-        set((state) => ({ inviteStatus: state.invites ? "ready" : "loading", inviteError: null }));
+        set({ inviteStatus: "loading", inviteError: null });
         try {
+          // The installation first: GRIDGO checks invites against it.
+          await get().registerInstallation();
           const read = await api.createTesterInvite(await installationId());
           if (sequence !== inviteSequence || useSession.getState().user?.id !== ownerId) return;
           applyRead(ownerId, read);
@@ -113,24 +159,50 @@ export const useFoundingTester = create<FoundingTesterStore>()(
       },
       setNotice: (notice) => set({ notice }),
 
-      registerInstallation: async () => {
+      installation: null,
+      registerInstallation: () => {
         const ownerId = useSession.getState().user?.id;
-        if (!ownerId || registered.has(ownerId)) return;
-        registered.add(ownerId);
-        const id = await installationId();
-        if (!id) return;
+        if (!ownerId) return Promise.resolve();
+        const running = registered.get(ownerId);
+        if (running) return running;
+        const mark = (status: InstallationStatus) => {
+          if (useSession.getState().user?.id === ownerId) set({ installation: { userId: ownerId, status } });
+        };
+        mark("pending");
+        const attempt = (async () => {
+          const id = await installationId();
+          if (!id) return mark("settled");
+          try {
+            applyRead(ownerId, await api.recordTesterInstallation(id));
+            mark("settled");
+          } catch {
+            // An API without the route, or one bad read: said as `failed`, and
+            // the next invite read or launch tries again.
+            registered.delete(ownerId);
+            mark("failed");
+          }
+        })();
+        registered.set(ownerId, attempt);
+        return attempt;
+      },
+
+      openSurveys: null,
+      loadOpenSurveys: async () => {
+        const ownerId = useSession.getState().user?.id;
+        if (!ownerId) return;
         try {
-          applyRead(ownerId, await api.recordTesterInstallation(id));
+          const read = await api.listOpenSurveys();
+          if (useSession.getState().user?.id !== ownerId) return;
+          const now = Date.parse(read.serverTime);
+          set({ openSurveys: openSurveyOrderIds(read.surveys ?? [], Number.isFinite(now) ? now : Date.now()) });
         } catch {
-          // An API without the route, or one bad read: the next launch tries
-          // again. Nothing on screen depends on it.
-          registered.delete(ownerId);
+          // Keep what was read before; never invent an open survey.
         }
       },
 
       acknowledgeTracking: async (order) => {
         const user = useSession.getState().user;
-        if (!user || !shouldAcknowledgeTracking(user, order)) return;
+        if (!user || !shouldAcknowledgeTracking(user)) return;
         const key = `${user.id}:${order.id}`;
         if (acknowledged.has(key)) return;
         acknowledged.add(key);
@@ -146,19 +218,37 @@ export const useFoundingTester = create<FoundingTesterStore>()(
 
       resetAccount: () => {
         inviteSequence++;
-        set({ showing: null, invites: null, inviteStatus: "idle", inviteError: null, notice: null });
+        set({
+          showing: null,
+          invites: null,
+          inviteStatus: "idle",
+          inviteError: null,
+          notice: null,
+          installation: null,
+          openSurveys: null,
+        });
       },
     }),
     {
       name: STORAGE_KEY,
       storage: createPersistStorage(),
-      partialize: (state) => ({ celebrated: state.celebrated }),
+      partialize: (state) => ({ celebrated: state.celebrated, seenOpen: state.seenOpen }),
       onRehydrateStorage: () => () => {
         useFoundingTester.setState({ hydrated: true });
       },
     },
   ),
 );
+
+/**
+ * Whether invites and the reward may be shown: GRIDGO has heard which
+ * installation this is, or the attempt has failed (the next invite read tries
+ * again). `installation` is reset on every account change, so it is always
+ * the signed-in account's.
+ */
+export function useInstallationSettled(): boolean {
+  return useFoundingTester((s) => s.installation !== null && s.installation.status !== "pending");
+}
 
 /** Tests only: forget what this launch has already sent. */
 export function resetFoundingTesterCallsForTests() {

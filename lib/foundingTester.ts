@@ -18,10 +18,10 @@
  *   or rider could read it — this app is the client's alone.
  */
 
-import type { FoundingTester, Order, TesterInvites, User } from "@/lib/api";
+import type { FoundingTester, Order, OrderSurvey, TesterInvites, User } from "@/lib/api";
 import { isFinishedOrderState } from "@/lib/homeJobs";
 import { installmentUnderReview, isInstallmentConfirmed, paymentInstallment, payableInstallment } from "@/lib/payment";
-import { canHaveSurvey, surveyRoute } from "@/lib/survey";
+import { canHaveSurvey, isSurveyOpen, surveyRoute } from "@/lib/survey";
 import { exactTime, stubAmount } from "@/lib/vouchers";
 
 export const FOUNDING_TESTER_LABEL = "Founding Tester";
@@ -29,12 +29,11 @@ export const INVITE_TITLE = "Invite a friend";
 export const INVITE_ROUTE = "/invite";
 
 /**
- * The mission reward, as the contract fixes it: ₱15, valid 30 days. The
- * client read carries the amount only once a voucher exists (`reward`), so
- * this is what is promised before then — and for the friend's referral
- * voucher, which the client read never carries at all.
+ * How long a programme voucher lasts once issued, as the contract fixes it.
+ * The amount is never written here: the client read carries it only once a
+ * voucher exists (`reward.valueMinor`), so every promise before then is
+ * amount-neutral.
  */
-export const FOUNDING_TESTER_REWARD_MINOR = 1500;
 export const FOUNDING_TESTER_REWARD_DAYS = 30;
 
 /** Shown while all five count but GRIDGO has not issued the reward (`paused`). Contract wording. */
@@ -140,9 +139,7 @@ export function progressLine(view: Pick<MissionsView, "doneCount" | "steps">): s
 
 /** What the path is for, said once on the card. */
 export function rewardLine(view: Pick<MissionsView, "steps">): string {
-  return `Finish all ${countWord(view.steps.length)} to earn the ${FOUNDING_TESTER_LABEL} label and a ${stubAmount(
-    FOUNDING_TESTER_REWARD_MINOR,
-  )} voucher, valid ${FOUNDING_TESTER_REWARD_DAYS} days.`;
+  return `Finish all ${countWord(view.steps.length)} to earn the ${FOUNDING_TESTER_LABEL} label and a voucher, valid ${FOUNDING_TESTER_REWARD_DAYS} days.`;
 }
 
 /** The line under a finished path while the reward has not landed. */
@@ -173,6 +170,11 @@ export type StepAction = { label: string; href: string };
 export type StepContext = {
   /** The client's orders, newest first. Absent where the screen has not read them (Account). */
   orders?: readonly Order[];
+  /**
+   * Orders whose survey GRIDGO says is open now (`GET /me/surveys`), soonest
+   * to close first. Absent until read; empty when none is open.
+   */
+  openSurveyOrderIds?: readonly string[];
   /** Whether a basket with something in it is open (`cartIsOpen`). */
   cartOpen: boolean;
   /** Where the yellow "+" would start a print (`startPrintHref`). */
@@ -189,8 +191,13 @@ function newestFirst(orders: readonly Order[]): Order[] {
   return [...orders].sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
 }
 
-/** Paid, and still a job GRIDGO counts: a cancelled order counts for nothing. */
-function isPlaced(order: Order): boolean {
+/**
+ * Paid and still running: the order most likely to be the one that counts.
+ * Only a preference for where a button leads — GRIDGO decides what counts,
+ * and an order cancelled for a shop or GRIDGO failure can count without a
+ * confirmed payment.
+ */
+function isPaidAndRunning(order: Order): boolean {
   return order.state !== "cancelled" && isInstallmentConfirmed(paymentInstallment(order, "downpayment"));
 }
 
@@ -199,8 +206,9 @@ function isPlaced(order: Order): boolean {
  * thing that does the step — a print to start, a checkout, the order's own
  * tracking screen, its survey — and never claims the step itself: GRIDGO ticks
  * it once it has really happened. Where the order is unknown, the Orders tab.
+ * Null when there is nothing to open yet: no survey is open (`stepWaiting`).
  */
-export function stepAction(key: MissionKey, context: StepContext): StepAction {
+export function stepAction(key: MissionKey, context: StepContext): StepAction | null {
   const orders = context.orders ? newestFirst(context.orders) : null;
   switch (key) {
     case "added":
@@ -215,53 +223,84 @@ export function stepAction(key: MissionKey, context: StepContext): StepAction {
       return { label: "Choose something to print", href: context.startHref };
     }
     case "tracked": {
-      const placed = orders?.find((order) => isPlaced(order));
-      return placed ? { label: "Track your order", href: orderHref(placed) } : { label: "Open your orders", href: ORDERS_TAB };
+      // The newest paid job first; else the newest order of any kind, which
+      // GRIDGO may still count (a failure). Opening it is what tracks it.
+      const target = orders?.find((order) => isPaidAndRunning(order)) ?? orders?.[0];
+      return target ? { label: "Track your order", href: orderHref(target) } : { label: "Open your orders", href: ORDERS_TAB };
     }
     case "received": {
-      const live = orders?.find((order) => isPlaced(order) && !isFinishedOrderState(order.state));
+      const live = orders?.find((order) => isPaidAndRunning(order) && !isFinishedOrderState(order.state));
       return live ? { label: "See where it is", href: orderHref(live) } : { label: "Open your orders", href: ORDERS_TAB };
     }
     case "rated": {
-      const handedOver = orders?.find((order) => order.state !== "cancelled" && canHaveSurvey(order.state));
-      return handedOver
-        ? { label: "Answer the survey", href: surveyRoute(handedOver.id) }
-        : { label: "Open your orders", href: ORDERS_TAB };
+      // GRIDGO's own list of open surveys decides, never the order's state or age.
+      if (!context.openSurveyOrderIds) return { label: "Open your orders", href: ORDERS_TAB };
+      const open = context.openSurveyOrderIds[0];
+      return open ? { label: "Answer the survey", href: surveyRoute(open) } : null;
     }
   }
 }
 
+/** Said on the next step when there is nothing to open for it yet. */
+export function stepWaiting(key: MissionKey): string | null {
+  return key === "rated" ? "No survey is open for you right now. One opens when an order is handed to you." : null;
+}
+
 /**
- * Whether opening this order's tracking screen should tell GRIDGO the client
- * tracked it: an eligible account still short of the step, and an order that
- * is paid and not cancelled. GRIDGO checks the order again and refuses one
- * that does not qualify (`409 tester_order_not_placed`), so this only spares
- * it the calls that would be refused.
+ * Whether opening an order's tracking screen should tell GRIDGO the client
+ * tracked it: an eligible account that has placed an order and is still
+ * short of the step. Which order qualifies is GRIDGO's call alone — a paid
+ * job, or one cancelled for a shop or GRIDGO failure — so any order the client
+ * opens is offered, and one that does not qualify is refused
+ * (`409 tester_order_not_placed`) and not sent again.
  */
-export function shouldAcknowledgeTracking(
-  user: Pick<User, "foundingTester"> | null | undefined,
-  order: Order,
-): boolean {
+export function shouldAcknowledgeTracking(user: Pick<User, "foundingTester"> | null | undefined): boolean {
   const view = foundingTesterView(user);
   if (view?.kind !== "missions") return false;
-  const step = view.steps.find((entry) => entry.key === "tracked");
-  return Boolean(step && step.status !== "done" && isPlaced(order));
+  const status = (key: MissionKey) => view.steps.find((entry) => entry.key === key)?.status;
+  return status("tracked") !== undefined && status("tracked") !== "done" && status("placed") === "done";
+}
+
+/**
+ * Whether an order's survey is worth reading. A handed-over order may have
+ * one; so may any order of an eligible tester, because GRIDGO opens the survey
+ * route for one that failed through the shop or GRIDGO — a cancelled job
+ * included — and says which by answering the read (null when there is none).
+ */
+export function mayHaveSurvey(user: Pick<User, "foundingTester"> | null | undefined, order: Pick<Order, "state">): boolean {
+  return canHaveSurvey(order.state) || readFoundingTester(user)?.eligible === true;
+}
+
+/** The orders whose survey is open now, soonest to close first, from `GET /me/surveys`. */
+export function openSurveyOrderIds(surveys: readonly OrderSurvey[], serverNow: number): string[] {
+  return surveys
+    .filter((survey) => isSurveyOpen(survey, serverNow))
+    .sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt))
+    .map((survey) => survey.orderId);
 }
 
 /* --------------------------------------------------------------------------
    Invite a friend
    -------------------------------------------------------------------------- */
 
-/** Who sees "Invite a friend": an account the programme is open to, or one that has earned the label. */
+/**
+ * Who sees "Invite a friend": any client on a GRIDGO that runs the programme
+ * (it sends the projection). Inviting is not the missions — a client who
+ * joined after the launch date can still invite; it is the friend who must be
+ * eligible to earn. GRIDGO refuses a review account (`403 tester_client_required`).
+ */
 export function canInvite(user: Pick<User, "foundingTester"> | null | undefined): boolean {
-  return foundingTesterView(user) !== null;
+  return readFoundingTester(user) !== null;
 }
 
-/** The promise, said plainly on the invite screen. */
+/** The promise, said plainly on the invite screen. No amount: the client read carries none before issue. */
 export function inviteExplainer(): string {
-  const amount = stubAmount(FOUNDING_TESTER_REWARD_MINOR);
-  return `When your friend signs up with your link and finishes all five ${FOUNDING_TESTER_LABEL} steps, you each get a ${amount} voucher, valid ${FOUNDING_TESTER_REWARD_DAYS} days. Signing up alone does not earn a voucher.`;
+  return `When a friend signs up with your link and finishes all five ${FOUNDING_TESTER_LABEL} steps, you each get an invite voucher, valid ${FOUNDING_TESTER_REWARD_DAYS} days. Your friend's comes on top of their own ${FOUNDING_TESTER_LABEL} voucher. Signing up alone does not earn one.`;
 }
+
+/** What an invite voucher depends on, so a finished friend is never read as a voucher issued. */
+export const INVITE_CONDITIONS =
+  "Invite vouchers depend on GRIDGO's checks. Your friend must be able to join the Founding Tester steps, and must not share a phone number, a phone or a delivery address with you or with a friend you invited before. GRIDGO also has a monthly voucher budget, so some vouchers wait for approval.";
 
 export type InviteCount = { key: "invited" | "joined" | "completed"; label: string; detail: string; value: number };
 
@@ -271,7 +310,7 @@ export function inviteCounts(invites: TesterInvites): InviteCount[] {
   return [
     { key: "invited", label: "Invited", detail: "Sent the sign-up form with your code", value: count(invites.invited) },
     { key: "joined", label: "Joined", detail: "Have a GRIDGO account", value: count(invites.joined) },
-    { key: "completed", label: "Completed", detail: "Finished all five steps", value: count(invites.completed) },
+    { key: "completed", label: "Completed", detail: "Finished all five steps. Vouchers still depend on GRIDGO's checks", value: count(invites.completed) },
   ];
 }
 
@@ -290,14 +329,32 @@ export function shareMessage(link: string): string {
  * Keyed on `awardedAt`, which GRIDGO never changes once stamped: reloading the
  * account, retrying a survey or reopening the app all bring back the same
  * stamp, so the celebration plays once and only once per account here.
+ *
+ * And only for an award this installation saw arrive (`seenOpen`: it read the
+ * account before it had the label). A label already there the first time this
+ * installation reads the account — a reinstall, cleared storage, another
+ * phone — is history, not news, and is acknowledged without a celebration
+ * (`awardIsHistory`). GRIDGO keeps no record of which phone celebrated.
  */
 export function celebrationDue(
   userId: string | null | undefined,
   view: FoundingTesterView | null,
   celebrated: Readonly<Record<string, string>>,
+  seenOpen: Readonly<Record<string, boolean>>,
 ): boolean {
   if (!userId || view?.kind !== "earned") return false;
-  return celebrated[userId] !== view.awardedAt;
+  return celebrated[userId] !== view.awardedAt && seenOpen[userId] === true;
+}
+
+/** An award this installation never saw arrive: to be recorded as celebrated, silently. */
+export function awardIsHistory(
+  userId: string | null | undefined,
+  view: FoundingTesterView | null,
+  celebrated: Readonly<Record<string, string>>,
+  seenOpen: Readonly<Record<string, boolean>>,
+): boolean {
+  if (!userId || view?.kind !== "earned") return false;
+  return celebrated[userId] !== view.awardedAt && seenOpen[userId] !== true;
 }
 
 export type CelebrationCopy = { title: string; body: string; action: string };
@@ -305,7 +362,7 @@ export type CelebrationCopy = { title: string; body: string; action: string };
 /**
  * The words once all five steps count. The voucher is described from
  * GRIDGO's own answer: a survey voucher the account already had is reused as
- * the reward (`existing_survey_reward`), and promising a new ₱15 then would be
+ * the reward (`existing_survey_reward`), and promising a new voucher then would be
  * a voucher nobody is going to see.
  */
 export function celebrationCopy(view: EarnedView): CelebrationCopy {
@@ -318,7 +375,10 @@ export function celebrationCopy(view: EarnedView): CelebrationCopy {
       action: "See my vouchers",
     };
   }
-  if (view.rewardStatus === "voided") {
+  // Voided, or the voucher is no longer there to spend (used, expired, void):
+  // never "use it before…".
+  const spendable = view.reward && (view.reward.status == null || view.reward.status === "available");
+  if (view.rewardStatus === "voided" || (view.reward && !spendable)) {
     return { title, body: `${done} The label is yours to keep.`, action: "See my vouchers" };
   }
   if (view.reward) {
@@ -332,7 +392,7 @@ export function celebrationCopy(view: EarnedView): CelebrationCopy {
   }
   return {
     title,
-    body: `${done} Your ${stubAmount(FOUNDING_TESTER_REWARD_MINOR)} voucher shows in your wallet once GRIDGO has added it.`,
+    body: `${done} Your voucher shows in your wallet once GRIDGO has added it.`,
     action: "See my vouchers",
   };
 }

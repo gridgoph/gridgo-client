@@ -100,12 +100,13 @@ import { appliedChangeLine, deliveryPinNeedsClient } from "@/lib/deliveryPin";
 import { changeItemName, changeNeedsClient, changeRequestView, paidChanges } from "@/lib/orderChanges";
 import { rescheduleView } from "@/lib/reschedule";
 import { shopRecoveryView } from "@/lib/shopRecovery";
-import { canHaveSurvey } from "@/lib/survey";
 import { useSurvey } from "@/store/survey";
 import { useFoundingTester } from "@/store/foundingTester";
+import { useSession } from "@/store/session";
 import { orderPrintingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { openingHoursLines, orderReviewView, upcomingClosures } from "@/lib/operatingHours";
+import { mayHaveSurvey } from "@/lib/foundingTester";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
@@ -124,6 +125,7 @@ export default function OrderDetailScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
+  const user = useSession((s) => s.user);
 
   const [order, setOrder] = useState<api.Order | null>(null);
   const [product, setProduct] = useState<api.CatalogProduct | null>(null);
@@ -183,7 +185,7 @@ export default function OrderDetailScreen() {
       if (sequence !== loadSequence.current) return;
       // The post-order survey lives in its own store, read alongside the
       // order so a completed hand-over, a skip or a send shows on return.
-      if (canHaveSurvey(current.state)) void useSurvey.getState().load(current.id);
+      if (mayHaveSurvey(useSession.getState().user, current)) void useSurvey.getState().load(current.id);
       setHandover(credential);
       setBasket(group);
       setOrder(current);
@@ -528,7 +530,7 @@ export default function OrderDetailScreen() {
     The post-order survey, under whatever the job still asks. It only takes
     the yellow when nothing above it has.
   */
-  const survey = canHaveSurvey(order.state) ? (
+  const survey = mayHaveSurvey(user, order) ? (
     <SurveyCard orderId={order.id} primary={!actionZone} />
   ) : null;
 

@@ -29,6 +29,7 @@ import { accountTypeOption } from "@/lib/signup";
 import { cartIsOpen, useCart } from "@/store/cart";
 import { useIsApprovedOrganization, useOwnOrganization } from "@/store/organization";
 import { usePriorities } from "@/store/priorities";
+import { useInstallationSettled } from "@/store/foundingTester";
 import { useSession } from "@/store/session";
 import { useTour } from "@/store/tour";
 import { useVouchers } from "@/store/vouchers";
@@ -93,6 +94,8 @@ export default function AccountScreen() {
   const typeLabel = accountTypeOption(user?.accountType ?? "individual").label;
   const applicationPending = businessApplicationPending(user);
   const foundingTester = foundingTesterView(user);
+  // Invites wait until GRIDGO has heard which installation this is (or failed to).
+  const installationSettled = useInstallationSettled();
   const cartOpen = useCart(cartIsOpen);
   // Clerk always serves an imageUrl, including the generated initials avatar.
   // `hasImage` is what tells a real photo from that placeholder — same rule
@@ -208,10 +211,10 @@ export default function AccountScreen() {
               Founding Tester invites (client#323), for an account the
               programme is open to or one that earned the label.
             */}
-            {canInvite(user) ? (
+            {canInvite(user) && installationSettled ? (
               <DestinationRow
                 title={INVITE_TITLE}
-                detail="Share your link. You both get a voucher when your friend finishes all five steps"
+                detail="Share your link. When a friend finishes all five steps, you can each get a voucher"
                 onPress={() => router.push(INVITE_ROUTE)}
               />
             ) : null}

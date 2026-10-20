@@ -41,6 +41,7 @@ import { cartIsOpen, useCart } from "@/store/cart";
 import { useNotifications } from "@/store/notifications";
 import { useSeasonWindows } from "@/store/seasonWindows";
 import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
+import { useFoundingTester } from "@/store/foundingTester";
 import { useSession } from "@/store/session";
 
 /**
@@ -172,6 +173,12 @@ export default function HomeScreen() {
     // The Founding Tester missions ride on the account, and a confirmed
     // payment or a handover is exactly the order change that ticks one.
     void refreshAccount();
+    // Which order's survey is open is GRIDGO's answer, read only while the
+    // survey is the step left to do.
+    const tester = foundingTesterView(useSession.getState().user);
+    if (tester?.kind === "missions" && tester.steps.some((step) => step.key === "rated" && step.status === "next")) {
+      void useFoundingTester.getState().loadOpenSurveys();
+    }
   }, [refreshNotifications, loadCart, loadSamples, loadSeasons, refreshAccount]);
 
   useLiveRefresh(["orders", "catalog", "services", "availability", "settings", "credits"], load, { refreshOnFocus: false });
@@ -188,6 +195,7 @@ export default function HomeScreen() {
 
   const jobs = homeJobs(orders);
   const foundingTester = foundingTesterView(user);
+  const openSurveys = useFoundingTester((s) => s.openSurveys);
   // Held until the phone has read its dismissals back, or a banner already
   // put away would flash on every cold start.
   const seasonToday = davaoToday();
@@ -433,7 +441,7 @@ export default function HomeScreen() {
           {foundingTester?.kind === "missions" ? (
             <View className="mt-8 gap-3">
               <SectionHead label="FOUNDING TESTER" />
-              <FoundingTesterCard view={foundingTester} context={{ orders, cartOpen, startHref: startPrintHref() }} />
+              <FoundingTesterCard view={foundingTester} context={{ orders, openSurveyOrderIds: openSurveys ?? undefined, cartOpen, startHref: startPrintHref() }} />
             </View>
           ) : null}
 

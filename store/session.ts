@@ -379,8 +379,9 @@ useSession.subscribe((state, previous) => {
   useSurvey.getState().reset();
   useCheckoutExit.getState().reset();
   useFoundingTester.getState().resetAccount();
-  // The installation goes with every account that signs in on it, before
-  // any invite or reward is shown (gridgo-api docs/FOUNDING_TESTER_API.md).
+  // The installation goes with every account that signs in on it. Invites
+  // and the reward celebration wait on `installation` settling
+  // (gridgo-api docs/FOUNDING_TESTER_API.md).
   if (id) void useFoundingTester.getState().registerInstallation();
   setLiveOwner(id);
 });

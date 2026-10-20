@@ -10,7 +10,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
 import { copyText } from "@/lib/copyText";
-import { INVITE_TITLE, inviteCounts, inviteExplainer, shareMessage } from "@/lib/foundingTester";
+import { INVITE_CONDITIONS, INVITE_TITLE, inviteCounts, inviteExplainer, shareMessage } from "@/lib/foundingTester";
 import { useFoundingTester } from "@/store/foundingTester";
 
 /**
@@ -23,6 +23,10 @@ import { useFoundingTester } from "@/store/foundingTester";
  * sign-up form with the code filled in. Until Operations has set that form
  * there is a code and no link, and Copy and Share wait rather than hand out
  * something that leads nowhere.
+ *
+ * Only a current read is offered to share. While a refresh runs, or after
+ * one fails, the counts held from before are said to be last known and the
+ * link is not handed out: Operations may have changed the form since.
  *
  * Share is the one yellow control; Copy sits beside it in ink.
  */
@@ -42,7 +46,9 @@ export default function InviteScreen() {
     }, [loadInvite, setNotice]),
   );
 
-  const link = invites?.link ?? null;
+  const current = status === "ready";
+  // Only GRIDGO's current answer is handed out.
+  const link = current ? (invites?.link ?? null) : null;
 
   const copy = async () => {
     if (!link) return;
@@ -68,6 +74,14 @@ export default function InviteScreen() {
             <Text className="text-body-lg text-text-secondary">{inviteExplainer()}</Text>
           </View>
 
+          {invites && status === "error" ? (
+            <ErrorState
+              label="Could not refresh your invite"
+              body={`${error ?? "Try again."} The counts below are from before, and your link stays hidden until GRIDGO answers.`}
+              onRetry={() => void loadInvite()}
+            />
+          ) : null}
+
           {!invites && status === "error" ? (
             <ErrorState label="Could not load your invite" body={error ?? "Try again."} onRetry={() => void loadInvite()} />
           ) : !invites ? (
@@ -80,7 +94,11 @@ export default function InviteScreen() {
               <View className="gg-card gap-4">
                 <View className="gap-1">
                   <Text className="text-overline text-text-muted">YOUR INVITE LINK</Text>
-                  {link ? (
+                  {!current ? (
+                    <Text className="text-body text-text-secondary">
+                      {status === "error" ? "Not shown until GRIDGO confirms your link." : "Checking your link…"}
+                    </Text>
+                  ) : link ? (
                     <View className="flex-row items-start gap-2">
                       <Link2 size={16} color={colors.textMuted} strokeWidth={2} style={{ marginTop: 3 }} aria-hidden />
                       <Text selectable testID="invite-link" className="min-w-0 flex-1 text-body text-text-primary">
@@ -108,7 +126,7 @@ export default function InviteScreen() {
               </View>
 
               <View className="gap-2">
-                <Text className="text-overline text-text-muted">YOUR INVITES</Text>
+                <Text className="text-overline text-text-muted">{current ? "YOUR INVITES" : "YOUR INVITES · LAST KNOWN"}</Text>
                 <View className="gg-card-flush">
                   {inviteCounts(invites).map((count, index) => (
                     <View
@@ -132,8 +150,7 @@ export default function InviteScreen() {
                 <Ticket size={16} color={colors.textMuted} strokeWidth={2} style={{ marginTop: 2 }} aria-hidden />
                 <Text className="min-w-0 flex-1 text-caption text-text-secondary">
                   Ask your friend to use the same email on the sign-up form and in the GRIDGO app, so GRIDGO can match
-                  them to you. An invite voucher is not given when your friend has the same phone number, the same phone or the
-                  same delivery address as you.
+                  them to you. {INVITE_CONDITIONS}
                 </Text>
               </View>
             </>

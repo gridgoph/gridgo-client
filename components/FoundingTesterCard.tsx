@@ -12,10 +12,12 @@ import {
   rewardLine,
   stepAccessibilityLabel,
   stepAction,
+  stepWaiting,
   type MissionsView,
   type StepContext,
   type StepRow,
 } from "@/lib/foundingTester";
+import { useInstallationSettled } from "@/store/foundingTester";
 
 /**
  * The five Founding Tester steps as one path, on Home and on Account.
@@ -32,6 +34,7 @@ import {
 export function FoundingTesterCard({ view, context }: { view: MissionsView; context: StepContext }) {
   const colors = useThemeColors();
   const total = view.steps.length;
+  const invitesReady = useInstallationSettled();
 
   return (
     <View testID="founding-tester-card" className="gg-card gap-4">
@@ -89,7 +92,7 @@ export function FoundingTesterCard({ view, context }: { view: MissionsView; cont
             {view.complete ? completeLine(view) : rewardLine(view)}
           </Text>
         </View>
-        <InviteLink />
+        {invitesReady ? <InviteLink /> : null}
       </View>
     </View>
   );
@@ -145,8 +148,28 @@ function PathStep({
     </View>
   );
 
-  if (step.status === "next") {
-    const action = stepAction(step.key, context);
+  const action = step.status === "next" ? stepAction(step.key, context) : null;
+
+  // The next step with nothing to open yet (no survey is open): said, not a dead button.
+  if (step.status === "next" && !action) {
+    const waiting = stepWaiting(step.key);
+    return (
+      <View
+        accessible
+        accessibilityLabel={waiting ? `${label}. ${waiting}` : label}
+        testID={`founding-tester-step-${step.key}`}
+        className="flex-row gap-3"
+      >
+        {rail}
+        <View className={last ? "min-h-8 min-w-0 flex-1 justify-center gap-1" : "min-h-8 min-w-0 flex-1 justify-center gap-1 pb-4"}>
+          <Text className="text-body font-bold text-text-primary">{step.title}</Text>
+          {waiting ? <Text className="text-caption text-text-secondary">{waiting}</Text> : null}
+        </View>
+      </View>
+    );
+  }
+
+  if (action) {
     return (
       <Pressable
         onPress={() => router.push(action.href as never)}
@@ -196,7 +219,7 @@ function InviteLink() {
       onPress={() => router.push(INVITE_ROUTE)}
       accessibilityRole="button"
       accessibilityLabel={INVITE_TITLE}
-      accessibilityHint="You both get a voucher when your friend finishes all five steps"
+      accessibilityHint="When a friend finishes all five steps, you can each get a voucher"
       className="gg-touch flex-row items-center gap-2"
       style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
     >

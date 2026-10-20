@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { FoundingTesterCard, FoundingTesterChip } from "@/components/FoundingTesterCard";
 import type { FoundingTester } from "@/lib/api";
 import { foundingTesterView } from "@/lib/foundingTester";
+import { useFoundingTester } from "@/store/foundingTester";
 
 const mockPush = jest.fn();
 jest.mock("expo-router", () => ({ router: { push: (...args: unknown[]) => mockPush(...args) } }));
@@ -26,7 +27,10 @@ function path(missions: FoundingTester["missions"], rewardStatus = "pending") {
   return view;
 }
 
-beforeEach(() => mockPush.mockClear());
+beforeEach(() => {
+  mockPush.mockClear();
+  useFoundingTester.setState({ installation: { userId: "u1", status: "settled" } });
+});
 
 it.each([
   [NONE, 0],
@@ -43,7 +47,7 @@ it.each([
   }
   // Every tick is said in words as well as drawn.
   expect(screen.queryAllByText("Done")).toHaveLength(count);
-  expect(screen.getByText(/a ₱15 voucher, valid 30 days/)).toBeTruthy();
+  expect(screen.getByText(/label and a voucher, valid 30 days/)).toBeTruthy();
   expect(screen.getByLabelText(new RegExp(`^Founding Tester steps, ${count} of 5 done`))).toBeTruthy();
   // Exactly one step is a button: the next one.
   expect(screen.getAllByRole("button", { name: /next step$/ })).toHaveLength(1);
@@ -69,10 +73,27 @@ it("says a finished path is waiting on approval or budget, with no step left to 
 
   expect(screen.getByText("5 of 5 done")).toBeTruthy();
   expect(screen.getByText("Reward awaiting approval/budget")).toBeTruthy();
-  expect(screen.queryByText(/a ₱15 voucher, valid 30 days/)).toBeNull();
+  expect(screen.queryByText(/label and a voucher, valid 30 days/)).toBeNull();
   expect(screen.queryAllByRole("button", { name: /next step$/ })).toHaveLength(0);
   // The way to invite a friend is still there.
   expect(screen.getByRole("button", { name: "Invite a friend" })).toBeTruthy();
+});
+
+it("holds the invite link until GRIDGO has heard which installation this is (review finding 9)", async () => {
+  useFoundingTester.setState({ installation: { userId: "u1", status: "pending" } });
+  await render(<FoundingTesterCard view={path({ ...NONE, added: true })} context={CONTEXT} />);
+  expect(screen.queryByRole("button", { name: "Invite a friend" })).toBeNull();
+});
+
+it("says no survey is open rather than offering one that is not (review finding 6)", async () => {
+  await render(
+    <FoundingTesterCard
+      view={path({ added: true, placed: true, tracked: true, received: true, rated: false })}
+      context={{ ...CONTEXT, openSurveyOrderIds: [] }}
+    />,
+  );
+  expect(screen.queryAllByRole("button", { name: /next step$/ })).toHaveLength(0);
+  expect(screen.getByText(/No survey is open for you right now/)).toBeTruthy();
 });
 
 it("draws the earned label as a chip", async () => {

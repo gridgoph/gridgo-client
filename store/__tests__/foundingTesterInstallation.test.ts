@@ -89,7 +89,7 @@ it("lays GRIDGO's answer onto the account, so the step ticks without another rea
   expect(useSession.getState().user?.foundingTester?.missions.tracked).toBe(true);
 });
 
-it("tells GRIDGO about tracking once per order, and never for an unpaid order", async () => {
+it("tells GRIDGO about tracking once per order, and does not send a refused one again", async () => {
   jest.spyOn(api, "recordTesterInstallation").mockResolvedValue(read());
   const track = jest.spyOn(api, "acknowledgeTesterTracking").mockRejectedValue(new api.ApiError(409, { error: "tester_order_not_placed" }));
   useSession.setState({ user: client("user_a") } as never);
@@ -100,12 +100,86 @@ it("tells GRIDGO about tracking once per order, and never for an unpaid order", 
   // Refused, then opened again (a focus, a live refresh): not sent again this launch.
   await useFoundingTester.getState().acknowledgeTracking(paid);
   expect(track).toHaveBeenCalledTimes(1);
+});
 
-  const unpaid = refundOrder({
-    id: "ord_unpaid",
-    state: "awaiting_initial_payment",
+it("sends a cancelled or unpaid order too, and lets GRIDGO decide whether a failure counts it (review finding 1)", async () => {
+  jest.spyOn(api, "recordTesterInstallation").mockResolvedValue(read());
+  const track = jest
+    .spyOn(api, "acknowledgeTesterTracking")
+    .mockResolvedValue(read({ ...OPEN, missions: { ...OPEN.missions, tracked: true }, completedCount: 3 }));
+  useSession.setState({ user: client("user_a") } as never);
+  await settle();
+
+  const failed = refundOrder({
+    id: "ord_shop_failure",
+    state: "cancelled",
     payments: { initial: { amountMinor: 1000, method: "qr_manual", status: "pending_confirmation", reference: "X", submittedAt: null, confirmedAt: null } },
   } as Partial<api.Order>);
-  await useFoundingTester.getState().acknowledgeTracking(unpaid);
-  expect(track).toHaveBeenCalledTimes(1);
+  await useFoundingTester.getState().acknowledgeTracking(failed);
+
+  expect(track).toHaveBeenCalledWith("ord_shop_failure", expect.stringMatching(/^[0-9a-f-]{36}$/));
+  expect(useSession.getState().user?.foundingTester?.missions.tracked).toBe(true);
+});
+
+it("registers the installation before it asks for the invite (review finding 9)", async () => {
+  let finish: (value: api.FoundingTesterRead) => void = () => {};
+  jest.spyOn(api, "recordTesterInstallation").mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+  const invite = jest.spyOn(api, "createTesterInvite").mockResolvedValue(read());
+  useSession.setState({ user: client("user_a") } as never);
+  await settle();
+  expect(useFoundingTester.getState().installation).toEqual({ userId: "user_a", status: "pending" });
+
+  const loading = useFoundingTester.getState().loadInvite();
+  await settle();
+  expect(invite).not.toHaveBeenCalled();
+
+  finish(read());
+  await loading;
+  expect(useFoundingTester.getState().installation).toEqual({ userId: "user_a", status: "settled" });
+  expect(invite).toHaveBeenCalledTimes(1);
+  expect(useFoundingTester.getState().inviteStatus).toBe("ready");
+});
+
+it("says a failed registration failed, and tries it again before the invite (review finding 9)", async () => {
+  const record = jest.spyOn(api, "recordTesterInstallation").mockRejectedValueOnce(new api.ApiError(503, { error: "unavailable" }));
+  record.mockResolvedValue(read());
+  jest.spyOn(api, "createTesterInvite").mockResolvedValue(read());
+  useSession.setState({ user: client("user_a") } as never);
+  await settle();
+  await settle();
+  expect(useFoundingTester.getState().installation).toEqual({ userId: "user_a", status: "failed" });
+
+  await useFoundingTester.getState().loadInvite();
+  expect(record).toHaveBeenCalledTimes(2);
+  expect(useFoundingTester.getState().installation).toEqual({ userId: "user_a", status: "settled" });
+});
+
+it("keeps the open surveys GRIDGO lists, soonest to close first (review finding 6)", async () => {
+  jest.spyOn(api, "recordTesterInstallation").mockResolvedValue(read());
+  const base = {
+    status: "open" as const,
+    fulfillmentKind: "delivery" as const,
+    openedAt: "2026-10-18T08:00:00.000Z",
+    dismissedAt: null,
+    submittedAt: null,
+    answers: null,
+    needsFollowUp: false,
+    rewardStatus: null,
+    reward: null,
+    rewardEligible: false,
+    nextRewardAt: null,
+    reportProblem: null,
+  };
+  jest.spyOn(api, "listOpenSurveys").mockResolvedValue({
+    serverTime: "2026-10-21T08:00:00.000Z",
+    surveys: [
+      { ...base, orderId: "ord_later", expiresAt: "2026-10-27T08:00:00.000Z" },
+      { ...base, orderId: "ord_shop_failure", expiresAt: "2026-10-24T08:00:00.000Z" },
+    ],
+  });
+  useSession.setState({ user: client("user_a") } as never);
+  await settle();
+
+  await useFoundingTester.getState().loadOpenSurveys();
+  expect(useFoundingTester.getState().openSurveys).toEqual(["ord_shop_failure", "ord_later"]);
 });

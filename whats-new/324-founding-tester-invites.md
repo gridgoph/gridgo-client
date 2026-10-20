@@ -1,2 +1,2 @@
 Kind: feature
-- Invite a friend with your own link. You both get a ₱15 voucher once they finish all five Founding Tester steps.
+- Invite a friend with your link. When they finish all five Founding Tester steps, you can each get a voucher.
