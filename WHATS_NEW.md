@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.423 (New feature)
+
+- Invite a friend with your link. When they finish all five Founding Tester steps, you can each get a voucher.
+- Early clients can now follow five first-order steps to earn the Founding Tester label and a voucher.
+
 ## 1.0.411 (New feature)
 
 - Early clients can now finish three first-order missions to earn the Founding Tester label and a ₱15 voucher.
