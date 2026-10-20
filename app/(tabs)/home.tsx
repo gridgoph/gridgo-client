@@ -31,12 +31,13 @@ import { useVisibleTourStep } from "@/hooks/useTourStep";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { foundingTesterView } from "@/lib/foundingTester";
+import { startPrintHref } from "@/lib/startPrint";
 import { featuredPrintsFrom, type HomeSample } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
 import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
 import { type ProductCategory } from "@/lib/productCategories";
 import { useBasketGroupTarget } from "@/store/basketGroup";
-import { useCart } from "@/store/cart";
+import { cartIsOpen, useCart } from "@/store/cart";
 import { useNotifications } from "@/store/notifications";
 import { useSeasonWindows } from "@/store/seasonWindows";
 import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
@@ -83,6 +84,7 @@ export default function HomeScreen() {
   const refreshAccount = useSession((s) => s.refresh);
   const startJob = useStartPrintJob();
   const loadCart = useCart((s) => s.load);
+  const cartOpen = useCart(cartIsOpen);
   const seasons = useSeasonWindows((s) => s.seasons);
   const dismissedSeasons = useSeasonWindows((s) => s.dismissed);
   const seasonsHydrated = useSeasonWindows((s) => s.hydrated);
@@ -431,7 +433,7 @@ export default function HomeScreen() {
           {foundingTester?.kind === "missions" ? (
             <View className="mt-8 gap-3">
               <SectionHead label="FOUNDING TESTER" />
-              <FoundingTesterCard view={foundingTester} />
+              <FoundingTesterCard view={foundingTester} context={{ orders, cartOpen, startHref: startPrintHref() }} />
             </View>
           ) : null}
 

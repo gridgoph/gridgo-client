@@ -8,6 +8,7 @@ import { useCart } from "@/store/cart";
 import { useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
 import { EARNED } from "@/test/foundingTesterHarness";
+import { refundOrder } from "@/test/refundFixtures";
 
 /*
   The Founding Tester missions on Home. No presses; Home re-reads the account
@@ -32,6 +33,7 @@ jest.mock("@/lib/api", () => {
     getProductCategories: jest.fn(async () => []),
     getCart: jest.fn(async () => null),
     getAccount: jest.fn(),
+    acknowledgeTesterTracking: jest.fn(),
   };
 });
 
@@ -69,13 +71,41 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-it("shows the missions to an eligible client and re-reads the account for them", async () => {
-  signedIn({ ...EARNED, label: null, awardedAt: null, reward: null, rewardStatus: "pending", completedCount: 0, missions: { placed: false, received: false, rated: false } });
+it("shows the five-step path to an eligible client and re-reads the account for it", async () => {
+  signedIn({
+    ...EARNED,
+    label: null,
+    awardedAt: null,
+    reward: null,
+    rewardStatus: "pending",
+    completedCount: 0,
+    missions: { added: false, placed: false, tracked: false, received: false, rated: false },
+  });
   await renderInSafeArea(<HomeScreen />);
 
   expect(await screen.findByText("Become a Founding Tester")).toBeTruthy();
-  expect(screen.getByText("0 of 3 done")).toBeTruthy();
+  expect(screen.getByText("0 of 5 done")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Choose something to print. Step 1 of 5, Add an item to your cart, next step" })).toBeTruthy();
   expect(api.getAccount).toHaveBeenCalled();
+});
+
+it("never counts a paid order on Home as tracked — only its own screen does", async () => {
+  api.listOrders.mockResolvedValueOnce([refundOrder({ state: "production" })]);
+  signedIn({
+    ...EARNED,
+    label: null,
+    awardedAt: null,
+    reward: null,
+    rewardStatus: "pending",
+    completedCount: 2,
+    missions: { added: true, placed: true, tracked: false, received: false, rated: false },
+  });
+  await renderInSafeArea(<HomeScreen />);
+
+  // The order is on Home, and the next step leads to its tracking screen…
+  expect(await screen.findByRole("button", { name: "Track your order. Step 3 of 5, Track your order, next step" })).toBeTruthy();
+  // …but Home showing it is not the client opening it.
+  expect(api.acknowledgeTesterTracking).not.toHaveBeenCalled();
 });
 
 it("drops the card from Home once the label is earned", async () => {

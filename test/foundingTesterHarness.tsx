@@ -16,8 +16,8 @@ export const EARNED: FoundingTester = {
   eligible: true,
   label: "Founding Tester",
   awardedAt: AWARDED_AT,
-  missions: { placed: true, received: true, rated: true },
-  completedCount: 3,
+  missions: { added: true, placed: true, tracked: true, received: true, rated: true },
+  completedCount: 5,
   rewardStatus: "issued",
   reward: { id: "vch_1", valueMinor: 1500, expiresAt: "2026-11-19T08:00:00.000Z" },
 };

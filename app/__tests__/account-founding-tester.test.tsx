@@ -71,13 +71,25 @@ async function renderAccount() {
   await waitFor(() => expect(api.getAccount).toHaveBeenCalled());
 }
 
-it("shows the missions to an eligible account, with the count", async () => {
-  signedIn({ ...EARNED, label: null, awardedAt: null, reward: null, rewardStatus: "pending", completedCount: 2, missions: { placed: true, received: true, rated: false } });
+it("shows the five-step path to an eligible account, with the count and the way to invite", async () => {
+  signedIn({
+    ...EARNED,
+    label: null,
+    awardedAt: null,
+    reward: null,
+    rewardStatus: "pending",
+    completedCount: 2,
+    missions: { added: true, placed: true, tracked: false, received: false, rated: false },
+  });
   await renderAccount();
 
   expect(await screen.findByText("FOUNDING TESTER")).toBeTruthy();
-  expect(screen.getByText("2 of 3 done")).toBeTruthy();
+  expect(screen.getByText("2 of 5 done")).toBeTruthy();
+  // Account has not read the orders, so "Track your order" opens the Orders tab.
+  expect(screen.getByRole("button", { name: "Open your orders. Step 3 of 5, Track your order, next step" })).toBeTruthy();
   expect(screen.queryByTestId("founding-tester-chip")).toBeNull();
+  // On the card and as an Account row.
+  expect(screen.getAllByRole("button", { name: "Invite a friend" })).toHaveLength(2);
 });
 
 it("puts the earned label on the account and lets the missions go", async () => {
@@ -87,6 +99,8 @@ it("puts the earned label on the account and lets the missions go", async () => 
   expect(await screen.findByTestId("founding-tester-chip")).toBeTruthy();
   expect(screen.getByText("Founding Tester")).toBeTruthy();
   expect(screen.queryByTestId("founding-tester-card")).toBeNull();
+  // Inviting goes on after the label.
+  expect(screen.getByRole("button", { name: "Invite a friend" })).toBeTruthy();
 });
 
 it("shows nothing new to an ineligible account or an API without the field", async () => {
@@ -97,4 +111,5 @@ it("shows nothing new to an ineligible account or an API without the field", asy
   expect(screen.queryByTestId("founding-tester-card")).toBeNull();
   expect(screen.queryByTestId("founding-tester-chip")).toBeNull();
   expect(screen.queryByText(/Founding Tester/)).toBeNull();
+  expect(screen.queryByText("Invite a friend")).toBeNull();
 });

@@ -21,7 +21,7 @@ import {
   celebrationCopy,
   celebrationDue,
   foundingTesterView,
-  FOUNDING_TESTER_MISSIONS,
+  FOUNDING_TESTER_STEPS,
 } from "@/lib/foundingTester";
 import { VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { useAppUpdate } from "@/store/appUpdate";
@@ -37,15 +37,16 @@ const CELEBRATION_SEGMENTS = new Set(["(tabs)", "order"]);
  * "You're a Founding Tester" — once, the first time GRIDGO's account answer
  * carries an `awardedAt` this phone has not celebrated.
  *
- * Mounted once in the root layout, because the third mission is usually
+ * Mounted once in the root layout, because the last step is usually
  * finished on an order's survey and the label can also arrive by itself (an
- * account that had finished all three before the missions existed). Drawn
+ * account that had finished every step before the path existed). Drawn
  * over the tab shell or an order only, and only once nothing else is asking:
  * not over the update prompt, the notification explainer, the checkout
  * question or a tour step.
  *
- * Short on purpose: the badge lands, the three missions tick in, and the
- * sheet says where the voucher is. Reduce motion draws it at rest.
+ * Short on purpose and a little playful: confetti falls once, the badge
+ * lands, the five steps tick in, and the sheet says where the voucher is.
+ * Reduce motion draws it at rest, with no confetti at all.
  */
 export function FoundingTesterCelebration({ ready }: { ready: boolean }) {
   const segments = useSegments();
@@ -101,11 +102,12 @@ export function FoundingTesterCelebration({ ready }: { ready: boolean }) {
   );
 }
 
-/** The badge settles in, then each mission ticks in turn. */
+/** The badge settles in under the confetti, then each step ticks in turn. */
 function Badge() {
   const colors = useThemeColors();
   const reduceMotion = useReducedMotion();
   const badge = useSharedValue(reduceMotion ? 1 : 0);
+  const confetti = [colors.brand, colors.success, colors.info, colors.warning, colors.error];
 
   useEffect(() => {
     badge.value = reduceMotion ? 1 : withSpring(1, { damping: 12, stiffness: 180 });
@@ -118,6 +120,13 @@ function Badge() {
 
   return (
     <View className="items-center gap-4 pt-2">
+      {reduceMotion ? null : (
+        <View pointerEvents="none" aria-hidden testID="founding-tester-confetti" style={{ position: "absolute", top: -8, left: 0, right: 0, height: 220 }}>
+          {CONFETTI.map((piece, index) => (
+            <ConfettiPiece key={index} piece={piece} color={confetti[index % confetti.length]} />
+          ))}
+        </View>
+      )}
       <Animated.View style={badgeStyle}>
         <View className="h-20 w-20 items-center justify-center rounded-pill border-2" style={{ borderColor: colors.brand }}>
           <View
@@ -129,8 +138,8 @@ function Badge() {
         </View>
       </Animated.View>
       <View className="flex-row flex-wrap justify-center gap-2">
-        {FOUNDING_TESTER_MISSIONS.map((mission, index) => (
-          <MissionTick key={mission.key} label={mission.title} index={index} reduceMotion={reduceMotion} />
+        {FOUNDING_TESTER_STEPS.map((step, index) => (
+          <MissionTick key={step.key} label={step.title} index={index} reduceMotion={reduceMotion} />
         ))}
       </View>
     </View>
@@ -159,5 +168,55 @@ function MissionTick({ label, index, reduceMotion }: { label: string; index: num
         <Text className="text-caption text-text-primary">{label}</Text>
       </View>
     </Animated.View>
+  );
+}
+
+type Piece = { x: number; delay: number; drift: number; spin: number; size: number; fall: number };
+
+/**
+ * Where each piece starts and how it falls, fixed rather than random so the
+ * sheet looks the same every time it is captured. `x` is a share of the width.
+ */
+const CONFETTI: readonly Piece[] = Array.from({ length: 28 }, (_, i) => ({
+  x: ((i * 37) % 100) / 100,
+  delay: (i * 53) % 420,
+  drift: ((i * 29) % 41) - 20,
+  spin: ((i * 71) % 2 === 0 ? 1 : -1) * (180 + ((i * 47) % 360)),
+  size: 6 + ((i * 13) % 5),
+  fall: 150 + ((i * 31) % 70),
+}));
+
+/** One piece: falls, drifts, turns and fades, once — about a second and a half. */
+function ConfettiPiece({ piece, color }: { piece: Piece; color: string }) {
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withDelay(piece.delay, withTiming(1, { duration: 1100, easing: Easing.out(Easing.quad) }));
+  }, [progress, piece.delay]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: progress.value <= 0 ? 0 : progress.value < 0.75 ? 1 : (1 - progress.value) * 4,
+    transform: [
+      { translateY: progress.value * piece.fall },
+      { translateX: progress.value * piece.drift },
+      { rotate: `${progress.value * piece.spin}deg` },
+    ],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: "absolute",
+          top: 0,
+          left: `${piece.x * 100}%`,
+          width: piece.size,
+          height: piece.size * 0.5,
+          borderRadius: 1,
+          backgroundColor: color,
+        },
+        style,
+      ]}
+    />
   );
 }

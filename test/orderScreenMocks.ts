@@ -29,5 +29,7 @@ export function orderScreenApiMock() {
     // No post-order survey unless a test gives one (gridgo-api SURVEY_API.md).
     getOrderSurvey: jest.fn(async () => ({ serverTime: new Date().toISOString(), survey: null })),
     dismissOrderSurvey: jest.fn(),
+    // "Track your order" (gridgo-api FOUNDING_TESTER_API.md): only for an eligible client.
+    acknowledgeTesterTracking: jest.fn(async () => { throw new Error("not in this test"); }),
   };
 }

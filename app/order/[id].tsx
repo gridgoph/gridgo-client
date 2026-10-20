@@ -102,6 +102,7 @@ import { rescheduleView } from "@/lib/reschedule";
 import { shopRecoveryView } from "@/lib/shopRecovery";
 import { canHaveSurvey } from "@/lib/survey";
 import { useSurvey } from "@/store/survey";
+import { useFoundingTester } from "@/store/foundingTester";
 import { orderPrintingMinor, serviceFeeVisibleToClient, showsServiceFee } from "@/lib/serviceFee";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { openingHoursLines, orderReviewView, upcomingClosures } from "@/lib/operatingHours";
@@ -191,6 +192,10 @@ export default function OrderDetailScreen() {
       setTaxonomy(taxonomyResult);
       setRefunds(refundList);
       setError(null);
+      // This screen is where a client tracks the job, so opening it is the
+      // Founding Tester "Track your order" step. Only here: an order showing
+      // on Home is not one the client opened. The store sends it once.
+      void useFoundingTester.getState().acknowledgeTracking(current);
     } catch (e) {
       if (sequence !== loadSequence.current) return;
       setError(

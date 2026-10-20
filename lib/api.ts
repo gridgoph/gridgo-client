@@ -81,20 +81,46 @@ export type User = {
 };
 
 /**
- * The account's Founding Tester progress, as `GET /auth/me` and `GET /me`
- * project it (gridgo-api `docs/VOUCHERS_API.md#founding-tester-missions`).
- * `label`, `awardedAt` and `reward` stay null until all three missions count.
+ * The account's Founding Tester progress, as `GET /me/founding-tester`,
+ * `GET /auth/me` and `GET /me` project it (gridgo-api
+ * `docs/FOUNDING_TESTER_API.md`). `label`, `awardedAt` and `reward` stay null
+ * until all five steps count and GRIDGO has issued the reward.
  */
 export type FoundingTester = {
   eligible: boolean;
   label: string | null;
   /** When the label was earned. The celebration is keyed on it. */
   awardedAt: string | null;
-  missions: { placed: boolean; received: boolean; rated: boolean };
+  /**
+   * The five steps. `added` and `tracked` arrived with the path (client#323);
+   * an API from before it sends only the other three, so both stay optional.
+   */
+  missions: { added?: boolean; placed: boolean; tracked?: boolean; received: boolean; rated: boolean };
   completedCount: number;
-  /** `pending | ineligible | issued | existing_survey_reward`; kept open. */
+  /**
+   * `pending | ineligible | paused | issued | existing_survey_reward | voided`;
+   * kept open.
+   */
   rewardStatus: string | null;
-  reward: { id: string; valueMinor: number; expiresAt: string } | null;
+  reward: { id: string; valueMinor: number; expiresAt: string; status?: string } | null;
+};
+
+/** The client's personal invite and what has come of it. Counts only. */
+export type TesterInvites = {
+  /** Null until `POST /me/founding-tester/invite` makes the code. */
+  code: string | null;
+  /** Null while Operations has not set the sign-up form; Copy and Share wait for it. */
+  link: string | null;
+  invited: number;
+  joined: number;
+  completed: number;
+};
+
+/** Every Founding Tester route answers with this envelope. */
+export type FoundingTesterRead = {
+  serverTime: string;
+  foundingTester: FoundingTester;
+  invites: TesterInvites;
 };
 
 /** A map point on an order. Absent until the platform knows one. */
@@ -3268,6 +3294,47 @@ export type AccountPatch = {
 export async function getAccount(): Promise<User> {
   const result = await request<{ user: User; approvalCase?: ApprovalCaseSummary | null }>("/me");
   return withBusinessApplication(result.user, result.approvalCase);
+}
+
+// ---------------------------------------------------------------------------
+// Founding Tester path and invites (client#323). Contract: gridgo-api
+// `docs/FOUNDING_TESTER_API.md`. Every route answers `FoundingTesterRead`, and
+// the installation ID is this app's own UUID v4 (`lib/installationId.ts`).
+// ---------------------------------------------------------------------------
+
+/** The five steps and the invite counts. A pure read: it never issues a reward. */
+export async function getFoundingTester(): Promise<FoundingTesterRead> {
+  return request<FoundingTesterRead>("/me/founding-tester");
+}
+
+/** Records this installation against the signed-in account. Idempotent. */
+export async function recordTesterInstallation(installationId: string): Promise<FoundingTesterRead> {
+  return request<FoundingTesterRead>("/me/founding-tester/installation", {
+    method: "POST",
+    body: JSON.stringify({ installationId }),
+  });
+}
+
+/** Makes the client's permanent invite code, or returns the one already made. */
+export async function createTesterInvite(installationId: string | null): Promise<FoundingTesterRead> {
+  return request<FoundingTesterRead>("/me/founding-tester/invite", {
+    method: "POST",
+    body: JSON.stringify(installationId ? { installationId } : {}),
+  });
+}
+
+/**
+ * "Track your order": the client opened this order's tracking screen. Only
+ * that screen calls it — an order showing up on Home is not tracking it.
+ */
+export async function acknowledgeTesterTracking(
+  orderId: string,
+  installationId: string | null,
+): Promise<FoundingTesterRead> {
+  return request<FoundingTesterRead>(`/orders/${encodeURIComponent(orderId)}/tester-tracking`, {
+    method: "POST",
+    body: JSON.stringify(installationId ? { installationId } : {}),
+  });
 }
 
 export async function patchAccount(
