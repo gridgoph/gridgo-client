@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.411 (New feature)
+
+- Early clients can now finish three first-order missions to earn the Founding Tester label and a ₱15 voucher.
+
 ## 1.0.408 (New feature)
 
 - Home now shows Featured prints to every client, and only your two latest finished jobs.
