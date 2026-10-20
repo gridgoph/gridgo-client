@@ -300,7 +300,7 @@ export function inviteExplainer(): string {
 
 /** What an invite voucher depends on, so a finished friend is never read as a voucher issued. */
 export const INVITE_CONDITIONS =
-  "Invite vouchers depend on GRIDGO's checks. Your friend must be able to join the Founding Tester steps, and must not share a phone number, a phone or a delivery address with you or with a friend you invited before. GRIDGO also has a monthly voucher budget, so some vouchers wait for approval.";
+  "Invite vouchers depend on GRIDGO's checks. Your friend must be able to join the Founding Tester steps, and must not share a phone number, a phone or a delivery address with you or with someone you invited who already earned an invite voucher, even one GRIDGO later voided. GRIDGO also has a monthly voucher budget, so some vouchers wait for approval.";
 
 export type InviteCount = { key: "invited" | "joined" | "completed"; label: string; detail: string; value: number };
 

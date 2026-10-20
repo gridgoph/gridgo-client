@@ -72,7 +72,11 @@ type FoundingTesterStore = {
    */
   registerInstallation: () => Promise<void>;
 
-  /** Orders whose survey is open now, from `GET /me/surveys`. Null until read. */
+  /**
+   * Orders whose survey is open now, from the last good `GET /me/surveys`.
+   * Null until read, and again after a failed read: an answer GRIDGO could not
+   * confirm is neither offered nor turned into "no survey is open".
+   */
   openSurveys: string[] | null;
   loadOpenSurveys: () => Promise<void>;
   /** "Track your order": the tracking screen opened this order. */
@@ -81,8 +85,12 @@ type FoundingTesterStore = {
   resetAccount: () => void;
 };
 
-/** Accounts this launch has registered the installation for, or is registering it. */
-const registered = new Map<string, Promise<void>>();
+/**
+ * Accounts this launch has registered the installation for, or is registering
+ * it, with how it ended. Outlives `resetAccount`, so an account signed back
+ * into is ready at once and is not registered again.
+ */
+const registered = new Map<string, Promise<InstallationStatus>>();
 /** `<user>:<order>` already acknowledged, or in flight, this launch. */
 const acknowledged = new Set<string>();
 let inviteSequence = 0;
@@ -163,27 +171,32 @@ export const useFoundingTester = create<FoundingTesterStore>()(
       registerInstallation: () => {
         const ownerId = useSession.getState().user?.id;
         if (!ownerId) return Promise.resolve();
-        const running = registered.get(ownerId);
-        if (running) return running;
         const mark = (status: InstallationStatus) => {
           if (useSession.getState().user?.id === ownerId) set({ installation: { userId: ownerId, status } });
         };
+        // Already registered (or registering) this launch: an account signed
+        // out of and back into gets its readiness back without another call.
+        const running = registered.get(ownerId);
+        if (running) {
+          if (get().installation?.userId !== ownerId) mark("pending");
+          return running.then(mark);
+        }
         mark("pending");
-        const attempt = (async () => {
+        const attempt = (async (): Promise<InstallationStatus> => {
           const id = await installationId();
-          if (!id) return mark("settled");
+          if (!id) return "settled";
           try {
             applyRead(ownerId, await api.recordTesterInstallation(id));
-            mark("settled");
+            return "settled";
           } catch {
             // An API without the route, or one bad read: said as `failed`, and
             // the next invite read or launch tries again.
             registered.delete(ownerId);
-            mark("failed");
+            return "failed";
           }
         })();
         registered.set(ownerId, attempt);
-        return attempt;
+        return attempt.then(mark);
       },
 
       openSurveys: null,
@@ -196,7 +209,8 @@ export const useFoundingTester = create<FoundingTesterStore>()(
           const now = Date.parse(read.serverTime);
           set({ openSurveys: openSurveyOrderIds(read.surveys ?? [], Number.isFinite(now) ? now : Date.now()) });
         } catch {
-          // Keep what was read before; never invent an open survey.
+          // The survey read before may have closed since: withheld until a read succeeds.
+          if (useSession.getState().user?.id === ownerId) set({ openSurveys: null });
         }
       },
 

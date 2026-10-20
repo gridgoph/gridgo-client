@@ -306,7 +306,7 @@ describe("invite a friend", () => {
 
   it("says the checks and the budget apply, and that Completed is not a voucher issued (review finding 7)", () => {
     expect(INVITE_CONDITIONS).toMatch(/must be able to join the Founding Tester steps/);
-    expect(INVITE_CONDITIONS).toMatch(/with a friend you invited before/);
+    expect(INVITE_CONDITIONS).toMatch(/with someone you invited who already earned an invite voucher, even one GRIDGO later voided/);
     expect(INVITE_CONDITIONS).toMatch(/monthly voucher budget/);
     const completed = inviteCounts({ code: "C", link: null, invited: 1, joined: 1, completed: 1 }).find((c) => c.key === "completed");
     expect(completed?.detail).toMatch(/Vouchers still depend on GRIDGO's checks/);

@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import * as api from "@/lib/api";
+import { stepAction } from "@/lib/foundingTester";
 import { INSTALLATION_ID_KEY, installationId, isUuidV4, newUuidV4, resetInstallationIdCacheForTests } from "@/lib/installationId";
 import { resetFoundingTesterCallsForTests, useFoundingTester } from "@/store/foundingTester";
 import { useSession } from "@/store/session";
@@ -182,4 +183,67 @@ it("keeps the open surveys GRIDGO lists, soonest to close first (review finding 
 
   await useFoundingTester.getState().loadOpenSurveys();
   expect(useFoundingTester.getState().openSurveys).toEqual(["ord_shop_failure", "ord_later"]);
+});
+
+it("is ready again at once when the same account signs back in this launch, without registering twice (re-check R1)", async () => {
+  const record = jest.spyOn(api, "recordTesterInstallation").mockResolvedValue(read());
+  useSession.setState({ user: client("user_a") } as never);
+  await settle();
+  await settle();
+  expect(useFoundingTester.getState().installation).toEqual({ userId: "user_a", status: "settled" });
+
+  // A → out → A, and A → B → A.
+  useSession.getState().clearSession();
+  useSession.setState({ user: client("user_a") } as never);
+  await settle();
+  expect(useFoundingTester.getState().installation).toEqual({ userId: "user_a", status: "settled" });
+
+  useSession.setState({ user: client("user_b") } as never);
+  await settle();
+  await settle();
+  useSession.setState({ user: client("user_a") } as never);
+  await settle();
+  expect(useFoundingTester.getState().installation).toEqual({ userId: "user_a", status: "settled" });
+
+  // Once for each account; the same installation every time.
+  expect(record).toHaveBeenCalledTimes(2);
+  expect(record.mock.calls[0][0]).toBe(record.mock.calls[1][0]);
+});
+
+it("withholds a survey it read before once a refresh fails, without saying none is open (re-check R2)", async () => {
+  jest.spyOn(api, "recordTesterInstallation").mockResolvedValue(read());
+  const list = jest.spyOn(api, "listOpenSurveys").mockResolvedValueOnce({
+    serverTime: "2026-10-21T08:00:00.000Z",
+    surveys: [
+      {
+        orderId: "ord_old_survey",
+        status: "open",
+        fulfillmentKind: "delivery",
+        openedAt: "2026-10-18T08:00:00.000Z",
+        expiresAt: "2026-10-25T08:00:00.000Z",
+        dismissedAt: null,
+        submittedAt: null,
+        answers: null,
+        needsFollowUp: false,
+        rewardStatus: null,
+        reward: null,
+        rewardEligible: false,
+        nextRewardAt: null,
+        reportProblem: null,
+      },
+    ],
+  });
+  list.mockRejectedValueOnce(new api.ApiError(503, { error: "unavailable" }));
+  useSession.setState({ user: client("user_a") } as never);
+  await settle();
+
+  await useFoundingTester.getState().loadOpenSurveys();
+  expect(useFoundingTester.getState().openSurveys).toEqual(["ord_old_survey"]);
+
+  await useFoundingTester.getState().loadOpenSurveys();
+  const openSurveys = useFoundingTester.getState().openSurveys;
+  expect(openSurveys).toBeNull();
+  const context = { cartOpen: false, startHref: "/request/category", openSurveyOrderIds: openSurveys ?? undefined };
+  // Not the old survey, and not "no survey is open" either: the Orders tab.
+  expect(stepAction("rated", context)).toEqual({ label: "Open your orders", href: "/(tabs)/orders" });
 });
