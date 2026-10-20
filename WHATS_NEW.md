@@ -21,6 +21,12 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.429 (New feature)
+
+- On a one-shop order, "Add more from this shop" now lists what that shop can still print for your date.
+- A product card at checkout no longer shows a sliver of red at its corner before you swipe to remove it.
+- See your delivery acknowledgement receipt on a delivered order, and download it as a PDF.
+
 ## 1.0.423 (New feature)
 
 - Invite a friend with your link. When they finish all five Founding Tester steps, you can each get a voucher.
