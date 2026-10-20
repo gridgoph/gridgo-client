@@ -129,7 +129,15 @@ export function NotificationCard({ group, read, onOpen, onMarkRead, applicationN
   const surveyRewardEligible = useSurvey((state) =>
     notification.orderId ? (state.surveys[notification.orderId]?.rewardEligible ?? null) : null,
   );
-  const presented = presentNotification(notification, { showServiceFee, applicationNoticeId, surveyRewardEligible });
+  const surveyRewardProgram = useSurvey((state) =>
+    notification.orderId ? (state.surveys[notification.orderId]?.rewardProgram ?? null) : null,
+  );
+  const presented = presentNotification(notification, {
+    showServiceFee,
+    applicationNoticeId,
+    surveyRewardEligible,
+    surveyRewardProgram,
+  });
   const picture = notificationImageUrl(notification.imageUrl);
   // A row with no job is GRIDGO speaking, and says so rather than leaving the
   // strip empty beside its time.

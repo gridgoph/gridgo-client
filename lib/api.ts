@@ -3991,6 +3991,12 @@ export type OrderSurvey = {
   nextRewardAt: string | null;
   /** Only for a low star score while the issue window is open; re-read every time. */
   reportProblem: { label: string; path: string; method: string } | null;
+  /**
+   * Which reward this survey belongs to (gridgo-api VOUCHERS_API.md). For
+   * `founding_tester` the voucher is the one for all five steps, and `reward`
+   * is that wallet item once issued. Absent from an older API: the survey programme.
+   */
+  rewardProgram?: "founding_tester" | "survey" | (string & {}) | null;
 };
 
 export type OrderSurveyRead = { serverTime: string; options?: SurveyOptions; survey: OrderSurvey | null };
