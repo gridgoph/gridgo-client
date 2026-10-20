@@ -105,7 +105,9 @@ export default function AddMoreScreen() {
     });
   }, [loadSettings]);
 
-  const label = group?.label ?? targetLabel ?? "this shop";
+  // Checkout's name for the group wins: a one-shop basket never showed its
+  // letter, so there it is "this shop" even though GRIDGO calls it Shop A.
+  const label = targetLabel ?? group?.label ?? "this shop";
   const deadline = group ? group.deadline : targetDeadline;
 
   const pick = async (card: OtherListing) => {

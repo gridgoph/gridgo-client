@@ -226,6 +226,13 @@ export function basketDates(cart: Cart | null | undefined): BasketDate[] {
 // Words
 // ---------------------------------------------------------------------------
 
+/**
+ * A one-group basket's group, by name. Checkout never shows that basket a
+ * letter, so "Add more from Shop A" would introduce a shop the client has
+ * not met; "this shop" is the same promise without a new name.
+ */
+export const SINGLE_GROUP_LABEL = "this shop";
+
 /** "Add more from Shop A for Fri 12 Oct" — the date is what keeps it in this delivery. */
 export function addMoreFromLabel(label: string, deadline?: string | null): string {
   return parseDeadline(deadline ?? null)
