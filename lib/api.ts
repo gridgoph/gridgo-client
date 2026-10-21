@@ -1275,6 +1275,15 @@ function notifyUnauthorized(): void {
   }
 }
 
+/**
+ * Run the mid-session 401 recovery a `deferUnauthorized` request held back,
+ * once the screen has said why. Same effect as an ordinary 401.
+ */
+export function recoverUnauthorizedSession(): void {
+  if (tokenMemory) setToken(null);
+  notifyUnauthorized();
+}
+
 const DEFAULT_API_PORT = "8787";
 
 /** Inputs for {@link resolveApiBase} — pure so unit tests can cover every branch. */
@@ -1503,6 +1512,13 @@ export type RequestOptions = {
    * `POST /auth/clerk/activate` — that first 401 means "unmapped", not "sign out".
    */
   ignoreUnauthorized?: boolean;
+  /**
+   * Keep the forced-token retry, but leave a final 401 to the caller instead
+   * of clearing the session at once: the screen says what did not happen,
+   * then runs `recoverUnauthorizedSession`. Used where clearing the session
+   * would remove the only screen that can explain the failure.
+   */
+  deferUnauthorized?: boolean;
 };
 
 async function request<T>(
@@ -1556,8 +1572,10 @@ async function request<T>(
       if (auth.source === "provider" && !forceFreshToken) {
         return request<T>(path, { ...init, signal }, options, true);
       }
-      if (auth.source === "legacy") setToken(null);
-      notifyUnauthorized();
+      if (!options.deferUnauthorized) {
+        if (auth.source === "legacy") setToken(null);
+        notifyUnauthorized();
+      }
     }
     throw new ApiError(res.status, data);
   }
@@ -5651,4 +5669,59 @@ export async function createPrivacyRequest(
 export async function listPrivacyRequests(): Promise<PrivacyRequest[]> {
   const result = await request<{ requests: PrivacyRequest[] }>("/me/privacy-requests");
   return result.requests ?? [];
+}
+
+/**
+ * File the account-deletion request the Apple revocation route attaches to
+ * (gridgo-api `docs/APPLE_REVOCATION_API.md`). Idempotent: a pending request
+ * answers the same `202`.
+ */
+export async function fileAccountDeletionRequest(): Promise<void> {
+  await request<{ ok: true }>("/me/account-deletion-request", {
+    method: "POST",
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+export type AppleRevocationRecord = {
+  clientId: string;
+  status: "revoked" | "retry_required" | string;
+  attemptedAt?: string | null;
+  revokedAt?: string | null;
+  error?: string | null;
+};
+
+export type AccountDeletionRequest = {
+  id: string;
+  status: string;
+  /** The latest attempt per bundle id. Empty means unknown, not "not needed". */
+  appleRevocations: AppleRevocationRecord[];
+};
+
+/** The caller's pending account-deletion request, or null when there is none. */
+export async function getAccountDeletionRequest(): Promise<AccountDeletionRequest | null> {
+  const result = await request<{ request: AccountDeletionRequest | null }>(
+    "/me/account-deletion-request",
+  );
+  return result.request ?? null;
+}
+
+/**
+ * Send a fresh Apple authorization code for revocation. Never logged; the
+ * answer is read by `readAppleRevocationReply` in `lib/appleRevocation.ts`.
+ * A final 401 is left to the caller (`deferUnauthorized`), so the Delete
+ * account screen can say why before the session is recovered.
+ */
+export async function revokeAppleAuthorization(
+  clientId: string,
+  authorizationCode: string,
+): Promise<unknown> {
+  return request<unknown>(
+    "/me/account-deletion-request/apple-revocation",
+    {
+      method: "POST",
+      body: JSON.stringify({ confirmed: true, clientId, authorizationCode }),
+    },
+    { deferUnauthorized: true },
+  );
 }

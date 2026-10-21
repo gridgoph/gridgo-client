@@ -1,17 +1,19 @@
 import { useSession as useClerkSession, useUser } from "@clerk/expo";
 import { router } from "expo-router";
 import { useEffect } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 
 import { DangerButton } from "@/components/DangerButton";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { StatusChip } from "@/components/StatusChip";
 import { FormField } from "@/components/form/FormField";
 import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { deletionConfirmMethod } from "@/lib/accountDeletion";
+import { APPLE_REVOKED, appleRevocationApplies } from "@/lib/appleRevocation";
 import { legalDate, RETENTION_NOTE } from "@/lib/legal";
 import { useAccountDeletion } from "@/store/accountDeletion";
 
@@ -19,6 +21,17 @@ const BUSY_LABEL = {
   checking: "Checking it is you…",
   sending: "Sending your request…",
   emailing: "Emailing your code…",
+} as const;
+
+const APPLE_BUSY_LABEL = {
+  authorizing: "Waiting for Apple…",
+  revoking: "Disconnecting Sign in with Apple…",
+} as const;
+
+const APPLE_NEXT_LABEL = {
+  retry: "Try again",
+  sign_in: "Sign in with Apple",
+  restore_session: "Sign in again",
 } as const;
 
 /**
@@ -30,6 +43,11 @@ const BUSY_LABEL = {
  * then is a `deletion` request sent to the privacy queue
  * (`POST /me/privacy-requests`). See `lib/accountDeletion.ts`.
  *
+ * On an iPhone account linked to Apple, the sent request is followed by
+ * disconnecting Sign in with Apple (`lib/appleRevocation.ts`): Apple asks the
+ * person to sign in once more, and the result — success or a plain failure —
+ * is drawn under "Request sent". The request stands either way.
+ *
  * No yellow on this screen: the one action is a deletion, and it is drawn in
  * the error token like every other action that cannot be taken back.
  */
@@ -37,6 +55,8 @@ export default function DeleteAccountScreen() {
   const { user: clerkUser, isLoaded } = useUser();
   const { session } = useClerkSession();
   const method = deletionConfirmMethod(clerkUser);
+  const withApple = appleRevocationApplies(Platform.OS, clerkUser);
+  const appleOwner = withApple ? (clerkUser?.id ?? null) : null;
 
   const secret = useAccountDeletion((s) => s.secret);
   const codeSent = useAccountDeletion((s) => s.codeSent);
@@ -47,6 +67,11 @@ export default function DeleteAccountScreen() {
   const confirmed = useAccountDeletion((s) => s.confirmedAt != null);
   const sent = useAccountDeletion((s) => s.sent);
   const request = useAccountDeletion((s) => s.request);
+  const apple = useAccountDeletion((s) => s.apple);
+  const appleError = useAccountDeletion((s) => s.appleError);
+  const appleNext = useAccountDeletion((s) => s.appleNext);
+  const revokeApple = useAccountDeletion((s) => s.revokeApple);
+  const restoreSession = useAccountDeletion((s) => s.restoreSession);
   const setSecret = useAccountDeletion((s) => s.setSecret);
   const emailCode = useAccountDeletion((s) => s.emailCode);
   const submit = useAccountDeletion((s) => s.submit);
@@ -73,8 +98,13 @@ export default function DeleteAccountScreen() {
 
   if (sent) {
     const due = legalDate(request?.dueAt);
+    const appleWorking = apple === "authorizing" || apple === "revoking";
     return (
-      <FormScreen>
+      <FormScreen
+        overlay={
+          <LoadingOverlay visible={appleWorking} label={appleWorking ? APPLE_BUSY_LABEL[apple] : ""} />
+        }
+      >
         <View className="gg-page gap-8 pb-16 pt-4">
           <View className="gap-3" accessibilityLiveRegion="polite">
             <Text className="text-h2 text-text-primary" accessibilityRole="header">
@@ -91,7 +121,40 @@ export default function DeleteAccountScreen() {
             </Text>
             <Text className="text-body text-text-secondary">{RETENTION_NOTE}</Text>
           </View>
-          <SecondaryButton label="Back to your details" onPress={() => router.back()} />
+          {apple ? (
+            <View className="gap-4" accessibilityLiveRegion="polite">
+              <Text className="text-overline text-text-muted">SIGN IN WITH APPLE</Text>
+              {apple === "revoked" ? (
+                <View className="gg-card gap-3">
+                  <StatusChip tone="success" label="Disconnected" icon="circle-check" />
+                  <Text className="text-body text-text-primary">{APPLE_REVOKED}</Text>
+                </View>
+              ) : apple === "failed" && appleError ? (
+                <ErrorState
+                  label="Apple still connected"
+                  body={appleError}
+                  retryLabel={APPLE_NEXT_LABEL[appleNext ?? "retry"]}
+                  onRetry={
+                    appleNext === "restore_session"
+                      ? restoreSession
+                      : appleNext
+                        ? () => void revokeApple()
+                        : undefined
+                  }
+                />
+              ) : (
+                <Text className="text-body text-text-secondary">
+                  Apple asks you to sign in once more so GRIDGO can disconnect Sign in with Apple
+                  from your Apple ID.
+                </Text>
+              )}
+            </View>
+          ) : null}
+          <SecondaryButton
+            label="Back to your details"
+            disabled={appleWorking || apple === "pending"}
+            onPress={() => router.back()}
+          />
         </View>
       </FormScreen>
     );
@@ -117,6 +180,12 @@ export default function DeleteAccountScreen() {
             This sends a request that Operations handle by hand. Your account stays available
             while it is reviewed.
           </Text>
+          {withApple ? (
+            <Text className="text-body text-text-secondary">
+              You sign in with Apple. Once the request is sent, Apple asks you to sign in once
+              more so GRIDGO can disconnect Sign in with Apple from your Apple ID.
+            </Text>
+          ) : null}
         </View>
 
         <View className="gap-4">
@@ -140,7 +209,7 @@ export default function DeleteAccountScreen() {
                 placeholder="Your password"
                 textContentType="password"
                 returnKeyType="go"
-                onSubmitEditing={() => void submit(method, session)}
+                onSubmitEditing={() => void submit(method, session, appleOwner)}
               />
             </FormField>
           ) : askingForCode ? (
@@ -165,7 +234,7 @@ export default function DeleteAccountScreen() {
                   maxLength={6}
                   autoCorrect={false}
                   returnKeyType="go"
-                  onSubmitEditing={() => void submit(method, session)}
+                  onSubmitEditing={() => void submit(method, session, appleOwner)}
                 />
               </FormField>
               <Pressable
@@ -203,7 +272,7 @@ export default function DeleteAccountScreen() {
                       : "Delete my account"
               }
               disabled={busy != null}
-              onPress={() => void submit(method, session)}
+              onPress={() => void submit(method, session, appleOwner)}
             />
           )}
           <SecondaryButton label="Keep my account" disabled={busy != null} onPress={() => router.back()} />
