@@ -5652,3 +5652,29 @@ export async function listPrivacyRequests(): Promise<PrivacyRequest[]> {
   const result = await request<{ requests: PrivacyRequest[] }>("/me/privacy-requests");
   return result.requests ?? [];
 }
+
+/**
+ * File the account-deletion request the Apple revocation route attaches to
+ * (gridgo-api `docs/APPLE_REVOCATION_API.md`). Idempotent: a pending request
+ * answers the same `202`.
+ */
+export async function fileAccountDeletionRequest(): Promise<void> {
+  await request<{ ok: true }>("/me/account-deletion-request", {
+    method: "POST",
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
+/**
+ * Send a fresh Apple authorization code for revocation. Never logged; the
+ * answer is read by `readAppleRevocationReply` in `lib/appleRevocation.ts`.
+ */
+export async function revokeAppleAuthorization(
+  clientId: string,
+  authorizationCode: string,
+): Promise<unknown> {
+  return request<unknown>("/me/account-deletion-request/apple-revocation", {
+    method: "POST",
+    body: JSON.stringify({ confirmed: true, clientId, authorizationCode }),
+  });
+}
