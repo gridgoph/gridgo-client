@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.436 (New feature)
+
+- Deleting your account on iPhone now also disconnects Sign in with Apple from GRIDGO.
+
 ## 1.0.429 (New feature)
 
 - On a one-shop order, "Add more from this shop" now lists what that shop can still print for your date.
