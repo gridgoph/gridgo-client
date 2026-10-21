@@ -44,7 +44,7 @@ describe("who disconnects Sign in with Apple", () => {
 
 describe("reading the revocation route", () => {
   it("is success only when the API says revoked", () => {
-    expect(readAppleRevocationReply({ kind: "answered", body: revoked })).toEqual({ status: "revoked" });
+    expect(readAppleRevocationReply({ kind: "answered", body: revoked })).toEqual({ status: "revoked", requestId: "req_1" });
     expect(
       readAppleRevocationReply({
         kind: "answered",
@@ -115,7 +115,7 @@ describe("retrying one code", () => {
       .fn<Promise<AppleRevocationReply>, []>()
       .mockResolvedValueOnce({ kind: "lost" })
       .mockResolvedValueOnce({ kind: "answered", body: revoked });
-    await expect(revokeWithSameCode(send, instant)).resolves.toEqual({ status: "revoked" });
+    await expect(revokeWithSameCode(send, instant)).resolves.toEqual({ status: "revoked", requestId: "req_1" });
     expect(send).toHaveBeenCalledTimes(2);
   });
 
@@ -127,7 +127,7 @@ describe("retrying one code", () => {
         .fn<Promise<AppleRevocationReply>, []>()
         .mockResolvedValueOnce(refused(code))
         .mockResolvedValueOnce({ kind: "answered", body: revoked });
-      await expect(revokeWithSameCode(send, wait)).resolves.toEqual({ status: "revoked" });
+      await expect(revokeWithSameCode(send, wait)).resolves.toEqual({ status: "revoked", requestId: "req_1" });
       expect(wait).toHaveBeenCalledTimes(1);
     },
   );

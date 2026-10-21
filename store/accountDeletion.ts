@@ -52,8 +52,9 @@ import { isAppleCancel } from "@/lib/appleSignIn";
  * `reset`: a revocation that succeeded is never followed by another Apple
  * sign-in, and a code whose answer was lost is replayed rather than replaced.
  * Apple's code is held there only, outside the state, so it never reaches a
- * render, a log or storage. A different account, or a real sign-out
- * (`forgetAppleRevocation`, from `store/session.ts`), drops it.
+ * render, a log or storage. The identity ending, or another account signing
+ * in (`forgetAppleRevocation` / `claimAppleRevocation`, from
+ * `store/session.ts`), drops it.
  */
 type AccountDeletionState = {
   /** Typed password or emailed code. Never persisted, never logged. */
@@ -103,31 +104,55 @@ type AccountDeletionState = {
 
 export type AppleStep = "pending" | "authorizing" | "revoking" | "revoked" | "failed";
 
-/** What the Apple step knows for one account and its pending deletion request. */
-type AppleMemory = {
-  owner: string;
-  /** The pending account-deletion request this belongs to, once read. */
-  requestId: string | null;
+/** What the Apple step knows about one account-deletion request. */
+type AppleRequestMemory = {
   /** Apple's single-use code, kept only while it can still be replayed. */
   code: string | null;
-  /** The account-deletion request is on file. */
-  filed: boolean;
   /** GRIDGO answered `revoked` for this request. */
   revoked: boolean;
 };
 
+/** What the Apple step knows for one account. */
+type AppleMemory = {
+  owner: string;
+  /** The account-deletion request is on file. */
+  filed: boolean;
+  /** The pending request GRIDGO last named; a failed read falls back to it. */
+  requestId: string | null;
+  /** Kept per request, so a late answer lands only on the request it was for. */
+  requests: Map<string, AppleRequestMemory>;
+};
+
 let appleMemory: AppleMemory | null = null;
+/** The GRIDGO account signed in while the memory was made. */
+let appleAccount: string | null = null;
 
 function appleMemoryFor(owner: string): AppleMemory {
   if (appleMemory?.owner !== owner) {
-    appleMemory = { owner, requestId: null, code: null, filed: false, revoked: false };
+    appleMemory = { owner, filed: false, requestId: null, requests: new Map() };
   }
   return appleMemory;
 }
 
-/** Drop everything the Apple step holds: a real sign-out or another account. */
+function requestMemory(memory: AppleMemory, id: string): AppleRequestMemory {
+  let request = memory.requests.get(id);
+  if (!request) {
+    request = { code: null, revoked: false };
+    memory.requests.set(id, request);
+  }
+  return request;
+}
+
+/** Drop everything the Apple step holds: the identity ended. */
 export function forgetAppleRevocation(): void {
   appleMemory = null;
+  appleAccount = null;
+}
+
+/** A GRIDGO account signed in; a different one than before drops the memory. */
+export function claimAppleRevocation(account: string): void {
+  if (appleAccount && appleAccount !== account) appleMemory = null;
+  appleAccount = account;
 }
 
 /** Bumped by `reset`, so a step still running for a closed screen lands nowhere. */
@@ -199,21 +224,24 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
       fail(APPLE_PREPARE_FAILED, "retry");
       return;
     }
-    if (pending) {
-      if (memory.requestId !== pending.id) {
-        memory.requestId = pending.id;
-        memory.code = null;
-        memory.revoked = false;
-      }
-      if (recordedRevocation(pending)?.status === "revoked") memory.revoked = true;
+    if (pending) memory.requestId = pending.id;
+    const requestId = memory.requestId;
+    if (!requestId) {
+      fail(APPLE_CHECK_FAILED, "retry");
+      return;
     }
-    if (memory.revoked) {
-      memory.code = null;
+    const request = requestMemory(memory, requestId);
+    // An answered read is GRIDGO's latest word for this app, even over a
+    // success this phone heard; a failed read falls back to what it heard.
+    const recorded = pending ? recordedRevocation(pending) : null;
+    if (recorded) request.revoked = recorded.status === "revoked";
+    if (request.revoked) {
+      request.code = null;
       screen.set({ apple: "revoked", appleError: null, appleNext: null });
       return;
     }
 
-    if (!memory.code) {
+    if (!request.code) {
       // A fresh sign-in only once GRIDGO has said nothing is recorded yet.
       if (pending === undefined) {
         fail(APPLE_CHECK_FAILED, "retry");
@@ -232,23 +260,27 @@ export const useAccountDeletion = create<AccountDeletionState>((set, get) => {
         return;
       }
       // Kept even if the screen closed meanwhile: the next visit sends it.
-      memory.code = fresh;
+      request.code = fresh;
       if (screen.closed()) return;
       screen.set({ apple: "revoking" });
     }
 
-    const code = memory.code;
+    const code = request.code;
     const result = await revokeWithSameCode(() => sendAppleCode(code), appleRetryWait, screen.closed);
-    // The answer belongs to the request, so it is kept whether or not the
-    // screen is still open.
+    // The answer belongs to the request it was sent for, so it is kept whether
+    // or not the screen is still open, and only a code still held is dropped.
+    const spend = () => {
+      if (request.code === code) request.code = null;
+    };
     if (result.status === "revoked") {
-      memory.revoked = true;
-      memory.code = null;
+      const answered = result.requestId ?? requestId;
+      (answered === requestId ? request : requestMemory(memory, answered)).revoked = true;
+      spend();
       screen.set({ apple: "revoked", appleError: null, appleNext: null });
       return;
     }
     if (result.code === "account_deletion_request_required") memory.filed = false;
-    if (result.next === "sign_in" || result.next === null) memory.code = null;
+    if (result.next === "sign_in" || result.next === null) spend();
     fail(result.message, result.next);
   };
 

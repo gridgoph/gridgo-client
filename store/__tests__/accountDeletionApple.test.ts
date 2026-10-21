@@ -15,7 +15,7 @@ import {
   APPLE_REVOCATION_ATTEMPTS,
   appleRevocationFailure,
 } from "@/lib/appleRevocation";
-import { forgetAppleRevocation, useAccountDeletion } from "@/store/accountDeletion";
+import { claimAppleRevocation, forgetAppleRevocation, useAccountDeletion } from "@/store/accountDeletion";
 
 jest.mock("@/lib/api", () => ({
   ApiError: jest.requireActual("@/lib/api").ApiError,
@@ -302,6 +302,63 @@ describe("the Apple step outlives the screen", () => {
     expect(revoke).toHaveBeenLastCalledWith("ph.gridgo.client", "code-2");
   });
 
+  it("believes GRIDGO's newer failure over a success this phone heard earlier", async () => {
+    await submit();
+    reopen();
+    pendingRequest.mockResolvedValue({
+      ...nothingRecorded,
+      appleRevocations: [{ clientId: "ph.gridgo.client", status: "retry_required", error: "apple_revocation_failed" }],
+    });
+    revoke.mockReset().mockRejectedValue(refusedWith(502, "apple_revocation_failed"));
+    await submit();
+
+    expect(appleSheet).toHaveBeenCalledTimes(2);
+    expect(useAccountDeletion.getState()).toMatchObject({ apple: "failed", appleNext: "sign_in" });
+  });
+
+  it("lets a late success for an earlier request mark only that request", async () => {
+    let finishFirst!: (body: unknown) => void;
+    revoke.mockReset().mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)));
+    const first = submit();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(revoke).toHaveBeenCalledTimes(1);
+
+    reopen();
+    pendingRequest.mockResolvedValue({ ...nothingRecorded, id: "req_2" });
+    revoke.mockRejectedValueOnce(refusedWith(502, "apple_revocation_failed"));
+    await submit();
+    expect(useAccountDeletion.getState().apple).toBe("failed");
+
+    finishFirst(revoked);
+    await first;
+    pendingRequest.mockRejectedValue(new TypeError("Network request failed"));
+    await useAccountDeletion.getState().revokeApple();
+
+    expect(useAccountDeletion.getState()).toMatchObject({ apple: "failed", appleError: APPLE_CHECK_FAILED });
+  });
+
+  it("keeps a held code for the request it was asked for, when another request's work ends", async () => {
+    let finishFirst!: (body: unknown) => void;
+    revoke.mockReset().mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)));
+    const first = submit();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    reopen();
+    pendingRequest.mockResolvedValue({ ...nothingRecorded, id: "req_2" });
+    revoke.mockRejectedValueOnce(new TypeError("Network request failed")).mockRejectedValue(new TypeError("Network request failed"));
+    await submit();
+    expect(revoke).toHaveBeenLastCalledWith("ph.gridgo.client", "code-2");
+
+    finishFirst({ ...revoked, requestId: "req_1" });
+    await first;
+    revoke.mockReset().mockResolvedValue({ ...revoked, requestId: "req_2" });
+    await useAccountDeletion.getState().revokeApple();
+
+    expect(revoke).toHaveBeenCalledWith("ph.gridgo.client", "code-2");
+    expect(appleSheet).toHaveBeenCalledTimes(2);
+    expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+
   it("drops a held code on sign-out", async () => {
     revoke.mockReset().mockRejectedValue(new TypeError("Network request failed"));
     await submit();
@@ -431,5 +488,24 @@ describe("a screen closed while work is in flight", () => {
     await submit();
     expect(appleSheet).toHaveBeenCalledTimes(1);
     expect(useAccountDeletion.getState().apple).toBe("revoked");
+  });
+});
+
+describe("another account signing in", () => {
+  it("drops the held code, and the same account signing in again keeps it", async () => {
+    revoke.mockReset().mockRejectedValue(new TypeError("Network request failed"));
+    claimAppleRevocation("usr_1");
+    await submit();
+    claimAppleRevocation("usr_1");
+    reopen();
+    revoke.mockReset().mockRejectedValue(new TypeError("Network request failed"));
+    await submit();
+    expect(revoke).toHaveBeenLastCalledWith("ph.gridgo.client", "code-1");
+
+    claimAppleRevocation("usr_2");
+    reopen();
+    revoke.mockReset().mockResolvedValue(revoked);
+    await submit();
+    expect(revoke).toHaveBeenLastCalledWith("ph.gridgo.client", "code-2");
   });
 });

@@ -1,6 +1,6 @@
 import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useCoverSpine } from "@/store/coverSpine";
-import { forgetAppleRevocation } from "@/store/accountDeletion";
+import { claimAppleRevocation, forgetAppleRevocation } from "@/store/accountDeletion";
 import { useCart } from "@/store/cart";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useHandoverActions } from "@/store/handoverActions";
@@ -351,11 +351,12 @@ useSession.subscribe((state, previous) => {
   // The basket goes on a real sign-out, and when a different account signs in
   // (`claim`). An empty `user` alone is neither: every launch starts with one
   // while the session restores, and forgetting the basket then is #150.
-  if (state.signingOut && !previous.signingOut) {
-    useCart.getState().reset();
-    // Apple's held code and result belong to the person signing out.
+  if (state.signingOut && !previous.signingOut) useCart.getState().reset();
+  // Apple's held code and result belong to the identity: a sign-out, or Clerk
+  // reporting the session gone, ends it. A mid-session 401 keeps `source`, so
+  // the same person signing in again still finds them.
+  if ((state.signingOut && !previous.signingOut) || (previous.source && !state.source))
     forgetAppleRevocation();
-  }
   const id = state.user?.id ?? null;
   if (id === (previous.user?.id ?? null)) {
     // The Founding Tester label just arrived (a survey, a resume, a handover):
@@ -365,7 +366,10 @@ useSession.subscribe((state, previous) => {
       void useVouchers.getState().load();
     return;
   }
-  if (id) useCart.getState().claim(id);
+  if (id) {
+    useCart.getState().claim(id);
+    claimAppleRevocation(id);
+  }
   useCheckoutPayment.getState().reset();
   useOrderPayment.getState().reset();
   useHandoverActions.getState().reset();

@@ -60,7 +60,8 @@ export function appleRevocationApplies(
 export type AppleRevocationNext = "retry" | "sign_in" | "restore_session" | null;
 
 export type AppleRevocationResult =
-  | { status: "revoked" }
+  /** `requestId`: the deletion request GRIDGO attached the revocation to. */
+  | { status: "revoked"; requestId: string | null }
   /** `code` is the API's error code, or null when there was none. */
   | { status: "failed"; code: string | null; message: string; next: AppleRevocationNext };
 
@@ -157,10 +158,11 @@ export function readAppleRevocationReply(reply: AppleRevocationReply): AppleRevo
   const body = reply.body as {
     ok?: unknown;
     error?: unknown;
+    requestId?: unknown;
     appleRevocation?: { status?: unknown } | null;
   } | null;
   if (reply.kind === "answered" && body?.ok === true && body.appleRevocation?.status === "revoked") {
-    return { status: "revoked" };
+    return { status: "revoked", requestId: typeof body.requestId === "string" ? body.requestId : null };
   }
   return appleRevocationFailure(typeof body?.error === "string" ? body.error : null);
 }
