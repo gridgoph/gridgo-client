@@ -11,6 +11,8 @@ jest.mock("@/lib/api", () => ({
   ApiError: jest.requireActual("@/lib/api").ApiError,
   createPrivacyRequest: jest.fn(),
   fileAccountDeletionRequest: jest.fn(),
+  getAccountDeletionRequest: jest.fn(async () => ({ id: "req_1", status: "pending", appleRevocations: [] })),
+  recoverUnauthorizedSession: jest.fn(),
   revokeAppleAuthorization: jest.fn(),
 }));
 jest.mock("@/lib/appleReauth", () => ({ appleAuthorizationCode: jest.fn() }));
@@ -23,6 +25,7 @@ jest.mock("@clerk/expo", () => ({
   useUser: () => ({
     isLoaded: true,
     user: {
+      id: "user_clerk_apple",
       passwordEnabled: true,
       primaryEmailAddress: { emailAddress: "client@example.com" },
       externalAccounts: [{ provider: "apple" }],

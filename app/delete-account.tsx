@@ -28,6 +28,12 @@ const APPLE_BUSY_LABEL = {
   revoking: "Disconnecting Sign in with Apple…",
 } as const;
 
+const APPLE_NEXT_LABEL = {
+  retry: "Try again",
+  sign_in: "Sign in with Apple",
+  restore_session: "Sign in again",
+} as const;
+
 /**
  * Delete account: what it means, then proof that it is the account holder.
  *
@@ -50,6 +56,7 @@ export default function DeleteAccountScreen() {
   const { session } = useClerkSession();
   const method = deletionConfirmMethod(clerkUser);
   const withApple = appleRevocationApplies(Platform.OS, clerkUser);
+  const appleOwner = withApple ? (clerkUser?.id ?? null) : null;
 
   const secret = useAccountDeletion((s) => s.secret);
   const codeSent = useAccountDeletion((s) => s.codeSent);
@@ -64,6 +71,7 @@ export default function DeleteAccountScreen() {
   const appleError = useAccountDeletion((s) => s.appleError);
   const appleNext = useAccountDeletion((s) => s.appleNext);
   const revokeApple = useAccountDeletion((s) => s.revokeApple);
+  const restoreSession = useAccountDeletion((s) => s.restoreSession);
   const setSecret = useAccountDeletion((s) => s.setSecret);
   const emailCode = useAccountDeletion((s) => s.emailCode);
   const submit = useAccountDeletion((s) => s.submit);
@@ -125,8 +133,14 @@ export default function DeleteAccountScreen() {
                 <ErrorState
                   label="Apple still connected"
                   body={appleError}
-                  retryLabel={appleNext === "sign_in" ? "Sign in with Apple" : "Try again"}
-                  onRetry={appleNext ? () => void revokeApple() : undefined}
+                  retryLabel={APPLE_NEXT_LABEL[appleNext ?? "retry"]}
+                  onRetry={
+                    appleNext === "restore_session"
+                      ? restoreSession
+                      : appleNext
+                        ? () => void revokeApple()
+                        : undefined
+                  }
                 />
               ) : (
                 <Text className="text-body text-text-secondary">
@@ -195,7 +209,7 @@ export default function DeleteAccountScreen() {
                 placeholder="Your password"
                 textContentType="password"
                 returnKeyType="go"
-                onSubmitEditing={() => void submit(method, session, withApple)}
+                onSubmitEditing={() => void submit(method, session, appleOwner)}
               />
             </FormField>
           ) : askingForCode ? (
@@ -220,7 +234,7 @@ export default function DeleteAccountScreen() {
                   maxLength={6}
                   autoCorrect={false}
                   returnKeyType="go"
-                  onSubmitEditing={() => void submit(method, session, withApple)}
+                  onSubmitEditing={() => void submit(method, session, appleOwner)}
                 />
               </FormField>
               <Pressable
@@ -258,7 +272,7 @@ export default function DeleteAccountScreen() {
                       : "Delete my account"
               }
               disabled={busy != null}
-              onPress={() => void submit(method, session, withApple)}
+              onPress={() => void submit(method, session, appleOwner)}
             />
           )}
           <SecondaryButton label="Keep my account" disabled={busy != null} onPress={() => router.back()} />

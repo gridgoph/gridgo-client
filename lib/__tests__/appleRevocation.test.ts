@@ -5,6 +5,7 @@ import {
   appleRevocationApplies,
   appleRevocationFailure,
   hasAppleAccount,
+  recordedRevocation,
   readAppleRevocationReply,
   revokeWithSameCode,
   type AppleRevocationReply,
@@ -79,7 +80,7 @@ describe("reading the revocation route", () => {
     ["confirmation_required", "retry"],
     ["invalid_apple_client_id", null],
     ["invalid_apple_authorization_code", "sign_in"],
-    ["unauthorized", null],
+    ["unauthorized", "restore_session"],
     ["apple_identity_mismatch", "sign_in"],
     ["account_deletion_request_required", "retry"],
     ["apple_account_not_linked", null],
@@ -142,4 +143,25 @@ describe("retrying one code", () => {
     await expect(revokeWithSameCode(send, instant)).resolves.toMatchObject({ message: APPLE_NO_ANSWER, next: "retry" });
     expect(send).toHaveBeenCalledTimes(APPLE_REVOCATION_ATTEMPTS);
   });
+});
+
+describe("what GRIDGO already recorded", () => {
+  it("reads this app's attempt and nobody else's", () => {
+    const request = {
+      appleRevocations: [
+        { clientId: "ph.gridgo.supplier", status: "revoked" },
+        { clientId: "ph.gridgo.client", status: "retry_required" },
+      ],
+    };
+    expect(recordedRevocation(request)).toMatchObject({ status: "retry_required" });
+    expect(recordedRevocation({ appleRevocations: [{ clientId: "ph.gridgo.rider", status: "revoked" }] })).toBeNull();
+    expect(recordedRevocation({ appleRevocations: [] })).toBeNull();
+    expect(recordedRevocation(null)).toBeNull();
+  });
+});
+
+it("stops retrying when asked to, without sending again", async () => {
+  const send = jest.fn<Promise<AppleRevocationReply>, []>().mockResolvedValue({ kind: "lost" });
+  await expect(revokeWithSameCode(send, () => Promise.resolve(), () => true)).resolves.toMatchObject({ next: "retry" });
+  expect(send).toHaveBeenCalledTimes(1);
 });

@@ -53,9 +53,11 @@ export function appleRevocationApplies(
  *
  * - `retry`: run the step again, reusing the code already held if there is one.
  * - `sign_in`: the code is spent; Apple must be asked for a new one.
+ * - `restore_session`: GRIDGO refused the sign-in itself; sign in again. The
+ *   code was never used, so it is kept for the next try.
  * - `null`: nothing on this phone will fix it.
  */
-export type AppleRevocationNext = "retry" | "sign_in" | null;
+export type AppleRevocationNext = "retry" | "sign_in" | "restore_session" | null;
 
 export type AppleRevocationResult =
   | { status: "revoked" }
@@ -69,6 +71,7 @@ export const APPLE_REVOKED =
 export const APPLE_CANCELLED = `Sign in with Apple was closed, so GRIDGO could not disconnect it from your Apple ID. ${KEPT}`;
 export const APPLE_SIGN_IN_FAILED = `Apple's sign-in did not finish, so GRIDGO could not disconnect it from your Apple ID. ${KEPT}`;
 export const APPLE_PREPARE_FAILED = `GRIDGO could not get ready to disconnect Sign in with Apple. Check this phone's connection and try again. ${KEPT}`;
+export const APPLE_CHECK_FAILED = `GRIDGO could not check whether Sign in with Apple is already disconnected, so it has not asked Apple again. Check this phone's connection and try again. ${KEPT}`;
 export const APPLE_NO_ANSWER = `GRIDGO did not hear back about disconnecting Sign in with Apple. Check this phone's connection and try again. ${KEPT}`;
 export const APPLE_UNKNOWN_FAILURE = `GRIDGO could not confirm that Sign in with Apple was disconnected. Try again. ${KEPT}`;
 
@@ -87,8 +90,8 @@ const FAILURES: Record<string, { message: string; next: AppleRevocationNext }> =
     next: "sign_in",
   },
   unauthorized: {
-    message: `Your GRIDGO sign-in has ended, so GRIDGO could not disconnect Sign in with Apple. Sign in again, then open Delete account. ${KEPT}`,
-    next: null,
+    message: `Your GRIDGO sign-in has ended, so GRIDGO could not disconnect Sign in with Apple. Sign in again, then open Delete account to finish. ${KEPT}`,
+    next: "restore_session",
   },
   apple_identity_mismatch: {
     message: `That Apple ID is not the one linked to this GRIDGO account. Sign in with the Apple ID you use for GRIDGO. ${KEPT}`,
@@ -172,18 +175,31 @@ export function appleRetryWait(ms = APPLE_REVOCATION_RETRY_MS): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** The latest attempt the API recorded for this app, if any. */
+export function recordedRevocation(
+  request: { appleRevocations?: readonly { clientId: string; status: string }[] | null } | null | undefined,
+  clientId = APPLE_REVOCATION_CLIENT_ID,
+): { status: string } | null {
+  return request?.appleRevocations?.find((attempt) => attempt.clientId === clientId) ?? null;
+}
+
 /**
  * Send one code, retrying it while the contract says the same code is still
  * good: an answer that never arrived, an attempt already in flight, or Clerk
- * not answering the API. Never asks Apple for anything.
+ * not answering the API. Never asks Apple for anything. `stop` ends the
+ * retries early (the screen closed); the code stays good for a later try.
  */
 export async function revokeWithSameCode(
   send: () => Promise<AppleRevocationReply>,
   wait: () => Promise<void> = appleRetryWait,
+  stop: () => boolean = () => false,
 ): Promise<AppleRevocationResult> {
   let result: AppleRevocationResult = appleRevocationFailure(null);
   for (let attempt = 0; attempt < APPLE_REVOCATION_ATTEMPTS; attempt += 1) {
-    if (attempt > 0) await wait();
+    if (attempt > 0) {
+      await wait();
+      if (stop()) return result;
+    }
     const reply = await send();
     result = readAppleRevocationReply(reply);
     const again =
