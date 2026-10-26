@@ -57,12 +57,13 @@ export async function artworkRightsPayload(): Promise<ArtworkRightsBody | null> 
   if (library.status === "ready" && !documentFor(library.documents, ARTWORK_RIGHTS_ID)) {
     await library.load({ force: true });
   }
-  const { documents, status } = useLegalLibrary.getState();
+  const { documents, status, lastLoadFailed } = useLegalLibrary.getState();
   if (status === "unsupported") return null;
   const policy = documentFor(documents, ARTWORK_RIGHTS_ID);
-  // Sending nothing would place the order with no statement on record.
+  // Sending nothing would place the order with no statement on record. A
+  // failed refresh over other cached documents is unread, not unpublished.
   if (!policy) {
-    throw new Error(status === "failed" ? ARTWORK_RIGHTS_UNREAD : ARTWORK_RIGHTS_UNPUBLISHED);
+    throw new Error(lastLoadFailed ? ARTWORK_RIGHTS_UNREAD : ARTWORK_RIGHTS_UNPUBLISHED);
   }
   return artworkRightsBody(policy.id, await legalContext());
 }
