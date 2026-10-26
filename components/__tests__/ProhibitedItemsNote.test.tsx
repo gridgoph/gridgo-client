@@ -17,7 +17,7 @@ const acceptableUse = {
 } as LegalVersion;
 
 function library(documents: LegalVersion[]) {
-  useLegalLibrary.setState({ documents, status: "ready", readAt: Date.now() });
+  useLegalLibrary.setState({ documents, status: "ready", readAt: Date.now(), lastLoadFailed: false });
 }
 
 describe("ProhibitedItemsNote", () => {

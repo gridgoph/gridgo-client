@@ -216,6 +216,10 @@ export const LEGAL_VERSION_CHANGED =
 export const ARTWORK_RIGHTS_UNREAD =
   "GRIDGO could not load its artwork rights statement. Check this phone's connection and try again.";
 
+/** The library loaded, and Acceptable Use is not in it. Not a connection problem. */
+export const ARTWORK_RIGHTS_UNPUBLISHED =
+  "GRIDGO has no artwork rights statement in effect yet, so this order cannot be placed.";
+
 export const ARTWORK_RIGHTS_REFUSED =
   "GRIDGO could not record your artwork statement. Tick the box again, then place the order.";
 
