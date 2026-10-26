@@ -3,7 +3,13 @@ import { useEffect } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { CheckboxRow } from "@/components/form/CheckboxRow";
-import { ARTWORK_RIGHTS_ID, documentFor, legalDocumentHref } from "@/lib/legal";
+import {
+  ARTWORK_RIGHTS_ID,
+  ARTWORK_RIGHTS_UNPUBLISHED,
+  ARTWORK_RIGHTS_UNREAD,
+  documentFor,
+  legalDocumentHref,
+} from "@/lib/legal";
 import { useArtworkRights } from "@/store/artworkRights";
 import { useLegalLibrary } from "@/store/legalLibrary";
 
@@ -32,6 +38,14 @@ export function ArtworkRightsBox({
 }) {
   const agreed = useArtworkRights((state) => state.agreed[scope] === true);
   const policy = useLegalLibrary((state) => documentFor(state.documents, ARTWORK_RIGHTS_ID));
+  const libraryStatus = useLegalLibrary((state) => state.status);
+  const statementError = policy
+    ? null
+    : libraryStatus === "failed"
+      ? ARTWORK_RIGHTS_UNREAD
+      : libraryStatus === "ready"
+        ? ARTWORK_RIGHTS_UNPUBLISHED
+        : null;
 
   useEffect(() => {
     void useLegalLibrary.getState().load();
@@ -46,6 +60,11 @@ export function ArtworkRightsBox({
         label="I have the right to print this artwork"
         hint="It is mine, or its owner said I may print it, including any logos, photos and text in it. Required for every order."
       />
+      {statementError ? (
+        <Text className="pl-9 text-caption text-error" accessibilityRole="alert">
+          {statementError}
+        </Text>
+      ) : null}
       {policy ? (
         <Pressable
           onPress={() => onOpen(legalDocumentHref(policy))}

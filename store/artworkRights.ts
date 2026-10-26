@@ -3,6 +3,7 @@ import { create } from "zustand";
 import type { ArtworkRightsBody } from "@/lib/api";
 import {
   ARTWORK_RIGHTS_ID,
+  ARTWORK_RIGHTS_UNPUBLISHED,
   ARTWORK_RIGHTS_UNREAD,
   artworkRightsBody,
   documentFor,
@@ -43,14 +44,25 @@ export function orderRightsScope(orderId: string): string {
  * fields. Against a current API a ticked box always names the exact version
  * of Acceptable Use and Artwork Rights in effect, and a library that will not
  * load throws rather than letting the order go without one.
+ *
+ * A ready library that is missing the statement is read again. An empty
+ * answer is cached as ready, and leaving it cached would keep refusing the
+ * order after the statement is published.
  */
 export async function artworkRightsPayload(): Promise<ArtworkRightsBody | null> {
-  const library = useLegalLibrary.getState();
+  let library = useLegalLibrary.getState();
   if (library.status !== "ready") await library.load();
+  library = useLegalLibrary.getState();
+  if (library.status === "unsupported") return null;
+  if (library.status === "ready" && !documentFor(library.documents, ARTWORK_RIGHTS_ID)) {
+    await library.load({ force: true });
+  }
   const { documents, status } = useLegalLibrary.getState();
   if (status === "unsupported") return null;
   const policy = documentFor(documents, ARTWORK_RIGHTS_ID);
   // Sending nothing would place the order with no statement on record.
-  if (!policy) throw new Error(ARTWORK_RIGHTS_UNREAD);
+  if (!policy) {
+    throw new Error(status === "failed" ? ARTWORK_RIGHTS_UNREAD : ARTWORK_RIGHTS_UNPUBLISHED);
+  }
   return artworkRightsBody(policy.id, await legalContext());
 }
