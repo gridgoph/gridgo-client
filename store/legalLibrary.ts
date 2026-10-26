@@ -21,6 +21,11 @@ type LegalLibraryState = {
   documents: LegalVersion[];
   status: LegalLibraryStatus;
   readAt: number | null;
+  /**
+   * The last read failed. A failed refresh keeps the cached list and stays
+   * `ready`, so this is what tells a missing document apart from an unread one.
+   */
+  lastLoadFailed: boolean;
   /** Never throws. Keeps the last good list while a refresh runs. */
   load: (options?: { force?: boolean }) => Promise<void>;
 };
@@ -31,6 +36,7 @@ export const useLegalLibrary = create<LegalLibraryState>((set, get) => ({
   documents: [],
   status: "idle",
   readAt: null,
+  lastLoadFailed: false,
 
   load: async (options) => {
     const { readAt, status } = get();
@@ -41,12 +47,12 @@ export const useLegalLibrary = create<LegalLibraryState>((set, get) => ({
     inflight = (async () => {
       try {
         const documents = await api.listLegalDocuments("client");
-        set({ documents, status: "ready", readAt: Date.now() });
+        set({ documents, status: "ready", readAt: Date.now(), lastLoadFailed: false });
       } catch (error) {
         set(
           isLegalUnsupported(error)
-            ? { documents: [], status: "unsupported", readAt: Date.now() }
-            : { status: get().documents.length ? "ready" : "failed" },
+            ? { documents: [], status: "unsupported", readAt: Date.now(), lastLoadFailed: false }
+            : { status: get().documents.length ? "ready" : "failed", lastLoadFailed: true },
         );
       } finally {
         inflight = null;

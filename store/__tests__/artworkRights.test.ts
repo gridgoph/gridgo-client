@@ -26,9 +26,16 @@ const policy: LegalVersion = {
   status: "placeholder",
 };
 
+const terms: LegalVersion = {
+  ...policy,
+  id: "terms-1",
+  documentId: "terms",
+  title: "Terms of Service",
+};
+
 beforeEach(() => {
   list.mockReset();
-  useLegalLibrary.setState({ documents: [], status: "idle", readAt: null });
+  useLegalLibrary.setState({ documents: [], status: "idle", readAt: null, lastLoadFailed: false });
 });
 
 describe("artworkRightsPayload", () => {
@@ -62,5 +69,31 @@ describe("artworkRightsPayload", () => {
   it("says to check the connection when the library cannot be loaded", async () => {
     list.mockRejectedValue(new TypeError("Network request failed"));
     await expect(artworkRightsPayload()).rejects.toThrow(ARTWORK_RIGHTS_UNREAD);
+  });
+
+  describe("with another document cached", () => {
+    beforeEach(() => {
+      useLegalLibrary.setState({ documents: [terms], status: "ready", readAt: Date.now() });
+    });
+
+    it("says to check the connection when the refresh fails", async () => {
+      list.mockRejectedValue(new TypeError("Network request failed"));
+      await expect(artworkRightsPayload()).rejects.toThrow(ARTWORK_RIGHTS_UNREAD);
+      expect(useLegalLibrary.getState().documents).toEqual([terms]);
+    });
+
+    it("says the statement is unpublished once a later refresh loads without it", async () => {
+      list.mockRejectedValueOnce(new TypeError("Network request failed")).mockResolvedValue([terms]);
+      await expect(artworkRightsPayload()).rejects.toThrow(ARTWORK_RIGHTS_UNREAD);
+      await expect(artworkRightsPayload()).rejects.toThrow(ARTWORK_RIGHTS_UNPUBLISHED);
+    });
+
+    it("lets the order through once a later refresh carries the statement", async () => {
+      list.mockRejectedValueOnce(new TypeError("Network request failed")).mockResolvedValue([terms, policy]);
+      await expect(artworkRightsPayload()).rejects.toThrow(ARTWORK_RIGHTS_UNREAD);
+      await expect(artworkRightsPayload()).resolves.toMatchObject({
+        versionIds: ["acceptable-use-1"],
+      });
+    });
   });
 });

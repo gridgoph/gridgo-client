@@ -39,9 +39,10 @@ export function ArtworkRightsBox({
   const agreed = useArtworkRights((state) => state.agreed[scope] === true);
   const policy = useLegalLibrary((state) => documentFor(state.documents, ARTWORK_RIGHTS_ID));
   const libraryStatus = useLegalLibrary((state) => state.status);
+  const lastLoadFailed = useLegalLibrary((state) => state.lastLoadFailed);
   const statementError = policy
     ? null
-    : libraryStatus === "failed"
+    : lastLoadFailed
       ? ARTWORK_RIGHTS_UNREAD
       : libraryStatus === "ready"
         ? ARTWORK_RIGHTS_UNPUBLISHED
