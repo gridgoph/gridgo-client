@@ -43,7 +43,7 @@ export const TEST_LEGAL_LIBRARY: LegalVersion[] = [
 
 /** The public library, already read, so sign-up and the artwork box can name versions. */
 export function holdLegalLibrary(): void {
-  useLegalLibrary.setState({ documents: TEST_LEGAL_LIBRARY, status: "ready", readAt: Date.now() });
+  useLegalLibrary.setState({ documents: TEST_LEGAL_LIBRARY, status: "ready", readAt: Date.now(), lastLoadFailed: false });
 }
 
 /** The client ticked the per-order artwork box for this basket or order scope. */
