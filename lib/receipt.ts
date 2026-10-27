@@ -136,7 +136,14 @@ export type ReceiptGroup = {
  * Where the up-front payment stands. Submitting a reference is not paying:
  * `checking` is the honest state from checkout until Operations confirms it.
  */
-export type ReceiptPaymentStatus = "confirmed" | "checking" | "none";
+/**
+ * `voucher`: a whole-order launch voucher settled the up-front payment at
+ * checkout (`method: "gridgo_voucher"`). Settled, but never "paid by QR" —
+ * no transfer was made.
+ */
+export type ReceiptPaymentStatus = "confirmed" | "voucher" | "checking" | "none";
+
+const VOUCHER_METHOD = "gridgo_voucher";
 
 export type ReceiptView = {
   invoiceNumber: string;
@@ -170,7 +177,7 @@ export function paymentStatusOf(
 ): ReceiptPaymentStatus {
   const initial = payments?.initial ?? payments?.downpayment;
   if (!initial) return "none";
-  if (isInstallmentConfirmed(initial)) return "confirmed";
+  if (isInstallmentConfirmed(initial)) return initial.method === VOUCHER_METHOD ? "voucher" : "confirmed";
   return initial.reference?.trim() || initial.status === "pending_confirmation" ? "checking" : "none";
 }
 
@@ -301,6 +308,7 @@ export function receiptFromCheckout(
   }
   const status = order.paymentPlan?.downpaymentStatus;
   const confirmed = status === "confirmed" || status === "legacy_confirmed";
+  const byVoucher = confirmed && order.paymentPlan?.downpaymentMethod === VOUCHER_METHOD;
   const typed = reference.trim() || null;
   return {
     ...invoiceParts(invoice),
@@ -311,7 +319,7 @@ export function receiptFromCheckout(
       invoicePaidInFull(invoice) ||
       order.paymentPlan?.balanceMinor === 0 ||
       order.paymentPlan?.downpaymentPercent === FULL_PAYMENT_PERCENT,
-    paymentStatus: confirmed ? "confirmed" : typed ? "checking" : "none",
+    paymentStatus: byVoucher ? "voucher" : confirmed ? "confirmed" : typed ? "checking" : "none",
   };
 }
 
@@ -341,6 +349,9 @@ export function receiptPaymentLine(
   view: Pick<ReceiptView, "paidInFull" | "paymentStatus">,
 ): string | null {
   if (view.paymentStatus === "none") return null;
+  if (view.paymentStatus === "voucher") {
+    return view.paidInFull ? "Covered in full by your voucher" : "Downpayment covered by your voucher";
+  }
   if (view.paymentStatus === "confirmed") {
     return view.paidInFull ? "Paid in full by QR" : "Downpayment paid by QR";
   }

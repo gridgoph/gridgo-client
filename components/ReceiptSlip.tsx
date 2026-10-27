@@ -54,7 +54,7 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
   const date = receiptDateLabel(view.issuedAt);
   const reference = orderReference(view.orderId);
   const paymentLine = receiptPaymentLine(view);
-  const confirmed = view.paymentStatus === "confirmed";
+  const confirmed = view.paymentStatus === "confirmed" || view.paymentStatus === "voucher";
 
   return (
     <View testID="receipt-slip">

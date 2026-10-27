@@ -24,7 +24,7 @@ import { APPLICATION_ROUTE, isApplicationNotification } from "@/lib/organization
 import { ACK_RECEIPT_NOTIFICATION_TYPE, acknowledgementReceiptHref } from "@/lib/acknowledgementReceipt";
 import { receiptNoticeHref } from "@/lib/receipt";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
-import { isVoucherNotification, VOUCHERS_ROUTE } from "@/lib/vouchers";
+import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
 
 /**
  * The Android channel the server names in every message.
@@ -220,7 +220,7 @@ export function pushTargetRoute(data: PushData): string {
   // A sent-back application opens on the application, filled in (#187).
   if (isApplicationNotification(data.type)) return APPLICATION_ROUTE;
   // A voucher notice opens the wallet it is about (gridgo-api#204).
-  if (isVoucherNotification(data.type)) return VOUCHERS_ROUTE;
+  if (opensVoucherWallet(data.type)) return VOUCHERS_ROUTE;
   // A message opens its conversation. The push names no support thread, so
   // until the tap reads it back (`usePushNotifications`) — and whenever it
   // cannot — Operations' messages open the chat history, never a guess at the

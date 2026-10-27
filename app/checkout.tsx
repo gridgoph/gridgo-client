@@ -32,6 +32,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { HubPickupPanel } from "@/components/HubPickupPanel";
 import { CheckoutVoucher } from "@/components/CheckoutVoucher";
 import { OrganizationDiscountRow, OrganizationSavingsNote } from "@/components/OrganizationDiscount";
+import { VoucherCoveredPayment } from "@/components/VoucherCoveredPayment";
 import { VoucherDiscountRow } from "@/components/VoucherDiscountRow";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
@@ -136,7 +137,8 @@ import { useCheckoutPayment } from "@/store/checkoutPayment";
 import { useIsApprovedOrganization } from "@/store/organization";
 import { useNotificationNudge } from "@/store/notificationNudge";
 import { useVouchers } from "@/store/vouchers";
-import { voucherDiscountOf, voucherErrorMessage } from "@/lib/vouchers";
+import { voucherDiscountOf, voucherErrorMessage, voucherSettlesUpFront } from "@/lib/vouchers";
+import { discountLineLabel } from "@/lib/promotions";
 import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
 import {
   approvalDevice,
@@ -330,7 +332,11 @@ export default function CheckoutScreen() {
   const missingLayout = lines.filter(lineNeedsLayout);
   const missingCoverSpine = lines.filter(lineMissingCoverSpine);
   const referenceCheck = checkPaymentReference(reference);
-  const ocrReading = proof.ocr.status === "reading";
+  // A whole-order launch voucher that leaves nothing to pay now: GRIDGO
+  // settles the first payment with it, so no QR, screenshot or reference is
+  // asked for — or sent — and a receipt being read cannot hold the order up.
+  const noCash = voucherSettlesUpFront(cart?.clientQuote);
+  const ocrReading = !noCash && proof.ocr.status === "reading";
   const shopClosed = lines.filter((line) => shopPaused(line.listing?.shopHours));
   // How GRIDGO wants this basket approved (gridgo-client#248), and whether the
   // client has approved exactly this version of it. Any change to the basket
@@ -355,8 +361,8 @@ export default function CheckoutScreen() {
     // More than one group: each is printed and delivered for its own date, so
     // GRIDGO needs one on every product (gridgo-client#189).
     missingBasketDate: multi && groups.some((group) => group.deadline == null),
-    referenceOk: ocrReading || referenceCheck.ok,
-    hasProof: Boolean(proof.state.fileId),
+    referenceOk: noCash || ocrReading || referenceCheck.ok,
+    hasProof: noCash || Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
     rightsAgreed,
     approval: approvalMethod && approvalState !== "given" ? approvalMethod : "given",
@@ -582,7 +588,8 @@ export default function CheckoutScreen() {
   };
 
   const place = async () => {
-    if (blockers.length || ocrReading || placing || !cartId || !proof.state.fileId) return;
+    const proofFileId = proof.state.fileId;
+    if (blockers.length || ocrReading || placing || !cartId || (!noCash && !proofFileId)) return;
     setPlacing(true);
     setPlaceError(null);
     setApprovalError(null);
@@ -599,15 +606,21 @@ export default function CheckoutScreen() {
       }
       // A voucher can run out or be released between the screen and the tap,
       // and GRIDGO then writes the order at the full price. The payment the
-      // client just sent was for the total on screen, so read the basket
-      // again and stop if that total moved.
+      // client just sent was for the total on screen — or, with nothing to
+      // pay, no payment at all — so read the basket again and stop if that
+      // moved.
       if (voucherDiscountOf(cart?.clientQuote) > 0) {
         const fresh = await api.getCart(cartId);
-        if (fresh.clientQuote?.totalMinor !== totals.totalMinor) {
+        if (
+          fresh.clientQuote?.totalMinor !== totals.totalMinor ||
+          voucherSettlesUpFront(fresh.clientQuote) !== noCash
+        ) {
           adopt(fresh);
           void useVouchers.getState().load();
           setPlaceError(
-            "Your total changed because the voucher can no longer be used on this order. Check the new total and pay that amount before you place the order.",
+            noCash
+              ? "Your total changed because the voucher can no longer be used on this order. Check the new total and how to pay it before you place the order."
+              : "Your total changed because the voucher can no longer be used on this order. Check the new total and pay that amount before you place the order.",
           );
           return;
         }
@@ -630,10 +643,7 @@ export default function CheckoutScreen() {
       useNotificationNudge.getState().hush(PLACE_HUSH_MS);
       const { order, invoice, basket } = await api.checkoutCart(
         cartId,
-        {
-          reference: reference.trim(),
-          proofFileId: proof.state.fileId,
-        },
+        noCash || !proofFileId ? null : { reference: reference.trim(), proofFileId },
         // Recorded by GRIDGO against every order this basket becomes.
         await artworkRightsPayload(),
         approval,
@@ -643,7 +653,9 @@ export default function CheckoutScreen() {
       // A multi-shop basket answers with one combined receipt; its order is
       // the first shop group, which the receipt and its "View order" open.
       // The basket beside it carries each group's date for the slip.
-      const placed = receiptFromCheckout(invoice, order, reference);
+      // The slip says what GRIDGO answered: settled by the voucher, or sent
+      // by QR and waiting on Operations.
+      const placed = receiptFromCheckout(invoice, order, noCash ? "" : reference);
       holdPlacedReceipt(placed && basket?.groups ? withBasket(placed, basket) : placed);
       resetPayment();
       if (approvalScope) useApproval.getState().withdraw(approvalScope);
@@ -1190,132 +1202,142 @@ export default function CheckoutScreen() {
         </Section>
 
         {/* ---- Paying ----------------------------------------------------- */}
-        <Section title="HOW YOU PAY">
-          {/*
-            The panel is the QR. It named the method and then gave the client
-            nothing to scan, which is a sheet telling someone to pay and hiding
-            the code — so tapping it opens GRIDGO's own QR at a size a second
-            phone can read. The screenshot and the reference stay out here,
-            because those are the parts Operations matches by hand.
-          */}
-          <Pressable
-            onPress={() => setShowQr(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Show the GRIDGO QR to scan"
-            className="gg-panel-high gg-touch gap-2"
-            style={({ pressed }) => (pressed ? { opacity: 0.9 } : undefined)}
-          >
-            <View className="flex-row items-center justify-between gap-3">
-              <Text className="text-body-lg font-medium text-text-primary">
-                {PAYMENT_CHOICE_LABEL}
-              </Text>
-              <View className="gg-chip">
-                <Text className="text-caption text-text-secondary">Only method</Text>
-              </View>
-            </View>
-            <Text className="text-body text-text-secondary">{PAYMENT_CHOICE_BLURB}</Text>
-            <View className="mt-1 flex-row items-center gap-2">
-              <QrCode
-                size={16}
-                color={colors.textPrimary}
-                strokeWidth={2}
-                aria-hidden
-              />
-              <Text className="min-w-0 flex-1 text-button text-text-primary">
-                Show the QR to scan
-              </Text>
-              <ChevronRight
-                size={16}
-                color={colors.textMuted}
-                strokeWidth={2}
-                aria-hidden
-              />
-            </View>
-          </Pressable>
-          <Text className="text-caption text-text-muted">{DIGITAL_ONLY_NOTICE}</Text>
-          {multi ? (
-            <MultiShopPaymentNote groups={groups} />
-          ) : (
-            <Text className="text-caption text-text-muted">
-              {paymentPlanNote(totals.downpaymentPercent)}
-            </Text>
-          )}
-
-          {totals.downpaymentMinor != null ? (
-            totals.downpaymentPercent >= FULL_PAYMENT_PERCENT ? (
-              <View className="gg-card gap-1">
-                <SpecRow label="Pay in full now" value={formatPhp(totals.downpaymentMinor)} />
-              </View>
-            ) : (
-              <View className="gg-card gap-1">
-                <SpecRow
-                  label={`Send now (${totals.downpaymentPercent}%)`}
-                  value={formatPhp(totals.downpaymentMinor)}
-                />
-                <SpecRow
-                  label={`Before delivery (${FULL_PAYMENT_PERCENT - totals.downpaymentPercent}%)`}
-                  value={totals.balanceMinor == null ? "—" : formatPhp(totals.balanceMinor)}
-                />
-              </View>
-            )
-          ) : null}
-
-          <View collapsable={false} ref={(node) => { fields.current.proof = node; }}>
-            <PaymentProofRow
-              state={proof.state}
-              reading={ocrReading}
-              error={attempted && blockers.includes("proof") ? blockerLine("proof") : null}
-              onPick={() => void proof.pick()}
-              onView={() => setViewingProof(true)}
-              onReset={proof.reset}
+        {noCash ? (
+          <Section title="HOW YOU PAY">
+            <VoucherCoveredPayment
+              voucherName={discountLineLabel(cart?.clientQuote?.voucher)}
+              downpaymentPercent={totals.downpaymentPercent}
+              balanceMinor={totals.balanceMinor}
             />
-          </View>
-
-          <View collapsable={false} ref={(node) => { fields.current.reference = node; }}>
-            <FormField
-              label="Payment reference"
-              error={
-                ocrReading
-                  ? null
-                  : (attempted || referenceTouched) && !referenceCheck.ok
-                    ? proof.ocr.status === "unreadable" && !reference.trim()
-                      ? OCR_UNREADABLE
-                      : referenceCheck.reason
-                    : null
-              }
-              helper={
-                ocrReading
-                  ? OCR_READING
-                  : proof.ocr.status === "unreadable"
-                    ? OCR_UNREADABLE
-                    : "The reference number on the receipt from your wallet app."
-              }
+          </Section>
+        ) : (
+          <Section title="HOW YOU PAY">
+            {/*
+              The panel is the QR. It named the method and then gave the client
+              nothing to scan, which is a sheet telling someone to pay and hiding
+              the code — so tapping it opens GRIDGO's own QR at a size a second
+              phone can read. The screenshot and the reference stay out here,
+              because those are the parts Operations matches by hand.
+            */}
+            <Pressable
+              onPress={() => setShowQr(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Show the GRIDGO QR to scan"
+              className="gg-panel-high gg-touch gap-2"
+              style={({ pressed }) => (pressed ? { opacity: 0.9 } : undefined)}
             >
-              <View className="relative">
-                <TextField
-                  value={reference}
-                  onChangeText={setReference}
-                  onBlur={() => setReferenceTouched(true)}
-                  placeholder="e.g. 1234567890123"
-                  accessibilityLabel="Payment reference"
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={100}
-                  editable={!ocrReading}
-                />
-                {ocrReading ? (
-                  <View
-                    pointerEvents="none"
-                    className="absolute right-3 top-0 h-full justify-center"
-                    accessibilityLabel="Reading the payment reference"
-                  >
-                    <ActivityIndicator size="small" color={colors.textMuted} />
-                  </View>
-                ) : null}
+              <View className="flex-row items-center justify-between gap-3">
+                <Text className="text-body-lg font-medium text-text-primary">
+                  {PAYMENT_CHOICE_LABEL}
+                </Text>
+                <View className="gg-chip">
+                  <Text className="text-caption text-text-secondary">Only method</Text>
+                </View>
               </View>
-            </FormField>
-          </View>
-        </Section>
+              <Text className="text-body text-text-secondary">{PAYMENT_CHOICE_BLURB}</Text>
+              <View className="mt-1 flex-row items-center gap-2">
+                <QrCode
+                  size={16}
+                  color={colors.textPrimary}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <Text className="min-w-0 flex-1 text-button text-text-primary">
+                  Show the QR to scan
+                </Text>
+                <ChevronRight
+                  size={16}
+                  color={colors.textMuted}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+              </View>
+            </Pressable>
+            <Text className="text-caption text-text-muted">{DIGITAL_ONLY_NOTICE}</Text>
+            {multi ? (
+              <MultiShopPaymentNote groups={groups} />
+            ) : (
+              <Text className="text-caption text-text-muted">
+                {paymentPlanNote(totals.downpaymentPercent)}
+              </Text>
+            )}
+
+            {totals.downpaymentMinor != null ? (
+              totals.downpaymentPercent >= FULL_PAYMENT_PERCENT ? (
+                <View className="gg-card gap-1">
+                  <SpecRow label="Pay in full now" value={formatPhp(totals.downpaymentMinor)} />
+                </View>
+              ) : (
+                <View className="gg-card gap-1">
+                  <SpecRow
+                    label={`Send now (${totals.downpaymentPercent}%)`}
+                    value={formatPhp(totals.downpaymentMinor)}
+                  />
+                  <SpecRow
+                    label={`Before delivery (${FULL_PAYMENT_PERCENT - totals.downpaymentPercent}%)`}
+                    value={totals.balanceMinor == null ? "—" : formatPhp(totals.balanceMinor)}
+                  />
+                </View>
+              )
+            ) : null}
+
+            <View collapsable={false} ref={(node) => { fields.current.proof = node; }}>
+              <PaymentProofRow
+                state={proof.state}
+                reading={ocrReading}
+                error={attempted && blockers.includes("proof") ? blockerLine("proof") : null}
+                onPick={() => void proof.pick()}
+                onView={() => setViewingProof(true)}
+                onReset={proof.reset}
+              />
+            </View>
+
+            <View collapsable={false} ref={(node) => { fields.current.reference = node; }}>
+              <FormField
+                label="Payment reference"
+                error={
+                  ocrReading
+                    ? null
+                    : (attempted || referenceTouched) && !referenceCheck.ok
+                      ? proof.ocr.status === "unreadable" && !reference.trim()
+                        ? OCR_UNREADABLE
+                        : referenceCheck.reason
+                      : null
+                }
+                helper={
+                  ocrReading
+                    ? OCR_READING
+                    : proof.ocr.status === "unreadable"
+                      ? OCR_UNREADABLE
+                      : "The reference number on the receipt from your wallet app."
+                }
+              >
+                <View className="relative">
+                  <TextField
+                    value={reference}
+                    onChangeText={setReference}
+                    onBlur={() => setReferenceTouched(true)}
+                    placeholder="e.g. 1234567890123"
+                    accessibilityLabel="Payment reference"
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={100}
+                    editable={!ocrReading}
+                  />
+                  {ocrReading ? (
+                    <View
+                      pointerEvents="none"
+                      className="absolute right-3 top-0 h-full justify-center"
+                      accessibilityLabel="Reading the payment reference"
+                    >
+                      <ActivityIndicator size="small" color={colors.textMuted} />
+                    </View>
+                  ) : null}
+                </View>
+              </FormField>
+            </View>
+          </Section>
+        )}
 
         {/* ---- Money ------------------------------------------------------ */}
         <Section title="PAYMENT DETAILS">
@@ -1392,7 +1414,7 @@ export default function CheckoutScreen() {
             {/* Already out of the total GRIDGO sends (#166): drawn, never subtracted. */}
             <OrganizationDiscountRow source={cart?.clientQuote} />
             {/* Already out of the total too (gridgo-api#204); the two never stack. */}
-            <VoucherDiscountRow source={cart?.clientQuote} />
+            <VoucherDiscountRow source={cart?.clientQuote} label={discountLineLabel(cart?.clientQuote?.voucher)} />
 
             <View className="gg-divider my-2" />
 
