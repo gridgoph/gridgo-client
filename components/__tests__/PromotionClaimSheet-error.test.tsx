@@ -38,4 +38,5 @@ it("a sold-out claim is said plainly, the offer is read again, and only Close is
   await waitFor(() => expect(api.getPromotions).toHaveBeenCalledTimes(2));
   expect(await screen.findByText("Close")).toBeTruthy();
   expect(screen.queryByText("Redeem ₱200 off")).toBeNull();
+  expect(screen.queryByText("Last one left")).toBeNull();
 });

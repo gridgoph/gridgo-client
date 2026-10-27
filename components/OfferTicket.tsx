@@ -20,10 +20,14 @@ export function OfferTicket({
   offer,
   /** What is behind the ticket, so the notches read as bites out of it. */
   notchColor,
+  /** False once it is claimed or gone: a count of what is left no longer concerns this client. */
+  showSlots = true,
 }: {
   offer: ClaimOffer;
   notchColor: string;
+  showSlots?: boolean;
 }) {
+  const slots = offer.kind === "founding" && showSlots;
   const colors = useThemeColors();
   const [stubWidth, setStubWidth] = useState(0);
   const copy = claimCopy(offer);
@@ -38,7 +42,7 @@ export function OfferTicket({
         `${copy.name}: ${formatPhp(offer.amountMinor)} off your whole order, once.`,
         from ? `${from}.` : null,
         `Ends ${endDay(offer.endsAt)}.`,
-        offer.kind === "founding" ? `${slotsLine(offer.slotsLeft)}.` : null,
+        slots ? `${slotsLine(offer.slotsLeft)}.` : null,
       ]
         .filter(Boolean)
         .join(" ")}
@@ -61,7 +65,7 @@ export function OfferTicket({
           </View>
           <View className="gap-1">
             <Fact icon={<CalendarClock size={14} color={colors.textMuted} strokeWidth={2} />} text={`Ends ${endDay(offer.endsAt)}`} />
-            {offer.kind === "founding" ? (
+            {slots ? (
               <Fact icon={<UsersRound size={14} color={colors.textMuted} strokeWidth={2} />} text={slotsLine(offer.slotsLeft)} strong />
             ) : null}
           </View>

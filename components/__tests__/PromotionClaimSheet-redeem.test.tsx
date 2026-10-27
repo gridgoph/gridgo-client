@@ -37,5 +37,7 @@ it("claims it, reads the wallet again and says it is there", async () => {
   expect(api.claimFoundingVoucher).toHaveBeenCalledTimes(1);
   expect(screen.getByText("₱200.00 Founding 30 voucher added. GRIDGO takes it off your next order by itself.")).toBeTruthy();
   expect(screen.getByText("See my vouchers")).toBeTruthy();
+  // Claimed: how many are left is no longer this client's concern.
+  expect(screen.queryByText("12 left")).toBeNull();
   await waitFor(() => expect(api.listVouchers).toHaveBeenCalled());
 });

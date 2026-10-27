@@ -105,7 +105,11 @@ function ClaimSheet({ open }: { open: boolean }) {
       maxHeightRatio={0.9}
     >
       <View className="gap-4 px-4 pt-2" testID="promotion-claim-sheet">
-        <OfferTicket offer={live && stillOpen ? live : sheet} notchColor={colors.surface} />
+        <OfferTicket
+          offer={live && stillOpen ? live : sheet}
+          notchColor={colors.surface}
+          showSlots={stillOpen && !claimed}
+        />
 
         {claimed ? null : <Text className="text-body-lg text-text-secondary">{copy.body}</Text>}
 
