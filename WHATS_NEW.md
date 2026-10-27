@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.447 (New feature)
+
+- Claim a launch discount after you sign in, and invite a friend from Vouchers.
+
 ## 1.0.436 (New feature)
 
 - Deleting your account on iPhone now also disconnects Sign in with Apple from GRIDGO.
