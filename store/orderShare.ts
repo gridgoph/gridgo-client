@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 
 import * as api from "@/lib/api";
 import { newUuidV4 } from "@/lib/installationId";
-import { shareErrorMessage, tapRefusalIsFinal, type SharePresentation } from "@/lib/orderShare";
+import { refusalIsFinal, shareErrorMessage, type SharePresentation } from "@/lib/orderShare";
 import { createPersistStorage } from "@/lib/persistStorage";
 import { useSession } from "@/store/session";
 
@@ -19,12 +19,32 @@ export type PendingShareTap = {
   action: api.ShareTapAction;
 };
 
+/**
+ * A card event GRIDGO has not confirmed yet. Sent strictly in the order they
+ * happened — GRIDGO refuses a "Maybe later" that arrives before its "shown" —
+ * and kept across a failure or a restart until GRIDGO has answered.
+ */
+export type PendingCardEvent = {
+  ownerId: string;
+  orderId: string;
+  presentation: api.ShareCardPresentation;
+  action: api.ShareCardAction;
+};
+
 export type ShareNotice = { tone: "ok" | "error"; text: string };
 
 /** The card on screen: whether a share is opening, has gone out, and what it left to say. */
-export type ShareSheet = { busy: boolean; finished: boolean; notice: ShareNotice | null };
+export type ShareSheet = {
+  /** `prepare` answered for this opening: only then is the invite on the picture GRIDGO's own. */
+  prepared: boolean;
+  /** `prepare` failed for this opening; a cached answer is not shared in its place. */
+  prepareFailed: boolean;
+  busy: boolean;
+  finished: boolean;
+  notice: ShareNotice | null;
+};
 
-const IDLE_SHEET: ShareSheet = { busy: false, finished: false, notice: null };
+const IDLE_SHEET: ShareSheet = { prepared: false, prepareFailed: false, busy: false, finished: false, notice: null };
 
 type OrderShareState = {
   /** GRIDGO's last answer per order. In memory only: the card flags move on GRIDGO's side. */
@@ -33,7 +53,12 @@ type OrderShareState = {
   errors: Record<string, string | null>;
   /** Persisted: taps sent but not yet confirmed. */
   pendingTaps: PendingShareTap[];
-  /** Orders whose card was put off in this session: the repeat waits for a later visit. */
+  /** Persisted: card events not yet confirmed, oldest first. */
+  pendingCards: PendingCardEvent[];
+  /**
+   * Orders whose card was just put off. The next order-screen visit for that
+   * order takes it (`takePutOff`) and offers no repeat; the visit after does.
+   */
   putOff: Record<string, true>;
   /**
    * An order whose after-survey card is being decided. Other moments (the
@@ -58,18 +83,29 @@ type OrderShareState = {
   holdForSurvey: (orderId: string) => void;
   release: (orderId: string) => void;
   setPresenting: (presenting: OrderShareState["presenting"]) => void;
-  /** Records a card event. Best effort: a failure never keeps the card up. */
+  /**
+   * Queues a card event and sends the queue in order. Never throws and never
+   * keeps the card up: an event GRIDGO did not answer is resent later.
+   */
   recordCard: (orderId: string, presentation: api.ShareCardPresentation, action: api.ShareCardAction) => Promise<void>;
+  /** The order screen's visit straight after "Maybe later": true once, then cleared. */
+  takePutOff: (orderId: string) => boolean;
+  /** The client left without coming back to the order: the next visit is a later one. */
+  dropPutOff: (orderId: string) => void;
+  /** A repeat this phone showed that GRIDGO has not confirmed yet. */
+  repeatUnconfirmed: (orderId: string) => boolean;
   /** Counts one tap on Share or Send to a friend. Never throws. */
   tap: (orderId: string, action: api.ShareTapAction) => Promise<void>;
-  /** Resends the signed-in client's unconfirmed taps. */
-  flushTaps: () => Promise<void>;
+  /** Resends the signed-in client's unconfirmed card events (in order) and taps. */
+  flush: () => Promise<void>;
   reset: () => void;
 };
 
 let generation = 0;
 /** Taps on the wire now, so a flush never sends one twice at once. */
 const inFlight = new Set<string>();
+/** Card-event passes run one after another, so two events can never race each other. */
+let cardRun: Promise<void> = Promise.resolve();
 
 function ownerId(): string | null {
   return useSession.getState().user?.id ?? null;
@@ -118,7 +154,7 @@ export const useOrderShare = create<OrderShareState>()(
         } catch (error) {
           // A refusal that cannot change (a conflict, an order no longer
           // shareable) is dropped; anything else is resent later with the same ID.
-          if (tapRefusalIsFinal(error)) {
+          if (refusalIsFinal(error)) {
             set((state) => ({ pendingTaps: state.pendingTaps.filter((item) => item.eventId !== tap.eventId) }));
           }
         } finally {
@@ -126,11 +162,41 @@ export const useOrderShare = create<OrderShareState>()(
         }
       };
 
+      const sameEvent = (a: PendingCardEvent, b: PendingCardEvent) =>
+        a.ownerId === b.ownerId && a.orderId === b.orderId && a.presentation === b.presentation && a.action === b.action;
+
+      /** Sends the queue head first, one at a time; stops at the first failure so order is kept. */
+      const sendCards = async () => {
+        for (;;) {
+          const owner = ownerId();
+          const head = owner ? get().pendingCards.find((event) => event.ownerId === owner) : undefined;
+          if (!head) return;
+          const mine = generation;
+          try {
+            const answer = await api.recordShareCard(head.orderId, head.presentation, head.action);
+            if (mine === generation) adopt(head.orderId, answer);
+          } catch (error) {
+            // Lost on the way: keep it, and everything after it, for the next flush.
+            if (!refusalIsFinal(error)) return;
+          }
+          set((state) => {
+            const at = state.pendingCards.findIndex((event) => sameEvent(event, head));
+            return at < 0 ? {} : { pendingCards: state.pendingCards.filter((_, index) => index !== at) };
+          });
+        }
+      };
+
+      const drainCards = () => {
+        cardRun = cardRun.then(sendCards, sendCards);
+        return cardRun;
+      };
+
       return {
         shares: {},
         status: {},
         errors: {},
         pendingTaps: [],
+        pendingCards: [],
         putOff: {},
         hold: null,
         presenting: null,
@@ -151,15 +217,30 @@ export const useOrderShare = create<OrderShareState>()(
           })),
 
         recordCard: async (orderId, presentation, action) => {
+          const owner = ownerId();
+          if (!owner) return;
           if (action === "maybe_later") set((state) => ({ putOff: { ...state.putOff, [orderId]: true } }));
-          const mine = generation;
-          try {
-            const answer = await api.recordShareCard(orderId, presentation, action);
-            if (mine === generation) adopt(orderId, answer);
-          } catch {
-            // The card still closes. GRIDGO keeps its own answer, and a
-            // repeat it still thinks is due is the worst that can follow.
-          }
+          set((state) => ({ pendingCards: [...state.pendingCards, { ownerId: owner, orderId, presentation, action }] }));
+          await drainCards();
+        },
+
+        takePutOff: (orderId) => {
+          if (!get().putOff[orderId]) return false;
+          get().dropPutOff(orderId);
+          return true;
+        },
+        dropPutOff: (orderId) =>
+          set((state) => {
+            if (!state.putOff[orderId]) return {};
+            const putOff = { ...state.putOff };
+            delete putOff[orderId];
+            return { putOff };
+          }),
+        repeatUnconfirmed: (orderId) => {
+          const owner = ownerId();
+          return get().pendingCards.some(
+            (event) => event.ownerId === owner && event.orderId === orderId && event.presentation === "order_repeat",
+          );
         },
 
         tap: async (orderId, action) => {
@@ -170,24 +251,24 @@ export const useOrderShare = create<OrderShareState>()(
           await send(tap);
         },
 
-        flushTaps: async () => {
+        flush: async () => {
           const owner = ownerId();
           if (!owner) return;
-          await Promise.all(get().pendingTaps.filter((tap) => tap.ownerId === owner).map(send));
+          await Promise.all([drainCards(), ...get().pendingTaps.filter((tap) => tap.ownerId === owner).map(send)]);
         },
 
         reset: () => {
           generation++;
-          // Unconfirmed taps stay: each belongs to its own account and is only
-          // resent while that account is signed in.
+          // Unconfirmed taps and card events stay: each belongs to its own
+          // account and is only resent while that account is signed in.
           set({ shares: {}, status: {}, errors: {}, putOff: {}, hold: null, presenting: null, sheet: IDLE_SHEET });
         },
       };
     },
     {
       name: STORAGE_KEY,
-      storage: createPersistStorage<Pick<OrderShareState, "pendingTaps">>(),
-      partialize: (state) => ({ pendingTaps: state.pendingTaps }),
+      storage: createPersistStorage<Pick<OrderShareState, "pendingTaps" | "pendingCards">>(),
+      partialize: (state) => ({ pendingTaps: state.pendingTaps, pendingCards: state.pendingCards }),
     },
   ),
 );

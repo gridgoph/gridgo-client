@@ -14,7 +14,9 @@
  *   otherwise the image downloads and the link is copied.
  *
  * Nothing here throws. A share sheet the client closes is `cancelled`, which
- * is not a failure and is never said as one.
+ * is not a failure and is never said as one. Android's chooser never says
+ * whether anything was sent — it answers the same for a post and for Back —
+ * so there the outcome is `opened`, never `shared`.
  */
 
 import { Platform, Share } from "react-native";
@@ -27,10 +29,12 @@ import { SHARE_CARD_TITLE, STORY_HEIGHT, STORY_WIDTH } from "@/lib/orderShare";
 const CAPTURE_TIMEOUT_MS = 5000;
 
 export type ShareOutcome =
-  /** The sheet opened with the picture (on Android, whether a post followed is not known). */
+  /** The client chose somewhere to share it (iOS, the web). */
   | { kind: "shared"; linkCopied: boolean }
-  /** The picture could not go, so the text went alone. */
-  | { kind: "text_only" }
+  /** The sheet opened, and the phone does not say what came of it (Android). */
+  | { kind: "opened"; linkCopied: boolean }
+  /** The picture could not go, so the text went alone; `confirmed` when the phone said it was sent. */
+  | { kind: "text_only"; confirmed: boolean }
   /** The browser had no share sheet: the picture downloaded instead. */
   | { kind: "saved"; linkCopied: boolean }
   | { kind: "cancelled" }
@@ -132,15 +136,15 @@ export async function shareStory({
       if (Sharing && uri) {
         const linkCopied = link ? await copyText(link) : false;
         await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: SHARE_CARD_TITLE });
-        return { kind: "shared", linkCopied };
+        return { kind: "opened", linkCopied };
       }
       await Share.share({ message: text, title: SHARE_CARD_TITLE });
-      return { kind: "text_only" };
+      return { kind: "text_only", confirmed: false };
     }
     const uri = png ? await writePng(png, fileName) : null;
     const result = await Share.share(uri ? { url: uri, message: text } : { message: text });
     if (result.action === Share.dismissedAction) return { kind: "cancelled" };
-    return uri ? { kind: "shared", linkCopied: false } : { kind: "text_only" };
+    return uri ? { kind: "shared", linkCopied: false } : { kind: "text_only", confirmed: true };
   } catch {
     return failed(link);
   }
@@ -160,7 +164,11 @@ export async function shareLink(link: string): Promise<ShareOutcome> {
     return failed(link);
   }
   try {
-    const result = await Share.share(Platform.OS === "ios" ? { url: link } : { message: link });
+    if (Platform.OS === "android") {
+      await Share.share({ message: link });
+      return { kind: "opened", linkCopied: false };
+    }
+    const result = await Share.share({ url: link });
     if (result.action === Share.dismissedAction) return { kind: "cancelled" };
     return { kind: "shared", linkCopied: false };
   } catch {

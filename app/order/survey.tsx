@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { CircleCheck, TriangleAlert } from "lucide-react-native";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -125,9 +125,18 @@ export default function OrderSurveyScreen() {
 
   // Re-read on every visit: the low-score shortcut and the reward preview are
   // GRIDGO's to decide each time, and a survey can close while away.
+  // While on top: a share card due after a send is only shown here, never
+  // over wherever the client went while GRIDGO was answering.
+  const onScreenRef = useRef(false);
+  const sendAttempt = useRef(0);
   useFocusEffect(
     useCallback(() => {
+      onScreenRef.current = true;
       if (orderId) void load(orderId);
+      return () => {
+        onScreenRef.current = false;
+        sendAttempt.current++;
+      };
     }, [orderId, load]),
   );
 
@@ -139,10 +148,14 @@ export default function OrderSurveyScreen() {
   */
   const send = async () => {
     const share = useOrderShare.getState();
+    const attempt = ++sendAttempt.current;
     share.holdForSurvey(orderId);
     try {
       if (!(await submit(orderId))) return;
       const prepared = await share.prepare(orderId);
+      // The client left the thank-you while GRIDGO answered: the moment passed.
+      if (attempt !== sendAttempt.current || !onScreenRef.current) return;
+      if (useOrderShare.getState().presenting) return;
       if (prepared?.available && prepared.card.showAfterSurvey) {
         share.setPresenting({ orderId, presentation: "after_survey" });
         router.push({ pathname: "/order/share", params: { orderId, presentation: "after_survey" } });
@@ -153,8 +166,12 @@ export default function OrderSurveyScreen() {
   };
 
   const leave = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace(`/order/${orderId}`);
+    if (router.canGoBack()) {
+      // Not back to this order's screen: its next visit is a later one, so a
+      // card put off here may come back there.
+      if (from !== "order") useOrderShare.getState().dropPutOff(orderId);
+      router.back();
+    } else router.replace(`/order/${orderId}`);
   };
   const reportProblem = () => {
     requestReport(orderId);

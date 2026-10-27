@@ -72,12 +72,13 @@ export function mayShareOrder(
 }
 
 /**
- * The repeat is offered on a later visit to the order, never in the same
- * session that put the card off: "Maybe later" followed straight away by the
- * same card on the order screen behind it would not be later.
+ * The repeat is offered on a later visit to the order. `held` is true on the
+ * visit straight after "Maybe later" (the client coming back from the card is
+ * not "later"), and while a repeat this phone already showed is still on its
+ * way to GRIDGO, so a lost confirmation can never buy a third showing.
  */
-export function repeatDue(share: OrderShare | null | undefined, putOffThisSession: boolean): boolean {
-  return Boolean(share?.available && share.card.showFromOrder && !putOffThisSession);
+export function repeatDue(share: OrderShare | null | undefined, held: boolean): boolean {
+  return Boolean(share?.available && share.card.showFromOrder && !held);
 }
 
 /** The first name, trimmed; GRIDGO sends `""` when there is no saved name. */
@@ -126,8 +127,8 @@ export function shareErrorMessage(error: unknown): string {
   return SHARE_LOAD_FAILED;
 }
 
-/** A tap refusal that will never succeed on retry: drop it rather than keep resending. */
-export function tapRefusalIsFinal(error: unknown): boolean {
+/** A refusal that will never succeed on retry (a tap or a card event): drop it rather than keep resending. */
+export function refusalIsFinal(error: unknown): boolean {
   const status = (error as { status?: unknown } | null)?.status;
   return typeof status === "number" && status >= 400 && status < 500 && status !== 401 && status !== 408 && status !== 429;
 }

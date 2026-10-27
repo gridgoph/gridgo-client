@@ -10,7 +10,7 @@ beforeEach(() => {
   jest.restoreAllMocks();
   useSession.setState({ user: { id: "u1", email: "c@gridgo.local", name: "Ana Cruz", role: "client" } });
   useOrderShare.getState().reset();
-  useOrderShare.setState({ pendingTaps: [] });
+  useOrderShare.setState({ pendingTaps: [], pendingCards: [] });
 });
 
 describe("share card store", () => {
@@ -28,6 +28,79 @@ describe("share card store", () => {
   it("lets the card close even when GRIDGO cannot be reached", async () => {
     jest.spyOn(api, "recordShareCard").mockRejectedValue(new TypeError("Network request failed"));
     await expect(useOrderShare.getState().recordCard(ORDER, "order_repeat", "maybe_later")).resolves.toBeUndefined();
+  });
+
+  it("never sends Maybe later before its shown has been answered", async () => {
+    const calls: string[] = [];
+    let answerShown: () => void = () => undefined;
+    jest.spyOn(api, "recordShareCard").mockImplementation(async (_order, presentation, action) => {
+      calls.push(`${presentation}:${action}:start`);
+      if (action === "shown") await new Promise<void>((resolve) => (answerShown = resolve));
+      calls.push(`${presentation}:${action}:end`);
+      return shareRead(orderShare());
+    });
+
+    const shown = useOrderShare.getState().recordCard(ORDER, "after_survey", "shown");
+    const later = useOrderShare.getState().recordCard(ORDER, "after_survey", "maybe_later");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls).toEqual(["after_survey:shown:start"]);
+
+    answerShown();
+    await Promise.all([shown, later]);
+    expect(calls).toEqual([
+      "after_survey:shown:start",
+      "after_survey:shown:end",
+      "after_survey:maybe_later:start",
+      "after_survey:maybe_later:end",
+    ]);
+    expect(useOrderShare.getState().pendingCards).toEqual([]);
+  });
+
+  it("keeps card events the network lost, in order, and resends them on the next flush", async () => {
+    const record = jest.spyOn(api, "recordShareCard").mockRejectedValue(new TypeError("Network request failed"));
+    await useOrderShare.getState().recordCard(ORDER, "after_survey", "shown");
+    await useOrderShare.getState().recordCard(ORDER, "after_survey", "maybe_later");
+    expect(useOrderShare.getState().pendingCards.map((event) => event.action)).toEqual(["shown", "maybe_later"]);
+
+    record.mockReset().mockResolvedValue(shareRead(orderShare()));
+    await useOrderShare.getState().flush();
+
+    expect(record.mock.calls).toEqual([
+      [ORDER, "after_survey", "shown"],
+      [ORDER, "after_survey", "maybe_later"],
+    ]);
+    expect(useOrderShare.getState().pendingCards).toEqual([]);
+  });
+
+  it("drops a card event GRIDGO refused for good and carries on with the next", async () => {
+    const record = jest
+      .spyOn(api, "recordShareCard")
+      .mockRejectedValueOnce(new api.ApiError(409, { error: "share_card_not_available" }))
+      .mockResolvedValue(shareRead(orderShare()));
+    await useOrderShare.getState().recordCard(ORDER, "after_survey", "shown");
+    await useOrderShare.getState().recordCard("ord_other", "after_survey", "shown");
+    expect(record).toHaveBeenCalledTimes(2);
+    expect(useOrderShare.getState().pendingCards).toEqual([]);
+  });
+
+  it("holds the repeat while a repeat this phone showed is unconfirmed, across a restart", async () => {
+    jest.spyOn(api, "recordShareCard").mockRejectedValue(new TypeError("Network request failed"));
+    await useOrderShare.getState().recordCard(ORDER, "order_repeat", "shown");
+    expect(useOrderShare.getState().repeatUnconfirmed(ORDER)).toBe(true);
+    expect(useOrderShare.getState().repeatUnconfirmed("ord_other")).toBe(false);
+    // Persisted with the taps, so a cold start still knows.
+    const persisted = useOrderShare.persist.getOptions().partialize?.(useOrderShare.getState()) as {
+      pendingCards: unknown[];
+    };
+    expect(persisted.pendingCards).toHaveLength(1);
+  });
+
+  it("suppresses the repeat for one visit after Maybe later, not for the rest of the session", async () => {
+    jest.spyOn(api, "recordShareCard").mockResolvedValue(shareRead(orderShare()));
+    await useOrderShare.getState().recordCard(ORDER, "after_survey", "maybe_later");
+    expect(useOrderShare.getState().takePutOff(ORDER)).toBe(true);
+    expect(useOrderShare.getState().takePutOff(ORDER)).toBe(false);
   });
 
   it("counts a tap once, with a fresh UUID v4 per tap", async () => {
@@ -55,7 +128,7 @@ describe("share card store", () => {
     expect(pending).toMatchObject({ orderId: ORDER, action: "share", ownerId: "u1" });
 
     tap.mockImplementationOnce(async (_order, eventId) => ({ ...shareRead(orderShare()), eventId, recorded: true, replay: true }));
-    await useOrderShare.getState().flushTaps();
+    await useOrderShare.getState().flush();
 
     expect(tap).toHaveBeenLastCalledWith(ORDER, pending.eventId, "share");
     expect(useOrderShare.getState().pendingTaps).toEqual([]);
@@ -72,7 +145,7 @@ describe("share card store", () => {
     useOrderShare.setState({
       pendingTaps: [{ ownerId: "someone_else", orderId: ORDER, eventId: "5daf3673-c956-4b5d-b187-9051767a445b", action: "share" }],
     });
-    await useOrderShare.getState().flushTaps();
+    await useOrderShare.getState().flush();
     expect(tap).not.toHaveBeenCalled();
   });
 

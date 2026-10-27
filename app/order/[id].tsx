@@ -165,6 +165,12 @@ export default function OrderDetailScreen() {
   const focusedRef = useRef(false);
   /** Orders whose one repeat of the share card this screen has opened. */
   const repeatOpened = useRef(new Set<string>());
+  /**
+   * Orders this visit came straight back to from "Maybe later": no repeat on
+   * this visit. Taken when the screen gains focus and forgotten when it loses
+   * it, so the next deliberate visit is a later one.
+   */
+  const heldVisitRef = useRef(new Set<string>());
   const share = useOrderShare((state) => (id ? state.shares[id] : undefined));
   // `load` stays keyed to the order alone; the router it pushes with is read late.
   const routerRef = useRef(router);
@@ -208,20 +214,24 @@ export default function OrderDetailScreen() {
       // order so a completed hand-over, a skip or a send shows on return.
       if (mayHaveSurvey(useSession.getState().user, current)) void useSurvey.getState().load(current.id);
       // The share card (gridgo-client#341): a delivered order's Share button,
-      // and the one repeat of a card put off after the survey. Taps the
-      // network lost are resent with the IDs they were made with.
+      // and the one repeat of a card put off after the survey. Card events and
+      // taps the network lost go first, in order, so the read below reflects them.
       if (mayShareOrder(useSession.getState().user, current)) {
-        void useOrderShare.getState().flushTaps();
-        void useOrderShare.getState().load(current.id).then((read) => {
-          const shares = useOrderShare.getState();
-          if (sequence !== loadSequence.current || !focusedRef.current) return;
-          if (!repeatDue(read, Boolean(shares.putOff[current.id]))) return;
-          if (shares.presenting || shares.hold || useFoundingTester.getState().showing) return;
-          if (repeatOpened.current.has(current.id)) return;
-          repeatOpened.current.add(current.id);
-          shares.setPresenting({ orderId: current.id, presentation: "order_repeat" });
-          routerRef.current.push({ pathname: "/order/share", params: { orderId: current.id, presentation: "order_repeat" } });
-        });
+        void useOrderShare
+          .getState()
+          .flush()
+          .then(() => useOrderShare.getState().load(current.id))
+          .then((read) => {
+            const shares = useOrderShare.getState();
+            if (sequence !== loadSequence.current || !focusedRef.current) return;
+            const held = heldVisitRef.current.has(current.id) || shares.repeatUnconfirmed(current.id);
+            if (!repeatDue(read, held)) return;
+            if (shares.presenting || shares.hold || useFoundingTester.getState().showing) return;
+            if (repeatOpened.current.has(current.id)) return;
+            repeatOpened.current.add(current.id);
+            shares.setPresenting({ orderId: current.id, presentation: "order_repeat" });
+            routerRef.current.push({ pathname: "/order/share", params: { orderId: current.id, presentation: "order_repeat" } });
+          });
       }
       setHandover(credential);
       setAckReceipt(receipt);
@@ -254,13 +264,15 @@ export default function OrderDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
+      if (id && useOrderShare.getState().takePutOff(id)) heldVisitRef.current.add(id);
       void load();
       void loadSettings({ refresh: true }).catch(() => undefined);
       return () => {
         focusedRef.current = false;
+        heldVisitRef.current.clear();
         loadSequence.current++;
       };
-    }, [load, loadSettings]),
+    }, [id, load, loadSettings]),
   );
 
   /*

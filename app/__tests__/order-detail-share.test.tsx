@@ -2,6 +2,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react-nati
 
 import OrderDetailScreen from "@/app/order/[id]";
 import { useOrderShare } from "@/store/orderShare";
+import { useSession } from "@/store/session";
 import { useSurvey } from "@/store/survey";
 import { refundOrder } from "@/test/refundFixtures";
 import { renderScreen } from "@/test/renderScreen";
@@ -35,7 +36,9 @@ afterEach(async () => {
 beforeEach(() => {
   jest.clearAllMocks();
   useSurvey.getState().reset();
+  useSession.setState({ user: null });
   useOrderShare.getState().reset();
+  useOrderShare.setState({ pendingCards: [], pendingTaps: [] });
   api.listOrderRefunds.mockResolvedValue([]);
   api.getOrder.mockResolvedValue(refundOrder({ state: "completed", rated: true, timeline: [] }));
 });
@@ -77,8 +80,29 @@ it("shows the card once more from the order after Maybe later", async () => {
   expect(mockPush).toHaveBeenCalledTimes(1);
 });
 
-it("waits for a later visit when the card was put off in this session", async () => {
+it("skips the repeat on the visit straight after Maybe later, and shows it on the next visit", async () => {
   useOrderShare.setState({ putOff: { [ORDER]: true } });
+  api.getOrderShare.mockResolvedValue(shareRead(orderShare({}, REPEAT)));
+  await renderScreen(<OrderDetailScreen />);
+
+  expect(await screen.findByRole("button", { name: "Share this order as a story" })).toBeTruthy();
+  expect(mockPush).not.toHaveBeenCalled();
+  // That visit took the suppression; nothing session-wide is left behind.
+  expect(useOrderShare.getState().putOff[ORDER]).toBeUndefined();
+
+  // The client goes back to Orders, then opens the same order again.
+  await cleanup();
+  await renderScreen(<OrderDetailScreen />);
+  await waitFor(() =>
+    expect(mockPush).toHaveBeenCalledWith({ pathname: "/order/share", params: { orderId: ORDER, presentation: "order_repeat" } }),
+  );
+});
+
+it("holds the repeat while this phone's showing of it is still unconfirmed", async () => {
+  useSession.setState({ user: { id: "user_client", email: "c@gridgo.local", name: "Ana Cruz", role: "client" } });
+  useOrderShare.setState({
+    pendingCards: [{ ownerId: "user_client", orderId: ORDER, presentation: "order_repeat", action: "shown" }],
+  });
   api.getOrderShare.mockResolvedValue(shareRead(orderShare({}, REPEAT)));
   await renderScreen(<OrderDetailScreen />);
 

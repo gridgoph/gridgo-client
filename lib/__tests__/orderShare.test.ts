@@ -8,7 +8,7 @@ import {
   shareErrorMessage,
   shareText,
   storyGreeting,
-  tapRefusalIsFinal,
+  refusalIsFinal,
   SHARE_NOT_AVAILABLE,
 } from "@/lib/orderShare";
 import { ApiError } from "@/lib/api";
@@ -68,11 +68,11 @@ describe("share card rules", () => {
   });
 
   it("drops a tap GRIDGO refused for good, and keeps one the network lost", () => {
-    expect(tapRefusalIsFinal(new ApiError(409, { error: "share_tap_conflict" }))).toBe(true);
-    expect(tapRefusalIsFinal(new ApiError(400, { error: "invalid_share_tap" }))).toBe(true);
-    expect(tapRefusalIsFinal(new ApiError(503, { error: "unavailable" }))).toBe(false);
-    expect(tapRefusalIsFinal(new ApiError(429, { error: "rate_limited" }))).toBe(false);
-    expect(tapRefusalIsFinal(new TypeError("Network request failed"))).toBe(false);
+    expect(refusalIsFinal(new ApiError(409, { error: "share_tap_conflict" }))).toBe(true);
+    expect(refusalIsFinal(new ApiError(400, { error: "invalid_share_tap" }))).toBe(true);
+    expect(refusalIsFinal(new ApiError(503, { error: "unavailable" }))).toBe(false);
+    expect(refusalIsFinal(new ApiError(429, { error: "rate_limited" }))).toBe(false);
+    expect(refusalIsFinal(new TypeError("Network request failed"))).toBe(false);
     expect(shareErrorMessage(new ApiError(409, { error: "order_share_not_available" }))).toBe(SHARE_NOT_AVAILABLE);
   });
 });
