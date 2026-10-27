@@ -172,6 +172,8 @@ const METHOD_LABELS: Record<string, string> = {
   bank_transfer: "Bank transfer",
   qr_ph: "QR Ph",
   cash: "Cash",
+  // A whole-order launch voucher settled it (gridgo-api#315): no transfer.
+  gridgo_voucher: "GRIDGO voucher",
 };
 
 const TYPE_LABELS: Record<string, string> = { digital: "Digital", cash: "Cash" };

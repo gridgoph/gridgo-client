@@ -11,7 +11,7 @@ import { PushEnableCard } from "@/components/PushEnableCard";
 import { SkeletonList } from "@/components/Skeleton";
 import { businessApplicationSentBack } from "@/lib/accountProfile";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
-import { isVoucherNotification, VOUCHERS_ROUTE } from "@/lib/vouchers";
+import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { chatNotificationRoute } from "@/lib/push";
 import { appInstallChannel } from "@/lib/buildDistribution";
 import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
@@ -95,7 +95,7 @@ export function NotificationInbox() {
                 markGroupRead();
                 router.navigate(ORGANIZATIONS_ROUTE);
               }
-            : isVoucherNotification(notification.type)
+            : opensVoucherWallet(notification.type)
             ? () => {
                 // A voucher notice is about the wallet, not a job.
                 markGroupRead();

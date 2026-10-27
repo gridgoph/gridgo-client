@@ -27,7 +27,11 @@ import {
 } from "@/lib/api";
 import { exactTime } from "@/lib/vouchers";
 
-/** GRIDGO's survey reward: one ₱15 voucher, at most one in any 7 days. */
+/**
+ * GRIDGO's survey reward: one voucher, at most one in any 7 days. ₱15 is the
+ * default only; Super Admin sets it, and a screen draws `rewards.surveyMinor`
+ * from `GET /me/promotions` once read (`surveyRewardMinor` in lib/promotions).
+ */
 export const SURVEY_REWARD_MINOR = 1500;
 /** The note's cap, mirrored so the field holds to it rather than be refused. */
 export const SURVEY_NOTE_MAX = 2_000;
@@ -400,14 +404,21 @@ export function isFoundingTesterSurvey(survey: Pick<OrderSurvey, "rewardProgram"
  */
 export type SurveyReward = { kind: "survey"; amount: string } | { kind: "founding_tester" } | null;
 
-export function surveyReward(survey: Pick<OrderSurvey, "rewardEligible" | "rewardProgram">): SurveyReward {
+export function surveyReward(
+  survey: Pick<OrderSurvey, "rewardEligible" | "rewardProgram">,
+  /** Today's amount, from GRIDGO's promotion settings (`rewards.surveyMinor`). */
+  rewardMinor: number = SURVEY_REWARD_MINOR,
+): SurveyReward {
   if (!survey.rewardEligible) return null;
-  return isFoundingTesterSurvey(survey) ? { kind: "founding_tester" } : { kind: "survey", amount: formatPhp(SURVEY_REWARD_MINOR) };
+  return isFoundingTesterSurvey(survey) ? { kind: "founding_tester" } : { kind: "survey", amount: formatPhp(rewardMinor) };
 }
 
 /** The card's one line about the voucher, or null when this survey cannot earn one now. */
-export function rewardBadge(survey: Pick<OrderSurvey, "rewardEligible" | "rewardProgram">): string | null {
-  const reward = surveyReward(survey);
+export function rewardBadge(
+  survey: Pick<OrderSurvey, "rewardEligible" | "rewardProgram">,
+  rewardMinor: number = SURVEY_REWARD_MINOR,
+): string | null {
+  const reward = surveyReward(survey, rewardMinor);
   if (!reward) return null;
   return reward.kind === "founding_tester"
     ? "Counts as your Founding Tester survey step. Your voucher comes with all five steps."
@@ -415,8 +426,11 @@ export function rewardBadge(survey: Pick<OrderSurvey, "rewardEligible" | "reward
 }
 
 /** The reward line before answering, or null when this survey cannot earn one now. */
-export function rewardOffer(survey: Pick<OrderSurvey, "rewardEligible" | "rewardProgram">): string | null {
-  const reward = surveyReward(survey);
+export function rewardOffer(
+  survey: Pick<OrderSurvey, "rewardEligible" | "rewardProgram">,
+  rewardMinor: number = SURVEY_REWARD_MINOR,
+): string | null {
+  const reward = surveyReward(survey, rewardMinor);
   if (!reward) return null;
   return reward.kind === "founding_tester"
     ? "Answer the first three questions to finish your Founding Tester survey step. Your voucher comes with all five steps."
@@ -574,6 +588,7 @@ export function surveyNotificationCallout(
   rewardEligible: boolean | null = null,
   now: number = Date.now(),
   rewardProgram: string | null = null,
+  rewardMinor: number = SURVEY_REWARD_MINOR,
 ): { title: string; detail: string } | null {
   const sent = Date.parse(at);
   if (Number.isFinite(sent) && now - sent >= SURVEY_OPEN_MS) return null;
@@ -584,7 +599,7 @@ export function surveyNotificationCallout(
     return { title: "Your Founding Tester survey step", detail: "Your voucher comes with all five steps." };
   }
   return {
-    title: `${formatPhp(SURVEY_REWARD_MINOR)} voucher for the first three answers`,
+    title: `${formatPhp(rewardMinor)} voucher for the first three answers`,
     detail: "One survey voucher every 7 days.",
   };
 }

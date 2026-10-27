@@ -47,6 +47,8 @@ import {
   SWIPE_FAIL_OFFSET_Y,
 } from "@/lib/swipeRow";
 import { usePlatformSettings } from "@/store/platformSettings";
+import { surveyRewardAmount } from "@/lib/promotions";
+import { usePromotions } from "@/store/promotions";
 import { useSurvey } from "@/store/survey";
 
 /** Timeline point: its size, and its drop to sit on the title's first line. */
@@ -132,11 +134,13 @@ export function NotificationCard({ group, read, onOpen, onMarkRead, applicationN
   const surveyRewardProgram = useSurvey((state) =>
     notification.orderId ? (state.surveys[notification.orderId]?.rewardProgram ?? null) : null,
   );
+  const surveyRewardMinor = usePromotions((state) => surveyRewardAmount(state.data));
   const presented = presentNotification(notification, {
     showServiceFee,
     applicationNoticeId,
     surveyRewardEligible,
     surveyRewardProgram,
+    surveyRewardMinor,
   });
   const picture = notificationImageUrl(notification.imageUrl);
   // A row with no job is GRIDGO speaking, and says so rather than leaving the

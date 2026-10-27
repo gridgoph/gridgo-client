@@ -35,6 +35,8 @@ import { useTour } from "@/store/tour";
 import { useVouchers } from "@/store/vouchers";
 import { useServerNow } from "@/hooks/useVoucherClock";
 import { VOUCHERS_ROUTE, walletSummary } from "@/lib/vouchers";
+import { claimOffer, claimRowLine } from "@/lib/promotions";
+import { usePromotions } from "@/store/promotions";
 
 /**
  * The client's own account.
@@ -81,12 +83,15 @@ export default function AccountScreen() {
   const loadVouchers = useVouchers((s) => s.load);
   const vouchers = useVouchers((s) => s.list);
   const now = useServerNow(60_000);
+  const loadPromotions = usePromotions((s) => s.load);
+  const offer = claimOffer(usePromotions((s) => s.data));
 
   useFocusEffect(
     useCallback(() => {
       void refresh();
       void loadVouchers();
-    }, [refresh, loadVouchers]),
+      void loadPromotions();
+    }, [refresh, loadVouchers, loadPromotions]),
   );
 
   const headline = accountHeadline(user);
@@ -200,11 +205,12 @@ export default function AccountScreen() {
             {/*
               The voucher wallet (gridgo-api#204). The line is the wallet's
               own state — what is there and when the next one runs out — so a
-              tester can see it without opening anything.
+              tester can see it without opening anything. While a launch offer
+              waits to be redeemed, the line says that instead.
             */}
             <DestinationRow
               title="Vouchers"
-              detail={walletSummary(vouchers, now)}
+              detail={offer ? claimRowLine(offer) : walletSummary(vouchers, now)}
               onPress={() => router.push(VOUCHERS_ROUTE)}
             />
             {/*

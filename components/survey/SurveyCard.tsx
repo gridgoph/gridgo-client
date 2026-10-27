@@ -14,6 +14,8 @@ import {
   surveyRoute,
   surveyView,
 } from "@/lib/survey";
+import { surveyRewardAmount } from "@/lib/promotions";
+import { usePromotions } from "@/store/promotions";
 import { useSurvey } from "@/store/survey";
 
 /**
@@ -43,6 +45,7 @@ export function SurveyCard({ orderId, primary }: { orderId: string; primary: boo
   const busy = useSurvey((state) => state.busy[orderId] ?? null);
   const error = useSurvey((state) => state.errors[orderId] ?? null);
   const dismiss = useSurvey((state) => state.dismiss);
+  const rewardMinor = usePromotions((state) => surveyRewardAmount(state.data));
   const now = useServerNow(60_000);
   const view = surveyView(survey, now);
   if (!view) return null;
@@ -50,7 +53,7 @@ export function SurveyCard({ orderId, primary }: { orderId: string; primary: boo
   const open = () => router.push(surveyRoute(orderId, "order") as Href);
 
   if (view.kind === "invite") {
-    const reward = rewardBadge(view.survey);
+    const reward = rewardBadge(view.survey, rewardMinor);
     return (
       <View className="gg-card gap-4" testID="survey-card">
         <View className="gap-2">

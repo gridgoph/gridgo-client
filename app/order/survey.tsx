@@ -61,6 +61,8 @@ import {
   type SurveyDraft,
 } from "@/lib/survey";
 import { VOUCHERS_ROUTE, exactTime } from "@/lib/vouchers";
+import { surveyRewardAmount } from "@/lib/promotions";
+import { usePromotions } from "@/store/promotions";
 import { useSurvey } from "@/store/survey";
 
 /**
@@ -97,6 +99,8 @@ export default function OrderSurveyScreen() {
   const error = useSurvey((state) => state.errors[orderId] ?? null);
   const load = useSurvey((state) => state.load);
   const setDraft = useSurvey((state) => state.setDraft);
+  // Today's reward amount; Super Admin can change it (gridgo-api#315).
+  const rewardMinor = usePromotions((state) => surveyRewardAmount(state.data));
   const submit = useSurvey((state) => state.submit);
   const dismiss = useSurvey((state) => state.dismiss);
   const requestReport = useSurvey((state) => state.requestReport);
@@ -239,7 +243,7 @@ export default function OrderSurveyScreen() {
   const ready = canSend(draft);
   const priceProblem = expectedPriceProblem(draft.expectedPrice);
   const missing = missingLine(draft, kind);
-  const reward = surveyReward(view.survey);
+  const reward = surveyReward(view.survey, rewardMinor);
   const noReward = noRewardLine(view.survey);
   const total = order ? orderTotalMinor(order) : null;
   const skipped = view.kind === "skipped";

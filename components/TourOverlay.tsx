@@ -30,6 +30,7 @@ import {
 } from "@/lib/tour";
 import { useAppUpdate } from "@/store/appUpdate";
 import { useCheckoutExit } from "@/store/checkoutExit";
+import { usePromotions } from "@/store/promotions";
 import { usePushPrompt } from "@/store/pushPrompt";
 import { useTour } from "@/store/tour";
 
@@ -86,6 +87,7 @@ export function TourOverlay({ ready }: { ready: boolean }) {
   const otherPrompt = usePushPrompt((s) => s.open);
   const updatePrompt = useAppUpdate((s) => s.promptOpen || s.completed !== null);
   const exitQuestion = useCheckoutExit((s) => s.open);
+  const claimSheet = usePromotions((s) => s.sheet != null);
   const settled = useTour((s) => s.settled);
   const overdue = useTour((s) => s.overdue);
   const mounted = useTour((s) => (step ? (s.mounted[step.id] ?? 0) > 0 : false));
@@ -108,6 +110,7 @@ export function TourOverlay({ ready }: { ready: boolean }) {
     !otherPrompt &&
     !updatePrompt &&
     !exitQuestion &&
+    !claimSheet &&
     accountId != null &&
     step != null &&
     progress?.status === "active" &&

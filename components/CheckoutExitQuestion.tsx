@@ -23,6 +23,7 @@ import { useAppUpdate } from "@/store/appUpdate";
 import { useCall } from "@/store/call";
 import { useCheckoutExit } from "@/store/checkoutExit";
 import { legalGateFor, useLegalConsent } from "@/store/legalConsent";
+import { usePromotions } from "@/store/promotions";
 import { usePushPrompt } from "@/store/pushPrompt";
 import { useSession } from "@/store/session";
 
@@ -50,6 +51,8 @@ export function CheckoutExitQuestion({ ready }: Props) {
   const legalClear = useLegalConsent((s) => legalGateFor(s, user?.id) === "clear");
   const updateShowing = useAppUpdate((s) => s.promptOpen || s.completed !== null);
   const pushExplainerOpen = usePushPrompt((s) => s.open);
+  // The launch-offer claim sheet is the other prompt it waits behind.
+  const claimSheetOpen = usePromotions((s) => s.sheet != null);
   const tour = useVisibleTourStep();
   const callActive = useCall((s) => s.session != null);
   const held = useCheckoutExit((s) => s.prompt != null);
@@ -63,7 +66,7 @@ export function CheckoutExitQuestion({ ready }: Props) {
     onTabs: segments[0] === "(tabs)",
     legalClear,
     updateShowing,
-    pushExplainerOpen,
+    pushExplainerOpen: pushExplainerOpen || claimSheetOpen,
     tourShowing: tour.step != null && tour.progress?.status === "active",
     callActive,
   });

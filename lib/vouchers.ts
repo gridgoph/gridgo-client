@@ -9,8 +9,9 @@
  * - GRIDGO works the discount out. The quote, the order and the invoice carry
  *   `voucherDiscountMinor` already out of the total; it is drawn as its own
  *   line, never subtracted again — the same rule as the organization discount.
- * - The line says "Voucher" and a peso amount, nothing about where inside
- *   GRIDGO's charges it comes from. GRIDGO's fee in pesos is on no client
+ * - The line says "Voucher" (a launch voucher's own name, "Founding 30" or
+ *   "Friend Pass") and a peso amount, nothing about where inside GRIDGO's
+ *   charges it comes from. GRIDGO's fee in pesos is on no client
  *   screen, and with Operations' `serviceFeeVisibleToClient` off no fee
  *   wording is either.
  * - A voucher and the organization discount never stack. GRIDGO applies the
@@ -190,6 +191,33 @@ export function voucherStateLine(state: VoucherState, voucher: Voucher): string 
     default:
       return null;
   }
+}
+
+/** True for a launch voucher (Founding 30, Friend Pass), which comes off the whole order. */
+export function coversOrderTotal(voucher: Pick<Voucher, "coversOrderTotal" | "promotionKind"> | null | undefined): boolean {
+  return Boolean(voucher?.coversOrderTotal || voucher?.promotionKind);
+}
+
+/**
+ * Whether a whole-order launch voucher leaves nothing to pay up front.
+ *
+ * Read from GRIDGO's own quote, never from the total alone: a 75% order can
+ * owe nothing now and still owe its balance later. GRIDGO settles that first
+ * payment with the voucher at checkout, so there is no transfer to send, no
+ * screenshot and no reference — and the API refuses to invent one.
+ */
+export function voucherSettlesUpFront(
+  quote: Pick<CartQuote, "voucher" | "voucherDiscountMinor" | "downpaymentMinor"> | null | undefined,
+): boolean {
+  return voucherDiscountOf(quote) > 0 && coversOrderTotal(quote?.voucher) && quote?.downpaymentMinor === 0;
+}
+
+/** Why checkout asks for no transfer when `voucherSettlesUpFront` holds. */
+export function voucherCoveredLine(name: string, owesLater: boolean): string {
+  const voucherName = name === VOUCHER_LABEL ? "voucher" : name;
+  return owesLater
+    ? `Your ${voucherName} covers what is due now, so there is no transfer, screenshot or reference to send. GRIDGO asks for the rest by QR before delivery.`
+    : `Your ${voucherName} covers the whole order, so there is no transfer, screenshot or reference to send. Place the order and GRIDGO settles it with the voucher.`;
 }
 
 /** What a wallet item is called: its offer's name, or plainly what it is. */
@@ -399,13 +427,18 @@ export function checkoutVoucherView({
 }
 
 /**
- * The note under an applied voucher. A voucher only ever comes off GRIDGO's
- * own charges, so on a small order less than its face value may apply — and
- * the rest is not kept, which is worth saying before, not after.
+ * The note under an applied voucher. An ordinary voucher only ever comes off
+ * GRIDGO's own charges, and a launch voucher off the whole order, so on a
+ * small order less than its face value may apply — and the rest is not kept,
+ * which is worth saying before, not after.
  */
 export function appliedNote(view: Extract<CheckoutVoucherView, { kind: "applied" }>): string {
   const parts: string[] = [];
-  if (view.amountMinor < view.voucher.valueMinor) {
+  if (view.amountMinor < view.voucher.valueMinor && coversOrderTotal(view.voucher)) {
+    parts.push(
+      `${formatPhp(view.amountMinor)} of this ${formatPhp(view.voucher.valueMinor)} voucher applies here, because that is the whole order. The rest is not kept, and you pay nothing.`,
+    );
+  } else if (view.amountMinor < view.voucher.valueMinor) {
     parts.push(
       `${formatPhp(view.amountMinor)} of this ${formatPhp(view.voucher.valueMinor)} voucher applies here, because a voucher cannot take off more than GRIDGO charges. The rest is not kept.`,
     );
@@ -422,7 +455,10 @@ export function appliedNote(view: Extract<CheckoutVoucherView, { kind: "applied"
 }
 
 /** Where the voucher's value comes from, worded to the fee switch. */
-export function voucherRuleLine(showServiceFee: boolean): string {
+export function voucherRuleLine(showServiceFee: boolean, wholeOrder = false): string {
+  if (wholeOrder) {
+    return "This voucher comes off your whole order, printing and delivery together, as one discount. The total never goes below ₱0.00.";
+  }
   return showServiceFee
     ? "A voucher comes off GRIDGO's service fee first, then delivery. It never lowers the printing price and never takes the total below zero."
     : "A voucher never lowers the printing price and never takes the total below zero.";
@@ -447,6 +483,14 @@ export const VOUCHER_NOTIFICATION_TYPES = ["voucher_issued", "voucher_expiry_48h
 
 export function isVoucherNotification(type: string | null | undefined): boolean {
   return (VOUCHER_NOTIFICATION_TYPES as readonly string[]).includes(type ?? "");
+}
+
+/** A Friend Pass waiting to be claimed (gridgo-api#315): GRIDGO's own words, opened on the wallet. */
+export const FRIEND_PASS_WAITING_TYPE = "promotion_friend_pass_waiting";
+
+/** Any notice whose tap belongs on Account → Vouchers. */
+export function opensVoucherWallet(type: string | null | undefined): boolean {
+  return isVoucherNotification(type) || type === FRIEND_PASS_WAITING_TYPE;
 }
 
 /**
