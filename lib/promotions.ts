@@ -154,6 +154,13 @@ export function inviteStatus(invite: PromotionInvite): { stage: InviteStage; lab
     case "void":
       return { stage: "withdrawn", label: "Withdrawn", line: `GRIDGO withdrew the Friend Pass for ${email}.` };
     default:
+      if (invite.unmatchedReason === "account_already_attributed") {
+        return {
+          stage: "ended",
+          label: "Already invited",
+          line: `${email} was already invited by another Founder, so this Friend Pass cannot reach them.`,
+        };
+      }
       return {
         stage: "invited",
         label: "Invited",

@@ -89,12 +89,16 @@ function ClaimSheet({ open }: { open: boolean }) {
 
   if (!sheet) return <Sheet open={false} title="" onClose={close}>{null}</Sheet>;
 
-  const copy = claimCopy(sheet);
   const claimed = notice?.ok === true;
   // A refusal reads the offer again; if it has gone (sold out, ended), the
   // sheet says why and offers nothing more to press.
   const live = claimOffer(data);
   const stillOpen = live?.kind === sheet.kind;
+  // While it can still be claimed, every word follows GRIDGO's latest answer:
+  // an amount changed by Operations moves the title, the ticket and the
+  // button together. Only a finished claim — or one gone — keeps the latch.
+  const offer = live && stillOpen ? live : sheet;
+  const copy = claimCopy(offer);
   const pending = busy === sheet.kind;
 
   return (
@@ -106,7 +110,7 @@ function ClaimSheet({ open }: { open: boolean }) {
     >
       <View className="gap-4 px-4 pt-2" testID="promotion-claim-sheet">
         <OfferTicket
-          offer={live && stillOpen ? live : sheet}
+          offer={offer}
           notchColor={colors.surface}
           showSlots={stillOpen && !claimed}
         />

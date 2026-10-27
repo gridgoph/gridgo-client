@@ -5,7 +5,7 @@ import { Pressable, Text, View } from "react-native";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
-import { ClaimedNotice, InviteFriendCard, RedeemOfferCard } from "@/components/LaunchOfferCards";
+import { ClaimOutcome, InviteFriendCard, RedeemOfferCard } from "@/components/LaunchOfferCards";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { VoucherCodeField } from "@/components/VoucherCodeField";
 import { TicketAction, VoucherTicket } from "@/components/VoucherTicket";
@@ -61,6 +61,8 @@ export default function VouchersScreen() {
   // so read it fresh rather than trust a remembered id.
   useFocusEffect(useCallback(() => void loadCart(), [loadCart]));
   useFocusEffect(read);
+  // A claim's outcome belongs to the visit it happened in.
+  useFocusEffect(useCallback(() => () => usePromotions.getState().clearClaimNotice(), []));
   useWalletOnResume(read);
   useLiveRefresh(["notifications", "identity"], read, { refreshOnFocus: false });
 
@@ -82,7 +84,7 @@ export default function VouchersScreen() {
           and a Founder's invite sits beside the voucher it came with.
         */}
         {offer ? <RedeemOfferCard offer={offer} /> : null}
-        <ClaimedNotice />
+        <ClaimOutcome />
         <InviteFriendCard />
 
         <View className="gg-card gap-3">

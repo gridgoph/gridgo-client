@@ -21,12 +21,13 @@ import { usePromotions, type PromotionNotice } from "@/store/promotions";
 
 /**
  * The Founding 30 or a waiting Friend Pass, ready to redeem — the same offer
- * as the sheet after sign-in, for a client who said "Not now" there.
+ * as the sheet after sign-in, for a client who said "Not now" there. What the
+ * tap came to is `ClaimOutcome`, beside it rather than inside: a refusal such
+ * as "sold out" also takes the offer, and with it this card, away.
  */
 export function RedeemOfferCard({ offer }: { offer: ClaimOffer }) {
   const colors = useThemeColors();
   const busy = usePromotions((s) => s.busy);
-  const notice = usePromotions((s) => s.claimNotice);
   const copy = claimCopy(offer);
   const pending = busy === offer.kind;
 
@@ -39,15 +40,22 @@ export function RedeemOfferCard({ offer }: { offer: ClaimOffer }) {
         disabled={busy != null}
         onPress={() => void usePromotions.getState().claim(offer.kind)}
       />
-      {notice && !notice.ok ? <Notice notice={notice} /> : <Text className="text-caption text-text-muted">{ONE_DISCOUNT_RULE}</Text>}
+      <Text className="text-caption text-text-muted">{ONE_DISCOUNT_RULE}</Text>
     </View>
   );
 }
 
-/** Said once after a claim lands, above the wallet it landed in. */
-export function ClaimedNotice() {
+/**
+ * What the last claim came to — added, or why not — above the wallet. Drawn
+ * whether or not an offer is still open, so the reason outlives the card.
+ */
+export function ClaimOutcome() {
   const notice = usePromotions((s) => s.claimNotice);
-  return notice?.ok ? <Notice notice={notice} /> : null;
+  return notice ? (
+    <View testID="claim-outcome">
+      <Notice notice={notice} />
+    </View>
+  ) : null;
 }
 
 /**

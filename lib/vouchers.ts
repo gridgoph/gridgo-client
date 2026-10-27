@@ -198,6 +198,28 @@ export function coversOrderTotal(voucher: Pick<Voucher, "coversOrderTotal" | "pr
   return Boolean(voucher?.coversOrderTotal || voucher?.promotionKind);
 }
 
+/**
+ * Whether a whole-order launch voucher leaves nothing to pay up front.
+ *
+ * Read from GRIDGO's own quote, never from the total alone: a 75% order can
+ * owe nothing now and still owe its balance later. GRIDGO settles that first
+ * payment with the voucher at checkout, so there is no transfer to send, no
+ * screenshot and no reference — and the API refuses to invent one.
+ */
+export function voucherSettlesUpFront(
+  quote: Pick<CartQuote, "voucher" | "voucherDiscountMinor" | "downpaymentMinor"> | null | undefined,
+): boolean {
+  return voucherDiscountOf(quote) > 0 && coversOrderTotal(quote?.voucher) && quote?.downpaymentMinor === 0;
+}
+
+/** Why checkout asks for no transfer when `voucherSettlesUpFront` holds. */
+export function voucherCoveredLine(name: string, owesLater: boolean): string {
+  const voucherName = name === VOUCHER_LABEL ? "voucher" : name;
+  return owesLater
+    ? `Your ${voucherName} covers what is due now, so there is no transfer, screenshot or reference to send. GRIDGO asks for the rest by QR before delivery.`
+    : `Your ${voucherName} covers the whole order, so there is no transfer, screenshot or reference to send. Place the order and GRIDGO settles it with the voucher.`;
+}
+
 /** What a wallet item is called: its offer's name, or plainly what it is. */
 export function voucherTitle(voucher: Pick<Voucher, "name" | "valueMinor">): string {
   return voucher.name?.trim() || `${formatPhp(voucher.valueMinor)} voucher`;

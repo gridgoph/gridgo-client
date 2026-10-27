@@ -3148,6 +3148,9 @@ export type MatchedOrder = {
     balanceMinor: number;
     downpaymentStatus: string;
     downpaymentPercent?: number;
+    /** `gridgo_voucher` when a whole-order launch voucher settled it at checkout. */
+    downpaymentMethod?: string;
+    downpaymentConfirmationSource?: string | null;
   };
   jobs: MatchedJob[];
   invoiceNumber: string;
@@ -3788,17 +3791,22 @@ export async function setCartLineMockup(
  * QR Ph only, and the reference and the receipt screenshot go with it — the
  * payment is submitted, never confirmed, because Operations matches it against
  * the GRIDGO wallet by hand. The order comes back waiting for Operations QA.
+ *
+ * `payment` is null only when a whole-order launch voucher leaves nothing to
+ * pay up front (the quote's `downpaymentMinor` is 0): GRIDGO then settles the
+ * first payment with the voucher and refuses neither a reference nor proof,
+ * because there is no transfer to evidence.
  */
 export async function checkoutCart(
   cartId: string,
-  payment: { reference: string; proofFileId: string },
+  payment: { reference: string; proofFileId: string } | null,
   artworkRights?: ArtworkRightsBody | null,
   approval?: ApprovalBody | null,
 ): Promise<{ order: MatchedOrder; invoice: Invoice; basket?: Basket }> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
     method: "POST",
     body: JSON.stringify({
-      payment: { method: "qr_manual", ...payment },
+      ...(payment ? { payment: { method: "qr_manual", ...payment } } : {}),
       // GRIDGO records the rights statement against every order the basket
       // becomes, so it rides on checkout rather than on the upload.
       ...(artworkRights
@@ -3988,6 +3996,12 @@ export type PromotionInvite = {
   friendEmail?: string;
   clientId: string | null;
   status: PromotionInviteStatus;
+  /**
+   * Why a still-`invited` pass has not reached anyone. `no_client_account` is
+   * the usual wait; `account_already_attributed` means that friend's account
+   * already took another Founder's invite, so this one never will.
+   */
+  unmatchedReason?: string | null;
   createdAt: string;
   claimedAt: string | null;
   valueMinor: number | null;

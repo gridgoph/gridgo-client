@@ -1,4 +1,4 @@
-import { ApiError } from "@/lib/api";
+import { ApiError, checkoutCart, type CartQuote } from "@/lib/api";
 import {
   claimCopy,
   claimOffer,
@@ -12,8 +12,9 @@ import {
   surveyRewardAmount,
 } from "@/lib/promotions";
 import { pushTargetRoute } from "@/lib/push";
+import { receiptFromCheckout, receiptPaymentLine } from "@/lib/receipt";
 import { rewardBadge } from "@/lib/survey";
-import { appliedNote, voucherRuleLine } from "@/lib/vouchers";
+import { appliedNote, voucherCoveredLine, voucherRuleLine, voucherSettlesUpFront } from "@/lib/vouchers";
 import {
   ENDS_AT,
   foundingVoucher,
@@ -23,6 +24,7 @@ import {
   promotions,
 } from "@/test/promotionFixtures";
 import { voucher } from "@/test/voucherFixtures";
+import { placed } from "@/test/voucherPlaceHarness";
 
 describe("what a client can claim", () => {
   it("offers the Founding 30 while GRIDGO says it is claimable and slots remain", () => {
@@ -90,6 +92,14 @@ describe("a Founder's invite", () => {
     expect(inviteStatus(invite({ status: "claimed" })).line).toBe("ana@example.com claimed their Friend Pass.");
     expect(inviteStatus(invite({ status: "used" })).line).toBe("ana@example.com used their Friend Pass on an order.");
     expect(inviteStatus(invite({ status: "expired" })).stage).toBe("ended");
+  });
+
+  it("says so when the friend already took another Founder's invite, rather than promising a sign-in", () => {
+    const taken = inviteStatus(invite({ unmatchedReason: "account_already_attributed" }));
+    expect(taken).toMatchObject({ stage: "ended", label: "Already invited" });
+    expect(taken.line).toBe("ana@example.com was already invited by another Founder, so this Friend Pass cannot reach them.");
+    // The usual wait for someone who has not signed up yet is still a wait.
+    expect(inviteStatus(invite({ unmatchedReason: "no_client_account" })).stage).toBe("invited");
   });
 
   it("frees the invite when the friend was already a Founder, and says so", () => {
@@ -170,6 +180,50 @@ describe("at checkout", () => {
     });
     expect(note).toContain("₱69.00 of this ₱200.00 voucher applies here, because that is the whole order.");
     expect(note).not.toContain("GRIDGO charges");
+  });
+});
+
+describe("when a launch voucher leaves nothing to pay now", () => {
+  const quote = (over: Partial<CartQuote>): Pick<CartQuote, "voucher" | "voucherDiscountMinor" | "downpaymentMinor"> => ({
+    voucher: foundingVoucher,
+    voucherDiscountMinor: 6900,
+    downpaymentMinor: 0,
+    ...over,
+  });
+
+  it("reads GRIDGO's own figure for what is due now, never the total", () => {
+    expect(voucherSettlesUpFront(quote({}))).toBe(true);
+    // A 75% order: nothing now, a balance later. Still nothing to send.
+    expect(voucherSettlesUpFront(quote({ downpaymentMinor: 0 }))).toBe(true);
+    expect(voucherSettlesUpFront(quote({ downpaymentMinor: 4900 }))).toBe(false);
+    // Unpriced is not zero.
+    expect(voucherSettlesUpFront(quote({ downpaymentMinor: null }))).toBe(false);
+  });
+
+  it("needs a whole-order voucher actually taking something off", () => {
+    expect(voucherSettlesUpFront(quote({ voucher: voucher() }))).toBe(false);
+    expect(voucherSettlesUpFront(quote({ voucherDiscountMinor: 0 }))).toBe(false);
+    expect(voucherSettlesUpFront(null)).toBe(false);
+  });
+
+  it("says why nothing is asked, and that a balance still comes", () => {
+    expect(voucherCoveredLine("Founding 30", false)).toContain("Your Founding 30 covers the whole order");
+    expect(voucherCoveredLine("Voucher", false)).toContain("Your voucher covers");
+    expect(voucherCoveredLine("Friend Pass", true)).toContain("GRIDGO asks for the rest by QR before delivery.");
+  });
+
+  it("sends no payment at all, and the slip says the voucher settled it", async () => {
+    const fetchMock = global.fetch as jest.Mock;
+    fetchMock.mockImplementationOnce(async () => ({ ok: true, status: 200, text: async () => JSON.stringify(placed()) }));
+    await checkoutCart("cart_1", null, null, null);
+    const body = JSON.parse(fetchMock.mock.calls.at(-1)[1].body);
+    expect(body).not.toHaveProperty("payment");
+
+    const { order, invoice } = placed();
+    const slip = receiptFromCheckout(invoice, order, "");
+    expect(slip?.paymentStatus).toBe("voucher");
+    expect(receiptPaymentLine(slip!)).toBe("Covered in full by your voucher");
+    expect(receiptPaymentLine({ paidInFull: false, paymentStatus: "voucher" })).toBe("Downpayment covered by your voucher");
   });
 });
 

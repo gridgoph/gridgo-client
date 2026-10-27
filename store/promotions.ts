@@ -4,6 +4,7 @@ import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
   claimedLine,
+  claimOffer,
   emailProblem,
   promotionErrorMessage,
   type ClaimKind,
@@ -47,10 +48,31 @@ type PromotionsState = {
   dismissSheet: () => void;
   /** Closes the sheet without remembering anything (claimed, or signed out). */
   closeSheet: () => void;
+  /** Forgets what the last claim came to, once the screen saying it is left. */
+  clearClaimNotice: () => void;
   reset: () => void;
 };
 
+/**
+ * The open sheet's offer as GRIDGO now states it, so a claim made from it is
+ * remembered at the amount actually claimed. An offer that has gone keeps
+ * the latch: the sheet still has to say what it was.
+ */
+function latest(sheet: ClaimOffer | null, data: api.Promotions): ClaimOffer | null {
+  const live = claimOffer(data);
+  return sheet && live?.kind === sheet.kind ? live : sheet;
+}
+
+/** Bumped on account change: nothing started for the last person lands. */
 let generation = 0;
+/**
+ * Every read and mutation takes a ticket; a read lands only if no newer
+ * answer has. A claim or invite raises the floor when it starts and again
+ * when it answers, so a `GET` that left before the claim landed — and so
+ * still says "claimable", "no invite" — can never undo it.
+ */
+let issued = 0;
+let floor = 0;
 
 export const usePromotions = create<PromotionsState>()((set, get) => ({
   data: null,
@@ -64,13 +86,23 @@ export const usePromotions = create<PromotionsState>()((set, get) => ({
 
   load: async () => {
     const mine = generation;
+    const ticket = ++issued;
     set({ loading: true });
+    // False once a newer read, claim or invite has answered: this answer is
+    // older news, and only the newest read still owns the spinner.
+    const current = () => {
+      if (mine !== generation) return false;
+      if (ticket > floor) return true;
+      if (ticket === issued) set({ loading: false });
+      return false;
+    };
     try {
       const data = await api.getPromotions();
-      if (mine !== generation) return;
-      set({ data, loading: false, error: null });
+      if (!current()) return;
+      floor = ticket;
+      set((state) => ({ data, loading: false, error: null, sheet: latest(state.sheet, data) }));
     } catch (error) {
-      if (mine !== generation) return;
+      if (!current()) return;
       set({ loading: false, error: userFacingError(error, "GRIDGO could not load its launch offers.") });
     }
   },
@@ -78,10 +110,12 @@ export const usePromotions = create<PromotionsState>()((set, get) => ({
   claim: async (kind) => {
     if (get().busy) return false;
     const mine = generation;
+    floor = ++issued;
     set({ busy: kind, claimNotice: null });
     try {
       const data = kind === "founding" ? await api.claimFoundingVoucher() : await api.claimFriendPass();
       if (mine !== generation) return false;
+      floor = ++issued;
       const voucher = kind === "founding" ? data.founding.voucher : data.friendPass.voucher;
       set({
         data,
@@ -116,10 +150,12 @@ export const usePromotions = create<PromotionsState>()((set, get) => ({
     }
     const email = raw.trim().toLowerCase();
     const mine = generation;
+    floor = ++issued;
     set({ busy: "invite", inviteNotice: null });
     try {
       const data = await api.inviteFriendPass(email);
       if (mine !== generation) return false;
+      floor = ++issued;
       set({
         data,
         busy: null,
@@ -148,6 +184,7 @@ export const usePromotions = create<PromotionsState>()((set, get) => ({
       dismissed: state.sheet ? [...new Set([...state.dismissed, state.sheet.kind])] : state.dismissed,
     })),
   closeSheet: () => set({ sheet: null }),
+  clearClaimNotice: () => set({ claimNotice: null }),
 
   reset: () => {
     generation++;
