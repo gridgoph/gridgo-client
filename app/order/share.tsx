@@ -40,7 +40,30 @@ import { useOrderShare, type ShareNotice } from "@/store/orderShare";
 async function prepareCard(orderId: string, liveRef: { current: boolean }) {
   const prepared = await useOrderShare.getState().prepare(orderId);
   if (!liveRef.current) return;
-  useOrderShare.getState().setSheet(prepared ? { prepared: true } : { prepareFailed: true });
+  useOrderShare.getState().setSheet(prepared ? { prepared } : { prepareFailed: true });
+}
+
+/**
+ * Answers an automatic card once. GRIDGO only takes an answer to a card it
+ * was told is showing, so one closed while it was still getting ready is
+ * reported shown first: the card was on screen, and dropping the answer would
+ * lose the one repeat Maybe later promises. The queue sends them in order.
+ */
+function answerCard(
+  orderId: string,
+  presentation: SharePresentation,
+  action: "maybe_later" | "close",
+  shownRef: { current: boolean },
+  settledRef: { current: boolean },
+) {
+  if (!recordsCard(presentation) || settledRef.current) return;
+  settledRef.current = true;
+  const store = useOrderShare.getState();
+  if (!shownRef.current) {
+    shownRef.current = true;
+    void store.recordCard(orderId, presentation, "shown");
+  }
+  void store.recordCard(orderId, presentation, action);
 }
 
 /** Room the title, the buttons and the margins need beside the picture. */
@@ -87,8 +110,9 @@ function sentForSure(outcome: ShareOutcome): boolean {
  * Nothing here is a reward, and nothing waits on GRIDGO to let the client go.
  *
  * The picture is drawn, and Share offered, only once this opening's
- * `prepare` has answered: before that a cached read may not carry the invite
- * code yet, and a story without the client's invite is not theirs to post.
+ * `prepare` has answered, and from that answer alone: a cached read, or an
+ * older one landing late, may not carry the invite code yet, and a story
+ * without the client's invite is not theirs to post.
  */
 export default function OrderShareScreen() {
   const params = useLocalSearchParams<{ orderId: string; presentation?: string }>();
@@ -99,20 +123,20 @@ export default function OrderShareScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
 
-  const share = useOrderShare((state) => state.shares[orderId]);
   const error = useOrderShare((state) => state.errors[orderId] ?? null);
 
   const svgRef = useRef<Svg>(null);
-  /** The card's `shown` went to GRIDGO; leaving after that is an answer to it. */
+  /** The card's `shown` is queued for GRIDGO. */
   const shownRef = useRef(false);
   /** An answer (Maybe later, or a share that closed it) has gone already. */
   const settledRef = useRef(false);
-  const { prepared, prepareFailed, busy, finished, notice } = useOrderShare((state) => state.sheet);
+  const { prepared: share, prepareFailed, busy, finished, notice } = useOrderShare((state) => state.sheet);
   /** This opening is still on screen: a late `prepare` answer for a closed card is ignored. */
   const liveRef = useRef(false);
   const setSheet = useOrderShare((state) => state.setSheet);
 
   const auto = recordsCard(presentation) ? presentation : null;
+  const answer = (action: "maybe_later" | "close") => answerCard(orderId, presentation, action, shownRef, settledRef);
 
   // On screen: other moments wait. Off screen without an answer: Maybe later.
   useEffect(() => {
@@ -125,14 +149,11 @@ export default function OrderShareScreen() {
       liveRef.current = false;
       const current = useOrderShare.getState();
       if (current.presenting?.orderId === orderId) current.setPresenting(null);
-      if (auto && shownRef.current && !settledRef.current) {
-        settledRef.current = true;
-        void current.recordCard(orderId, auto, "maybe_later");
-      }
+      answerCard(orderId, presentation, "maybe_later", shownRef, settledRef);
     };
-  }, [orderId, presentation, auto]);
+  }, [orderId, presentation]);
 
-  const ready = prepared && Boolean(share?.available);
+  const ready = Boolean(share?.available);
   useEffect(() => {
     if (!auto || !ready || shownRef.current) return;
     shownRef.current = true;
@@ -145,20 +166,14 @@ export default function OrderShareScreen() {
   };
 
   const putOff = () => {
-    if (auto && shownRef.current && !settledRef.current) {
-      settledRef.current = true;
-      void useOrderShare.getState().recordCard(orderId, auto, "maybe_later");
-    }
+    answer("maybe_later");
     leave();
   };
 
   /** A share went out: the automatic card is answered for good. */
   const closeForGood = () => {
     setSheet({ finished: true });
-    if (auto && shownRef.current && !settledRef.current) {
-      settledRef.current = true;
-      void useOrderShare.getState().recordCard(orderId, auto, "close");
-    }
+    answer("close");
   };
 
   const run = async (action: "share" | "send_to_friend") => {
@@ -222,13 +237,13 @@ export default function OrderShareScreen() {
             <View className="overflow-hidden rounded-card border border-outline" testID="share-story">
               <ShareStoryImage ref={svgRef} share={share} width={previewWidth} />
             </View>
-          ) : prepareFailed || (prepared && !share?.available) ? (
+          ) : prepareFailed || (share && !share.available) ? (
             <View className="w-full">
               <ErrorState
                 label="Share card not ready"
                 body={error ?? SHARE_LOAD_FAILED}
                 onRetry={() => {
-                  setSheet({ prepareFailed: false, prepared: false });
+                  setSheet({ prepareFailed: false, prepared: null });
                   void prepareCard(orderId, liveRef);
                 }}
               />

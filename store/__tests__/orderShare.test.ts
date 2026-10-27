@@ -25,6 +25,22 @@ describe("share card store", () => {
     expect(useOrderShare.getState().shares[ORDER].card.showFromOrder).toBe(true);
   });
 
+  it("keeps a newer answer when an older read lands after it", async () => {
+    const prepared = orderShare();
+    const unprepared = orderShare({ inviteCode: null, inviteLink: null });
+    let olderRead: (read: api.OrderShareRead) => void = () => undefined;
+    jest.spyOn(api, "getOrderShare").mockReturnValue(new Promise((resolve) => (olderRead = resolve)));
+    jest.spyOn(api, "prepareOrderShare").mockResolvedValue(shareRead(prepared));
+
+    const older = useOrderShare.getState().load(ORDER);
+    await useOrderShare.getState().prepare(ORDER);
+    olderRead(shareRead(unprepared));
+    await older;
+
+    expect(useOrderShare.getState().shares[ORDER].inviteCode).toBe(prepared.inviteCode);
+    expect(useOrderShare.getState().status[ORDER]).toBe("ready");
+  });
+
   it("lets the card close even when GRIDGO cannot be reached", async () => {
     jest.spyOn(api, "recordShareCard").mockRejectedValue(new TypeError("Network request failed"));
     await expect(useOrderShare.getState().recordCard(ORDER, "order_repeat", "maybe_later")).resolves.toBeUndefined();

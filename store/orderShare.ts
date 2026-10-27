@@ -35,8 +35,11 @@ export type ShareNotice = { tone: "ok" | "error"; text: string };
 
 /** The card on screen: whether a share is opening, has gone out, and what it left to say. */
 export type ShareSheet = {
-  /** `prepare` answered for this opening: only then is the invite on the picture GRIDGO's own. */
-  prepared: boolean;
+  /**
+   * `prepare`'s answer for this opening. The card draws and shares this
+   * answer, never the per-order cache another read may replace.
+   */
+  prepared: api.OrderShare | null;
   /** `prepare` failed for this opening; a cached answer is not shared in its place. */
   prepareFailed: boolean;
   busy: boolean;
@@ -44,7 +47,7 @@ export type ShareSheet = {
   notice: ShareNotice | null;
 };
 
-const IDLE_SHEET: ShareSheet = { prepared: false, prepareFailed: false, busy: false, finished: false, notice: null };
+const IDLE_SHEET: ShareSheet = { prepared: null, prepareFailed: false, busy: false, finished: false, notice: null };
 
 type OrderShareState = {
   /** GRIDGO's last answer per order. In memory only: the card flags move on GRIDGO's side. */
@@ -102,6 +105,9 @@ type OrderShareState = {
 };
 
 let generation = 0;
+/** Each share request is numbered as it starts; an answer older than the one already adopted is dropped. */
+let requestCount = 0;
+let newestAdopted: Record<string, number> = {};
 /** Taps on the wire now, so a flush never sends one twice at once. */
 const inFlight = new Set<string>();
 /** Card-event passes run one after another, so two events can never race each other. */
@@ -119,23 +125,28 @@ function ownerId(): string | null {
 export const useOrderShare = create<OrderShareState>()(
   persist(
     (set, get) => {
-      const adopt = (orderId: string, read: api.OrderShareRead) =>
+      /** Keeps an answer unless a request that started after it has answered already. */
+      const adopt = (orderId: string, read: api.OrderShareRead, startedAt: number) => {
+        if (startedAt < (newestAdopted[orderId] ?? 0)) return;
+        newestAdopted = { ...newestAdopted, [orderId]: startedAt };
         set((state) => ({
           shares: { ...state.shares, [orderId]: read.share },
           status: { ...state.status, [orderId]: "ready" },
           errors: { ...state.errors, [orderId]: null },
         }));
+      };
 
       const read = async (orderId: string, call: (id: string) => Promise<api.OrderShareRead>) => {
         const mine = generation;
+        const startedAt = ++requestCount;
         set((state) => ({ status: { ...state.status, [orderId]: state.shares[orderId] ? state.status[orderId] ?? "ready" : "loading" } }));
         try {
           const answer = await call(orderId);
           if (mine !== generation) return null;
-          adopt(orderId, answer);
+          adopt(orderId, answer, startedAt);
           return answer.share;
         } catch (error) {
-          if (mine !== generation) return null;
+          if (mine !== generation || startedAt < (newestAdopted[orderId] ?? 0)) return null;
           set((state) => ({
             status: { ...state.status, [orderId]: "error" },
             errors: { ...state.errors, [orderId]: shareErrorMessage(error) },
@@ -147,9 +158,10 @@ export const useOrderShare = create<OrderShareState>()(
       const send = async (tap: PendingShareTap) => {
         if (inFlight.has(tap.eventId)) return;
         inFlight.add(tap.eventId);
+        const startedAt = ++requestCount;
         try {
           const answer = await api.recordShareTap(tap.orderId, tap.eventId, tap.action);
-          if (ownerId() === tap.ownerId) adopt(tap.orderId, answer);
+          if (ownerId() === tap.ownerId) adopt(tap.orderId, answer, startedAt);
           set((state) => ({ pendingTaps: state.pendingTaps.filter((item) => item.eventId !== tap.eventId) }));
         } catch (error) {
           // A refusal that cannot change (a conflict, an order no longer
@@ -172,9 +184,10 @@ export const useOrderShare = create<OrderShareState>()(
           const head = owner ? get().pendingCards.find((event) => event.ownerId === owner) : undefined;
           if (!head) return;
           const mine = generation;
+          const startedAt = ++requestCount;
           try {
             const answer = await api.recordShareCard(head.orderId, head.presentation, head.action);
-            if (mine === generation) adopt(head.orderId, answer);
+            if (mine === generation) adopt(head.orderId, answer, startedAt);
           } catch (error) {
             // Lost on the way: keep it, and everything after it, for the next flush.
             if (!refusalIsFinal(error)) return;
@@ -259,6 +272,7 @@ export const useOrderShare = create<OrderShareState>()(
 
         reset: () => {
           generation++;
+          newestAdopted = {};
           // Unconfirmed taps and card events stay: each belongs to its own
           // account and is only resent while that account is signed in.
           set({ shares: {}, status: {}, errors: {}, putOff: {}, hold: null, presenting: null, sheet: IDLE_SHEET });
