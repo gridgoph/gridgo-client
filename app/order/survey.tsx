@@ -63,6 +63,7 @@ import {
 import { VOUCHERS_ROUTE, exactTime } from "@/lib/vouchers";
 import { surveyRewardAmount } from "@/lib/promotions";
 import { usePromotions } from "@/store/promotions";
+import { useOrderShare } from "@/store/orderShare";
 import { useSurvey } from "@/store/survey";
 
 /**
@@ -129,6 +130,27 @@ export default function OrderSurveyScreen() {
       if (orderId) void load(orderId);
     }, [orderId, load]),
   );
+
+  /*
+    A sent survey is when GRIDGO may offer the share card (gridgo-client#341).
+    Other moments wait while it is decided, so the Founding Tester celebration
+    a survey can earn never lands on top of it; the card is pushed over the
+    thank-you, which is where closing it returns to.
+  */
+  const send = async () => {
+    const share = useOrderShare.getState();
+    share.holdForSurvey(orderId);
+    try {
+      if (!(await submit(orderId))) return;
+      const prepared = await share.prepare(orderId);
+      if (prepared?.available && prepared.card.showAfterSurvey) {
+        share.setPresenting({ orderId, presentation: "after_survey" });
+        router.push({ pathname: "/order/share", params: { orderId, presentation: "after_survey" } });
+      }
+    } finally {
+      share.release(orderId);
+    }
+  };
 
   const leave = () => {
     if (router.canGoBack()) router.back();
@@ -262,7 +284,7 @@ export default function OrderSurveyScreen() {
           ) : null}
           <PrimaryButton
             label={busy === "submitting" ? "Sending…" : "Send answers"}
-            onPress={() => void submit(orderId)}
+            onPress={() => void send()}
             disabled={!ready || busy != null}
           />
           <Pressable

@@ -17,12 +17,14 @@ type DateTimePickerNative = typeof import("@react-native-community/datetimepicke
 type FileSystemLegacyNative = typeof import("expo-file-system/legacy");
 type MediaLibraryNative = typeof import("expo-media-library/legacy");
 type LocationNative = typeof import("expo-location");
+type SharingNative = typeof import("expo-sharing");
 
 let documentPickerNative: DocumentPickerNative | null | undefined;
 let dateTimePickerNative: DateTimePickerNative | null | undefined;
 let fileSystemLegacyNative: FileSystemLegacyNative | null | undefined;
 let mediaLibraryNative: MediaLibraryNative | null | undefined;
 let locationNative: LocationNative | null | undefined;
+let sharingNative: SharingNative | null | undefined;
 
 export const FILE_PICKER_NEEDS_REBUILD =
   "Choosing a file needs a rebuilt GRIDGO app on this phone. Everything else on this screen still works.";
@@ -175,6 +177,23 @@ export function getLocationNative(): LocationNative | null {
     return locationNative;
   } catch {
     locationNative = null;
+    return null;
+  }
+}
+
+/** expo-sharing: the share sheet for a file. Absent from an APK built before it was added. */
+export function getSharingNative(): SharingNative | null {
+  if (sharingNative !== undefined) return sharingNative;
+  if (!inJest() && !optionalNative("ExpoSharing")) {
+    sharingNative = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    sharingNative = require("expo-sharing") as SharingNative;
+    return sharingNative;
+  } catch {
+    sharingNative = null;
     return null;
   }
 }

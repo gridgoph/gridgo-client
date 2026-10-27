@@ -493,6 +493,15 @@ function AppNavigation() {
                   the reward meter and "Send".
                 */}
                 <Stack.Screen name="order/survey" options={pushedScreenOptions("Order survey")} />
+                {/*
+                  "Share your GRIDGO moment" (gridgo-client#341): the story
+                  picture fills the screen, so it owns its top edge and its own
+                  close control. The back gesture closes it like the cross.
+                */}
+                <Stack.Screen
+                  name="order/share"
+                  options={{ headerShown: false, title: "Share", presentation: "fullScreenModal", animation: "slide_from_bottom" }}
+                />
                 <Stack.Screen
                   name="design-system"
                   options={pushedScreenOptions("Design system")}

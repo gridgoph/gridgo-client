@@ -8,6 +8,7 @@ import { useNotifications } from "@/store/notifications";
 import { useVouchers } from "@/store/vouchers";
 import { usePromotions } from "@/store/promotions";
 import { useSurvey } from "@/store/survey";
+import { useOrderShare } from "@/store/orderShare";
 import { useCheckoutExit } from "@/store/checkoutExit";
 import { useFoundingTester } from "@/store/foundingTester";
 import { useOrderRanking } from "@/store/orderRanking";
@@ -389,6 +390,7 @@ useSession.subscribe((state, previous) => {
   // A new sign-in brings the claim sheet back while there is one to claim.
   usePromotions.getState().reset();
   useSurvey.getState().reset();
+  useOrderShare.getState().reset();
   useCheckoutExit.getState().reset();
   useFoundingTester.getState().resetAccount();
   // The installation goes with every account that signs in on it. Invites

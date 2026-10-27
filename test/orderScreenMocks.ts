@@ -31,6 +31,11 @@ export function orderScreenApiMock() {
     // No post-order survey unless a test gives one (gridgo-api SURVEY_API.md).
     getOrderSurvey: jest.fn(async () => ({ serverTime: new Date().toISOString(), survey: null })),
     dismissOrderSurvey: jest.fn(),
+    // Nothing to share unless a test gives it (gridgo-api SHARING_AND_REMINDERS_API.md).
+    getOrderShare: jest.fn(async () => { throw new Error("not in this test"); }),
+    prepareOrderShare: jest.fn(async () => { throw new Error("not in this test"); }),
+    recordShareCard: jest.fn(async () => { throw new Error("not in this test"); }),
+    recordShareTap: jest.fn(async () => { throw new Error("not in this test"); }),
     // "Track your order" (gridgo-api FOUNDING_TESTER_API.md): only for an eligible client.
     acknowledgeTesterTracking: jest.fn(async () => { throw new Error("not in this test"); }),
   };
