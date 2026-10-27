@@ -29,6 +29,7 @@ import { BrandIntro } from "@/components/BrandIntro";
 import { CallOverlay } from "@/components/call/CallOverlay";
 import { CheckoutExitQuestion } from "@/components/CheckoutExitQuestion";
 import { FoundingTesterCelebration } from "@/components/FoundingTesterCelebration";
+import { PromotionClaimSheet } from "@/components/PromotionClaimSheet";
 import { PushExplainerSheet } from "@/components/PushExplainerSheet";
 import { SessionShell } from "@/components/SessionShell";
 import { TourOverlay } from "@/components/TourOverlay";
@@ -579,6 +580,8 @@ function AppNavigation() {
             <AppUpdateSheet ready={!introPlaying && fontsReady} />
             {/* Waits behind the update prompt too; it checks that itself. */}
             <PushExplainerSheet ready={!introPlaying && fontsReady} />
+            {/* The Founding 30 / Friend Pass claim: after both prompts above, ahead of the tour. */}
+            <PromotionClaimSheet ready={!introPlaying && fontsReady} />
             {/* The first-order tour. Waits behind both prompts; it checks that itself. */}
             <TourOverlay ready={!introPlaying && fontsReady} />
             {/* "What stopped you from ordering?": last in line, behind every prompt above. */}

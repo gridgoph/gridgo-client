@@ -5,6 +5,7 @@ import { Pressable, Text, View } from "react-native";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
+import { ClaimedNotice, InviteFriendCard, RedeemOfferCard } from "@/components/LaunchOfferCards";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { VoucherCodeField } from "@/components/VoucherCodeField";
 import { TicketAction, VoucherTicket } from "@/components/VoucherTicket";
@@ -19,14 +20,17 @@ import {
   walletTab,
   type WalletTab,
 } from "@/lib/vouchers";
+import { claimOffer } from "@/lib/promotions";
 import { cartIsOpen, useCart } from "@/store/cart";
+import { usePromotions } from "@/store/promotions";
 import { useVouchers } from "@/store/vouchers";
 
 /**
  * Account → Vouchers: the wallet (gridgo-api#204).
  *
- * Code entry first, because the person most likely to open this screen with
- * nothing in it is a tester holding a code. Then the vouchers, by where they
+ * An unclaimed launch offer first, then a Founder's friend invite, then code
+ * entry, because the person most likely to open this screen with nothing in
+ * it is a tester holding a code. Then the vouchers, by where they
  * stand — Available, Used, Expired — soonest to expire first, each a ticket
  * with its exact expiry and a live countdown. "Use now" does not spend
  * anything: it opens the order the voucher will come off, where GRIDGO
@@ -45,13 +49,20 @@ export default function VouchersScreen() {
   const [tab, setTab] = useState<WalletTab>("available");
   const now = useServerNow(30_000);
 
-  const read = useCallback(() => void load(), [load]);
+  const promotions = usePromotions((state) => state.data);
+  const loadPromotions = usePromotions((state) => state.load);
+  const offer = claimOffer(promotions);
+
+  const read = useCallback(() => {
+    void load();
+    void loadPromotions();
+  }, [load, loadPromotions]);
   // "Use now" decides between checkout and a new job on what is in the basket,
   // so read it fresh rather than trust a remembered id.
   useFocusEffect(useCallback(() => void loadCart(), [loadCart]));
   useFocusEffect(read);
   useWalletOnResume(read);
-  useLiveRefresh(["notifications"], load, { refreshOnFocus: false });
+  useLiveRefresh(["notifications", "identity"], read, { refreshOnFocus: false });
 
   const vouchers = list ? walletTab(list.vouchers, tab, now) : [];
   const counts = Object.fromEntries(
@@ -65,6 +76,15 @@ export default function VouchersScreen() {
   return (
     <FormScreen>
       <View className="gg-page gap-6 pb-10 pt-4">
+        {/*
+          The launch offers lead (gridgo-api#315): an unclaimed Founding 30 or
+          Friend Pass is the one thing on this screen worth acting on first,
+          and a Founder's invite sits beside the voucher it came with.
+        */}
+        {offer ? <RedeemOfferCard offer={offer} /> : null}
+        <ClaimedNotice />
+        <InviteFriendCard />
+
         <View className="gg-card gap-3">
           <VoucherCodeField
             label="Have a voucher code?"

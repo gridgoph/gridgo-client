@@ -225,8 +225,13 @@ function deliveryStamp(state: string | undefined): string | null {
   return null;
 }
 
-function surveyCallout(at: string, rewardEligible: boolean | null, rewardProgram: string | null): NotificationCallout | null {
-  const callout = surveyNotificationCallout(at, rewardEligible, Date.now(), rewardProgram);
+function surveyCallout(
+  at: string,
+  rewardEligible: boolean | null,
+  rewardProgram: string | null,
+  rewardMinor: number | undefined,
+): NotificationCallout | null {
+  const callout = surveyNotificationCallout(at, rewardEligible, Date.now(), rewardProgram, rewardMinor);
   // The ticket is the voucher's glyph; a plain invitation does not borrow it.
   return callout ? { tone: "info", icon: rewardEligible === true ? "ticket" : "star", ...callout } : null;
 }
@@ -540,11 +545,13 @@ export type PresentOptions = {
   surveyRewardEligible?: boolean | null;
   /** The survey's `rewardProgram` as last read: a Founding Tester survey names no amount. */
   surveyRewardProgram?: string | null;
+  /** Today's survey reward amount (`rewards.surveyMinor`); the default when unread. */
+  surveyRewardMinor?: number;
 };
 
 export function presentNotification(
   notification: Notification,
-  { showServiceFee = false, applicationNoticeId = null, surveyRewardEligible = null, surveyRewardProgram = null }: PresentOptions = {},
+  { showServiceFee = false, applicationNoticeId = null, surveyRewardEligible = null, surveyRewardProgram = null, surveyRewardMinor }: PresentOptions = {},
 ): PresentedNotification {
   const applicationAsk = notification.type === "approval_rejected" && notification.id === applicationNoticeId;
   const eventState = notification.eventState ?? notification.orderState;
@@ -627,7 +634,7 @@ export function presentNotification(
     callout: applicationAsk
       ? APPLICATION_SENT_BACK_CALLOUT
       : isSurveyNotification(notification.type)
-        ? surveyCallout(notification.at, surveyRewardEligible, surveyRewardProgram)
+        ? surveyCallout(notification.at, surveyRewardEligible, surveyRewardProgram, surveyRewardMinor)
         : calloutFor(notification, hold, collectReady),
   };
 }

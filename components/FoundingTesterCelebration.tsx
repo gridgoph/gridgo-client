@@ -27,6 +27,7 @@ import { VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { useAppUpdate } from "@/store/appUpdate";
 import { useCheckoutExit } from "@/store/checkoutExit";
 import { useFoundingTester, useInstallationSettled } from "@/store/foundingTester";
+import { usePromotions } from "@/store/promotions";
 import { usePushPrompt } from "@/store/pushPrompt";
 import { useSession } from "@/store/session";
 
@@ -61,6 +62,7 @@ export function FoundingTesterCelebration({ ready }: { ready: boolean }) {
   const pushPrompt = usePushPrompt((s) => s.open);
   const updatePrompt = useAppUpdate((s) => s.promptOpen || s.completed !== null);
   const exitQuestion = useCheckoutExit((s) => s.open);
+  const claimSheet = usePromotions((s) => s.sheet != null);
   const tour = useVisibleTourStep();
   const tourShowing = tour.step != null && tour.progress?.status === "active";
 
@@ -68,7 +70,7 @@ export function FoundingTesterCelebration({ ready }: { ready: boolean }) {
   const view = foundingTesterView(user);
   const due = celebrationDue(userId, view, celebrated, seenOpen);
   const clear =
-    ready && hydrated && onScreen && installationSettled && !pushPrompt && !updatePrompt && !exitQuestion && !tourShowing;
+    ready && hydrated && onScreen && installationSettled && !pushPrompt && !updatePrompt && !exitQuestion && !claimSheet && !tourShowing;
 
   // What this installation has seen of the account, once its memory is back:
   // an award already there on first sight is history, never celebrated.

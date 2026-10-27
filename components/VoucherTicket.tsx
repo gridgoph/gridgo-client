@@ -21,7 +21,7 @@ import {
   type VoucherState,
 } from "@/lib/vouchers";
 
-const NOTCH = 16;
+export const NOTCH = 16;
 
 /**
  * One voucher, drawn as what it is: a tear-off ticket.
@@ -167,7 +167,7 @@ function StateChip({ state, tone, remaining }: { state: VoucherState; tone: Expi
  * of, and on Android it measured itself against the screen: one voucher became
  * a card running to the bottom of the page.
  */
-function Perforation() {
+export function Perforation() {
   const colors = useThemeColors();
   return (
     <View className="w-px self-stretch" aria-hidden>
@@ -187,7 +187,7 @@ function Perforation() {
   );
 }
 
-function Notch({ left, top, bottom, color }: { left: number; top?: number; bottom?: number; color: string }) {
+export function Notch({ left, top, bottom, color }: { left: number; top?: number; bottom?: number; color: string }) {
   return (
     <View
       pointerEvents="none"

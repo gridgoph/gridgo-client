@@ -12,6 +12,7 @@ import {
   checkoutCandidates,
   checkoutVoucherView,
   countdownLabel,
+  coversOrderTotal,
   exactTime,
   expiryTone,
   msLeft,
@@ -184,7 +185,7 @@ export function CheckoutVoucher({ cartId, quote, isOrganization, showServiceFee,
         </Text>
       ) : null}
 
-      {view.kind !== "none" ? <Text className="text-caption text-text-muted">{voucherRuleLine(showServiceFee)}</Text> : null}
+      {view.kind !== "none" ? <Text className="text-caption text-text-muted">{voucherRuleLine(showServiceFee, view.kind === "applied" && coversOrderTotal(view.voucher))}</Text> : null}
     </View>
   );
 }

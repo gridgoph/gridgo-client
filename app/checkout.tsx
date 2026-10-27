@@ -137,6 +137,7 @@ import { useIsApprovedOrganization } from "@/store/organization";
 import { useNotificationNudge } from "@/store/notificationNudge";
 import { useVouchers } from "@/store/vouchers";
 import { voucherDiscountOf, voucherErrorMessage } from "@/lib/vouchers";
+import { discountLineLabel } from "@/lib/promotions";
 import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
 import {
   approvalDevice,
@@ -1392,7 +1393,7 @@ export default function CheckoutScreen() {
             {/* Already out of the total GRIDGO sends (#166): drawn, never subtracted. */}
             <OrganizationDiscountRow source={cart?.clientQuote} />
             {/* Already out of the total too (gridgo-api#204); the two never stack. */}
-            <VoucherDiscountRow source={cart?.clientQuote} />
+            <VoucherDiscountRow source={cart?.clientQuote} label={discountLineLabel(cart?.clientQuote?.voucher)} />
 
             <View className="gg-divider my-2" />
 

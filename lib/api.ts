@@ -3905,6 +3905,15 @@ export type Voucher = {
    * this same voucher and never makes another.
    */
   code?: string | null;
+  /**
+   * A launch voucher (gridgo-api `docs/VOUCHERS_API.md#launch-promotions`):
+   * the Founding 30 or a Friend Pass. Absent on every other voucher.
+   */
+  promotionKind?: "founding" | "friend_pass" | (string & {});
+  /** True when it comes off the whole order — printing and delivery — not only GRIDGO's charges. */
+  coversOrderTotal?: boolean;
+  /** When GRIDGO raised a Friend Pass to the Founding amount; null otherwise. */
+  upgradedAt?: string | null;
 };
 
 /** The voucher as an order or invoice snapshotted it. */
@@ -3914,6 +3923,8 @@ export type VoucherLine = {
   label?: string;
   fundedBy?: string;
   amountMinor: number;
+  /** A launch voucher's line covers the whole order. */
+  coversOrderTotal?: boolean;
 };
 
 export type VoucherTab = "available" | "used" | "expired" | "all";
@@ -3954,6 +3965,79 @@ export async function applyCartVoucher(
 /** `DELETE /me/carts/:id/voucher` — takes it off and stops GRIDGO picking it again for this basket. */
 export async function removeCartVoucher(cartId: string): Promise<CartVoucherResult> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/voucher`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Launch promotions — gridgo-api `docs/VOUCHERS_API.md#launch-promotions`
+// ---------------------------------------------------------------------------
+
+export type PromotionInviteStatus =
+  | "invited"
+  | "claimed"
+  | "used"
+  | "expired"
+  | "void"
+  | "skipped_already_founder"
+  | (string & {});
+
+/** One Friend Pass invitation, as its Founder or the invited friend reads it. */
+export type PromotionInvite = {
+  id: string;
+  founder: { id: string; name?: string | null; email?: string | null };
+  email: string;
+  friendEmail?: string;
+  clientId: string | null;
+  status: PromotionInviteStatus;
+  createdAt: string;
+  claimedAt: string | null;
+  valueMinor: number | null;
+  upgradedAt: string | null;
+};
+
+/** A Friend Pass waiting for this client to claim it. */
+export type PromotionOffer = PromotionInvite & { amountMinor: number; endsAt: string };
+
+/** `GET /me/promotions`, and the answer to every promotion mutation. */
+export type Promotions = {
+  serverTime: string;
+  /** Today's amounts for the survey, mission and invite rewards, before one is issued. */
+  rewards?: { surveyMinor?: number; missionMinor?: number; inviteMinor?: number };
+  founding: {
+    claimable: boolean;
+    amountMinor: number;
+    slotsLeft: number;
+    endsAt: string;
+    voucher: Voucher | null;
+  };
+  friendPass: {
+    canInvite: boolean;
+    invite: PromotionInvite | null;
+    invites?: PromotionInvite[];
+    offer: PromotionOffer | null;
+    voucher: Voucher | null;
+  };
+};
+
+export async function getPromotions(): Promise<Promotions> {
+  return request<Promotions>(`/me/promotions`);
+}
+
+/** `POST /me/promotions/founding/claim` — takes one Founding slot at today's amount. */
+export async function claimFoundingVoucher(): Promise<Promotions> {
+  return request<Promotions>(`/me/promotions/founding/claim`, { method: "POST", body: "{}" });
+}
+
+/** `POST /me/promotions/friend-pass/claim` — claims the Friend Pass waiting for this client. */
+export async function claimFriendPass(): Promise<Promotions> {
+  return request<Promotions>(`/me/promotions/friend-pass/claim`, { method: "POST", body: "{}" });
+}
+
+/** `POST /me/promotions/friend-pass/invite` — a Founder names one friend by email. */
+export async function inviteFriendPass(email: string): Promise<Promotions> {
+  return request<Promotions>(`/me/promotions/friend-pass/invite`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
 }
 
 // ---------------------------------------------------------------------------
