@@ -1,6 +1,7 @@
 import type { Promotions } from "@/lib/api";
+import { claimOffer } from "@/lib/promotions";
 import { usePromotions } from "@/store/promotions";
-import { foundingVoucher, invite, promotions } from "@/test/promotionFixtures";
+import { foundingVoucher, friendOffer, friendPassVoucher, invite, promotions } from "@/test/promotionFixtures";
 
 /**
  * Reads and claims racing each other. A `GET /me/promotions` that left before
@@ -14,6 +15,7 @@ jest.mock("@/lib/api", () => {
     ...actual,
     getPromotions: jest.fn(),
     claimFoundingVoucher: jest.fn(),
+    claimFriendPass: jest.fn(),
     inviteFriendPass: jest.fn(),
     listVouchers: jest.fn(),
   };
@@ -126,4 +128,23 @@ it("drops anything started for the last account", async () => {
   await reading;
 
   expect(usePromotions.getState().data).toBeNull();
+});
+
+it("remembers a claimed Friend Pass at the terms GRIDGO issued, not the ones it offered", async () => {
+  const waiting = promotions({ founding: { claimable: false, slotsLeft: 0 }, friendPass: { offer: friendOffer } });
+  usePromotions.setState({ data: waiting });
+  usePromotions.getState().openSheet(claimOffer(waiting)!);
+  const issued = { ...friendPassVoucher, valueMinor: 5000, expiresAt: "2026-11-15T15:59:59.000Z" };
+  api.claimFriendPass.mockResolvedValueOnce(
+    promotions({ founding: { claimable: false, slotsLeft: 0 }, friendPass: { voucher: issued } }),
+  );
+
+  await usePromotions.getState().claim("friend_pass");
+
+  expect(usePromotions.getState().sheet).toMatchObject({
+    kind: "friend_pass",
+    amountMinor: 5000,
+    endsAt: "2026-11-15T15:59:59.000Z",
+    founderName: "Ven",
+  });
 });

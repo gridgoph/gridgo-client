@@ -23,6 +23,20 @@ export type ClaimOffer =
 
 export type ClaimKind = ClaimOffer["kind"];
 
+/**
+ * The sheet once a claim lands: the terms GRIDGO actually issued. Operations
+ * can change the amount or end date between the sheet's last read and the
+ * tap, and the voucher keeps the terms of the moment it was issued — so the
+ * ticket that says "it's in your wallet" reads the voucher, not the offer.
+ */
+export function claimedOffer(
+  offer: ClaimOffer | null,
+  voucher: Pick<Voucher, "valueMinor" | "expiresAt"> | null | undefined,
+): ClaimOffer | null {
+  if (!offer || !voucher) return offer;
+  return { ...offer, amountMinor: voucher.valueMinor, endsAt: voucher.expiresAt };
+}
+
 /** The client's own launch voucher, whichever kind. */
 export function launchVoucherOf(promotions: Promotions | null | undefined): Voucher | null {
   return promotions?.founding.voucher ?? promotions?.friendPass.voucher ?? null;

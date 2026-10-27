@@ -1,6 +1,7 @@
 import { ApiError, checkoutCart, type CartQuote } from "@/lib/api";
 import {
   claimCopy,
+  claimedOffer,
   claimOffer,
   claimRowLine,
   discountLineLabel,
@@ -64,6 +65,14 @@ describe("what a client can claim", () => {
     expect(claimRowLine(claimOffer(promotions({ founding: { slotsLeft: 1 } }))!)).toBe(
       "Redeem ₱200 off your first order · Last one left",
     );
+  });
+
+  it("once claimed, reads the issued voucher's terms over the offer it was shown", () => {
+    const shown = claimOffer(promotions())!;
+    const issued = { ...foundingVoucher, valueMinor: 10000, expiresAt: "2026-11-15T15:59:59.000Z" };
+    expect(claimedOffer(shown, issued)).toEqual({ ...shown, amountMinor: 10000, endsAt: "2026-11-15T15:59:59.000Z" });
+    // No voucher in the answer: the latch stays as it was.
+    expect(claimedOffer(shown, null)).toBe(shown);
   });
 
   it("reads today's amount, not a fixed one", () => {

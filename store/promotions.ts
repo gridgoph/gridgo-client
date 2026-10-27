@@ -4,6 +4,7 @@ import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import {
   claimedLine,
+  claimedOffer,
   claimOffer,
   emailProblem,
   promotionErrorMessage,
@@ -117,12 +118,13 @@ export const usePromotions = create<PromotionsState>()((set, get) => ({
       if (mine !== generation) return false;
       floor = ++issued;
       const voucher = kind === "founding" ? data.founding.voucher : data.friendPass.voucher;
-      set({
+      set((state) => ({
         data,
         busy: null,
         error: null,
         claimNotice: { ok: true, text: claimedLine(voucher, kind) },
-      });
+        sheet: state.sheet?.kind === kind ? claimedOffer(state.sheet, voucher) : state.sheet,
+      }));
       // The voucher is in the wallet now; checkout picks it up from there.
       void useVouchers.getState().load();
       return true;
