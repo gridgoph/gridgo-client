@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.457 (New feature)
+
+- After the survey, share a story picture of your delivered order, or send your invite link to a friend.
+- If a step of a new order fails to load, the app offers Try again and keeps your choices instead of closing.
+
 ## 1.0.447 (New feature)
 
 - Claim a launch discount after you sign in, and invite a friend from Vouchers.
