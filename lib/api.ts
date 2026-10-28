@@ -4141,6 +4141,75 @@ export async function submitOrderSurvey(orderId: string, answers: SurveyAnswers)
 }
 
 // ---------------------------------------------------------------------------
+// Sharing a delivered order — see docs/SHARING_AND_REMINDERS_API.md in gridgo-api
+// ---------------------------------------------------------------------------
+
+export type ShareCardPresentation = "after_survey" | "order_repeat";
+export type ShareCardAction = "shown" | "maybe_later" | "close";
+export type ShareTapAction = "share" | "send_to_friend";
+
+export type OrderShare = {
+  orderId: string;
+  /** A delivered order, or one whose survey was sent. */
+  available: boolean;
+  /** The first word of the client's saved name; may be empty. */
+  firstName: string;
+  /** The label was awarded, not merely in reach. */
+  foundingTester: boolean;
+  /** Null before `prepare`. */
+  inviteCode: string | null;
+  /** Null until Operations sets the sign-up form: then the code goes alone. */
+  inviteLink: string | null;
+  card: {
+    firstShownAt: string | null;
+    dismissedAt: string | null;
+    repeatShownAt: string | null;
+    closedAt: string | null;
+    showAfterSurvey: boolean;
+    showFromOrder: boolean;
+  };
+};
+
+export type OrderShareRead = { serverTime: string; share: OrderShare };
+
+/** `GET /orders/:id/share` — the share data as it stands; never writes. */
+export async function getOrderShare(orderId: string): Promise<OrderShareRead> {
+  return request(`/orders/${encodeURIComponent(orderId)}/share`);
+}
+
+/** `POST /orders/:id/share/prepare` — makes sure the invite code exists; idempotent. */
+export async function prepareOrderShare(orderId: string): Promise<OrderShareRead> {
+  return request(`/orders/${encodeURIComponent(orderId)}/share/prepare`, { method: "POST", body: "{}" });
+}
+
+/** `POST /orders/:id/share/card` — the share card was shown, put off, or closed. */
+export async function recordShareCard(
+  orderId: string,
+  presentation: ShareCardPresentation,
+  action: ShareCardAction,
+): Promise<OrderShareRead> {
+  return request(`/orders/${encodeURIComponent(orderId)}/share/card`, {
+    method: "POST",
+    body: JSON.stringify({ presentation, action }),
+  });
+}
+
+/**
+ * `POST /orders/:id/share/taps` — one tap on Share or Send to a friend. A retry
+ * reuses the tap's `eventId` and counts once. Never a reward.
+ */
+export async function recordShareTap(
+  orderId: string,
+  eventId: string,
+  action: ShareTapAction,
+): Promise<OrderShareRead & { eventId: string; recorded: boolean; replay: boolean }> {
+  return request(`/orders/${encodeURIComponent(orderId)}/share/taps`, {
+    method: "POST",
+    body: JSON.stringify({ eventId, action }),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Checkout exit question — see docs/PRICING_FEEDBACK_API.md in gridgo-api
 // ---------------------------------------------------------------------------
 

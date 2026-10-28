@@ -43,6 +43,9 @@ import {
   shiftMonth,
 } from "@/lib/deadlineCalendar";
 
+// A step that throws while drawing shows a way on instead of closing the app.
+export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+
 /**
  * When the client needs it.
  *

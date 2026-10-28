@@ -2,12 +2,14 @@ import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useCoverSpine } from "@/store/coverSpine";
 import { claimAppleRevocation, forgetAppleRevocation } from "@/store/accountDeletion";
 import { useCart } from "@/store/cart";
+import { useListingDraft } from "@/store/listingDraft";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useHandoverActions } from "@/store/handoverActions";
 import { useNotifications } from "@/store/notifications";
 import { useVouchers } from "@/store/vouchers";
 import { usePromotions } from "@/store/promotions";
 import { useSurvey } from "@/store/survey";
+import { useOrderShare } from "@/store/orderShare";
 import { useCheckoutExit } from "@/store/checkoutExit";
 import { useFoundingTester } from "@/store/foundingTester";
 import { useOrderRanking } from "@/store/orderRanking";
@@ -379,6 +381,7 @@ useSession.subscribe((state, previous) => {
   useCoverSpine.getState().reset();
   clearBoardCache();
   clearListingCache();
+  useListingDraft.getState().clear();
   // A match and its pick tokens are bound to the client who asked; another
   // account's would be refused, and a job's re-rank is that client's answer.
   clearMatchPrefetch();
@@ -389,6 +392,7 @@ useSession.subscribe((state, previous) => {
   // A new sign-in brings the claim sheet back while there is one to claim.
   usePromotions.getState().reset();
   useSurvey.getState().reset();
+  useOrderShare.getState().reset();
   useCheckoutExit.getState().reset();
   useFoundingTester.getState().resetAccount();
   // The installation goes with every account that signs in on it. Invites

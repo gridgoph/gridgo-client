@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { ChevronLeft, ChevronRight, LifeBuoy, MessageCircle, ScrollText, Star } from "lucide-react-native";
-import { useCallback, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, LifeBuoy, MessageCircle, ScrollText, Share2, Star } from "lucide-react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
@@ -101,6 +101,7 @@ import { appliedChangeLine, deliveryPinNeedsClient } from "@/lib/deliveryPin";
 import { changeItemName, changeNeedsClient, changeRequestView, paidChanges } from "@/lib/orderChanges";
 import { rescheduleView } from "@/lib/reschedule";
 import { shopRecoveryView } from "@/lib/shopRecovery";
+import { useOrderShare } from "@/store/orderShare";
 import { useSurvey } from "@/store/survey";
 import { useFoundingTester } from "@/store/foundingTester";
 import { useSession } from "@/store/session";
@@ -108,6 +109,7 @@ import { orderPrintingMinor, serviceFeeVisibleToClient, showsServiceFee } from "
 import { usePlatformSettings } from "@/store/platformSettings";
 import { openingHoursLines, orderReviewView, upcomingClosures } from "@/lib/operatingHours";
 import { mayHaveSurvey } from "@/lib/foundingTester";
+import { SHARE_ORDER_A11Y, SHARE_ORDER_LABEL, mayShareOrder, repeatDue } from "@/lib/orderShare";
 import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
@@ -159,6 +161,22 @@ export default function OrderDetailScreen() {
   const [helpFor, setHelpFor] = useState<string | null>(null);
 
   const loadSequence = useRef(0);
+  /** Whether this screen is the one on top: the share card's repeat only opens over it. */
+  const focusedRef = useRef(false);
+  /** Orders whose one repeat of the share card this screen has opened. */
+  const repeatOpened = useRef(new Set<string>());
+  /**
+   * Orders this visit came straight back to from "Maybe later": no repeat on
+   * this visit. Taken when the screen gains focus and forgotten when it loses
+   * it, so the next deliberate visit is a later one.
+   */
+  const heldVisitRef = useRef(new Set<string>());
+  const share = useOrderShare((state) => (id ? state.shares[id] : undefined));
+  // `load` stays keyed to the order alone; the router it pushes with is read late.
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  });
   const loadSettings = usePlatformSettings((state) => state.load);
   const platformSettings = usePlatformSettings((state) => state.settings);
   const applyOrderUpdate = useCallback((updated: api.Order) => {
@@ -195,6 +213,26 @@ export default function OrderDetailScreen() {
       // The post-order survey lives in its own store, read alongside the
       // order so a completed hand-over, a skip or a send shows on return.
       if (mayHaveSurvey(useSession.getState().user, current)) void useSurvey.getState().load(current.id);
+      // The share card (gridgo-client#341): a delivered order's Share button,
+      // and the one repeat of a card put off after the survey. Card events and
+      // taps the network lost go first, in order, so the read below reflects them.
+      if (mayShareOrder(useSession.getState().user, current)) {
+        void useOrderShare
+          .getState()
+          .flush()
+          .then(() => useOrderShare.getState().load(current.id))
+          .then((read) => {
+            const shares = useOrderShare.getState();
+            if (sequence !== loadSequence.current || !focusedRef.current) return;
+            const held = heldVisitRef.current.has(current.id) || shares.repeatUnconfirmed(current.id);
+            if (!repeatDue(read, held)) return;
+            if (shares.presenting || shares.hold || useFoundingTester.getState().showing) return;
+            if (repeatOpened.current.has(current.id)) return;
+            repeatOpened.current.add(current.id);
+            shares.setPresenting({ orderId: current.id, presentation: "order_repeat" });
+            routerRef.current.push({ pathname: "/order/share", params: { orderId: current.id, presentation: "order_repeat" } });
+          });
+      }
       setHandover(credential);
       setAckReceipt(receipt);
       setBasket(group);
@@ -225,10 +263,16 @@ export default function OrderDetailScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      focusedRef.current = true;
+      if (id && useOrderShare.getState().takePutOff(id)) heldVisitRef.current.add(id);
       void load();
       void loadSettings({ refresh: true }).catch(() => undefined);
-      return () => { loadSequence.current++; };
-    }, [load, loadSettings]),
+      return () => {
+        focusedRef.current = false;
+        heldVisitRef.current.clear();
+        loadSequence.current++;
+      };
+    }, [id, load, loadSettings]),
   );
 
   /*
@@ -418,10 +462,29 @@ export default function OrderDetailScreen() {
   const detailsOpen = detailsFor === order.id;
   const helpOpen = helpFor === order.id;
 
+  /* A delivered order can be shared any time, as often as the client likes. */
+  const shareButton = share?.available && share.orderId === order.id ? (
+    <Pressable
+      onPress={() => router.push({ pathname: "/order/share", params: { orderId: order.id, presentation: "manual" } })}
+      accessibilityRole="button"
+      accessibilityLabel={SHARE_ORDER_A11Y}
+      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+      testID="order-share"
+      className="gg-chip bg-surface"
+      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+    >
+      <Share2 size={14} color={colors.textPrimary} strokeWidth={2.25} aria-hidden />
+      <Text className="text-caption font-medium text-text-primary">{SHARE_ORDER_LABEL}</Text>
+    </Pressable>
+  ) : null;
+
   const heading = (
     <View className="gap-2">
       <Text className="text-h1 text-text-primary">{order.title}</Text>
-      <OrderReference id={order.id} />
+      <View className="flex-row items-center justify-between gap-3">
+        <OrderReference id={order.id} />
+        {shareButton}
+      </View>
     </View>
   );
 

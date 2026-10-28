@@ -20,6 +20,8 @@ type Entry = { at: number; item: api.CatalogItem; partial: boolean };
 
 const cache = new Map<string, Entry>();
 const inflight = new Map<string, Promise<api.CatalogItem>>();
+/** Listings whose sheet threw while drawing; no held copy is trusted until a fresh read lands. */
+const distrusted = new Set<string>();
 
 /** Long enough to cross the tap from match to the sheet. */
 export const LISTING_TTL_MS = 60_000;
@@ -29,6 +31,7 @@ export function rememberListing(
   { partial = false }: { partial?: boolean } = {},
 ): void {
   cache.set(item.id, { at: Date.now(), item, partial });
+  distrusted.delete(item.id);
 }
 
 export function listingNow(itemId: string | null | undefined): api.CatalogItem | null {
@@ -72,6 +75,7 @@ export function hydrateCartListings(cart: api.Cart, previous: api.Cart | null = 
 export function clearListingCache(): void {
   cache.clear();
   inflight.clear();
+  distrusted.clear();
 }
 
 async function refresh(itemId: string): Promise<api.CatalogItem> {
@@ -97,6 +101,24 @@ async function refresh(itemId: string): Promise<api.CatalogItem> {
  */
 export function rereadListing(itemId: string): Promise<api.CatalogItem> {
   return refresh(itemId);
+}
+
+/**
+ * Drop what is held for this listing and read it again — the sheet threw
+ * while drawing it (`ListingErrorBoundary`), so the held answer is not trusted
+ * even while fresh, an in-flight read of it is not shared, and a basket row's
+ * copy of it is not drawn either (`listingTrusted`) until the read lands.
+ */
+export function replaceListing(itemId: string): Promise<api.CatalogItem> {
+  cache.delete(itemId);
+  inflight.delete(itemId);
+  distrusted.add(itemId);
+  return refresh(itemId);
+}
+
+/** False while a listing that threw is being read again. */
+export function listingTrusted(itemId: string | null | undefined): boolean {
+  return !itemId || !distrusted.has(itemId);
 }
 
 /** Start the network read while the sheet is still sliding in. */

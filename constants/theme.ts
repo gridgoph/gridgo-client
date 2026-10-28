@@ -124,6 +124,22 @@ export const claimSlip = {
 } as const;
 
 /**
+ * The share story image (gridgo-client#341): GRIDGO black and yellow whatever
+ * the theme, because it leaves the app as a picture. The QR sits as black
+ * modules on a yellow plate, which scans; never yellow on black.
+ */
+export const storyCard = {
+  ground: colors.dark.canvas,
+  ink: colors.dark.textPrimary,
+  inkSoft: colors.dark.textSecondary,
+  inkMuted: colors.dark.textMuted,
+  quiet: colors.dark.surfaceHigh,
+  rule: colors.dark.outline,
+  yellow: colors.dark.actionYellow,
+  onYellow: colors.dark.canvas,
+} as const;
+
+/**
  * Type scale. Each step names the Satoshi cut it is set in — React Native
  * resolves a font by family, not by weight. Mirrors the `text-*` utilities.
  */

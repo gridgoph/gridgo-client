@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { CircleCheck, TriangleAlert } from "lucide-react-native";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -63,6 +63,7 @@ import {
 import { VOUCHERS_ROUTE, exactTime } from "@/lib/vouchers";
 import { surveyRewardAmount } from "@/lib/promotions";
 import { usePromotions } from "@/store/promotions";
+import { useOrderShare } from "@/store/orderShare";
 import { useSurvey } from "@/store/survey";
 
 /**
@@ -124,15 +125,53 @@ export default function OrderSurveyScreen() {
 
   // Re-read on every visit: the low-score shortcut and the reward preview are
   // GRIDGO's to decide each time, and a survey can close while away.
+  // While on top: a share card due after a send is only shown here, never
+  // over wherever the client went while GRIDGO was answering.
+  const onScreenRef = useRef(false);
+  const sendAttempt = useRef(0);
   useFocusEffect(
     useCallback(() => {
+      onScreenRef.current = true;
       if (orderId) void load(orderId);
+      return () => {
+        onScreenRef.current = false;
+        sendAttempt.current++;
+      };
     }, [orderId, load]),
   );
 
+  /*
+    A sent survey is when GRIDGO may offer the share card (gridgo-client#341).
+    Other moments wait while it is decided, so the Founding Tester celebration
+    a survey can earn never lands on top of it; the card is pushed over the
+    thank-you, which is where closing it returns to.
+  */
+  const send = async () => {
+    const share = useOrderShare.getState();
+    const attempt = ++sendAttempt.current;
+    share.holdForSurvey(orderId);
+    try {
+      if (!(await submit(orderId))) return;
+      const prepared = await share.prepare(orderId);
+      // The client left the thank-you while GRIDGO answered: the moment passed.
+      if (attempt !== sendAttempt.current || !onScreenRef.current) return;
+      if (useOrderShare.getState().presenting) return;
+      if (prepared?.available && prepared.card.showAfterSurvey) {
+        share.setPresenting({ orderId, presentation: "after_survey" });
+        router.push({ pathname: "/order/share", params: { orderId, presentation: "after_survey" } });
+      }
+    } finally {
+      share.release(orderId);
+    }
+  };
+
   const leave = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace(`/order/${orderId}`);
+    if (router.canGoBack()) {
+      // Not back to this order's screen: its next visit is a later one, so a
+      // card put off here may come back there.
+      if (from !== "order") useOrderShare.getState().dropPutOff(orderId);
+      router.back();
+    } else router.replace(`/order/${orderId}`);
   };
   const reportProblem = () => {
     requestReport(orderId);
@@ -262,7 +301,7 @@ export default function OrderSurveyScreen() {
           ) : null}
           <PrimaryButton
             label={busy === "submitting" ? "Sending…" : "Send answers"}
-            onPress={() => void submit(orderId)}
+            onPress={() => void send()}
             disabled={!ready || busy != null}
           />
           <Pressable

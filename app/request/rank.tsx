@@ -27,6 +27,9 @@ import { withJobFulfilment } from "@/store/jobFulfilment";
 import { useOrderRanking, withJobRanking } from "@/store/orderRanking";
 import { usePriorities } from "@/store/priorities";
 
+// A step that throws while drawing shows a way on instead of closing the app.
+export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+
 /** GRIDGO's own order when an account has none saved — what the API matches on. */
 const PLATFORM_DEFAULT: PriorityRanking = ["quality", "speed", "cost", "distance"];
 
