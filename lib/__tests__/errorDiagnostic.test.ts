@@ -67,6 +67,22 @@ describe("redactDiagnostic", () => {
     expect(out).toBe("Cookie: [redacted]\nSet-Cookie: [redacted]");
   });
 
+  it("takes out credentials in escaped (double-encoded) JSON", () => {
+    const out = redactDiagnostic('API said "{\\"token\\":\\"FAKE_TOKEN\\",\\"ok\\":false}"');
+    expect(out).not.toMatch(SECRET);
+    expect(out).toBe('API said "{\\"token\\":\\"[redacted]\\",\\"ok\\":false}"');
+  });
+
+  it("takes out a key whose name carries digits or dots", () => {
+    const out = redactDiagnostic('oauth2Token=FAKE_TOKEN {"auth.v2.password":"FAKE_PASSWORD"}');
+    expect(out).toBe('oauth2Token=[redacted] {"auth.v2.password":"[redacted]"}');
+  });
+
+  it("takes out an object or array held under a secret key", () => {
+    const out = redactDiagnostic('{"credentials":{"user":"ana","pin":"FAKE_PASSWORD"},"tokens":["FAKE_TOKEN","FAKE_TOKEN2"],"n":1}');
+    expect(out).toBe('{"credentials":[redacted],"tokens":[redacted],"n":1}');
+  });
+
   it("leaves an ordinary message alone", () => {
     const message = "Cannot read property 'label' of undefined";
     expect(redactDiagnostic(message)).toBe(message);
@@ -100,6 +116,18 @@ describe("diagnosticSummary", () => {
   it("redacts a thrown object, which it shows as JSON", () => {
     const summary = diagnosticSummary({ status: 401, token: "FAKE_TOKEN", nested: { password: "FAKE_PASSWORD" } });
     expect(summary).toBe('Thrown value: {"status":401,"token":"[redacted]","nested":{"password":"[redacted]"}}');
+  });
+
+  it("redacts a thrown object by key at every depth, objects and arrays included", () => {
+    const summary = diagnosticSummary({
+      status: 401,
+      body: { session: { id: "FAKE_SID", user: "ana" }, items: [{ apiKey: "FAKE_KEY" }] },
+      refreshTokens: ["FAKE_TOKEN"],
+    });
+    expect(summary).not.toMatch(SECRET);
+    expect(summary).toBe(
+      'Thrown value: {"status":401,"body":{"session":"[redacted]","items":[{"apiKey":"[redacted]"}]},"refreshTokens":"[redacted]"}',
+    );
   });
 
   it("names a thrown value that is not an Error", () => {

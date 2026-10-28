@@ -17,8 +17,10 @@ const REDACTED = "[redacted]";
 
 type Replacement = string | ((match: string, ...groups: string[]) => string);
 
-/** Key names whose value is a credential, however the pair is written. */
-const SECRET_KEY = "[A-Za-z_-]*(?:token|signature|secret|password|passwd|credential|api[-_]?key|session|authorization|cookie)[A-Za-z_-]*";
+/** Key names whose value is a credential, however the pair is written (`oauth2Token`, `auth.password`). */
+const SECRET_KEY =
+  "[A-Za-z0-9_.-]*(?:token|signature|secret|password|passwd|credential|api[-_]?key|session|authorization|cookie)[A-Za-z0-9_-]*";
+const SECRET_KEY_NAME = new RegExp(`^${SECRET_KEY}$`, "i");
 
 /*
   Order matters: a Cookie header loses its whole value (every pair, not only
@@ -34,15 +36,16 @@ const RULES: readonly [RegExp, Replacement][] = [
   [/\b(https?:\/\/[^\s?#"'<>]+)\?[^\s#"'<>]*/gi, `$1?${REDACTED}`],
   [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]*)?/g, REDACTED],
   [/\b(?:sk|pk|rk|tok|whsec)_[A-Za-z0-9_]{8,}/g, REDACTED],
-  // `token=x`, `password: x`, `"token":"x"` (JSON, as a thrown object is
-  // shown) and `'token': 'x'`: the value goes, its quotes stay.
+  // `token=x`, `password: x`, `"token":"x"` (JSON), `\"token\":\"x\"` (JSON
+  // inside a JSON string) and `'token': 'x'`: the value goes, its quotes stay.
+  // An object or array under such a key goes whole, if it holds no other.
   [
     new RegExp(
-      `(["']?)\\b(${SECRET_KEY})\\1(\\s*[:=]\\s*)("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|[^\\s&"',;{}\\[\\]]+)`,
+      `(\\\\?["']?)\\b(${SECRET_KEY})\\1(\\s*[:=]\\s*)(\\\\"[^"]*\\\\"|"(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|\\{[^{}]*\\}|\\[[^[\\]]*\\]|[^\\s&"',;{}\\[\\]]+)`,
       "gi",
     ),
     (_match, quote, key, separator, value) => {
-      const wrap = value.startsWith('"') || value.startsWith("'") ? value[0] : "";
+      const wrap = /^\\?["']/.exec(value)?.[0] ?? "";
       return `${quote}${key}${quote}${separator}${wrap}${REDACTED}${wrap}`;
     },
   ],
@@ -70,7 +73,12 @@ function errorParts(error: unknown): { name: string; message: string; stack: str
   }
   let message: string;
   try {
-    message = typeof error === "string" ? error : JSON.stringify(error) ?? String(error);
+    // By key, at every depth: a credential held as an object or array goes too.
+    message =
+      typeof error === "string"
+        ? error
+        : (JSON.stringify(error, (key, value: unknown) => (key && SECRET_KEY_NAME.test(key) ? REDACTED : value)) ??
+          String(error));
   } catch {
     message = String(error);
   }
