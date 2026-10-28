@@ -11,7 +11,14 @@ import {
  * screenshot travels. These markers are invented, never real credentials.
  */
 
-const SECRET = /FAKE_BEARER|FAKE_SIGNATURE|FAKE_JWT|FAKE_KEY|FAKE_COOKIE|FAKE_TOKEN|FAKE_PASSWORD/;
+const SECRET = /FAKE_BEARER|FAKE_SIGNATURE|FAKE_JWT|FAKE_KEY|FAKE_COOKIE|FAKE_TOKEN|FAKE_PASSWORD|FAKE_SID|FAKE_PREF/;
+
+/** A message carrying credentials in JSON, single quotes and a multi-cookie header. */
+const QUOTED =
+  'Request failed {"token":"FAKE_TOKEN","password":"FAKE_PASSWORD","user":"ana"} ' +
+  "and {'accessToken': 'FAKE_TOKEN2', 'apiKey':'FAKE_KEY2'} with secret='FAKE_PASSWORD3'\n" +
+  "Cookie: theme=light; sid=FAKE_SID; pref=FAKE_PREF\n" +
+  "Set-Cookie: sid=FAKE_SID2; Path=/; HttpOnly";
 
 describe("redactDiagnostic", () => {
   it("takes out a bearer token and the Authorization header that carries it", () => {
@@ -41,6 +48,25 @@ describe("redactDiagnostic", () => {
     expect(out).not.toMatch(SECRET);
   });
 
+  it("takes out credentials in quoted JSON and single-quoted pairs", () => {
+    const out = redactDiagnostic(QUOTED);
+    expect(out).not.toMatch(SECRET);
+    expect(out).toContain('{"token":"[redacted]","password":"[redacted]","user":"ana"}');
+    expect(out).toContain("{'accessToken': '[redacted]', 'apiKey':'[redacted]'}");
+    expect(out).toContain("secret='[redacted]'");
+  });
+
+  it("takes out a quoted value that holds an escaped quote", () => {
+    const out = redactDiagnostic('{"password":"FAKE_\\"PASSWORD","next":1}');
+    expect(out).toBe('{"password":"[redacted]","next":1}');
+  });
+
+  it("takes out every cookie in a Cookie or Set-Cookie header, not just the first", () => {
+    const out = redactDiagnostic("Cookie: theme=light; sid=FAKE_SID; pref=FAKE_PREF\nSet-Cookie: sid=FAKE_SID2; Path=/");
+    expect(out).not.toMatch(SECRET);
+    expect(out).toBe("Cookie: [redacted]\nSet-Cookie: [redacted]");
+  });
+
   it("leaves an ordinary message alone", () => {
     const message = "Cannot read property 'label' of undefined";
     expect(redactDiagnostic(message)).toBe(message);
@@ -65,6 +91,17 @@ describe("diagnosticSummary", () => {
     expect(summary.endsWith("…")).toBe(true);
   });
 
+  it("redacts JSON and cookie credentials in the one line it shows", () => {
+    const summary = diagnosticSummary(new Error(QUOTED));
+    expect(summary).not.toMatch(SECRET);
+    expect(summary).toContain('Error: Request failed {"token":"[redacted]"');
+  });
+
+  it("redacts a thrown object, which it shows as JSON", () => {
+    const summary = diagnosticSummary({ status: 401, token: "FAKE_TOKEN", nested: { password: "FAKE_PASSWORD" } });
+    expect(summary).toBe('Thrown value: {"status":401,"token":"[redacted]","nested":{"password":"[redacted]"}}');
+  });
+
   it("names a thrown value that is not an Error", () => {
     expect(diagnosticSummary("token=FAKE_TOKEN")).toBe("Thrown value: token=[redacted]");
     expect(diagnosticSummary({ code: 7 })).toBe('Thrown value: {"code":7}');
@@ -87,5 +124,19 @@ describe("diagnosticLog", () => {
     expect(lines).toHaveLength(1 + DIAGNOSTIC_STACK_LINES);
     expect(lines[1]).toBe("at frame0 (http://10.0.2.2:8081/index.bundle?[redacted]");
     expect(log).not.toMatch(SECRET);
+  });
+
+  it("redacts JSON, single-quoted and cookie credentials in the summary and every frame", () => {
+    const error = new Error(QUOTED);
+    error.stack = [
+      `Error: ${QUOTED}`,
+      `    at send (app.js:1:2) {"password":"FAKE_PASSWORD9"}`,
+      "    at retry (app.js:3:4) Cookie: a=1; sid=FAKE_SID9",
+    ].join("\n");
+    const log = diagnosticLog(error);
+    expect(log).not.toMatch(SECRET);
+    expect(log).toContain('{"password":"[redacted]"}');
+    expect(log).toContain("Cookie: [redacted]");
+    expect(diagnosticLog({ token: "FAKE_TOKEN" })).toBe('Thrown value: {"token":"[redacted]"}');
   });
 });

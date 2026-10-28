@@ -15,25 +15,49 @@ export const DIAGNOSTIC_STACK_LINES = 12;
 
 const REDACTED = "[redacted]";
 
+type Replacement = string | ((match: string, ...groups: string[]) => string);
+
+/** Key names whose value is a credential, however the pair is written. */
+const SECRET_KEY = "[A-Za-z_-]*(?:token|signature|secret|password|passwd|credential|api[-_]?key|session|authorization|cookie)[A-Za-z_-]*";
+
 /*
-  Order matters: a header takes its whole value (scheme included) before the
-  bare-bearer rule runs, and a URL loses its query before key=value pairs are
-  looked for, so a signed link reads `https://host/path?[redacted]`.
+  Order matters: a Cookie header loses its whole value (every pair, not only
+  the first) and an Authorization header its value, scheme included, before
+  the bare-bearer rule runs; a URL loses its query before key/value pairs are
+  looked for, so a signed link reads `https://host/path?[redacted]`. A value
+  already reading `[redacted]` is never matched again.
 */
-const RULES: readonly [RegExp, string][] = [
-  [/\b(proxy-authorization|authorization|set-cookie|cookie|x-api-key)\b(\s*[:=]\s*)(?:(?:bearer|basic|token)\s+)?[^\s,;"'&]+/gi, `$1$2${REDACTED}`],
+const RULES: readonly [RegExp, Replacement][] = [
+  [/\b(set-cookie|cookie)\b(\s*[:=]\s*)(?!\[redacted\])[^\r\n]+/gi, `$1$2${REDACTED}`],
+  [/\b(proxy-authorization|authorization|x-api-key)\b(\s*[:=]\s*)(?:(?:bearer|basic|token)\s+)?[^\s,;"'&]+/gi, `$1$2${REDACTED}`],
   [/\bbearer\s+[A-Za-z0-9._~+/=-]+/gi, `Bearer ${REDACTED}`],
   [/\b(https?:\/\/[^\s?#"'<>]+)\?[^\s#"'<>]*/gi, `$1?${REDACTED}`],
   [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]*)?/g, REDACTED],
   [/\b(?:sk|pk|rk|tok|whsec)_[A-Za-z0-9_]{8,}/g, REDACTED],
-  [/\b([A-Za-z_-]*(?:token|signature|secret|password|passwd|credential|api[-_]?key|session)[A-Za-z_-]*)(\s*[:=]\s*)("?)[^\s&"',;]+\3/gi, `$1$2${REDACTED}`],
+  // `token=x`, `password: x`, `"token":"x"` (JSON, as a thrown object is
+  // shown) and `'token': 'x'`: the value goes, its quotes stay.
+  [
+    new RegExp(
+      `(["']?)\\b(${SECRET_KEY})\\1(\\s*[:=]\\s*)("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|[^\\s&"',;{}\\[\\]]+)`,
+      "gi",
+    ),
+    (_match, quote, key, separator, value) => {
+      const wrap = value.startsWith('"') || value.startsWith("'") ? value[0] : "";
+      return `${quote}${key}${quote}${separator}${wrap}${REDACTED}${wrap}`;
+    },
+  ],
   // An opaque run long enough to be a key; no `/`, so a file path in a stack survives.
   [/[A-Za-z0-9_-]{40,}={0,2}/g, REDACTED],
 ];
 
 /** The same text with credentials, tokens and signed link queries taken out. */
 export function redactDiagnostic(text: string): string {
-  return RULES.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), text);
+  return RULES.reduce(
+    // Two calls: TypeScript picks a `replace` overload per type, not for the union.
+    (out, [pattern, replacement]) =>
+      typeof replacement === "string" ? out.replace(pattern, replacement) : out.replace(pattern, replacement),
+    text,
+  );
 }
 
 function bound(text: string, max: number): string {

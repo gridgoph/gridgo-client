@@ -30,6 +30,14 @@ function Leaky(): never {
   );
 }
 
+// JSON, single-quoted and multi-cookie credentials (invented markers).
+function QuotedLeaky(): never {
+  throw new Error(
+    'Request failed {"token":"FAKE_JSON_TOKEN","password":"FAKE_JSON_PASSWORD"} ' +
+      "secret='FAKE_SINGLE_SECRET' Cookie: theme=light; sid=FAKE_SECOND_COOKIE",
+  );
+}
+
 function Wordy(): never {
   throw new Error("The listing could not be drawn because ".repeat(200));
 }
@@ -82,6 +90,21 @@ describe("OrderFlowErrorBoundary", () => {
       .join("\n");
     expect(logged).toContain("[order-flow] a step crashed while drawing: Error: Image failed");
     expect(logged).not.toMatch(/FAKE_REVIEW_BEARER|FAKE_REVIEW_SIGNATURE/);
+  });
+
+  it("never shows or logs JSON, single-quoted or later-cookie credentials", async () => {
+    const markers = /FAKE_JSON_TOKEN|FAKE_JSON_PASSWORD|FAKE_SINGLE_SECRET|FAKE_SECOND_COOKIE/;
+    await renderCrashed(<QuotedLeaky />);
+    expect(
+      screen.getByText(`Error: Request failed {"token":"[redacted]","password":"[redacted]"} secret='[redacted]' Cookie: [redacted]`),
+    ).toBeTruthy();
+    expect(screen.queryByText(markers)).toBeNull();
+    const logged = consoleError.mock.calls
+      .map((call) => call.map(String).join(" "))
+      .filter((line) => line.startsWith("[order-flow]"))
+      .join("\n");
+    expect(logged).toContain('[order-flow] a step crashed while drawing: Error: Request failed {"token":"[redacted]"');
+    expect(logged).not.toMatch(markers);
   });
 
   it("bounds a long message and keeps both ways out in a scroll", async () => {
