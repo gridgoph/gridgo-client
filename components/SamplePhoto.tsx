@@ -156,6 +156,9 @@ export function SamplePhoto({
                   source={{ uri: url }}
                   accessibilityLabel={alt}
                   resizeMode="cover"
+                  // Decoded at the size drawn, not the upload's: Android otherwise decodes
+                  // a remote photo whole, and a board of them is a lot of memory.
+                  resizeMethod="resize"
                   style={{ width: "100%", height: "100%" }}
                   onLoad={() => setLoadedUrl(url)}
                   onError={onImageError}
@@ -167,6 +170,7 @@ export function SamplePhoto({
                 source={{ uri: url }}
                 accessibilityLabel={alt}
                 resizeMode="cover"
+                resizeMethod="resize"
                 style={{ width: "100%", height: "100%" }}
                 onLoad={() => setLoadedUrl(url)}
                 onError={onImageError}

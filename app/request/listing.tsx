@@ -61,7 +61,7 @@ import {
   type ListingSelection,
 } from "@/lib/listing";
 import { userFacingError } from "@/lib/copy";
-import { isFullListing, listingNow, rereadListing, takeListing } from "@/lib/listingCache";
+import { isFullListing, listingNow, listingTrusted, rereadListing, takeListing } from "@/lib/listingCache";
 import {
   STALE_MATCH_MESSAGE,
   isStaleMatchRefusal,
@@ -84,11 +84,12 @@ import { FULFILMENT_LOCK_MESSAGE, isFulfilmentLockRefusal, needsFreshBasket } fr
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useJobFulfilment } from "@/store/jobFulfilment";
+import { listingDraftKey, listingDraftNow, useListingDraft } from "@/store/listingDraft";
 import { useListingQuote } from "@/store/listingQuote";
 import { usePlatformSettings } from "@/store/platformSettings";
 
 // A step that throws while drawing shows a way on instead of closing the app.
-export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+export { ListingErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
 
 const MAX_QUANTITY = 500;
 
@@ -131,21 +132,27 @@ export default function ListingScreen() {
   const reloadCart = useCart((state) => state.load);
   const jobFulfilment = useJobFulfilment((state) => state.choice);
   const editing = lineId ? cart?.lines.find((line) => line.id === lineId) ?? null : null;
+  // Answers given and not yet added come back after a crash's "Try again" or
+  // a step away (`store/listingDraft.ts`). Read once: it is where this visit starts.
+  const draftKey = listingDraftKey(itemId, lineId);
+  const [recovered] = useState(() => listingDraftNow(draftKey));
 
   const [item, setItem] = useState<CatalogItem | null>(
-    () => listingNow(itemId) ?? (isFullListing(editing?.listing) ? editing.listing : null),
+    () =>
+      listingNow(itemId) ??
+      (isFullListing(editing?.listing) && listingTrusted(itemId) ? editing.listing : null),
   );
   const [error, setError] = useState<string | null>(null);
-  const [selection, setSelection] = useState<ListingSelection>({});
-  const [quantity, setQuantity] = useState(1);
+  const [selection, setSelection] = useState<ListingSelection>(() => recovered?.selection ?? {});
+  const [quantity, setQuantity] = useState(() => recovered?.quantity ?? 1);
   // How big it is. Only three of the six pricing units ask for this, and the
   // listing itself decides which — a client ordering flyers never sees it.
-  const [measured, setMeasured] = useState<MeasurementDraft>(EMPTY_MEASUREMENT);
+  const [measured, setMeasured] = useState<MeasurementDraft>(() => recovered?.measured ?? EMPTY_MEASUREMENT);
   // What the options cannot say, one note per item (report F9FCD485).
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(() => recovered?.note ?? "");
   // How the file sits on the paper, for a product whose shop offers the
   // choice (gridgo-client#245). Never preselected.
-  const [layout, setLayout] = useState<PrintLayoutCode | null>(null);
+  const [layout, setLayout] = useState<PrintLayoutCode | null>(() => recovered?.layout ?? null);
   const [showMissing, setShowMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -225,7 +232,11 @@ export default function ListingScreen() {
   }>({});
   if (restoredFrom.lineId !== editing?.id || restoredFrom.itemId !== item?.id) {
     setRestoredFrom({ lineId: editing?.id, itemId: item?.id });
-    if (editing && item) {
+    if (recovered && item) {
+      // The unfinished answers are newer than the saved line; only the floor
+      // still applies, in case the shop raised it meanwhile.
+      setQuantity((current) => Math.max(current, orderFloor(item)));
+    } else if (editing && item) {
       const restored: ListingSelection = {};
       for (const group of item.optionGroups) {
         const chosen = group.options.find((option) => editing.optionIds.includes(option.id));
@@ -243,6 +254,17 @@ export default function ListingScreen() {
       setQuantity((current) => Math.max(current, orderFloor(item)));
     }
   }
+
+  // Held from the moment the sheet has its starting answers — for a basket
+  // row, once the row itself has arrived, or a draft would hide what it saved.
+  const keepDraft = useListingDraft((state) => state.keep);
+  const started = item != null && restoredFrom.itemId === item.id && (!lineId || editing != null);
+  useEffect(() => {
+    if (draftKey && started) keepDraft(draftKey, { selection, quantity, measured, note, layout });
+  }, [draftKey, started, keepDraft, selection, quantity, measured, note, layout]);
+  const dropDraft = () => {
+    if (draftKey) useListingDraft.getState().drop(draftKey);
+  };
 
   /**
    * Back to GRIDGO's pick for this job, or to the start of choosing what to
@@ -494,6 +516,7 @@ export default function ListingScreen() {
         );
         setBusy(false);
         adopt(updated);
+        dropDraft();
         router.back();
         return;
       }
@@ -549,6 +572,7 @@ export default function ListingScreen() {
     }
     setBusy(false);
     adopt(updated);
+    dropDraft();
     // Added: an "add more from Shop A" errand is done.
     useBasketGroupTarget.getState().clear();
     router.replace({ pathname: "/request/artwork", params: { lineId: added.id } });

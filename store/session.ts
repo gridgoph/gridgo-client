@@ -2,6 +2,7 @@ import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useCoverSpine } from "@/store/coverSpine";
 import { claimAppleRevocation, forgetAppleRevocation } from "@/store/accountDeletion";
 import { useCart } from "@/store/cart";
+import { useListingDraft } from "@/store/listingDraft";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useHandoverActions } from "@/store/handoverActions";
 import { useNotifications } from "@/store/notifications";
@@ -380,6 +381,7 @@ useSession.subscribe((state, previous) => {
   useCoverSpine.getState().reset();
   clearBoardCache();
   clearListingCache();
+  useListingDraft.getState().clear();
   // A match and its pick tokens are bound to the client who asked; another
   // account's would be refused, and a job's re-rank is that client's answer.
   clearMatchPrefetch();

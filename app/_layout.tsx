@@ -29,6 +29,7 @@ import { BrandIntro } from "@/components/BrandIntro";
 import { CallOverlay } from "@/components/call/CallOverlay";
 import { CheckoutExitQuestion } from "@/components/CheckoutExitQuestion";
 import { FoundingTesterCelebration } from "@/components/FoundingTesterCelebration";
+import { OverlayErrorBoundary } from "@/components/OverlayErrorBoundary";
 import { PromotionClaimSheet } from "@/components/PromotionClaimSheet";
 import { PushExplainerSheet } from "@/components/PushExplainerSheet";
 import { SessionShell } from "@/components/SessionShell";
@@ -584,21 +585,41 @@ function AppNavigation() {
                 />
               </Stack.Protected>
             </Stack>
-            <ReceiptOcrHost />
+            {/*
+              Each overlay below sits outside every route's error boundary, so
+              each has its own: one that throws is hidden, not the whole app.
+            */}
+            <OverlayErrorBoundary name="receipt-ocr">
+              <ReceiptOcrHost />
+            </OverlayErrorBoundary>
             {/* Held back until the intro has finished, so it never lands under it. */}
-            <AppUpdateSheet ready={!introPlaying && fontsReady} />
+            <OverlayErrorBoundary name="app-update">
+              <AppUpdateSheet ready={!introPlaying && fontsReady} />
+            </OverlayErrorBoundary>
             {/* Waits behind the update prompt too; it checks that itself. */}
-            <PushExplainerSheet ready={!introPlaying && fontsReady} />
+            <OverlayErrorBoundary name="push-explainer">
+              <PushExplainerSheet ready={!introPlaying && fontsReady} />
+            </OverlayErrorBoundary>
             {/* The Founding 30 / Friend Pass claim: after both prompts above, ahead of the tour. */}
-            <PromotionClaimSheet ready={!introPlaying && fontsReady} />
+            <OverlayErrorBoundary name="promotion-claim">
+              <PromotionClaimSheet ready={!introPlaying && fontsReady} />
+            </OverlayErrorBoundary>
             {/* The first-order tour. Waits behind both prompts; it checks that itself. */}
-            <TourOverlay ready={!introPlaying && fontsReady} />
+            <OverlayErrorBoundary name="tour">
+              <TourOverlay ready={!introPlaying && fontsReady} />
+            </OverlayErrorBoundary>
             {/* "What stopped you from ordering?": last in line, behind every prompt above. */}
-            <CheckoutExitQuestion ready={!introPlaying && fontsReady} />
+            <OverlayErrorBoundary name="checkout-exit">
+              <CheckoutExitQuestion ready={!introPlaying && fontsReady} />
+            </OverlayErrorBoundary>
             {/* "You're a Founding Tester", once per account on this phone; it waits behind every prompt above. */}
-            <FoundingTesterCelebration ready={!introPlaying && fontsReady} />
+            <OverlayErrorBoundary name="founding-tester">
+              <FoundingTesterCelebration ready={!introPlaying && fontsReady} />
+            </OverlayErrorBoundary>
             {/* Calls with the rider: above every screen and prompt, because a ringing call outranks them. */}
-            <CallOverlay />
+            <OverlayErrorBoundary name="call">
+              <CallOverlay />
+            </OverlayErrorBoundary>
           </SessionShell>
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />
             {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}

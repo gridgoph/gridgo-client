@@ -11,6 +11,7 @@ import ListingScreen from "@/app/request/listing";
 import type { CatalogItem } from "@/lib/api";
 import { clearListingCache, rememberListing } from "@/lib/listingCache";
 import { useCart } from "@/store/cart";
+import { useListingDraft } from "@/store/listingDraft";
 
 const mockReplace = jest.fn();
 
@@ -119,6 +120,7 @@ beforeEach(() => {
   api.addCartLine.mockClear();
   api.getCart.mockClear();
   clearListingCache();
+  useListingDraft.getState().clear();
   useCart.getState().reset();
   rememberListing(ITEM);
   api.getCatalogItem.mockReturnValue(new Promise(() => {}));
@@ -180,6 +182,7 @@ describe("adding a listing to the order", () => {
   it("leaves for artwork on the one call the tap actually needs", async () => {
     await renderInSafeArea(<ListingScreen />);
     await waitFor(() => expect(api.createCart).toHaveBeenCalled());
+    await waitFor(() => expect(useListingDraft.getState().drafts["item:sci_flyers"]).toBeDefined());
 
     await fireEvent.press(screen.getByLabelText("Add to my order"));
 
@@ -195,5 +198,7 @@ describe("adding a listing to the order", () => {
     expect(api.getCart).not.toHaveBeenCalled();
     expect(api.getCatalogItem).not.toHaveBeenCalled();
     expect(useCart.getState().cart?.lines[0]?.id).toBe("cline_new");
+    // Added: the unfinished answers are finished, and the next sheet opens empty.
+    expect(useListingDraft.getState().drafts).toEqual({});
   });
 });

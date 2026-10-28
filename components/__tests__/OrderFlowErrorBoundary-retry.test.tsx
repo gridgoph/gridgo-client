@@ -5,7 +5,10 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { OrderFlowErrorBoundary } from "@/components/OrderFlowErrorBoundary";
 
-jest.mock("expo-router", () => ({ useRouter: () => ({ dismissTo: jest.fn() }) }));
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ dismissTo: jest.fn() }),
+  useLocalSearchParams: () => ({}),
+}));
 
 /** "Try again" draws the step afresh: one press per file, so it has its own. */
 
@@ -29,11 +32,11 @@ it("draws the step again on Try again", async () => {
       </Try>
     </SafeAreaProvider>,
   );
-  expect(screen.getByText("listing sheet failed")).toBeTruthy();
+  expect(screen.getByText("Error: listing sheet failed")).toBeTruthy();
 
   failing = false;
   fireEvent.press(screen.getByText("Try again"));
   expect(await screen.findByText("Choose your options")).toBeTruthy();
-  expect(screen.queryByText("listing sheet failed")).toBeNull();
+  expect(screen.queryByText("Error: listing sheet failed")).toBeNull();
   consoleError.mockRestore();
 });
