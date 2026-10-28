@@ -2,13 +2,17 @@
  * What a crash is allowed to say about itself, on screen and in the device log.
  *
  * A render error's message can carry whatever the code had in hand: a signed
- * file link, a request's `Authorization` header, a session token. A recovery
- * screen prints it so a screenshot names the cause, and a screenshot travels —
- * so the text is redacted and bounded first, keeping the error's type and the
- * words that say what went wrong.
+ * file link, a request's `Authorization` header, a session token. A screenshot
+ * travels, and no pattern list catches every way a credential can be written,
+ * so the screen never shows the message: only the error's type and the app
+ * components it failed in (`diagnosticHeadline`), both plain identifiers.
+ *
+ * The device log — readable only over USB debugging on the client's own phone
+ * — keeps the message, redacted and bounded as best as patterns can, with the
+ * stack and component stack (`diagnosticLog`).
  */
 
-/** Long enough to name the cause; short enough that the buttons stay in view. */
+/** Long enough to name the cause in the log. */
 export const DIAGNOSTIC_MAX_CHARS = 300;
 /** Stack frames kept in the device log. */
 export const DIAGNOSTIC_STACK_LINES = 12;
@@ -95,16 +99,85 @@ export function diagnosticSummary(error: unknown): string {
   return bound(words ? `${name}: ${words}` : name, DIAGNOSTIC_MAX_CHARS);
 }
 
-/** The summary plus the first stack frames, redacted, for `console.error`. */
-export function diagnosticLog(error: unknown): string {
-  const summary = diagnosticSummary(error);
-  const { stack } = errorParts(error);
-  if (!stack) return summary;
-  const frames = stack
+function frameLines(stack: string | null): string[] {
+  if (!stack) return [];
+  return stack
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => /^at\s|@/.test(line))
+    .filter((line) => /^(at|in)\s|@/.test(line))
     .slice(0, DIAGNOSTIC_STACK_LINES)
     .map((line) => bound(redactDiagnostic(line), 240));
-  return frames.length ? `${summary}\n${frames.join("\n")}` : summary;
+}
+
+/**
+ * React's component stack for a caught render error. React Native's root
+ * error handler copies it onto the error itself (`componentStack`) in every
+ * build, during the commit — after the fallback first draws, before its
+ * effects run. Absent on web.
+ */
+function componentStackOf(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("componentStack" in error)) return null;
+  const stack = (error as { componentStack?: unknown }).componentStack;
+  return typeof stack === "string" ? stack : null;
+}
+
+/** The summary plus the first stack and component-stack frames, redacted, for `console.error`. */
+export function diagnosticLog(error: unknown): string {
+  const frames = frameLines(errorParts(error).stack);
+  const components = frameLines(componentStackOf(error));
+  return [
+    diagnosticSummary(error),
+    ...frames,
+    ...(components.length ? ["Component stack:", ...components] : []),
+  ].join("\n");
+}
+
+const IDENTIFIER = /^[A-Za-z_$][\w$]{0,39}$/;
+
+/**
+ * The error's type as an identifier (`TypeError`), never its message. A
+ * custom name that is not a plain identifier reads `Error`.
+ */
+export function errorTypeName(error: unknown): string {
+  if (!(error instanceof Error)) return "Thrown value";
+  return IDENTIFIER.test(error.name) ? error.name : "Error";
+}
+
+/** React, React Native and library frames: true of every crash, so they name nothing. */
+const FRAMEWORK_NAMES = new Set([
+  "Activity", "Anonymous", "AppContainer", "Background", "CellRenderer", "DelayedFreeze", "FlatList",
+  "ForwardRef", "Fragment", "Freeze", "Group", "Image", "ImageBackground", "InnerScreen", "Memo", "Modal",
+  "Pressable", "Route", "SafeAreaView", "SceneView", "Screen", "ScrollView", "ScrollViewBase", "SectionList",
+  "StrictMode", "Suspender", "Suspense", "Text", "TextImpl", "TouchableHighlight", "TouchableOpacity",
+  "TouchableWithoutFeedback", "Try", "Unknown", "View", "Wrap", "Wrapper",
+]);
+const FRAMEWORK_PATTERN = /^(RCT|RNS|RNC|Animated|Virtualized|Keyboard|Gesture|Native)|Context|Provider|Consumer|Boundary|Navigator|Navigation/;
+
+/**
+ * The innermost app components in a component stack, innermost first: names
+ * only — every frame's location, file path and query string is dropped.
+ */
+export function failedComponents(componentStack: string | null, max = 2): string[] {
+  if (!componentStack) return [];
+  const names: string[] = [];
+  for (const line of componentStack.split("\n")) {
+    const name = /^\s*(?:at|in)\s+([A-Za-z_$][\w$]*)/.exec(line)?.[1] ?? /^\s*([A-Za-z_$][\w$]*)@/.exec(line)?.[1];
+    if (!name || !IDENTIFIER.test(name) || !/^[A-Z]/.test(name)) continue;
+    if (FRAMEWORK_NAMES.has(name) || FRAMEWORK_PATTERN.test(name)) continue;
+    if (names.at(-1) === name) continue;
+    names.push(name);
+    if (names.length === max) break;
+  }
+  return names;
+}
+
+/**
+ * The one line the recovery screen shows: `TypeError in OptionGroupPicker,
+ * inside ListingScreen`. Identifiers only — the message never appears.
+ */
+export function diagnosticHeadline(error: unknown): string {
+  const type = errorTypeName(error);
+  const [inner, outer] = failedComponents(componentStackOf(error));
+  if (!inner) return type;
+  return outer ? `${type} in ${inner}, inside ${outer}` : `${type} in ${inner}`;
 }

@@ -1,12 +1,12 @@
 import { useLocalSearchParams, useRouter, type ErrorBoundaryProps } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
-import { diagnosticLog, diagnosticSummary } from "@/lib/errorDiagnostic";
+import { diagnosticHeadline, diagnosticLog } from "@/lib/errorDiagnostic";
 import { replaceListing } from "@/lib/listingCache";
 import { HOME_TAB } from "@/lib/receipt";
 
@@ -31,12 +31,13 @@ type Props = ErrorBoundaryProps & {
  * so a render error on one step replaces that step with this screen instead
  * of closing the app — a phone build has no other boundary. It is
  * containment, not a fix, and only for errors React sees: a native crash
- * still closes the app. The error's type and message are printed under the
- * copy, redacted and bounded (`lib/errorDiagnostic.ts`), so a screenshot
- * names the cause without carrying a token; the same text and the first
- * stack frames go to `console.error`, which lands in the Android device log.
- * (React Native also reports every caught render error to its own
- * ExceptionsManager, unredacted; that log is the platform's, not ours.)
+ * still closes the app. Under the copy, the error's type and the app
+ * components it failed in (`diagnosticHeadline`), so a screenshot says where
+ * it broke without carrying the message, which can hold a token. The
+ * redacted message, stack and component stack go to `console.error`, which
+ * lands in the Android device log. (React Native also reports every caught
+ * render error to its own ExceptionsManager, unredacted; that log is the
+ * platform's, not ours.)
  *
  * Nothing here touches the basket. It lives on GRIDGO and only its id is on
  * the phone, so "Go back to Home" leaves it exactly as it was. The listing's
@@ -44,14 +45,19 @@ type Props = ErrorBoundaryProps & {
  */
 export function OrderFlowErrorBoundary({ error, retry, beforeRetry }: Props) {
   const router = useRouter();
+  const [headline, setHeadline] = useState(() => diagnosticHeadline(error));
 
   useEffect(() => {
     console.error(`[order-flow] a step crashed while drawing: ${diagnosticLog(error)}`);
+    // React Native puts the component stack on the error in the commit after
+    // this first draws; read the headline again once it is there.
+    const reread = setTimeout(() => setHeadline(diagnosticHeadline(error)), 0);
+    return () => clearTimeout(reread);
   }, [error]);
 
   return (
     <Screen edges={["bottom"]}>
-      {/* Scrolls, so the two ways out stay reachable however long the message. */}
+      {/* Scrolls, so the two ways out stay reachable at any text size. */}
       <ScrollView
         testID="order-flow-crash"
         className="gg-screen"
@@ -61,7 +67,7 @@ export function OrderFlowErrorBoundary({ error, retry, beforeRetry }: Props) {
           <StatusChip tone="error" label={ORDER_FLOW_CRASH_TITLE} icon="circle-x" />
           <Text className="text-body text-text-primary">{ORDER_FLOW_CRASH_BODY}</Text>
           <Text className="text-caption text-text-muted" selectable>
-            {diagnosticSummary(error)}
+            {headline}
           </Text>
         </View>
         <PrimaryButton

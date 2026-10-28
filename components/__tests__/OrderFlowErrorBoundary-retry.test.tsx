@@ -14,7 +14,7 @@ jest.mock("expo-router", () => ({
 
 let failing = true;
 function Flaky() {
-  if (failing) throw new Error("listing sheet failed");
+  if (failing) throw new RangeError("listing sheet failed");
   return <Text>Choose your options</Text>;
 }
 
@@ -32,11 +32,11 @@ it("draws the step again on Try again", async () => {
       </Try>
     </SafeAreaProvider>,
   );
-  expect(screen.getByText("Error: listing sheet failed")).toBeTruthy();
+  expect(screen.getByText("RangeError")).toBeTruthy();
 
   failing = false;
   fireEvent.press(screen.getByText("Try again"));
   expect(await screen.findByText("Choose your options")).toBeTruthy();
-  expect(screen.queryByText("Error: listing sheet failed")).toBeNull();
+  expect(screen.queryByText("RangeError")).toBeNull();
   consoleError.mockRestore();
 });

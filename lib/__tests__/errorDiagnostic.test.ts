@@ -1,8 +1,11 @@
 import {
   DIAGNOSTIC_MAX_CHARS,
   DIAGNOSTIC_STACK_LINES,
+  diagnosticHeadline,
   diagnosticLog,
   diagnosticSummary,
+  errorTypeName,
+  failedComponents,
   redactDiagnostic,
 } from "@/lib/errorDiagnostic";
 
@@ -166,5 +169,71 @@ describe("diagnosticLog", () => {
     expect(log).toContain('{"password":"[redacted]"}');
     expect(log).toContain("Cookie: [redacted]");
     expect(diagnosticLog({ token: "FAKE_TOKEN" })).toBe('Thrown value: {"token":"[redacted]"}');
+  });
+});
+
+const COMPONENT_STACK = [
+  "",
+  "    at OptionGroupPicker (http://10.0.2.2:8081/index.bundle?platform=android&token=FAKE_TOKEN:120:15)",
+  "    at View (unknown)",
+  "    at RCTView",
+  "    at OptionGroupPicker",
+  "    at ThemeContext.Provider",
+  "    at ListingScreen (address at index.android.bundle:1:23456)",
+  "    at CartScreen",
+  "    at Try",
+].join("\n");
+
+describe("failedComponents", () => {
+  it("names the innermost two app components, never a location", () => {
+    expect(failedComponents(COMPONENT_STACK)).toEqual(["OptionGroupPicker", "ListingScreen"]);
+  });
+
+  it("reads the older `in` frames and the `name@location` frames", () => {
+    expect(failedComponents("\n    in Stepper (at listing.tsx:10)\n    in View\n    in ListingScreen")).toEqual([
+      "Stepper",
+      "ListingScreen",
+    ]);
+    expect(failedComponents("Stepper@http://x/index.bundle?token=FAKE_TOKEN:1:2\nListingScreen@http://x:3:4", 1)).toEqual([
+      "Stepper",
+    ]);
+  });
+
+  it("names nothing without a stack, or when it holds only framework components", () => {
+    expect(failedComponents(null)).toEqual([]);
+    expect(failedComponents("\n    at View\n    at ScrollView\n    at NavigationContainer\n    at Try")).toEqual([]);
+  });
+});
+
+describe("diagnosticHeadline", () => {
+  const withStack = <T extends Error>(error: T) => Object.assign(error, { componentStack: COMPONENT_STACK });
+
+  it("is the type and where it broke, never the message", () => {
+    const headline = diagnosticHeadline(withStack(new TypeError('{"token":"FAKE_TOKEN"} undefined is not a function')));
+    expect(headline).toBe("TypeError in OptionGroupPicker, inside ListingScreen");
+  });
+
+  it("falls back to the type alone", () => {
+    expect(diagnosticHeadline(new RangeError("FAKE_TOKEN"))).toBe("RangeError");
+    expect(diagnosticHeadline({ "password.v2": "FAKE_PASSWORD" })).toBe("Thrown value");
+    expect(diagnosticHeadline("token=FAKE_TOKEN")).toBe("Thrown value");
+  });
+
+  it("will not print a custom error name that is not a plain identifier", () => {
+    const error = new Error("boom");
+    error.name = "Bearer FAKE_BEARER";
+    expect(errorTypeName(error)).toBe("Error");
+    expect(diagnosticHeadline(error)).toBe("Error");
+  });
+});
+
+describe("diagnosticLog's component stack", () => {
+  it("follows the frames, redacted", () => {
+    const error = Object.assign(new Error("boom"), { componentStack: COMPONENT_STACK });
+    error.stack = "Error: boom\n    at render (app.js:1:2)";
+    const lines = diagnosticLog(error).split("\n");
+    expect(lines.slice(0, 3)).toEqual(["Error: boom", "at render (app.js:1:2)", "Component stack:"]);
+    expect(lines[3]).toBe("at OptionGroupPicker (http://10.0.2.2:8081/index.bundle?[redacted]");
+    expect(lines.join("\n")).not.toMatch(SECRET);
   });
 });
