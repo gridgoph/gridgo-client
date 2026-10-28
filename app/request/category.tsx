@@ -18,6 +18,9 @@ import {
 } from "@/lib/productCategories";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 
+// A step that throws while drawing shows a way on instead of closing the app.
+export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+
 /**
  * The front of the print request: what are you printing?
  *

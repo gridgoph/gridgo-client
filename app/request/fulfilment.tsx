@@ -29,6 +29,9 @@ import { useJobFulfilment, withJobFulfilment } from "@/store/jobFulfilment";
 import { withJobRanking } from "@/store/orderRanking";
 import { usePlatformSettings } from "@/store/platformSettings";
 
+// A step that throws while drawing shows a way on instead of closing the app.
+export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+
 /**
  * Delivery or pick-up, asked straight after the date (gridgoph/gridgo-client#158).
  *

@@ -79,6 +79,9 @@ import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
 import { coverFileOnItem, coverSpineDirty, coverSpineInput, lineAsksCoverSpine, lineMissingCoverSpine } from "@/lib/coverSpine";
 import { coverSpineDraftOf, useCoverSpine } from "@/store/coverSpine";
 
+// A step that throws while drawing shows a way on instead of closing the app.
+export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+
 /**
  * The artwork for one thing in the basket.
  *

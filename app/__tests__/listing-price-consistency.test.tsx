@@ -12,6 +12,7 @@ import { basketTotals, printRuns } from "@/lib/basket";
 import { CategorySampleCard } from "@/components/CategorySample";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCart } from "@/store/cart";
+import { useListingDraft } from "@/store/listingDraft";
 import { useListingQuote } from "@/store/listingQuote";
 import { clearMatchPrefetch } from "@/lib/matchPrefetch";
 
@@ -122,6 +123,8 @@ beforeEach(() => {
   api.listAddresses.mockResolvedValue([]);
   usePlatformSettings.getState().reset();
   clearListingCache();
+  // Each case opens the sheet fresh; a kept draft would carry the last one's answers.
+  useListingDraft.getState().clear();
   useCart.getState().reset();
   api.getCatalogItem.mockReset();
   api.catalogQuote.mockReset();

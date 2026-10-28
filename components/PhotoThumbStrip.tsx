@@ -122,6 +122,9 @@ export function PhotoThumbStrip({
               <Image
                 source={{ uri: photo.uri }}
                 resizeMode="cover"
+                // Android decodes a remote photo at full size unless told to
+                // resize; every thumb in the strip is mounted at once.
+                resizeMethod="resize"
                 onError={() => {
                   const uri = photo.uri;
                   if (uri) setFailed((list) => (list.includes(uri) ? list : [...list, uri]));
