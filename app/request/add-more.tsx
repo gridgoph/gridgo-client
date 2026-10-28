@@ -34,6 +34,9 @@ import { useJobDeadline } from "@/store/jobDeadline";
 import { useJobFulfilment, withJobFulfilment } from "@/store/jobFulfilment";
 import { usePlatformSettings } from "@/store/platformSettings";
 
+// A step that throws while drawing shows a way on instead of closing the app.
+export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+
 /**
  * "Add more from Shop A for Sat 14 Nov" (report C86B13A1, gridgo-client#267).
  *

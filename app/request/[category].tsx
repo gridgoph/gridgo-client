@@ -27,6 +27,9 @@ import {
 } from "@/lib/shopBoards";
 import { subcategoryHoursView } from "@/lib/shopHours";
 
+// A step that throws while drawing shows a way on instead of closing the app.
+export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+
 /**
  * One category, as a wall of samples or a list of quotes.
  *

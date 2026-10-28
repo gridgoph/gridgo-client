@@ -87,6 +87,9 @@ import { useJobFulfilment } from "@/store/jobFulfilment";
 import { useListingQuote } from "@/store/listingQuote";
 import { usePlatformSettings } from "@/store/platformSettings";
 
+// A step that throws while drawing shows a way on instead of closing the app.
+export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+
 const MAX_QUANTITY = 500;
 
 /** Where the quantity starts: the least the shop will run, or one. */

@@ -23,6 +23,9 @@ import { useJobDeadline } from "@/store/jobDeadline";
 import { useJobFulfilment } from "@/store/jobFulfilment";
 import { withJobRanking } from "@/store/orderRanking";
 
+// A step that throws while drawing shows a way on instead of closing the app.
+export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+
 /**
  * Where is this going?
  *
