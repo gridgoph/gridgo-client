@@ -21,6 +21,13 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.469 (Fix)
+
+- Adding a profile photo now works on Android, and saving a one-word name no longer keeps your old surname.
+- The app no longer sends you back to sign in after picking a file, switching apps or a brief connection drop.
+- Setting a password now asks for 15 characters on the field, so sign-up no longer refuses it at the end.
+- The artwork step no longer closes the app right after you add an item to your order.
+
 ## 1.0.457 (New feature)
 
 - After the survey, share a story picture of your delivered order, or send your invite link to a friend.
