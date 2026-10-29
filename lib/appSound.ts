@@ -1,8 +1,8 @@
 import { expoAudio, type AudioModule, type AudioPlayer } from "@/lib/expoAudio";
 
 /**
- * One of GRIDGO's in-app sounds — the update chime (#230), the receipt's print
- * (#229) — or silence.
+ * One of GRIDGO's in-app sounds — the update chime (#230), the receipt's ping
+ * (#229, #339) — or silence.
  *
  * **It follows the phone's silent mode.** Every play first sets the audio
  * session to `playsInSilentMode: false` and mixes with whatever else is
@@ -13,6 +13,10 @@ import { expoAudio, type AudioModule, type AudioPlayer } from "@/lib/expoAudio";
  *
  * The in-app mute (Settings > App sounds) is the caller's to check: this only
  * plays what it is asked to.
+ *
+ * `volume` (0–1) scales the sound under the phone's own volume, so a sound can
+ * sit quieter than its file without ever being louder than the phone allows.
+ * Left out, the player keeps its own.
  *
  * The player is created up front: loading a file at the moment it is wanted
  * puts an audible gap between what moves on screen and its sound, and Expo Go
@@ -52,6 +56,7 @@ function loaded(player: AudioPlayer, timeoutMs: number): Promise<void> {
 export function loadAppSound(
   source: number,
   audioModule: AudioModule | null = expoAudio(),
+  { volume }: { volume?: number } = {},
 ): AppSound | null {
   if (!audioModule) return null;
 
@@ -59,6 +64,7 @@ export function loadAppSound(
   let released = false;
   try {
     player = audioModule.createAudioPlayer(source, { downloadFirst: true });
+    if (volume !== undefined) player.volume = volume;
   } catch {
     return null;
   }
@@ -109,11 +115,11 @@ export function playAppSoundOnce(
 
 /**
  * Settings > the one switch for every in-app sound: the update chime and the
- * receipt's print. One switch, because a client turning GRIDGO quiet means all
+ * receipt's ping. One switch, because a client turning GRIDGO quiet means all
  * of it; the phone's silent mode mutes both as well.
  */
 export const APP_SOUND_COPY = {
   label: "App sounds",
   caption:
-    "A short chime when one of your orders moves, and the print when your receipt comes out. Your phone's silent mode still mutes them.",
+    "A short chime when one of your orders moves, and a soft ping when your receipt prints. Your phone's silent mode still mutes them.",
 } as const;

@@ -8,6 +8,7 @@ import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ArtworkSizeNote } from "@/components/ArtworkSizeNote";
 import { ArtworkAttachmentList } from "@/components/ArtworkAttachmentList";
+import { HeldFileCard } from "@/components/HeldFileCard";
 import { PrepareFileGuide } from "@/components/PrepareFileGuide";
 import { PrintLayoutChoice } from "@/components/PrintLayoutChoice";
 import { PrintLayoutPreview } from "@/components/PrintLayoutPreview";
@@ -76,6 +77,8 @@ import { ProhibitedItemsNote } from "@/components/legal/ProhibitedItemsNote";
 import { cartRightsScope, useArtworkRights } from "@/store/artworkRights";
 import { useArtworkAttachments, type PendingUpload } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
+import { useMyFiles } from "@/store/myFiles";
+import { MY_FILES_ROUTE, listingTakes } from "@/lib/myFiles";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
 import { coverFileOnItem, coverSpineDirty, coverSpineInput, lineAsksCoverSpine, lineMissingCoverSpine } from "@/lib/coverSpine";
@@ -245,6 +248,11 @@ export default function ArtworkScreen() {
   const listError = useArtworkAttachments((state) => (line ? state.saveError[line.id] ?? null : null));
   const notice = useArtworkAttachments((state) => (line ? state.notice[line.id] ?? null : null));
   const attachments = useArtworkAttachments.getState();
+  // "Save to My files" on each file, and a file held from My files for a new order.
+  const savePending = useMyFiles((state) => state.pendingSave);
+  const saveErrors = useMyFiles((state) => state.saveError);
+  const saveUnconfirmed = useMyFiles((state) => state.unconfirmed);
+  const held = useMyFiles((state) => state.held);
   useEffect(() => {
     for (const fileId of fileIds) void useArtworkAttachments.getState().readFile(fileId);
   }, [fileIds.join(" ")]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -679,6 +687,24 @@ export default function ArtworkScreen() {
           </View>
         ) : null}
 
+        {held && takesFiles && !fileIds.includes(held.fileId) && roomLeft > 0 ? (
+          <View className="mt-6">
+            <HeldFileCard
+              name={held.name}
+              refusal={
+                item && !listingTakes(item, held.name, held.contentType)
+                  ? `${item.name} does not take ${held.name}. Choose another product for it, or upload a file here.`
+                  : null
+              }
+              busy={listSaving}
+              onAdd={async () => {
+                if ((await attachments.attachSaved(line.id, held.fileId)).ok) useMyFiles.getState().release();
+              }}
+              onDismiss={() => useMyFiles.getState().release()}
+            />
+          </View>
+        ) : null}
+
         {takesFiles || links.length ? (
           <TourTarget step="artwork" className="mt-6">
             {/*
@@ -713,6 +739,14 @@ export default function ArtworkScreen() {
                 void attachments.acceptWarning(line.id, fileId, code, accept)
               }
               onReplaceFile={(fileId) => void attachments.replace(line.id, fileId, guard)}
+              myFiles={{
+                pending: savePending,
+                errors: saveErrors,
+                unconfirmed: saveUnconfirmed,
+                onToggle: (fileId, saved) => void useMyFiles.getState().setSaved(fileId, saved),
+                onRecheck: (fileId) => void useMyFiles.getState().recheck(fileId),
+              }}
+              onChooseSaved={() => router.push({ pathname: MY_FILES_ROUTE, params: { lineId: line.id } })}
             />
           </TourTarget>
         ) : null}

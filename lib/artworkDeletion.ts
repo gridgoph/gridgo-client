@@ -13,12 +13,13 @@ import { ApiError, type Issue, type Order, type Refund, type StoredFile } from "
 import { userFacingError } from "@/lib/copy";
 import { isRefundActive } from "@/lib/refunds";
 
-/** The retention period decided on 4 October 2026. Policy, not a setting. */
-export const ARTWORK_RETENTION_DAYS = 30;
-
-/** The one calm line on a completed order. */
+/**
+ * How long GRIDGO keeps artwork, in the words of the privacy notice (approved
+ * 26–29 October 2026 with My files, gridgo-client#334). Said verbatim wherever
+ * the app speaks of artwork retention, so the app never promises other terms.
+ */
 export const ARTWORK_RETENTION_NOTE =
-  `GRIDGO deletes artwork automatically ${ARTWORK_RETENTION_DAYS} days after a job is completed.`;
+  "Artwork and design files, and mockups: 30 days after the order is completed. Files you choose to keep with 'Save to My files' stay in My files until you delete them or close your account. You can delete any of them sooner yourself once the order is completed and nothing about it is still open.";
 
 export const DELETE_ARTWORK_LABEL = "Delete my artwork";
 
