@@ -1,5 +1,5 @@
 import { CircleAlert, ExternalLink, FileImage, FileText, Trash2 } from "lucide-react-native";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { CropMarkFrame } from "@/components/CropMarkFrame";
 import { SamplePhoto } from "@/components/SamplePhoto";
@@ -12,6 +12,11 @@ type Props = {
   /** The way this file is used from here: on a new order, or on the item being made. */
   use: { label: string; onPress: () => void; refusal?: string | null };
   onDelete: () => void;
+  /** Open the original on a freshly signed link. */
+  onOpen: () => void;
+  opening?: boolean;
+  /** Why the last Open failed; Open again is the retry. */
+  openError?: string | null;
   /** Asks the screen for a fresh read once the signed picture has run out. */
   onStale: () => Promise<unknown> | void;
   /** Hide delete while choosing a file for an item. */
@@ -28,13 +33,22 @@ type Props = {
  * thumbnail is not ready) gets its type instead, and "Open" hands the original
  * to the phone. Nothing here is yellow: a list of equals has no one action.
  */
-export function SavedFileRow({ file, use, onDelete, onStale, deletable = true, divided = false }: Props) {
+export function SavedFileRow({
+  file,
+  use,
+  onDelete,
+  onOpen,
+  opening = false,
+  openError = null,
+  onStale,
+  deletable = true,
+  divided = false,
+}: Props) {
   const colors = useThemeColors();
   const type = savedFileType(file);
   const kind = savedFileKind(file);
   const unavailable = unavailableLine(file);
   const facts = [type, formatStorage(file.size)].join(" · ");
-  const downloadUrl = file.downloadUrl;
 
   return (
     <View
@@ -88,14 +102,15 @@ export function SavedFileRow({ file, use, onDelete, onStale, deletable = true, d
         >
           <Text className="text-button text-text-primary">{use.label}</Text>
         </Pressable>
-        {downloadUrl ? (
+        {file.unavailable ? null : (
           <QuietButton
             icon={ExternalLink}
-            label="Open"
-            accessibilityLabel={`Open ${file.originalFilename}`}
-            onPress={() => void Linking.openURL(downloadUrl).catch(() => undefined)}
+            label={opening ? "Opening…" : openError ? "Try again" : "Open"}
+            accessibilityLabel={`${openError ? "Try opening" : "Open"} ${file.originalFilename}`}
+            disabled={opening}
+            onPress={onOpen}
           />
-        ) : null}
+        )}
         {deletable ? (
           <QuietButton
             icon={Trash2}
@@ -107,6 +122,14 @@ export function SavedFileRow({ file, use, onDelete, onStale, deletable = true, d
         ) : null}
       </View>
       {use.refusal ? <Text className="text-caption text-text-secondary">{use.refusal}</Text> : null}
+      {openError ? (
+        <View className="flex-row items-start gap-2" accessibilityRole="alert">
+          <View className="pt-0.5">
+            <CircleAlert size={16} color={colors.error} strokeWidth={2} aria-hidden />
+          </View>
+          <Text className="min-w-0 flex-1 text-body text-error">{openError}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -129,22 +152,26 @@ function QuietButton({
   label,
   accessibilityLabel,
   tone,
+  disabled = false,
   onPress,
 }: {
   icon: typeof Trash2;
   label: string;
   accessibilityLabel: string;
   tone?: "error";
+  disabled?: boolean;
   onPress: () => void;
 }) {
   const colors = useThemeColors();
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      className="min-h-11 flex-row items-center gap-2 px-3"
-      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+      accessibilityState={{ disabled }}
+      className={disabled ? "gg-disabled min-h-11 flex-row items-center gap-2 px-3" : "min-h-11 flex-row items-center gap-2 px-3"}
+      style={({ pressed }) => (pressed && !disabled ? { opacity: 0.7 } : undefined)}
     >
       <Icon size={16} color={tone === "error" ? colors.error : colors.textSecondary} strokeWidth={2} aria-hidden />
       <Text className={tone === "error" ? "text-body font-medium text-error" : "text-body font-medium text-text-primary"}>

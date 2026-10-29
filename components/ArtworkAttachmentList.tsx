@@ -104,7 +104,10 @@ type Props = {
 export type SaveChoices = {
   pending: Record<string, boolean>;
   errors: Record<string, string | null>;
+  /** No answer came back and the file could not be read: the box is not confirmed. */
+  unconfirmed: Record<string, boolean>;
   onToggle: (fileId: string, saved: boolean) => void;
+  onRecheck: (fileId: string) => void;
 };
 
 /**
@@ -550,6 +553,17 @@ function SaveTick({ file, choices }: { file: StoredFile | null | undefined; choi
   const pending = choices.pending[file.fileId];
   const checked = pending ?? file.savedAt != null;
   const error = choices.errors[file.fileId] ?? null;
+  const unconfirmed = choices.unconfirmed[file.fileId] === true;
+  const hint =
+    pending !== undefined
+      ? unconfirmed
+        ? "Checking with GRIDGO…"
+        : pending
+          ? "Saving to My files…"
+          : "Taking it out of My files…"
+      : unconfirmed
+        ? "Not confirmed yet"
+        : SAVE_TO_MY_FILES_HINT;
   return (
     <View className="gap-1">
       <CheckboxRow
@@ -557,15 +571,29 @@ function SaveTick({ file, choices }: { file: StoredFile | null | undefined; choi
         disabled={pending !== undefined}
         onChange={(next) => choices.onToggle(file.fileId, next)}
         label={SAVE_TO_MY_FILES_LABEL}
-        hint={pending === undefined ? SAVE_TO_MY_FILES_HINT : pending ? "Saving to My files…" : "Taking it out of My files…"}
+        hint={hint}
       />
       {error ? (
         <View className="flex-row items-start gap-2" accessibilityRole="alert">
           <View className="pt-0.5">
-            <CircleAlert size={16} color={colors.error} strokeWidth={2} aria-hidden />
+            <CircleAlert size={16} color={unconfirmed ? colors.warning : colors.error} strokeWidth={2} aria-hidden />
           </View>
-          <Text className="min-w-0 flex-1 text-body text-error">{error}</Text>
+          <Text className={unconfirmed ? "min-w-0 flex-1 text-body text-text-primary" : "min-w-0 flex-1 text-body text-error"}>
+            {error}
+          </Text>
         </View>
+      ) : null}
+      {unconfirmed && pending === undefined ? (
+        <Pressable
+          onPress={() => choices.onRecheck(file.fileId)}
+          accessibilityRole="button"
+          accessibilityLabel="Check again"
+          accessibilityHint="Asks GRIDGO whether this file is saved"
+          className="ms-6 min-h-11 justify-center self-start"
+          style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+        >
+          <Text className="text-body font-medium text-text-primary underline">Check again</Text>
+        </Pressable>
       ) : null}
     </View>
   );

@@ -146,3 +146,153 @@ describe("reuse", () => {
     expect(useMyFiles.getState().held).toBeNull();
   });
 });
+
+/** A reply held back until the test lets it go. */
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  let reject: (error: unknown) => void = () => undefined;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+const SAVED_AT = "2026-10-29T10:00:00.000Z";
+
+describe("a late read never undoes a newer answer (review finding 1)", () => {
+  it("keeps an unsave when an older read of the saved file answers after it", async () => {
+    holdShirtLine([FRONT], [storedFile("file_front", "shirt-front.png", { savedAt: SAVED_AT })]);
+    const read = deferred<api.StoredFile>();
+    getFile.mockReturnValueOnce(read.promise);
+    const reading = useArtworkAttachments.getState().readFile("file_front", { force: true });
+
+    setFileSaved.mockResolvedValueOnce({ file: storedFile("file_front", "shirt-front.png", { savedAt: null }), usage });
+    await useMyFiles.getState().setSaved("file_front", false);
+    read.resolve(storedFile("file_front", "shirt-front.png", { savedAt: SAVED_AT }));
+    await reading;
+
+    expect(useArtworkAttachments.getState().files.file_front?.savedAt).toBeNull();
+  });
+
+  it("keeps a save when an older read of the unsaved file answers after it", async () => {
+    const read = deferred<api.StoredFile>();
+    getFile.mockReturnValueOnce(read.promise);
+    const reading = useArtworkAttachments.getState().readFile("file_front", { force: true });
+
+    setFileSaved.mockResolvedValueOnce({ file: storedFile("file_front", "shirt-front.png", { savedAt: SAVED_AT }), usage });
+    await useMyFiles.getState().setSaved("file_front", true);
+    read.resolve(storedFile("file_front", "shirt-front.png", { savedAt: null }));
+    await reading;
+
+    expect(useArtworkAttachments.getState().files.file_front?.savedAt).toBe(SAVED_AT);
+  });
+
+  it("drops a read that answers after the account changed", async () => {
+    const read = deferred<api.StoredFile>();
+    getFile.mockReturnValueOnce(read.promise);
+    const reading = useArtworkAttachments.getState().readFile("file_other", { force: true });
+
+    useArtworkAttachments.getState().reset();
+    read.resolve(storedFile("file_other", "theirs.png", { savedAt: SAVED_AT }));
+    await reading;
+
+    expect(useArtworkAttachments.getState().files).toEqual({});
+  });
+});
+
+describe("a lost answer is checked, never assumed (review finding 2)", () => {
+  it("reads the file back and keeps an unsave that landed", async () => {
+    holdShirtLine([FRONT], [storedFile("file_front", "shirt-front.png", { savedAt: SAVED_AT })]);
+    useMyFiles.setState({ files: [savedFile({ fileId: "file_front" })] });
+    setFileSaved.mockRejectedValueOnce(new TypeError("Network request failed"));
+    getFile.mockResolvedValueOnce(storedFile("file_front", "shirt-front.png", { savedAt: null }));
+    listSavedFiles.mockResolvedValueOnce(savedFilesPage([]));
+
+    await expect(useMyFiles.getState().setSaved("file_front", false)).resolves.toBe(true);
+
+    expect(useArtworkAttachments.getState().files.file_front?.savedAt).toBeNull();
+    expect(useMyFiles.getState().saveError.file_front).toBeNull();
+    expect(useMyFiles.getState().files).toEqual([]);
+  });
+
+  it("says the choice is not confirmed when GRIDGO cannot be asked, then checks again", async () => {
+    setFileSaved.mockRejectedValueOnce(new TypeError("Network request failed"));
+    getFile.mockRejectedValueOnce(new TypeError("Network request failed"));
+
+    await expect(useMyFiles.getState().setSaved("file_front", true)).resolves.toBe(false);
+
+    expect(useMyFiles.getState().saveError.file_front).toBe(
+      "GRIDGO did not answer, so this choice is not confirmed yet. Check again once you are connected.",
+    );
+    expect(useMyFiles.getState().unconfirmed.file_front).toBe(true);
+
+    getFile.mockResolvedValueOnce(storedFile("file_front", "shirt-front.png", { savedAt: SAVED_AT }));
+    await useMyFiles.getState().recheck("file_front");
+
+    expect(useArtworkAttachments.getState().files.file_front?.savedAt).toBe(SAVED_AT);
+    expect(useMyFiles.getState().unconfirmed.file_front).toBeUndefined();
+    expect(useMyFiles.getState().saveError.file_front).toBeNull();
+  });
+
+  it("still takes a refusal at its word, without reading the file", async () => {
+    setFileSaved.mockRejectedValueOnce(new api.ApiError(409, LIMIT_REACHED_BODY));
+    await useMyFiles.getState().setSaved("file_front", true);
+    expect(getFile).not.toHaveBeenCalled();
+    expect(useMyFiles.getState().unconfirmed).toEqual({});
+  });
+});
+
+describe("Open signs a new link (review finding 3)", () => {
+  it("opens the original on a fresh link, never the list's", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Linking } = require("react-native");
+    const openURL = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    const getFileDownloadUrl = jest
+      .spyOn(api, "getFileDownloadUrl")
+      .mockResolvedValueOnce({ fileId: "file_doc", url: "https://storage.test/fresh", expiresAt: "", expiresInSeconds: 300 });
+
+    await useMyFiles.getState().open("file_doc");
+
+    expect(getFileDownloadUrl).toHaveBeenCalledWith("file_doc");
+    expect(openURL).toHaveBeenCalledWith("https://storage.test/fresh");
+    expect(useMyFiles.getState().openError.file_doc).toBeNull();
+  });
+
+  it("says so when the file will not open", async () => {
+    jest.spyOn(api, "getFileDownloadUrl").mockRejectedValueOnce(new TypeError("Network request failed"));
+    await useMyFiles.getState().open("file_doc");
+    expect(useMyFiles.getState().openError.file_doc).toBe("This file did not open. Check your connection and try again.");
+    expect(useMyFiles.getState().opening).toEqual({});
+  });
+});
+
+describe("paging and deleting (review finding 4)", () => {
+  it("never brings a deleted file back with a page that answers late", async () => {
+    useMyFiles.setState({
+      files: [savedFile({ fileId: "old" })],
+      usage: { usedBytes: 200, limitBytes: 500_000_000 },
+      nextOffset: 1,
+    });
+    const late = deferred<api.SavedFilesPage>();
+    listSavedFiles.mockReturnValueOnce(late.promise);
+    listSavedFiles.mockResolvedValueOnce(
+      savedFilesPage([savedFile({ fileId: "next" })], { usage: { usedBytes: 100, limitBytes: 500_000_000 } }),
+    );
+    const more = useMyFiles.getState().loadMore();
+
+    deleteSavedFile.mockResolvedValueOnce({
+      file: storedFile("old", "old.png", { state: "deleted", savedAt: null }),
+      usage: { usedBytes: 100, limitBytes: 500_000_000 },
+    });
+    useMyFiles.getState().askDelete("old");
+    await useMyFiles.getState().confirmDelete();
+    late.resolve(savedFilesPage([savedFile({ fileId: "next" })], { usage: { usedBytes: 999, limitBytes: 500_000_000 } }));
+    await more;
+
+    expect(useMyFiles.getState().files?.map((file) => file.fileId)).toEqual(["next"]);
+    expect(useMyFiles.getState().usage?.usedBytes).toBe(100);
+    // The page was read again from where it starts now that one file is gone.
+    expect(listSavedFiles.mock.calls.map(([offset]) => offset)).toEqual([1, 0]);
+  });
+});

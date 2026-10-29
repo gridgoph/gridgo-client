@@ -42,6 +42,8 @@ export default function MyFilesScreen() {
   const confirming = useMyFiles((state) => state.confirming);
   const deleting = useMyFiles((state) => state.deleting);
   const deleteError = useMyFiles((state) => state.deleteError);
+  const opening = useMyFiles((state) => state.opening);
+  const openError = useMyFiles((state) => state.openError);
   const load = useMyFiles((state) => state.load);
 
   // Choosing for one basket item: its listing says which files it takes.
@@ -120,6 +122,9 @@ export default function MyFilesScreen() {
                     deletable={!choosing}
                     onStale={() => load()}
                     onDelete={() => useMyFiles.getState().askDelete(file.fileId)}
+                    onOpen={() => void useMyFiles.getState().open(file.fileId)}
+                    opening={opening[file.fileId] === true}
+                    openError={openError[file.fileId] ?? null}
                     use={
                       choosing
                         ? {

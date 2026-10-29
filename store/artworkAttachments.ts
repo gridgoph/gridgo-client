@@ -126,6 +126,11 @@ const handles = new Map<string, api.UploadHandle>();
 const assets = new Map<string, api.UploadAsset>();
 const chains = new Map<string, Promise<unknown>>();
 const reading = new Set<string>();
+/**
+ * Bumped per file whenever a newer record lands — an upload, a save, a delete —
+ * so a read that set off before it cannot replace it when it answers late.
+ */
+const fileVersions = new Map<string, number>();
 let sequence = 0;
 /** Bumped by `reset`, so an upload begun for the last account lands nowhere. */
 let generation = 0;
@@ -137,6 +142,12 @@ function lineOf(lineId: string) {
 const LIMIT_REACHED = `An item can have ${MAX_ARTWORK_ATTACHMENTS} files and design links at most. Remove one, then add this again.`;
 
 export const useArtworkAttachments = create<AttachmentState>((set, get) => {
+  /** Keep a record GRIDGO just sent back, ahead of any read still on its way. */
+  function keepFile(file: StoredFile) {
+    fileVersions.set(file.fileId, (fileVersions.get(file.fileId) ?? 0) + 1);
+    set((state) => ({ files: { ...state.files, [file.fileId]: file } }));
+  }
+
   function patchUpload(lineId: string, key: string, change: Partial<PendingUpload> | null) {
     set((state) => {
       const list = state.uploads[lineId] ?? [];
@@ -252,7 +263,7 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
     try {
       const file = await handle.done;
       if (owner !== generation) return null;
-      set((state) => ({ files: { ...state.files, [file.fileId]: file } }));
+      keepFile(file);
       // Stored, but not something GRIDGO can print from: never put on the item.
       const unusable = artworkCheckFailure(file.artworkCheck);
       if (unusable) {
@@ -454,17 +465,21 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
       else patch("saveError", lineId, result.message);
       return result;
     },
-    putFile: (file) => set((state) => ({ files: { ...state.files, [file.fileId]: file } })),
+    putFile: keepFile,
     readFile: async (fileId, options = {}) => {
       if (reading.has(fileId) || (!options.force && get().files[fileId])) return;
       reading.add(fileId);
+      const owner = generation;
+      const version = fileVersions.get(fileId) ?? 0;
+      // Only an answer nothing newer has overtaken, for the account that asked.
+      const current = () => owner === generation && (fileVersions.get(fileId) ?? 0) === version;
       try {
         const file = await api.getFile(fileId);
-        set((state) => ({ files: { ...state.files, [fileId]: file } }));
+        if (current()) set((state) => ({ files: { ...state.files, [fileId]: file } }));
       } catch {
-        set((state) => ({ files: { ...state.files, [fileId]: null } }));
+        if (current()) set((state) => ({ files: { ...state.files, [fileId]: null } }));
       } finally {
-        reading.delete(fileId);
+        if (owner === generation) reading.delete(fileId);
       }
     },
     reset: () => {
@@ -474,6 +489,7 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
       assets.clear();
       chains.clear();
       reading.clear();
+      fileVersions.clear();
       set(initial);
     },
   };

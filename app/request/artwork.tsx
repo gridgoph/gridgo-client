@@ -251,6 +251,7 @@ export default function ArtworkScreen() {
   // "Save to My files" on each file, and a file held from My files for a new order.
   const savePending = useMyFiles((state) => state.pendingSave);
   const saveErrors = useMyFiles((state) => state.saveError);
+  const saveUnconfirmed = useMyFiles((state) => state.unconfirmed);
   const held = useMyFiles((state) => state.held);
   useEffect(() => {
     for (const fileId of fileIds) void useArtworkAttachments.getState().readFile(fileId);
@@ -741,7 +742,9 @@ export default function ArtworkScreen() {
               myFiles={{
                 pending: savePending,
                 errors: saveErrors,
+                unconfirmed: saveUnconfirmed,
                 onToggle: (fileId, saved) => void useMyFiles.getState().setSaved(fileId, saved),
+                onRecheck: (fileId) => void useMyFiles.getState().recheck(fileId),
               }}
               onChooseSaved={() => router.push({ pathname: MY_FILES_ROUTE, params: { lineId: line.id } })}
             />

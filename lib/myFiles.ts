@@ -117,6 +117,25 @@ export function saveChoiceErrorMessage(error: unknown, saved: boolean): string {
   }
 }
 
+/**
+ * GRIDGO said no (a 4xx other than a timeout): nothing changed. Anything else —
+ * no answer, a dropped connection, a gateway error — may have landed anyway.
+ */
+export function isExplicitRefusal(error: unknown): boolean {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
+}
+
+/** The choice was sent, no answer came back, and the file could not be read to check. */
+export const SAVE_UNCONFIRMED =
+  "GRIDGO did not answer, so this choice is not confirmed yet. Check again once you are connected.";
+
+/** Open could not get a fresh link, or the phone could not open it. */
+export function openErrorMessage(error: unknown): string {
+  return error instanceof ApiError
+    ? userFacingError(error, "This file did not open. Try again in a moment.")
+    : "This file did not open. Check your connection and try again.";
+}
+
 /** Deleting a saved file was refused, or did not reach GRIDGO. */
 export function deleteSavedErrorMessage(error: unknown): string {
   switch (codeOf(error)) {
