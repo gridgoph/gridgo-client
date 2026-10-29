@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.477 (New feature)
+
+- The sound when your receipt prints after you order is now a short, soft ping.
+- Tick "Save to My files" on your artwork to keep it, then reuse it on a new order or delete it from Account.
+
 ## 1.0.469 (Fix)
 
 - Adding a profile photo now works on Android, and saving a one-word name no longer keeps your old surname.
