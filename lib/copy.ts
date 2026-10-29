@@ -116,7 +116,7 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "invalid_credentials":
         return "Wrong email or password. Check both and try again.";
       case "unauthorized":
-        return "Your session expired. Sign in again to continue.";
+        return "GRIDGO could not confirm your sign-in just now. Try again in a moment.";
       case "forbidden":
         return "You do not have permission for that action.";
       case "order_not_found":

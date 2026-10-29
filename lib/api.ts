@@ -4551,27 +4551,25 @@ export function uploadFile(
   onProgress?: (fraction: number | null) => void,
 ): UploadHandle {
   const owner = liveGeneration();
-  const xhr = new XMLHttpRequest();
+  let xhr = new XMLHttpRequest();
+  let cancelled = false;
 
-  const done = (async () => {
-    const auth = await resolveToken();
-    assertLiveGeneration(owner);
-    const filePart = await uploadFilePart(asset);
-    return new Promise<StoredFile>((resolve, reject) => {
+  const transfer = (request: XMLHttpRequest, auth: ResolvedToken, filePart: Blob) =>
+    new Promise<{ status: number; data: unknown }>((resolve, reject) => {
       const form = new FormData();
       form.append("purpose", purpose);
       form.append("file", filePart);
 
-      xhr.open("POST", `${getApiBase()}/files`);
-      xhr.responseType = "text";
-      xhr.setRequestHeader("Accept", "application/json");
-      if (auth.token) xhr.setRequestHeader("Authorization", `Bearer ${auth.token}`);
-        xhr.setRequestHeader("X-GRIDGO-Role", "client");
+      request.open("POST", `${getApiBase()}/files`);
+      request.responseType = "text";
+      request.setRequestHeader("Accept", "application/json");
+      if (auth.token) request.setRequestHeader("Authorization", `Bearer ${auth.token}`);
+      request.setRequestHeader("X-GRIDGO-Role", "client");
       // Content-Type is left unset on purpose: the platform supplies the
       // multipart boundary, and overriding it corrupts the request body.
 
-      if (xhr.upload && onProgress) {
-        xhr.upload.onprogress = (event: ProgressEvent) => {
+      if (request.upload && onProgress) {
+        request.upload.onprogress = (event: ProgressEvent) => {
           if (owner !== liveGeneration()) return;
           onProgress(
             event.lengthComputable && event.total > 0
@@ -4581,7 +4579,7 @@ export function uploadFile(
         };
       }
 
-      xhr.onload = () => {
+      request.onload = () => {
         try {
           assertLiveGeneration(owner);
         } catch (error) {
@@ -4589,7 +4587,7 @@ export function uploadFile(
           return;
         }
         let data: unknown = null;
-        const text = typeof xhr.response === "string" ? xhr.response : "";
+        const text = typeof request.response === "string" ? request.response : "";
         if (text) {
           try {
             data = JSON.parse(text);
@@ -4597,32 +4595,53 @@ export function uploadFile(
             data = text;
           }
         }
-        if (xhr.status === 201) {
-          const file = (data as { file?: StoredFile } | null)?.file;
-          if (file?.fileId) {
-            resolve(file);
-            return;
-          }
-          // A 201 without an id is not success; never invent one.
-          reject(new ApiError(xhr.status, { error: "file_metadata_invalid" }));
-          return;
-        }
-        if (xhr.status === 401 && auth.token) {
-          if (auth.source === "legacy") setToken(null);
-          notifyUnauthorized();
-        }
-        reject(new ApiError(xhr.status, data));
+        resolve({ status: request.status, data });
       };
 
-      xhr.onerror = () => reject(new Error("Network request failed"));
-      xhr.ontimeout = () => reject(new Error("Upload timeout"));
-      xhr.onabort = () => reject(new ApiError(0, { error: "upload_cancelled" }));
+      request.onerror = () => reject(new Error("Network request failed"));
+      request.ontimeout = () => reject(new Error("Upload timeout"));
+      request.onabort = () => reject(new ApiError(0, { error: "upload_cancelled" }));
 
-      xhr.send(form);
+      request.send(form);
     });
+
+  const done = (async () => {
+    let auth = await resolveToken();
+    assertLiveGeneration(owner);
+    const filePart = await uploadFilePart(asset);
+    let reply = await transfer(xhr, auth, filePart);
+    // Same rule as `request()`: a 401 on the identity provider's cached token
+    // buys one freshly minted token and one more try. A file picker sends the
+    // app to the background, and the cached token can be past its minute by
+    // the time the file comes back; refusing that one used to empty the
+    // signed-in area (#338).
+    if (reply.status === 401 && auth.source === "provider") {
+      auth = await resolveToken(true);
+      assertLiveGeneration(owner);
+      if (cancelled) throw new ApiError(0, { error: "upload_cancelled" });
+      xhr = new XMLHttpRequest();
+      reply = await transfer(xhr, auth, filePart);
+    }
+    if (reply.status === 201) {
+      const file = (reply.data as { file?: StoredFile } | null)?.file;
+      if (file?.fileId) return file;
+      // A 201 without an id is not success; never invent one.
+      throw new ApiError(reply.status, { error: "file_metadata_invalid" });
+    }
+    if (reply.status === 401 && auth.token) {
+      if (auth.source === "legacy") setToken(null);
+      notifyUnauthorized();
+    }
+    throw new ApiError(reply.status, reply.data);
   })();
 
-  return { done, cancel: () => xhr.abort() };
+  return {
+    done,
+    cancel: () => {
+      cancelled = true;
+      xhr.abort();
+    },
+  };
 }
 
 /** Bind a ready file to an order. Returns the file and the updated order. */

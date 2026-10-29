@@ -1,5 +1,6 @@
 import { useAuth, useClerk } from "@clerk/expo";
 import { useCallback, useEffect, useRef } from "react";
+import { AppState } from "react-native";
 
 import * as api from "@/lib/api";
 import { invalidateClerkGridgoSync, syncClerkToGridgo } from "@/lib/clerkGridgoSync";
@@ -10,6 +11,7 @@ import {
   releaseClerkSession,
   type ClerkGetToken,
 } from "@/lib/clerkSignIn";
+import { shouldRetryClerkJoin } from "@/lib/sessionResume";
 import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
 import { useSignupFlow } from "@/store/signupFlow";
@@ -143,13 +145,14 @@ export function useClerkApiSession(): void {
         const token = await awaitClerkSessionToken(latestGetToken, CLERK_SSO_TOKEN_WAIT);
         if (cancelled) return;
         if (!token) {
-          // A Google return is signed in at Clerk before a JWT is cached.
-          // Signing out here is what dumped a successful callback onto login.
-          // If GRIDGO is already joining that session, leave it alone.
-          if (useSession.getState().loading) return;
-          // Dead leftover (failed Google, expired cache): drop it quietly so
-          // login can accept the password or Google tap the person just made.
-          await releaseClerkSession(latestSignOut);
+          // No JWT yet is not a dead session. A phone waking from the
+          // background or a file picker, or a Clerk round trip that was slow
+          // or offline, answers empty for a while; signing out here ended a
+          // perfectly good session for good (#338). Clerk itself ends a
+          // session it cannot refresh, and that reaches the signed-out leg
+          // above. A leftover the person wants gone is cleared by their own
+          // Sign in / Google / Sign up tap (`clearClerkSessionForNewAttempt`).
+          // The join is tried again when the app next comes to the front.
           return;
         }
 
@@ -177,4 +180,31 @@ export function useClerkApiSession(): void {
     loginStep,
     signupStep,
   ]);
+
+  // Coming back to the app (from a file picker, another app, a locked phone)
+  // with Clerk still holding a session GRIDGO has not joined: join it now,
+  // rather than leaving a signed-in client on Welcome until the next launch.
+  const clerkSignedIn = isLoaded && Boolean(isSignedIn || sessionId);
+  const clerkSignedInRef = useRef(clerkSignedIn);
+  useEffect(() => {
+    clerkSignedInRef.current = clerkSignedIn;
+  }, [clerkSignedIn]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (status) => {
+      if (status !== "active") return;
+      const session = useSession.getState();
+      const retry = shouldRetryClerkJoin({
+        clerkSignedIn: clerkSignedInRef.current,
+        user: session.user,
+        pendingClerkProfile: session.pendingClerkProfile,
+        loading: session.loading,
+        signingOut: session.signingOut,
+        error: session.error,
+        loginIdle: useLoginFlow.getState().step === "credentials",
+        signupIdle: useSignupFlow.getState().step === "details",
+      });
+      if (retry) session.requestClerkSync();
+    });
+    return () => subscription.remove();
+  }, []);
 }
