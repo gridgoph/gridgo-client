@@ -29,6 +29,13 @@ export const RECEIPT_PRINT_TOTAL_MS = Math.max(
 );
 
 /**
+ * How loud the receipt's ping plays, under the phone's own volume (#339): a
+ * full-volume print sound after checkout was too loud for testers. The file
+ * is already soft; this keeps it a quiet confirmation, not an alert.
+ */
+export const RECEIPT_SOUND_VOLUME = 0.6;
+
+/**
  * How long the update chime stays quiet once the print plays, and from the
  * Place order tap until it does (#229). Placing an order writes its own
  * notices — "Your receipt is ready" among them — which reach the phone while
