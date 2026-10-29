@@ -539,6 +539,8 @@ function AppNavigation() {
                   name="saved-place"
                   options={pushedScreenOptions("Saved Places")}
                 />
+                {/* The artwork the client chose to keep (gridgo-client#334), from Account and the Artwork step. */}
+                <Stack.Screen name="my-files" options={pushedScreenOptions("My files")} />
                 {/* The voucher wallet (gridgo-api#204), from Account. */}
                 <Stack.Screen name="vouchers" options={pushedScreenOptions("Vouchers")} />
                 {/* Founding Tester invites (client#323), from the path card and Account. */}

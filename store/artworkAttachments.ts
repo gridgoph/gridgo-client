@@ -70,7 +70,7 @@ export type PendingUpload = {
 };
 
 /** Where the last change to an item's list went wrong, if it did. */
-type ChangeResult = { ok: true } | { ok: false; message: string };
+export type ChangeResult = { ok: true } | { ok: false; message: string };
 
 type AttachmentState = {
   uploads: Record<string, PendingUpload[]>;
@@ -106,7 +106,14 @@ type AttachmentState = {
   relabel: (lineId: string, entryKey: string, label: string) => Promise<void>;
   /** Put a checked link on the item, after everything already there. */
   addLink: (lineId: string, entry: Extract<ArtworkAttachment, { kind: "link" }>) => Promise<ChangeResult>;
+  /**
+   * Put a file the client saved in My files on the item, after everything
+   * already there. Nothing is uploaded: GRIDGO adds the same private file.
+   */
+  attachSaved: (lineId: string, fileId: string) => Promise<ChangeResult>;
   readFile: (fileId: string, options?: { force?: boolean }) => Promise<void>;
+  /** A storage record GRIDGO just sent back (a save or a delete). */
+  putFile: (file: StoredFile) => void;
   reset: () => void;
 };
 
@@ -431,6 +438,23 @@ export const useArtworkAttachments = create<AttachmentState>((set, get) => {
               : [...entries, entry],
         "Your link did not go onto this item. Try again in a moment.",
       ),
+    attachSaved: async (lineId, fileId) => {
+      patch("saveError", lineId, null);
+      const result = await change(
+        lineId,
+        (entries) =>
+          entries.some((entry) => entry.kind === "file" && entry.fileId === fileId)
+            ? "That file is already on this item."
+            : entries.length >= MAX_ARTWORK_ATTACHMENTS
+              ? LIMIT_REACHED
+              : [...entries, { kind: "file", fileId }],
+        "Your saved file did not go onto this item. Try again in a moment.",
+      );
+      if (result.ok) void get().readFile(fileId, { force: true });
+      else patch("saveError", lineId, result.message);
+      return result;
+    },
+    putFile: (file) => set((state) => ({ files: { ...state.files, [file.fileId]: file } })),
     readFile: async (fileId, options = {}) => {
       if (reading.has(fileId) || (!options.force && get().files[fileId])) return;
       reading.add(fileId);

@@ -1,4 +1,5 @@
 import { useArtworkAttachments } from "@/store/artworkAttachments";
+import { useMyFiles } from "@/store/myFiles";
 import { useCoverSpine } from "@/store/coverSpine";
 import { claimAppleRevocation, forgetAppleRevocation } from "@/store/accountDeletion";
 import { useCart } from "@/store/cart";
@@ -473,6 +474,7 @@ useSession.subscribe((state, previous) => {
   useHandoverActions.getState().reset();
   // Uploads in flight belong to the account that started them.
   useArtworkAttachments.getState().reset();
+  useMyFiles.getState().reset();
   useCoverSpine.getState().reset();
   clearBoardCache();
   clearListingCache();

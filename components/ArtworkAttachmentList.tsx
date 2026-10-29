@@ -6,6 +6,7 @@ import {
   CircleCheck,
   FileImage,
   FileText,
+  FolderOpen,
   HardDrive,
   Link2,
   LoaderCircle,
@@ -21,6 +22,7 @@ import { useState, type ReactNode } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 
 import { ArtworkFileGuidance } from "@/components/ArtworkFileGuidance";
+import { CheckboxRow } from "@/components/form/CheckboxRow";
 import { AcceptedFiles, ProgressBar } from "@/components/ArtworkUploadCard";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { AcceptedFormat, ArtworkAttachment, ArtworkGuidance, StoredFile } from "@/lib/api";
@@ -44,6 +46,7 @@ import {
   type LinkProvider,
 } from "@/lib/designLink";
 import { uploadLimitLine } from "@/lib/listing";
+import { SAVE_TO_MY_FILES_HINT, SAVE_TO_MY_FILES_LABEL, canSaveToMyFiles } from "@/lib/myFiles";
 import { formatBytes } from "@/lib/requestValidation";
 import type { PendingUpload } from "@/store/artworkAttachments";
 
@@ -88,6 +91,20 @@ type Props = {
   acceptError?: string | null;
   onAcceptWarning?: (fileId: string, code: string, accept: boolean) => void;
   onReplaceFile?: (fileId: string) => void;
+  /**
+   * "Save to My files" on each of the client's own files (gridgo-client#334).
+   * Absent where the screen does not offer it.
+   */
+  myFiles?: SaveChoices;
+  /** Opens My files to add a file saved there, with no upload. */
+  onChooseSaved?: () => void;
+};
+
+/** The "Save to My files" ticks: each choice on its way, and each refusal. */
+export type SaveChoices = {
+  pending: Record<string, boolean>;
+  errors: Record<string, string | null>;
+  onToggle: (fileId: string, saved: boolean) => void;
 };
 
 /**
@@ -125,6 +142,8 @@ export function ArtworkAttachmentList({
   acceptError = null,
   onAcceptWarning,
   onReplaceFile,
+  myFiles,
+  onChooseSaved,
 }: Props) {
   const colors = useThemeColors();
   const inFlight = uploads.filter((upload) => upload.phase !== "failed").length;
@@ -158,6 +177,7 @@ export function ArtworkAttachmentList({
           onMove={onMove}
           onRelabel={onRelabel}
           onRecheck={onRecheck}
+          save={entry.kind === "file" && myFiles ? <SaveTick file={files[entry.fileId]} choices={myFiles} /> : null}
           guidance={
             entry.kind === "file" && guidance ? (
               <FileGuidanceSlot
@@ -242,6 +262,25 @@ export function ArtworkAttachmentList({
             <Text className={empty ? "text-button text-action-yellow-on" : "text-button text-text-primary"}>
               {empty ? "Choose files" : "Add more files"}
             </Text>
+          </Pressable>
+        ) : null}
+        {takesFiles && onChooseSaved ? (
+          <Pressable
+            onPress={onChooseSaved}
+            disabled={full}
+            accessibilityRole="button"
+            accessibilityLabel="Choose from My files"
+            accessibilityHint="Adds a file you saved before, without uploading it again"
+            accessibilityState={{ disabled: full }}
+            className={
+              full
+                ? "gg-disabled min-h-11 flex-row items-center justify-center gap-2 px-4"
+                : "min-h-11 flex-row items-center justify-center gap-2 px-4"
+            }
+            style={({ pressed }) => (pressed && !full ? { opacity: 0.7 } : undefined)}
+          >
+            <FolderOpen size={16} color={colors.textPrimary} strokeWidth={2} aria-hidden />
+            <Text className="text-button text-text-primary underline">Choose from My files</Text>
           </Pressable>
         ) : null}
         {notice ? (
@@ -376,6 +415,7 @@ function AttachmentRow({
   onMove,
   onRelabel,
   onRecheck,
+  save,
   guidance,
 }: {
   entry: ArtworkAttachment;
@@ -391,6 +431,8 @@ function AttachmentRow({
   onMove: (entryKey: string, by: -1 | 1) => void;
   onRelabel: (entryKey: string, label: string) => void;
   onRecheck: (entry: Extract<ArtworkAttachment, { kind: "link" }>) => void;
+  /** "Save to My files", under the file's status. */
+  save?: ReactNode;
   /** This file's resolution and colour check, drawn under its status. */
   guidance?: ReactNode;
 }) {
@@ -453,6 +495,8 @@ function AttachmentRow({
 
       {status}
 
+      {save}
+
       {guidance}
 
       {/*
@@ -489,6 +533,38 @@ function AttachmentRow({
               />
             </>
           ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * "Save to My files" for one file. Off until the client ticks it; the box shows
+ * the choice while it travels and GRIDGO's answer after, so a refusal (a full
+ * library, a dropped connection) leaves it as GRIDGO holds it, with the reason.
+ */
+function SaveTick({ file, choices }: { file: StoredFile | null | undefined; choices: SaveChoices }) {
+  const colors = useThemeColors();
+  if (!canSaveToMyFiles(file)) return null;
+  const pending = choices.pending[file.fileId];
+  const checked = pending ?? file.savedAt != null;
+  const error = choices.errors[file.fileId] ?? null;
+  return (
+    <View className="gap-1">
+      <CheckboxRow
+        checked={checked}
+        disabled={pending !== undefined}
+        onChange={(next) => choices.onToggle(file.fileId, next)}
+        label={SAVE_TO_MY_FILES_LABEL}
+        hint={pending === undefined ? SAVE_TO_MY_FILES_HINT : pending ? "Saving to My files…" : "Taking it out of My files…"}
+      />
+      {error ? (
+        <View className="flex-row items-start gap-2" accessibilityRole="alert">
+          <View className="pt-0.5">
+            <CircleAlert size={16} color={colors.error} strokeWidth={2} aria-hidden />
+          </View>
+          <Text className="min-w-0 flex-1 text-body text-error">{error}</Text>
         </View>
       ) : null}
     </View>

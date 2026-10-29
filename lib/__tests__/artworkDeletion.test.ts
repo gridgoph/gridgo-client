@@ -44,8 +44,10 @@ describe("artworkDeletionGate", () => {
   });
 });
 
-it("states the policy in one calm line", () => {
-  expect(ARTWORK_RETENTION_NOTE).toBe("GRIDGO deletes artwork automatically 30 days after a job is completed.");
+it("states the policy in the privacy notice's approved words", () => {
+  expect(ARTWORK_RETENTION_NOTE).toBe(
+    "Artwork and design files, and mockups: 30 days after the order is completed. Files you choose to keep with 'Save to My files' stay in My files until you delete them or close your account. You can delete any of them sooner yourself once the order is completed and nothing about it is still open.",
+  );
 });
 
 it("asks a specific question that says it cannot be undone and that a reorder needs the file again", () => {

@@ -32,7 +32,7 @@ it("offers Delete my artwork on a completed job, under the retention line", asyn
 
   const button = await screen.findByLabelText("Delete my artwork");
   expect(screen.getByText(ARTWORK_RETENTION_NOTE)).toBeTruthy();
-  expect(screen.getByText(/30 days after a job is completed/)).toBeTruthy();
+  expect(screen.getByText(/30 days after the order is completed/)).toBeTruthy();
   expect(button.props.accessibilityState).toEqual({ disabled: false });
   expect(api.deleteFile).not.toHaveBeenCalled();
 });
