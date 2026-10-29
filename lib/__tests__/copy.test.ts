@@ -90,7 +90,7 @@ describe("userFacingError", () => {
     ["downpayment_not_confirmed", /balance opens once/i],
     ["payment_reference_required", /reference number/i],
     ["email_already_registered", /already has a GRIDGO account/i],
-    ["invalid_password", /at least 8 characters/i],
+    ["invalid_password", /at least 15 characters/i],
     ["organization_name_required", /business or organization name/i],
     ["invitation_required", /not a GRIDGO client/i],
     ["physical_invoice_requests_disabled", /not taking printed-invoice requests/i],

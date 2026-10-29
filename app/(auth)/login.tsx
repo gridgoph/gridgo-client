@@ -40,6 +40,7 @@ import { clerkTokenUnavailableMessage } from "@/lib/clerkSessionBridge";
 import { clientEmailUnavailableMessage } from "@/lib/copy";
 import { appleSignInOutcome, isAppleCancel, type AppleFlowResult } from "@/lib/appleSignIn";
 import { completeGoogleSso } from "@/lib/googleSso";
+import { PASSWORD_RULE, passwordLengthProblem } from "@/lib/signup";
 import { loginVerifyCopy } from "@/lib/verifyCode";
 import { useLoginFlow } from "@/store/loginFlow";
 import { useSession } from "@/store/session";
@@ -67,6 +68,8 @@ export default function LoginScreen() {
      */
     busy,
     setBusy,
+    newPasswordChecked,
+    checkNewPassword,
     enterVerification,
     enterRecovery,
     enterNewPassword,
@@ -431,6 +434,9 @@ export default function LoginScreen() {
 
   const saveNewPassword = async () => {
     if (!signIn || !newPassword) return;
+    // Clerk's own minimum, stopped on the field rather than refused by Clerk.
+    checkNewPassword();
+    if (passwordLengthProblem(newPassword)) return;
     const mismatch = passwordConfirmationError(newPassword, confirmPassword);
     if (mismatch) {
       setError(mismatch);
@@ -728,7 +734,11 @@ export default function LoginScreen() {
         ) : (
           <>
             <View className="gap-4">
-              <FormField label="New password">
+              <FormField
+                label="New password"
+                helper={PASSWORD_RULE}
+                error={newPasswordChecked ? passwordLengthProblem(newPassword) : null}
+              >
                 <PasswordField
                   value={newPassword}
                   onChangeText={setNewPassword}

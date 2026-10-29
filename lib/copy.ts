@@ -7,6 +7,7 @@
 
 import { ApiError } from "@/lib/api";
 import { coverSpineErrorMessage } from "@/lib/coverSpine";
+import { MIN_PASSWORD_LENGTH } from "@/lib/signup";
 
 /**
  * Where an order stands on money, in plain language.
@@ -365,7 +366,7 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "invalid_email":
         return "Enter a complete email address, like ana@company.com.";
       case "invalid_password":
-        return "Use a password with at least 8 characters.";
+        return `Use a password with at least ${MIN_PASSWORD_LENGTH} characters.`;
       case "name_required":
         return "Enter the name this account belongs to.";
       case "phone_required":
