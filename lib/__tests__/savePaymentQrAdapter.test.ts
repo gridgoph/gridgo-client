@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { savePaymentQrToPhotos } from "@/lib/savePaymentQr";
 const mockSave = jest.fn<Promise<void>, unknown[]>(async () => undefined);
 jest.mock("expo-media-library", () => ({
@@ -15,6 +16,7 @@ jest.mock("expo-asset", () => ({
   }) },
 }));
 it("saves through the SDK 57 legacy adapter", async () => {
+  Platform.OS = "ios";
   await expect(savePaymentQrToPhotos(null)).resolves.toEqual({ ok: true });
   expect(mockSave).toHaveBeenCalledWith("file://qr.jpg");
 });
