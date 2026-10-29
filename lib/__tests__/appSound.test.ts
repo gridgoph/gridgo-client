@@ -47,6 +47,22 @@ describe("loadAppSound", () => {
     expect(player.play).toHaveBeenCalledTimes(2);
   });
 
+  it("plays at the volume it is given, and leaves the player's own when not", () => {
+    const quiet: { play: jest.Mock; remove: jest.Mock; volume?: number } = {
+      play: jest.fn(),
+      remove: jest.fn(),
+    };
+    loadAppSound(7, fakeAudio(quiet), { volume: 0.6 });
+    expect(quiet.volume).toBe(0.6);
+
+    const untouched: { play: jest.Mock; remove: jest.Mock; volume?: number } = {
+      play: jest.fn(),
+      remove: jest.fn(),
+    };
+    loadAppSound(7, fakeAudio(untouched));
+    expect(untouched.volume).toBeUndefined();
+  });
+
   it("waits for a file still loading, then plays", async () => {
     const player = { play: jest.fn(), remove: jest.fn(), isLoaded: false };
     const sound = loadAppSound(7, fakeAudio(player));

@@ -5,6 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import OrderReceiptScreen from "@/app/order/receipt";
 import type { Invoice, MatchedOrder } from "@/lib/api";
 import { holdPlacedReceipt, receiptFromCheckout } from "@/lib/receipt";
+import { RECEIPT_SOUND_VOLUME } from "@/lib/receiptPrint";
 import { useNotificationNudge } from "@/store/notificationNudge";
 
 /**
@@ -22,6 +23,7 @@ let mockShown = true;
 let mockParams: Record<string, string> = {};
 const mockPlay = jest.fn();
 const mockRelease = jest.fn();
+const mockLoadAppSound = jest.fn((..._args: unknown[]) => ({ play: mockPlay, release: mockRelease }));
 
 jest.mock("@/hooks/useReducedMotion", () => ({
   useReducedMotion: () => mockReducedMotion,
@@ -32,7 +34,7 @@ jest.mock("@/hooks/useScreenShown", () => ({
 }));
 
 jest.mock("@/lib/appSound", () => ({
-  loadAppSound: () => ({ play: mockPlay, release: mockRelease }),
+  loadAppSound: (...args: unknown[]) => mockLoadAppSound(...args),
 }));
 
 jest.mock("expo-router", () => ({
@@ -134,6 +136,7 @@ async function laySlipOut() {
 beforeEach(() => {
   mockPlay.mockClear();
   mockRelease.mockClear();
+  mockLoadAppSound.mockClear();
   mockReducedMotion = false;
   mockShown = true;
   mockParams = { orderId: ORDER_ID, from: "checkout" };
@@ -153,6 +156,9 @@ describe("the receipt's print sound", () => {
     await laySlipOut();
 
     expect(mockPlay).toHaveBeenCalledTimes(1);
+    // A soft ping, played under full volume (#339).
+    expect(mockLoadAppSound.mock.calls[0]?.[2]).toEqual({ volume: RECEIPT_SOUND_VOLUME });
+    expect(RECEIPT_SOUND_VOLUME).toBeLessThan(1);
     // The order's own notices land now: the bell swings but does not chime over it.
     expect(useNotificationNudge.getState().hushedUntil).toBeGreaterThan(Date.now());
     // The paper is on its way out of the slot, not parked above it.

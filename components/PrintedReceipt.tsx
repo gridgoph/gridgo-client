@@ -44,7 +44,7 @@ type Props = {
   shown?: boolean;
   /**
    * Called once, as the slip starts to print — or, with reduce motion, as it
-   * first shows at rest. The print sound rides on it.
+   * first shows at rest. The receipt's ping rides on it.
    */
   onPrint?: () => void;
 };
