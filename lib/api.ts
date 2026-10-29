@@ -1009,6 +1009,12 @@ export type StoredFile = {
    * says which slot, and that is ops' working detail.
    */
   references: { type: string; id: string; field?: string }[];
+  /**
+   * When the client saved this file to My files (gridgo-api#325). Sent only on
+   * the owning client's own artwork and mockups — `null` when not saved; absent
+   * on every other file and on an older API, which has no My files at all.
+   */
+  savedAt?: string | null;
   /** Present only when the bytes carried something worth reading. */
   detected?: DetectedArtwork;
   /**
@@ -4721,6 +4727,71 @@ export async function deleteFile(fileId: string): Promise<StoredFile> {
     method: "DELETE",
   });
   return result.file;
+}
+
+// ---------------------------------------------------------------------------
+// My files — the client's opt-in artwork library (gridgo-api#325,
+// `docs/STORAGE_API.md` "My files"). Only files the client saved are listed.
+// ---------------------------------------------------------------------------
+
+/** Bytes the client's saved files take, against the platform's per-client limit. */
+export type SavedFilesUsage = { usedBytes: number; limitBytes: number };
+
+export type SavedFile = {
+  fileId: string;
+  purpose: "artwork" | "mockup" | (string & {});
+  originalFilename: string;
+  size: number;
+  detectedContentType: string;
+  savedAt: string;
+  preview: ArtworkFilePreview | null;
+  /** A signed picture to draw: the image itself, or a PDF's ready thumbnail. Null when there is none. */
+  previewUrl: string | null;
+  /** A signed link to the original. Null while storage cannot be read. */
+  downloadUrl: string | null;
+  /** When both signed links stop working. Never persist either. */
+  expiresAt: string | null;
+  /** Storage could not be read for this file just now; it is still saved. */
+  unavailable?: boolean;
+  error?: "minio_unavailable" | "storage_object_missing" | "storage_object_mismatch" | (string & {});
+};
+
+export type SavedFilesPage = {
+  files: SavedFile[];
+  usage: SavedFilesUsage;
+  /** The offset of the next page, or null on the last one. */
+  nextOffset: number | null;
+};
+
+/** `GET /me/files` — newest save first, 50 to a page. */
+export async function listSavedFiles(offset = 0): Promise<SavedFilesPage> {
+  return request(`/me/files?offset=${offset}`);
+}
+
+/**
+ * Save a file to My files, or take it out (`PATCH /me/files/:fileId`). Taking it
+ * out keeps the file; it goes back to the 30-day rule. Saving past the limit is
+ * `409 saved_files_limit_reached` with `limitBytes`, `usedBytes` and `fileSizeBytes`.
+ */
+export async function setFileSaved(
+  fileId: string,
+  saved: boolean,
+): Promise<{ file: StoredFile; usage: SavedFilesUsage }> {
+  return request(`/me/files/${encodeURIComponent(fileId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ saved }),
+  });
+}
+
+/**
+ * Delete a saved file for good (`DELETE /me/files/:fileId`): the original and
+ * its thumbnail, not only the library choice. Refused with `409 file_in_use`
+ * or `409 file_retention_hold` while an order or case still needs it.
+ */
+export async function deleteSavedFile(
+  fileId: string,
+): Promise<{ file: StoredFile; usage: SavedFilesUsage }> {
+  return request(`/me/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
 }
 
 // ---------------------------------------------------------------------------

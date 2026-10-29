@@ -24,6 +24,7 @@ import type { ClientOrganization } from "@/lib/api";
 import { canInvite, foundingTesterView, INVITE_ROUTE, INVITE_TITLE } from "@/lib/foundingTester";
 import { startPrintHref } from "@/lib/startPrint";
 import { officerState } from "@/lib/organization";
+import { MY_FILES_ROUTE } from "@/lib/myFiles";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
 import { accountTypeOption } from "@/lib/signup";
 import { cartIsOpen, useCart } from "@/store/cart";
@@ -201,6 +202,16 @@ export default function AccountScreen() {
               title="Saved Places"
               detail="Home, Work, and the spots you drop off to"
               onPress={() => router.push("/saved-places")}
+            />
+            {/*
+              The artwork the client chose to keep (gridgo-client#334). Only
+              files ticked "Save to My files" are here; everything else
+              follows the 30-day rule.
+            */}
+            <DestinationRow
+              title="My files"
+              detail="Artwork you saved to use again, kept until you delete it"
+              onPress={() => router.push(MY_FILES_ROUTE)}
             />
             {/*
               The voucher wallet (gridgo-api#204). The line is the wallet's

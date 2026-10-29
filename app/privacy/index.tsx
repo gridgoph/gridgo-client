@@ -8,6 +8,7 @@ import { Screen } from "@/components/Screen";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";
+import { ARTWORK_RETENTION_NOTE } from "@/lib/artworkDeletion";
 import {
   DELETION_ROW,
   PRIVACY_KINDS,
@@ -79,6 +80,7 @@ export default function PrivacyScreen() {
           <View className="gg-panel gap-1">
             <Text className="text-body font-medium text-text-primary">What GRIDGO keeps</Text>
             <Text className="text-body text-text-secondary">{RETENTION_NOTE}</Text>
+            <Text className="pt-2 text-body text-text-secondary">{ARTWORK_RETENTION_NOTE}</Text>
           </View>
 
           <View className="gap-2">
