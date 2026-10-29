@@ -67,7 +67,7 @@ describe("expo-image-picker must not load at import time", () => {
     const reload = jest.fn(async () => undefined);
     const getDocumentAsync = jest.fn(async () => ({
       canceled: false,
-      assets: [{ uri: "file:///tmp/a.jpg", name: "a.jpg", mimeType: "image/jpeg" }],
+      assets: [{ uri: "file:///mock/cache/a.jpg", name: "a.jpg", mimeType: "image/jpeg" }],
     }));
 
     await jest.isolateModulesAsync(async () => {
@@ -79,6 +79,10 @@ describe("expo-image-picker must not load at import time", () => {
         throw new Error(MISSING_NATIVE);
       });
       jest.doMock("expo-document-picker", () => ({ getDocumentAsync }));
+      // The picked copy is on the phone; jest-expo backs File in memory.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { File } = require("expo-file-system") as typeof import("expo-file-system");
+      new File("file:///mock/cache/a.jpg").write(new Uint8Array([255, 216, 255, 217]));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { changeClientPhoto } = require("@/lib/clerkIdentity") as typeof import("@/lib/clerkIdentity");
       expect(
@@ -97,7 +101,7 @@ describe("expo-image-picker must not load at import time", () => {
     // A device File, never React Native's `{ uri, name, type }` descriptor,
     // which Expo 57's multipart upload refuses on Android (#336).
     expect(setProfileImage).toHaveBeenCalledWith({
-      file: expect.objectContaining({ uri: "file:///tmp/a.jpg", bytes: expect.any(Function) }),
+      file: expect.objectContaining({ uri: "file:///mock/cache/a.jpg", bytes: expect.any(Function) }),
     });
     expect(reload).toHaveBeenCalled();
   });

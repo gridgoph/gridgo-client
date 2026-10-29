@@ -192,7 +192,7 @@ export default function AccountDetailsScreen() {
   /**
    * Try again sends the picture already chosen and cropped. The library only
    * reopens when nothing was chosen yet, because what failed was the save, not
-   * the choice.
+   * the choice — or when that picture has gone from the phone.
    */
   async function changePhoto(retry?: PortraitFailure) {
     if (!clerkUser || photoBusy) return;
@@ -343,7 +343,14 @@ export default function AccountDetailsScreen() {
           <ErrorState
             label="Photo not saved"
             body={photoProblem.message}
-            onRetry={photoProblem.photo ? () => void changePhoto(photoProblem) : undefined}
+            retryLabel={photoProblem.chooseAgain ? "Choose a photo" : undefined}
+            onRetry={
+              photoProblem.photo
+                ? () => void changePhoto(photoProblem)
+                : photoProblem.chooseAgain
+                  ? () => void changePhoto()
+                  : undefined
+            }
           />
         ) : null}
 

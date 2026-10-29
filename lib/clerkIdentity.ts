@@ -113,8 +113,10 @@ export type PortraitOutcome =
   /**
    * `photo` is there when the picture was chosen and only the save failed, so
    * Try again can send the same picture rather than reopening the library.
+   * `chooseAgain` is there instead when that picture is no longer on the
+   * phone, so the only way on is a fresh choice.
    */
-  | { status: "failed"; message: string; photo?: PortraitAsset };
+  | { status: "failed"; message: string; photo?: PortraitAsset; chooseAgain?: true };
 
 export type PortraitFailure = Extract<PortraitOutcome, { status: "failed" }>;
 
@@ -138,6 +140,9 @@ export const PORTRAIT_NEEDS_REBUILD =
  */
 export const PORTRAIT_FAILED =
   "GRIDGO couldn't save your photo. Check this phone's connection, then try again.";
+
+export const PORTRAIT_GONE =
+  "GRIDGO couldn't find that photo on this phone any more. Choose it again.";
 
 type ImagePickerNative = typeof import("expo-image-picker");
 type DocumentPickerNative = typeof import("expo-document-picker");
@@ -341,6 +346,7 @@ export async function saveClientPhoto(
 ): Promise<PortraitOutcome> {
   const file = portraitFile(photo);
   if (!file) return { status: "failed", message: PORTRAIT_NEEDS_REBUILD };
+  if (!photo.file && !nativeFileExists(file)) return portraitGone();
 
   try {
     await user.setProfileImage({ file });
@@ -349,7 +355,35 @@ export async function saveClientPhoto(
     await user.reload?.();
     return { status: "ok" };
   } catch {
+    if (!photo.file && !(await nativeFileReadable(file))) return portraitGone();
     return { status: "failed", message: PORTRAIT_FAILED, photo };
+  }
+}
+
+/**
+ * The picked photo is only a path into the picker's cache, which Android may
+ * clear while GRIDGO is in the background. Holding that path for Try again
+ * would retry a file that is gone, and say "check your connection", forever.
+ */
+function portraitGone(): PortraitFailure {
+  return { status: "failed", message: PORTRAIT_GONE, chooseAgain: true };
+}
+
+function nativeFileExists(file: Blob): boolean {
+  try {
+    return (file as unknown as { exists?: boolean }).exists !== false;
+  } catch {
+    return false;
+  }
+}
+
+async function nativeFileReadable(file: Blob): Promise<boolean> {
+  if (!nativeFileExists(file)) return false;
+  try {
+    await (file as unknown as { bytes: () => Promise<Uint8Array> }).bytes();
+    return true;
+  } catch {
+    return false;
   }
 }
 

@@ -13,6 +13,7 @@ import {
   passwordReady,
   portraitFile,
   PORTRAIT_FAILED,
+  PORTRAIT_GONE,
   saveClientPhoto,
   startEmailChange,
   syncClerkName,
@@ -219,6 +220,39 @@ describe("changeClientPhoto", () => {
     expect(await saveClientPhoto(user, outcome.photo)).toEqual({ status: "ok" });
     expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(1);
     expect(user.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for a fresh choice once the held photo has gone from the phone", async () => {
+    ImagePicker.launchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: PICKED }],
+    });
+    user.setProfileImage.mockRejectedValueOnce(new Error("Network request failed"));
+
+    const failed = await changeClientPhoto(user);
+    if (failed.status !== "failed" || !failed.photo) throw new Error("no photo held");
+
+    // Android clears the picker's cache while GRIDGO is in the background.
+    new DeviceFile(PICKED).delete();
+    user.setProfileImage.mockClear();
+
+    const retried = await saveClientPhoto(user, failed.photo);
+    expect(retried).toEqual({ status: "failed", message: PORTRAIT_GONE, chooseAgain: true });
+    expect(retried).not.toHaveProperty("photo");
+    expect(user.setProfileImage).not.toHaveBeenCalled();
+  });
+
+  it("drops the photo when it vanishes during the upload", async () => {
+    user.setProfileImage.mockImplementationOnce(async ({ file }) => {
+      new DeviceFile(PICKED).delete();
+      await multipartBody(file);
+    });
+
+    expect(await saveClientPhoto(user, { uri: PICKED })).toEqual({
+      status: "failed",
+      message: PORTRAIT_GONE,
+      chooseAgain: true,
+    });
   });
 });
 
