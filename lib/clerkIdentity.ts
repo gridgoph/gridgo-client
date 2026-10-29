@@ -1,6 +1,6 @@
 import type { User } from "@/lib/api";
 import { clerkErrorCode, clerkErrorMessage, splitFullName } from "@/lib/clerkAuth";
-import { checkSignupField, EMPTY_SIGNUP, MIN_PASSWORD_LENGTH } from "@/lib/signup";
+import { checkSignupField, EMPTY_SIGNUP, PASSWORD_RULE } from "@/lib/signup";
 import { canPickOnWeb, pickFileOnWeb } from "@/lib/webFilePick";
 
 /**
@@ -710,4 +710,4 @@ function isWrongPassword(error: unknown): boolean {
 }
 
 /** Restated where the screen needs it, so the rule is written in one place. */
-export { MIN_PASSWORD_LENGTH };
+export { PASSWORD_RULE };

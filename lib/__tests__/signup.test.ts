@@ -6,8 +6,12 @@ import {
   EMPTY_SIGNUP,
   firstProfileProblem,
   firstSignupProblem,
+  MIN_PASSWORD_LENGTH,
   needsClientProfile,
   needsOrgName,
+  PASSWORD_RULE,
+  PASSWORD_TOO_SHORT,
+  passwordLengthProblem,
   signupInput,
   type SignupFields,
 } from "@/lib/signup";
@@ -18,7 +22,7 @@ function fields(overrides: Partial<SignupFields> = {}): SignupFields {
     name: "Ana Santos",
     email: "ana@company.com",
     phone: "0917 123 4567",
-    password: "printit2026",
+    password: "printit-2026-davao",
     ...overrides,
   };
 }
@@ -61,9 +65,23 @@ describe("checkSignupField", () => {
     expect(canSubmitSignup(fields({ accountType: "individual", orgName: "" }))).toBe(true);
   });
 
-  it("holds the API's own password floor rather than discovering it on submit", () => {
+  it("holds Clerk's own password floor rather than discovering it on submit", () => {
+    expect(MIN_PASSWORD_LENGTH).toBe(15);
     expect(checkSignupField("password", fields({ password: "short" })).ok).toBe(false);
-    expect(checkSignupField("password", fields({ password: "12345678" })).ok).toBe(true);
+    // 8–14 characters is exactly what Clerk refused after the app let it through.
+    expect(checkSignupField("password", fields({ password: "12345678" }))).toEqual({
+      ok: false,
+      reason: "Use at least 15 characters.",
+    });
+    expect(checkSignupField("password", fields({ password: "a".repeat(14) })).ok).toBe(false);
+    expect(checkSignupField("password", fields({ password: "a".repeat(15) })).ok).toBe(true);
+  });
+
+  it("states the rule and the shortfall in one set of words", () => {
+    expect(PASSWORD_RULE).toBe("At least 15 characters.");
+    expect(PASSWORD_TOO_SHORT).toBe("Use at least 15 characters.");
+    expect(passwordLengthProblem("a".repeat(14))).toBe(PASSWORD_TOO_SHORT);
+    expect(passwordLengthProblem("a".repeat(15))).toBeNull();
   });
 
   it("accepts every address the API would, and no fewer", () => {
@@ -102,7 +120,7 @@ describe("signupInput", () => {
       signupInput(fields({ accountType: "business", orgName: "  Davao Events Co. " })),
     ).toEqual({
       email: "ana@company.com",
-      password: "printit2026",
+      password: "printit-2026-davao",
       name: "Ana Santos",
       phone: "0917 123 4567",
       accountType: "business",

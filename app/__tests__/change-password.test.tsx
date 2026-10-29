@@ -78,16 +78,16 @@ describe("changing the sign-in password", () => {
       screen.getByText(/signs you out everywhere else you are signed in/i),
     ).toBeTruthy();
 
-    await type("Current password", "oldpassword");
-    await type("New password", "newpassword");
-    await type("Confirm new password", "newpassword");
+    await type("Current password", "old-gridgo-password");
+    await type("New password", "new-gridgo-password");
+    await type("Confirm new password", "new-gridgo-password");
 
     fireEvent.press(screen.getByText("Change password"));
 
     await waitFor(() =>
       expect(mockUpdatePassword).toHaveBeenCalledWith({
-        currentPassword: "oldpassword",
-        newPassword: "newpassword",
+        currentPassword: "old-gridgo-password",
+        newPassword: "new-gridgo-password",
         signOutOfOtherSessions: true,
       }),
     );

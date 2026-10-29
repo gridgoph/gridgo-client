@@ -13,10 +13,10 @@ import { PasswordField } from "@/components/form/PasswordField";
 import {
   changeSignInPassword,
   EMPTY_PASSWORD_DRAFT,
-  MIN_PASSWORD_LENGTH,
   passwordProblems,
   PASSWORD_CHANGED,
   PASSWORD_NO_PASSWORD_SET,
+  PASSWORD_RULE,
   PASSWORD_WRONG_CURRENT,
   type PasswordDraft,
   type PasswordField as PasswordFieldName,
@@ -190,7 +190,7 @@ export default function ChangePasswordScreen() {
 
           <FormField
             label="New password"
-            helper={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+            helper={PASSWORD_RULE}
             error={fieldError("next")}
           >
             <PasswordField
