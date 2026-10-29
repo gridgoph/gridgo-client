@@ -296,3 +296,23 @@ describe("paging and deleting (review finding 4)", () => {
     expect(listSavedFiles.mock.calls.map(([offset]) => offset)).toEqual([1, 0]);
   });
 });
+
+describe("paging and refreshing (re-review)", () => {
+  it("drops a later page that answers after a refresh replaced the list, so no page is skipped", async () => {
+    const hundred = Array.from({ length: 100 }, (_, index) => savedFile({ fileId: `f${index}` }));
+    useMyFiles.setState({ files: hundred, usage: { usedBytes: 1, limitBytes: 500_000_000 }, nextOffset: 100 });
+    const late = deferred<api.SavedFilesPage>();
+    listSavedFiles.mockReturnValueOnce(late.promise);
+    const more = useMyFiles.getState().loadMore();
+
+    listSavedFiles.mockResolvedValueOnce(savedFilesPage(hundred.slice(0, 50), { nextOffset: 50 }));
+    await useMyFiles.getState().load();
+    late.resolve(savedFilesPage([savedFile({ fileId: "f100" })], { nextOffset: 150 }));
+    await more;
+
+    expect(useMyFiles.getState().files?.map((file) => file.fileId)).toEqual(hundred.slice(0, 50).map((file) => file.fileId));
+    // Show more continues from the refreshed list, where files 50–99 still are.
+    expect(useMyFiles.getState().nextOffset).toBe(50);
+    expect(useMyFiles.getState().loadingMore).toBe(false);
+  });
+});

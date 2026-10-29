@@ -28,7 +28,9 @@ import { useArtworkAttachments } from "@/store/artworkAttachments";
  *
  * A page read can be overtaken by a delete or an unsave. Each such change is
  * counted; a page that answers after one is read again rather than merged, so
- * a deleted file never comes back and stale usage never replaces fresh.
+ * a deleted file never comes back and stale usage never replaces fresh. A
+ * later page overtaken by a refresh of the first is dropped: its offset
+ * belongs to the list the refresh replaced.
  */
 
 export type HeldFile = { fileId: string; name: string; contentType: string };
@@ -95,6 +97,11 @@ let reading: Promise<void> | null = null;
 let changes = 0;
 /** When each file left the list, by `changes`. */
 const removedAt = new Map<string, number>();
+/**
+ * Bumped each time a first-page read replaces the list. A later page asked for
+ * before that belongs to the old list and its offsets, so it is dropped.
+ */
+let listEpoch = 0;
 /** A page that keeps being overtaken is read at most this many times. */
 const PAGE_ATTEMPTS = 3;
 
@@ -157,6 +164,7 @@ export const useMyFiles = create<MyFilesState>((set, get) => {
           (result) => {
             if (owner !== generation || !result) return;
             const { page, settled } = result;
+            listEpoch += 1;
             set((state) => ({
               files: page.files,
               usage: settled || !state.usage ? page.usage : state.usage,
@@ -180,10 +188,13 @@ export const useMyFiles = create<MyFilesState>((set, get) => {
       const { nextOffset, loadingMore, files } = get();
       if (nextOffset == null || loadingMore || !files) return;
       const owner = generation;
+      const epoch = listEpoch;
       set({ loadingMore: true, error: null });
       try {
         const result = await readPage(() => get().nextOffset);
-        if (owner !== generation || !result) return;
+        // A refresh replaced the list while this page was on its way: its
+        // offset counted the old list, so merging it would skip files.
+        if (owner !== generation || !result || epoch !== listEpoch) return;
         const { page, settled } = result;
         // Merged into the list as it is now, never the one this read began with.
         set((state) => {
@@ -317,6 +328,7 @@ export const useMyFiles = create<MyFilesState>((set, get) => {
       generation += 1;
       reading = null;
       changes = 0;
+      listEpoch = 0;
       removedAt.clear();
       set(initial);
     },
