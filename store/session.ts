@@ -105,6 +105,13 @@ type SessionState = {
   registerIdentityLogout: (logout: (() => Promise<void>) | null) => void;
   /** Drop the in-memory user. Routing reacts via Stack.Protected — no router calls here. */
   clearSession: () => void;
+  /**
+   * Let go of the account on screen without signing out of Clerk: Clerk now
+   * holds another session, or GRIDGO no longer maps this identity
+   * (`unmapped_identity`). The account's stores reset with `user`, and the
+   * Clerk bridge answers for whoever Clerk holds now — `rejoin` asks it to.
+   */
+  releaseClerkProjection: (options?: { rejoin?: boolean }) => void;
   clearError: () => void;
   finishSigningOut: () => void;
 };
@@ -144,6 +151,17 @@ export const useSession = create<SessionState>((set) => ({
         sessionWait: null,
       };
     }),
+  releaseClerkProjection: (options) =>
+    set((state) => ({
+      user: null,
+      source: null,
+      loading: false,
+      pendingClerkProfile: false,
+      justProvisioned: false,
+      ssoInFlight: false,
+      sessionWait: null,
+      ...(options?.rejoin ? { error: null, clerkSyncNonce: state.clerkSyncNonce + 1 } : {}),
+    })),
   adoptClerkUser: (user, options) =>
     set((state) =>
       state.signingOut
@@ -337,13 +355,25 @@ export const SESSION_RECHECK_INTERVAL_MS = 30_000;
 let recheckInFlight = false;
 let lastRecheckAt = -Infinity;
 
+/** GRIDGO verified the Clerk token and has no account for it (gridgo-api `src/auth.js`). */
+function isUnmappedIdentity(error: unknown): boolean {
+  return (
+    error instanceof api.ApiError &&
+    error.status === 401 &&
+    (error.body as { error?: unknown } | null)?.error === "unmapped_identity"
+  );
+}
+
 /**
  * Ask GRIDGO who is signed in, without leaving the screen the client is on.
  *
- * Only a confirmed answer ends the session: another person or role, or a 403.
- * A 401 on a token Clerk has just minted, a network failure and a 5xx are not
- * an answer about the session — Clerk is, and when Clerk's session truly ends
- * `useClerkApiSession` clears this one on its signed-out leg.
+ * Only a confirmed answer ends the session: another person or role, a 403, or
+ * `unmapped_identity` — GRIDGO checked the token and holds no account for it,
+ * so the account on screen goes and the bridge asks again (Finish signing up,
+ * or the login screen's recovery). A plain `401 unauthorized` on a token Clerk
+ * has just minted, a network failure and a 5xx are not an answer about the
+ * session — Clerk is, and when Clerk's session truly ends `useClerkApiSession`
+ * clears this one on its signed-out leg.
  */
 async function recheckClerkSession(): Promise<void> {
   const ownerId = useSession.getState().user?.id;
@@ -361,6 +391,11 @@ async function recheckClerkSession(): Promise<void> {
     }
     current.setUser(user);
   } catch (error) {
+    if (isUnmappedIdentity(error)) {
+      const current = useSession.getState();
+      if (current.user?.id === ownerId) current.releaseClerkProjection({ rejoin: true });
+      return;
+    }
     applyForbidden(error, ownerId);
   } finally {
     recheckInFlight = false;

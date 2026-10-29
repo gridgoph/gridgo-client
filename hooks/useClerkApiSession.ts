@@ -125,6 +125,13 @@ export function useClerkApiSession(): void {
     clerkOwnerPresent.current = true;
     if (syncedSessionId.current && sessionId && syncedSessionId.current !== sessionId) {
       invalidateClerkGridgoSync();
+      // Another Clerk session is not the account on screen. Let that account
+      // go now, before the new session has a token: keeping it while the
+      // join waited left one person's orders up under another's bearer, and a
+      // slow token kept them there for good. Clerk itself is left signed in —
+      // the join below, or the next return to the app, adopts whoever it is.
+      const held = useSession.getState();
+      if (held.source === "clerk" || held.pendingClerkProfile) held.releaseClerkProjection();
     }
     if (sessionId) syncedSessionId.current = sessionId;
     // A deliberately selected local API session owns the request bearer until

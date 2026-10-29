@@ -122,3 +122,15 @@ it("does not retry a development token: the local API has nothing fresher to giv
   expect(api.getToken()).toBeNull();
   stop();
 });
+
+it("sends nothing when the client cancelled before the first token arrived", async () => {
+  let mint!: (token: string) => void;
+  api.setTokenProvider(() => new Promise((resolve) => { mint = resolve; }));
+
+  const upload = api.uploadFile(asset, "artwork");
+  upload.cancel();
+  mint("cached-token");
+
+  await expect(upload.done).rejects.toMatchObject({ status: 0 });
+  expect(Xhr.all.flatMap((xhr) => xhr.send.mock.calls)).toHaveLength(0);
+});

@@ -4609,6 +4609,7 @@ export function uploadFile(
     let auth = await resolveToken();
     assertLiveGeneration(owner);
     const filePart = await uploadFilePart(asset);
+    if (cancelled) throw new ApiError(0, { error: "upload_cancelled" });
     let reply = await transfer(xhr, auth, filePart);
     // Same rule as `request()`: a 401 on the identity provider's cached token
     // buys one freshly minted token and one more try. A file picker sends the
