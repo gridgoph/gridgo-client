@@ -72,6 +72,33 @@ export function hydrateCartListings(cart: api.Cart, previous: api.Cart | null = 
   };
 }
 
+/**
+ * A full listing just read for a line's product, drawn on every line of it.
+ * Unlike `hydrateCartListings` this replaces a full copy too: the Artwork
+ * step's Try again reads the listing afresh because the copy it drew threw.
+ */
+export function withLineListing(cart: api.Cart, listing: api.CatalogItem): api.Cart {
+  if (!cart.lines.some((line) => line.catalogItemId === listing.id)) return cart;
+  return {
+    ...cart,
+    lines: cart.lines.map((line) => (line.catalogItemId === listing.id ? { ...line, listing } : line)),
+  };
+}
+
+/**
+ * Hold the sheet a line is about to be added from. The add answers with a
+ * compact stub (no formats, photos or options) and `hydrateCartListings` puts
+ * the sheet back from this cache — which the alert stream empties on every
+ * resume and every catalog change, so the Artwork step used to open on the
+ * stub and throw. Held as partial, since the sheet's copy may be the match's
+ * anonymous projection: the next sheet still reads the listing in full. A copy
+ * already held, or one distrusted after a crash, is left as it is.
+ */
+export function holdSheetListing(item: api.CatalogItem): void {
+  if (cache.has(item.id) || distrusted.has(item.id)) return;
+  cache.set(item.id, { at: Date.now(), item, partial: true });
+}
+
 export function clearListingCache(): void {
   cache.clear();
   inflight.clear();

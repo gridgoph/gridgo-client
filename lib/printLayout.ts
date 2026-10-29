@@ -105,7 +105,7 @@ const EMPTY_ADVICE: LayoutAdvice = { scale: null, cutOff: null, fits: null, unkn
 
 /** Whether this listing still offers an option by id. */
 function listingHasOption(listing: Pick<CatalogItem, "optionGroups"> | null | undefined, optionId: string): boolean {
-  return Boolean(listing?.optionGroups.some((group) => group.options.some((option) => option.id === optionId)));
+  return Boolean(listing?.optionGroups?.some((group) => group.options.some((option) => option.id === optionId)));
 }
 
 /**
@@ -189,7 +189,7 @@ const PAPER_FIELDS = ["size", "paper_size", "item_size", "dimensions"];
  * as the fit check reads it. Null when the listing has none.
  */
 export function paperGroupId(listing: Pick<CatalogItem, "optionGroups"> | null | undefined): string | null {
-  const group = listing?.optionGroups.find((entry) =>
+  const group = listing?.optionGroups?.find((entry) =>
     entry.options.some((option) => PAPER_FIELDS.includes(String(option.specBinding?.fieldCode ?? ""))),
   );
   return group?.id ?? null;

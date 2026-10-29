@@ -194,6 +194,12 @@ describe("switching to the suggested paper", () => {
     expect(paperGroupId(LISTING)).toBe("grp_size");
     expect(paperGroupId({ optionGroups: [PAPER_GROUP] })).toBeNull();
   });
+
+  it("reads a basket line's compact listing stub, which has no option groups, as offering none", () => {
+    const stub = { printLayouts: [] } as unknown as Pick<CatalogItem, "optionGroups" | "printLayouts">;
+    expect(paperGroupId(stub)).toBeNull();
+    expect(layoutAdvice(check(), { listing: stub }).cutOff?.switchTo).toBeNull();
+  });
 });
 
 describe("the preview's geometry", () => {

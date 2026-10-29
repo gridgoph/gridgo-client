@@ -18,6 +18,7 @@ import { ErrorScreenState } from "@/components/ErrorState";
 import { ExactColoursSection } from "@/components/ExactColoursSection";
 import { ProductPreview } from "@/components/ProductPreview";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { SkeletonBlock, SkeletonLine } from "@/components/Skeleton";
 import { StepTrailBar } from "@/components/StepTrail";
 import { TourTarget } from "@/components/TourTarget";
 import type { FormatGuard } from "@/hooks/useArtworkUpload";
@@ -50,6 +51,7 @@ import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { documentPagesSummary, pageRangeError, pageTotalError } from "@/lib/documentPages";
 import { userFacingError } from "@/lib/copy";
+import { isFullListing, listingTrusted, takeListing } from "@/lib/listingCache";
 import { THIN_FILE_NOTE, describeArtworkFile } from "@/lib/requestValidation";
 import {
   designLinkFormats,
@@ -80,7 +82,7 @@ import { coverFileOnItem, coverSpineDirty, coverSpineInput, lineAsksCoverSpine, 
 import { coverSpineDraftOf, useCoverSpine } from "@/store/coverSpine";
 
 // A step that throws while drawing shows a way on instead of closing the app.
-export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
+export { ArtworkErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
 
 /**
  * The artwork for one thing in the basket.
@@ -154,8 +156,36 @@ export default function ArtworkScreen() {
   );
   const run = useCart((state) => state.run);
   const adopt = useCart((state) => state.adopt);
+  const putListing = useCart((state) => state.putListing);
   const line = cart?.lines.find((entry) => entry.id === lineId) ?? null;
-  const item = line?.listing ?? null;
+  /**
+   * Only the shop's full listing is drawn. "Add to my order" answers with a
+   * compact stub (no formats, photos or options); a line still holding one,
+   * or one whose listing threw and is being read again, waits on its own read.
+   */
+  const item = line && isFullListing(line.listing) && listingTrusted(line.catalogItemId) ? line.listing : null;
+  const listingId = line?.catalogItemId ?? null;
+  const [listingError, setListingError] = useState<string | null>(null);
+  const [listingAttempt, setListingAttempt] = useState(0);
+  const listingReady = item != null;
+  useEffect(() => {
+    if (!listingId || listingReady) return;
+    let live = true;
+    takeListing(listingId)
+      .then((read) => {
+        if (live) putListing(read);
+      })
+      .catch(async (e) => {
+        // The basket read carries each line's full listing too.
+        await useCart.getState().load().catch(() => undefined);
+        const held = useCart.getState().cart?.lines.find((entry) => entry.id === lineId)?.listing;
+        if (!live || (isFullListing(held) && listingTrusted(listingId))) return;
+        setListingError(userFacingError(e, "GRIDGO could not open this item's listing. Try again."));
+      });
+    return () => {
+      live = false;
+    };
+  }, [listingId, listingReady, listingAttempt, lineId, putListing]);
   // A hardbound book's cover and spine, as typed and as GRIDGO holds them.
   const coverTyped = useCoverSpine((state) => (line ? state.drafts[line.id] : undefined));
   const coverSaving = useCoverSpine((state) => (line ? state.saving[line.id] === true || state.uploading[line.id] === true : false));
@@ -439,6 +469,34 @@ export default function ArtworkScreen() {
           retryLabel="Back"
           onRetry={() => router.replace("/(tabs)/home")}
         />
+      </Screen>
+    );
+  }
+
+  if (!item) {
+    return (
+      <Screen edges={["bottom"]}>
+        <StepTrailBar current="artwork" onStep={goStep} />
+        {listingError ? (
+          <ErrorScreenState
+            label="This item's listing did not open"
+            body={listingError}
+            onRetry={() => {
+              setListingError(null);
+              setListingAttempt((attempt) => attempt + 1);
+            }}
+          />
+        ) : (
+          <View
+            className="gg-page gap-4 pt-4"
+            accessibilityRole="progressbar"
+            accessibilityLabel="Opening your artwork step"
+          >
+            <SkeletonLine width="w-1/2" height="h-8" />
+            <SkeletonLine width="w-2/3" />
+            <SkeletonBlock className="h-40 w-full rounded-card" />
+          </View>
+        )}
       </Screen>
     );
   }
