@@ -131,7 +131,7 @@ export function ratingErrorMessage(error: unknown): string {
       case "forbidden":
         return "You can only rate your own orders.";
       case "unauthorized":
-        return "Your session expired. Sign in again, then rate this order.";
+        return "GRIDGO could not confirm your sign-in just now. Try rating this order again in a moment.";
       default:
         return "That rating did not save. Try again in a moment.";
     }

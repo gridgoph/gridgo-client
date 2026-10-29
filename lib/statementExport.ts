@@ -31,7 +31,7 @@ function failure(status: number, body: string): ExportResult {
     message:
       organizationErrorMessage(refusalCode(body)) ??
       (status === 401
-        ? "Your session expired. Sign in again, then export."
+        ? "GRIDGO could not confirm your sign-in just now. Try the export again in a moment."
         : "GRIDGO could not prepare that file. Try again in a moment."),
   };
 }

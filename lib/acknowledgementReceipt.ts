@@ -222,7 +222,7 @@ export function receiptReadError(error: unknown): { title: string; body: string 
       };
     }
     if (error.status === 401) {
-      return { title: "Signed out", body: "Your session expired. Sign in again to see this receipt." };
+      return { title: "Sign-in not confirmed", body: "GRIDGO could not confirm your sign-in just now. Try again in a moment to see this receipt." };
     }
   }
   return {
@@ -238,7 +238,7 @@ export const RECEIPT_DOWNLOAD_NEEDS_REBUILD = "Saving the receipt needs a rebuil
 function refusedMessage(status: number, body: string): string {
   const code = refusalCode(body);
   if (code === "acknowledgement_receipt_not_found") return "GRIDGO has not issued an acknowledgement receipt for this order.";
-  if (status === 401) return "Your session expired. Sign in again, then download.";
+  if (status === 401) return "GRIDGO could not confirm your sign-in just now. Try the download again in a moment.";
   if (status === 403 || code === "forbidden") {
     return "This receipt can only be downloaded by the account that placed the order.";
   }
