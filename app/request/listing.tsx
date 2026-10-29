@@ -61,7 +61,7 @@ import {
   type ListingSelection,
 } from "@/lib/listing";
 import { userFacingError } from "@/lib/copy";
-import { isFullListing, listingNow, listingTrusted, rereadListing, takeListing } from "@/lib/listingCache";
+import { holdSheetListing, isFullListing, listingNow, listingTrusted, rereadListing, takeListing } from "@/lib/listingCache";
 import {
   STALE_MATCH_MESSAGE,
   isStaleMatchRefusal,
@@ -571,6 +571,9 @@ export default function ListingScreen() {
       throw new Error("GRIDGO did not return the new line.");
     }
     setBusy(false);
+    // The add answers with a compact listing stub; hold this sheet so the
+    // line is drawn from it, whatever emptied the cache while the add ran.
+    if (item) holdSheetListing(item);
     adopt(updated);
     dropDraft();
     // Added: an "add more from Shop A" errand is done.

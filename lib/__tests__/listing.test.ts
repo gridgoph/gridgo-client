@@ -3,6 +3,7 @@ import {
   acceptedExtensions,
   addOnGroups,
   boundValue,
+  fileFormats,
   fileMatchesFormats,
   firstMissingGroup,
   formatSentence,
@@ -412,4 +413,10 @@ it("rejects options from another group and removed add-ons", () => {
   expect(firstMissingGroup(FLYERS, selection)?.id).toBe("g_addon");
   expect(selectedOptionIds(FLYERS, selection)).toEqual(["o_a4", "o_matte"]);
   expect(unitPriceMinor(FLYERS, selection)).toBe(4000);
+});
+
+it("reads a basket line's compact listing stub, which has no formats, as taking none", () => {
+  const stub = { id: "sci_tarp", name: "Tarpaulin" } as unknown as CatalogItem;
+  expect(fileFormats(stub)).toEqual([]);
+  expect(linkFormats(stub)).toEqual([]);
 });

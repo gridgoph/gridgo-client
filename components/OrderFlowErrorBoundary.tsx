@@ -8,6 +8,7 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { StatusChip } from "@/components/StatusChip";
 import { diagnosticHeadline, diagnosticLog } from "@/lib/errorDiagnostic";
 import { replaceListing } from "@/lib/listingCache";
+import { useCart } from "@/store/cart";
 import { HOME_TAB } from "@/lib/receipt";
 
 export const ORDER_FLOW_CRASH_TITLE = "Something went wrong";
@@ -92,5 +93,23 @@ export function OrderFlowErrorBoundary({ error, retry, beforeRetry }: Props) {
 export function ListingErrorBoundary(props: ErrorBoundaryProps) {
   const { itemId } = useLocalSearchParams<{ itemId?: string }>();
   const reread = itemId ? () => void replaceListing(itemId).catch(() => undefined) : undefined;
+  return <OrderFlowErrorBoundary {...props} beforeRetry={reread} />;
+}
+
+/**
+ * The Artwork step's boundary: the listing its line was drawn from is dropped
+ * and read again, then put on the line. Until it lands the step waits on its
+ * own loading state (`listingTrusted`), so Try again no longer redraws the
+ * same answer — the reported loop on a line still holding the add's stub.
+ */
+export function ArtworkErrorBoundary(props: ErrorBoundaryProps) {
+  const { lineId } = useLocalSearchParams<{ lineId?: string }>();
+  const reread = () => {
+    const itemId = useCart.getState().cart?.lines.find((line) => line.id === lineId)?.catalogItemId;
+    if (!itemId) return;
+    void replaceListing(itemId)
+      .then((listing) => useCart.getState().putListing(listing))
+      .catch(() => undefined);
+  };
   return <OrderFlowErrorBoundary {...props} beforeRetry={reread} />;
 }
