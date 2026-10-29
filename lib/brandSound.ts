@@ -21,12 +21,8 @@ import { expoAudio, type AudioPlayer } from "@/lib/expoAudio";
  * Sound is decoration here. Nothing about the launch depends on it, so every
  * failure ends the same way: the opening runs silent.
  *
- * `expo-audio` is deliberately **not** registered as a plugin in `app.json`.
- * Its config plugin exists to declare recording permissions — the microphone
- * string on iOS, `RECORD_AUDIO` on Android — and GRIDGO only ever plays. The
- * native module is autolinked from the dependency either way, so registering
- * the plugin would buy nothing and ask a client for a microphone the app never
- * opens.
+ * The expo-audio plugin keeps microphone support for rider calls and disables
+ * background playback. These stings only play while the app is open.
  */
 
 export type BrandStings = {
