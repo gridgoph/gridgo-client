@@ -36,7 +36,9 @@ import {
   changeClientPhoto,
   clientIdentity,
   CLERK_NAME_KEPT,
+  saveClientPhoto,
   syncClerkName,
+  type PortraitFailure,
 } from "@/lib/clerkIdentity";
 import { accountTypeOption } from "@/lib/signup";
 import { useSession } from "@/store/session";
@@ -92,7 +94,7 @@ export default function AccountDetailsScreen() {
   const [showProblems, setShowProblems] = useState(false);
   const [refusals, setRefusals] = useState<AccountProblems>({});
   const [photoBusy, setPhotoBusy] = useState(false);
-  const [photoProblem, setPhotoProblem] = useState<string | null>(null);
+  const [photoProblem, setPhotoProblem] = useState<PortraitFailure | null>(null);
   const [loadProblem, setLoadProblem] = useState<{
     kind: "not_open_yet" | "failed";
     message: string;
@@ -187,13 +189,20 @@ export default function AccountDetailsScreen() {
     setRefusals({});
   }
 
-  async function changePhoto() {
+  /**
+   * Try again sends the picture already chosen and cropped. The library only
+   * reopens when nothing was chosen yet, because what failed was the save, not
+   * the choice.
+   */
+  async function changePhoto(retry?: PortraitFailure) {
     if (!clerkUser || photoBusy) return;
     setPhotoBusy(true);
     setPhotoProblem(null);
-    const outcome = await changeClientPhoto(clerkUser);
+    const outcome = retry?.photo
+      ? await saveClientPhoto(clerkUser, retry.photo)
+      : await changeClientPhoto(clerkUser);
     setPhotoBusy(false);
-    if (outcome.status === "failed") setPhotoProblem(outcome.message);
+    if (outcome.status === "failed") setPhotoProblem(outcome);
   }
 
   async function save() {
@@ -331,7 +340,11 @@ export default function AccountDetailsScreen() {
         </WhyWeAsk>
 
         {photoProblem ? (
-          <ErrorState label="Picture not saved" body={photoProblem} />
+          <ErrorState
+            label="Photo not saved"
+            body={photoProblem.message}
+            onRetry={photoProblem.photo ? () => void changePhoto(photoProblem) : undefined}
+          />
         ) : null}
 
         {/*

@@ -94,8 +94,10 @@ describe("expo-image-picker must not load at import time", () => {
       multiple: false,
       copyToCacheDirectory: true,
     });
+    // A device File, never React Native's `{ uri, name, type }` descriptor,
+    // which Expo 57's multipart upload refuses on Android (#336).
     expect(setProfileImage).toHaveBeenCalledWith({
-      file: { uri: "file:///tmp/a.jpg", name: "a.jpg", type: "image/jpeg" },
+      file: expect.objectContaining({ uri: "file:///tmp/a.jpg", bytes: expect.any(Function) }),
     });
     expect(reload).toHaveBeenCalled();
   });

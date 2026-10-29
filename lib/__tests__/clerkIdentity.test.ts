@@ -1,6 +1,10 @@
+import { File as DeviceFile } from "expo-file-system";
+import { TextEncoder } from "util";
+
 import {
   changeClientPhoto,
   changeSignInPassword,
+  clerkName,
   clientIdentity,
   confirmEmailChange,
   EMAIL_UNCHANGED,
@@ -8,20 +12,16 @@ import {
   passwordProblems,
   passwordReady,
   portraitFile,
+  PORTRAIT_FAILED,
+  saveClientPhoto,
   startEmailChange,
   syncClerkName,
   type ClerkEmailAddress,
 } from "@/lib/clerkIdentity";
 
-jest.mock("expo-modules-core", () => {
-  const actual = jest.requireActual("expo-modules-core") as Record<string, unknown>;
-  return {
-    ...actual,
-    requireOptionalNativeModule: (name: string) =>
-      name === "ExponentImagePicker" ? { name } : null,
-  };
-});
-
+// jest-expo's own `expo-modules-core` mock answers the native probes: the
+// image picker is there, and `FileSystem` is an in-memory file system behind
+// the real `File` class.
 jest.mock("expo-image-picker", () => ({
   launchImageLibraryAsync: jest.fn(),
 }));
@@ -108,51 +108,117 @@ describe("clientIdentity", () => {
   });
 });
 
+/*
+ * Expo 57's own multipart serializer, which is what failed on Android. Clerk
+ * appends `file` to a FormData and Expo's fetch turns each part into bytes, so
+ * running the real serializer is the honest test of what leaves the phone.
+ */
+const { convertFormDataAsync } = jest.requireActual<{
+  convertFormDataAsync: (form: FormData) => Promise<{ body: Uint8Array }>;
+}>("expo/src/winter/fetch/convertFormData");
+const { installFormDataPatch } = jest.requireActual<{
+  installFormDataPatch: (form: typeof FormData) => typeof FormData;
+}>("expo/src/winter/FormData");
+const NativeFormData = installFormDataPatch(
+  jest.requireActual("react-native/Libraries/Network/FormData").default,
+);
+globalThis.TextEncoder ??= TextEncoder as unknown as typeof globalThis.TextEncoder;
+
+const JPEG = new Uint8Array([255, 216, 255, 217]);
+const PICKED = "file:///mock/cache/portrait.jpg";
+
+/** The multipart body Clerk's upload would send for this file. */
+async function multipartBody(file: Blob | File | string | null): Promise<Buffer> {
+  const form = new NativeFormData();
+  form.append("file", file as Blob);
+  return Buffer.from((await convertFormDataAsync(form)).body);
+}
+
 describe("portraitFile", () => {
-  it("hands React Native's own FormData descriptor to Clerk", () => {
-    // Not a bare `file://` string: Clerk sends a string body verbatim as
-    // octet-stream, which stores the path itself as the picture.
-    expect(portraitFile({ uri: "file:///tmp/a.png", mimeType: "image/png" })).toEqual({
-      uri: "file:///tmp/a.png",
-      name: "client-photo.png",
-      type: "image/png",
-    });
+  beforeEach(() => {
+    // jest-expo backs the real File class with an in-memory file system.
+    new DeviceFile(PICKED).write(JPEG);
   });
 
-  it("names an unnamed pick rather than leaving IMG_0421 on the account", () => {
-    expect(portraitFile({ uri: "file:///tmp/a.jpg" }).name).toBe("client-photo.jpg");
+  it("reproduces the Android failure: the old descriptor is not a multipart part", async () => {
+    const descriptor = { uri: PICKED, name: "client-photo.jpg", type: "image/jpeg" };
+    await expect(multipartBody(descriptor as unknown as Blob)).rejects.toThrow(
+      "Unsupported FormDataPart implementation",
+    );
+  });
+
+  it("hands Clerk a device File whose bytes are the picture, never the path", async () => {
+    const file = portraitFile({ uri: PICKED });
+    expect(file).toBeInstanceOf(DeviceFile);
+
+    const body = await multipartBody(file);
+    expect(body.includes(Buffer.from(JPEG))).toBe(true);
+    expect(body.toString()).toContain('filename="portrait.jpg"');
+    expect(body.toString()).not.toContain("file://");
+  });
+
+  it("passes a browser's own File through untouched", () => {
+    const browser = new Blob([JPEG], { type: "image/jpeg" }) as File;
+    expect(portraitFile({ uri: "blob:web", file: browser })).toBe(browser);
   });
 });
 
 describe("changeClientPhoto", () => {
   const user = {
-    setProfileImage: jest.fn(async () => undefined),
+    setProfileImage: jest.fn(async ({ file }: { file: Blob | File | string | null }) => {
+      // Fail exactly where Android failed if the file is not real bytes.
+      await multipartBody(file);
+    }),
     reload: jest.fn(async () => undefined),
   };
 
   beforeEach(() => {
+    new DeviceFile(PICKED).write(JPEG);
     user.setProfileImage.mockClear();
     user.reload.mockClear();
     ImagePicker.launchImageLibraryAsync.mockReset();
   });
 
-  it("saves a picked picture onto the sign-in", async () => {
+  it("uploads the picked picture's bytes and re-reads the sign-in", async () => {
     ImagePicker.launchImageLibraryAsync.mockResolvedValue({
       canceled: false,
-      assets: [{ uri: "file:///tmp/a.png", mimeType: "image/png" }],
+      assets: [{ uri: PICKED, mimeType: "image/jpeg", fileName: "IMG_0421.jpg" }],
     });
 
     expect(await changeClientPhoto(user)).toEqual({ status: "ok" });
-    expect(user.setProfileImage).toHaveBeenCalledWith({
-      file: { uri: "file:///tmp/a.png", name: "client-photo.png", type: "image/png" },
-    });
-    expect(user.reload).toHaveBeenCalled();
+    expect(user.setProfileImage).toHaveBeenCalledWith({ file: expect.any(DeviceFile) });
+    // The reload is what puts the new picture on screen straight away.
+    expect(user.reload).toHaveBeenCalledTimes(1);
   });
 
   it("stays quiet when the client closes the picker", async () => {
     ImagePicker.launchImageLibraryAsync.mockResolvedValue({ canceled: true, assets: [] });
     expect(await changeClientPhoto(user)).toEqual({ status: "cancelled" });
     expect(user.setProfileImage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    new Error(
+      "ClerkJS: Network error at /v1/me/profile_image: Unsupported FormDataPart implementation",
+    ),
+    clerkError("file_too_large", "Raw service response"),
+  ])("says a failed save plainly and holds the photo for Try again", async (error) => {
+    ImagePicker.launchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: PICKED }],
+    });
+    user.setProfileImage.mockRejectedValueOnce(error);
+
+    const outcome = await changeClientPhoto(user);
+    expect(outcome).toEqual({ status: "failed", message: PORTRAIT_FAILED, photo: { uri: PICKED } });
+    expect(JSON.stringify(outcome)).not.toMatch(/FormDataPart|Raw service|ClerkJS/);
+    expect(user.reload).not.toHaveBeenCalled();
+
+    // Try again sends the same picture without reopening the library.
+    if (outcome.status !== "failed" || !outcome.photo) throw new Error("no photo held");
+    expect(await saveClientPhoto(user, outcome.photo)).toEqual({ status: "ok" });
+    expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledTimes(1);
+    expect(user.reload).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -239,14 +305,51 @@ describe("confirmEmailChange", () => {
   });
 });
 
+describe("clerkName", () => {
+  it.each([
+    ["Ana", { firstName: "Ana", lastName: "" }],
+    ["Ana Bautista", { firstName: "Ana", lastName: "Bautista" }],
+    ["  Ana   Maria  Bautista Cruz ", { firstName: "Ana", lastName: "Maria Bautista Cruz" }],
+  ])("%j becomes the whole of Clerk's name", (typed, expected) => {
+    expect(clerkName(typed)).toEqual(expected);
+  });
+});
+
 describe("syncClerkName", () => {
-  it("splits one typed name into the two fields Clerk stores", async () => {
-    const user = { update: jest.fn(async () => undefined), reload: jest.fn(async () => undefined) };
-    expect(await syncClerkName(user, "  Ana Maria Bautista  ")).toEqual({ status: "ok" });
-    expect(user.update).toHaveBeenCalledWith({
-      firstName: "Ana",
-      lastName: "Maria Bautista",
-    });
+  /** A Clerk user that keeps any field it is not sent, as Clerk does. */
+  function clerkUser(firstName: string, lastName: string) {
+    const stored = { firstName, lastName };
+    return {
+      stored,
+      update: jest.fn(async (params: { firstName?: string; lastName?: string }) => {
+        if (params.firstName !== undefined) stored.firstName = params.firstName;
+        if (params.lastName !== undefined) stored.lastName = params.lastName;
+      }),
+      reload: jest.fn(async () => undefined),
+    };
+  }
+
+  function shown(stored: { firstName: string; lastName: string }) {
+    return clientIdentity({ firstName: stored.firstName, lastName: stored.lastName }, null).name;
+  }
+
+  it.each([
+    ["Ana"],
+    ["Ana Bautista"],
+    ["Ana Maria Bautista"],
+    ["Ana Maria de la Cruz Bautista"],
+  ])("replaces Ana Maria Bautista with exactly %j", async (typed) => {
+    const user = clerkUser("Ana", "Maria Bautista");
+    expect(await syncClerkName(user, typed)).toEqual({ status: "ok" });
+    expect(shown(user.stored)).toBe(typed);
+    expect(user.reload).toHaveBeenCalled();
+  });
+
+  it("clears the old surname when the new name is one word (#337)", async () => {
+    const user = clerkUser("Ana", "Maria Bautista");
+    await syncClerkName(user, "  Mono ");
+    expect(user.update).toHaveBeenCalledWith({ firstName: "Mono", lastName: "" });
+    expect(shown(user.stored)).toBe("Mono");
   });
 
   it("reports its own failure rather than throwing away a GRIDGO save", async () => {
