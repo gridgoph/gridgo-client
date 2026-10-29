@@ -105,6 +105,13 @@ type SessionState = {
   registerIdentityLogout: (logout: (() => Promise<void>) | null) => void;
   /** Drop the in-memory user. Routing reacts via Stack.Protected — no router calls here. */
   clearSession: () => void;
+  /**
+   * Let go of the account on screen without signing out of Clerk: Clerk now
+   * holds another session, or GRIDGO no longer maps this identity
+   * (`unmapped_identity`). The account's stores reset with `user`, and the
+   * Clerk bridge answers for whoever Clerk holds now — `rejoin` asks it to.
+   */
+  releaseClerkProjection: (options?: { rejoin?: boolean }) => void;
   clearError: () => void;
   finishSigningOut: () => void;
 };
@@ -144,6 +151,17 @@ export const useSession = create<SessionState>((set) => ({
         sessionWait: null,
       };
     }),
+  releaseClerkProjection: (options) =>
+    set((state) => ({
+      user: null,
+      source: null,
+      loading: false,
+      pendingClerkProfile: false,
+      justProvisioned: false,
+      ssoInFlight: false,
+      sessionWait: null,
+      ...(options?.rejoin ? { error: null, clerkSyncNonce: state.clerkSyncNonce + 1 } : {}),
+    })),
   adoptClerkUser: (user, options) =>
     set((state) =>
       state.signingOut
@@ -178,21 +196,10 @@ export const useSession = create<SessionState>((set) => ({
       );
     } catch (error) {
       if (sequence !== accountReadSequence) return;
-      if (error instanceof api.ApiError && error.status === 403 && useSession.getState().user?.id === ownerId) {
-        // A held account keeps its session so SessionShell can say why and
-        // offer Sign out; any other 403 still clears it.
-        const hold = accountHoldFromForbidden(error.body);
-        if (hold) {
-          useSession.setState((state) =>
-            state.user?.id === ownerId ? { user: { ...state.user, ...hold } } : {},
-          );
-          return;
-        }
-        useSession.getState().clearSession();
-      }
-      // A 401 already clears the session through the unauthorized handler, and
-      // anything else leaves the account as last known rather than emptying
-      // the card because one request did not land.
+      // A 401 goes through the unauthorized handler, and anything else but a
+      // 403 leaves the account as last known rather than emptying the card
+      // because one request did not land.
+      applyForbidden(error, ownerId);
     }
   },
   beginClerkSync: (options) =>
@@ -325,16 +332,104 @@ export const useSession = create<SessionState>((set) => ({
   },
 }));
 
-// Mid-session 401 drops the GRIDGO projection so signed-in routes unmount.
-// It must not sign out of Clerk — the shop app keeps that session, and the
-// next Sign in / Google tap (or the Clerk bridge) can adopt it. Signing Clerk
-// out here is what trapped people on "Sign in again".
+/**
+ * GRIDGO's 403 on the signed-in account: a held account keeps its session so
+ * SessionShell can say why and offer Sign out; any other 403 clears it.
+ * Anything that is not a 403 is left alone.
+ */
+function applyForbidden(error: unknown, ownerId: string): void {
+  if (!(error instanceof api.ApiError) || error.status !== 403) return;
+  if (useSession.getState().user?.id !== ownerId) return;
+  const hold = accountHoldFromForbidden(error.body);
+  if (hold) {
+    useSession.setState((state) =>
+      state.user?.id === ownerId ? { user: { ...state.user, ...hold } } : {},
+    );
+    return;
+  }
+  useSession.getState().clearSession();
+}
+
+/** One re-check answers a burst of refusals, and a refusal loop asks at most this often. */
+export const SESSION_RECHECK_INTERVAL_MS = 30_000;
+let recheckInFlight = false;
+let lastRecheckAt = -Infinity;
+
+/** GRIDGO verified the Clerk token and has no account for it (gridgo-api `src/auth.js`). */
+function isUnmappedIdentity(error: unknown): boolean {
+  return (
+    error instanceof api.ApiError &&
+    error.status === 401 &&
+    (error.body as { error?: unknown } | null)?.error === "unmapped_identity"
+  );
+}
+
+/**
+ * Ask GRIDGO who is signed in, without leaving the screen the client is on.
+ *
+ * Only a confirmed answer ends the session: another person or role, a 403, or
+ * `unmapped_identity` — GRIDGO checked the token and holds no account for it,
+ * so the account on screen goes and the bridge asks again (Finish signing up,
+ * or the login screen's recovery). A plain `401 unauthorized` on a token Clerk
+ * has just minted, a network failure and a 5xx are not an answer about the
+ * session — Clerk is, and when Clerk's session truly ends `useClerkApiSession`
+ * clears this one on its signed-out leg.
+ */
+async function recheckClerkSession(): Promise<void> {
+  const ownerId = useSession.getState().user?.id;
+  if (!ownerId || recheckInFlight) return;
+  if (Date.now() - lastRecheckAt < SESSION_RECHECK_INTERVAL_MS) return;
+  recheckInFlight = true;
+  lastRecheckAt = Date.now();
+  try {
+    const user = await api.me({ ignoreUnauthorized: true });
+    const current = useSession.getState();
+    if (current.user?.id !== ownerId) return;
+    if (user.id !== ownerId || user.role !== APP_ROLE) {
+      current.clearSession();
+      return;
+    }
+    current.setUser(user);
+  } catch (error) {
+    if (isUnmappedIdentity(error)) {
+      const current = useSession.getState();
+      if (current.user?.id === ownerId) current.releaseClerkProjection({ rejoin: true });
+      return;
+    }
+    applyForbidden(error, ownerId);
+  } finally {
+    recheckInFlight = false;
+  }
+}
+
+/** Test seam: forget the last re-check so the next refusal asks again. */
+export function resetSessionRecheck(): void {
+  recheckInFlight = false;
+  lastRecheckAt = -Infinity;
+}
+
+// A mid-session 401 is not a sign-out (#338). `request()` has already spent
+// one freshly minted Clerk token on it, so a refusal that reaches here came
+// from gridgo-api, not from an expired Clerk session: a key it could not
+// fetch, a slow clock, a moment of downtime. Dropping `user` for that remounted
+// the whole navigator onto Welcome and reset every per-account store — the
+// listing being chosen, the artwork just picked, the match — and a re-join
+// that then met one more transient error left the client on the sign-in form.
+// So a Clerk session keeps its user and its place and is re-checked quietly.
+// It must not sign out of Clerk either; that is what trapped people on
+// "Sign in again".
 api.onUnauthorized(() => {
   const current = useSession.getState();
-  if (current.source === "legacy") {
+  if (current.user && current.source === "clerk") {
+    void recheckClerkSession();
+    return;
+  }
+  if (current.source === "legacy" || current.user) {
     current.clearSession();
     return;
   }
+  // No client adopted yet (a join or Finish signing up in flight): drop the
+  // half-made projection and let the Clerk bridge join again.
   useSession.setState((state) => ({
     user: null,
     loading: false,

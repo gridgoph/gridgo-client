@@ -26,7 +26,10 @@ type LoginFlowState = {
    * means the mount reset below clears a stuck flag after Fast Refresh.
    */
   busy: boolean;
+  /** Save password was tried, so a too-short new password says so on its field. */
+  newPasswordChecked: boolean;
   setBusy: (busy: boolean) => void;
+  checkNewPassword: () => void;
   enterVerification: (factor: ClerkSecondFactorStrategy) => void;
   enterRecovery: () => void;
   enterNewPassword: () => void;
@@ -40,11 +43,13 @@ const initial = {
   secondFactor: "email_code" as const,
   code: "",
   busy: false,
+  newPasswordChecked: false,
 };
 
 export const useLoginFlow = create<LoginFlowState>((set) => ({
   ...initial,
   setBusy: (busy) => set({ busy }),
+  checkNewPassword: () => set({ newPasswordChecked: true }),
   enterVerification: (factor) =>
     set({
       step: "verifyCode",
@@ -59,7 +64,7 @@ export const useLoginFlow = create<LoginFlowState>((set) => ({
       secondFactor: "email_code",
       code: "",
     }),
-  enterNewPassword: () => set({ step: "newPassword", code: "" }),
+  enterNewPassword: () => set({ step: "newPassword", code: "", newPasswordChecked: false }),
   setCode: (code) => set({ code }),
   reset: () => set(initial),
 }));

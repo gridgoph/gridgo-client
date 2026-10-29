@@ -217,7 +217,7 @@ export function artworkErrorMessage(error: unknown): string {
       case "forbidden":
         return "You cannot attach artwork to this job. Open one of your own orders.";
       case "unauthorized":
-        return "Your session expired. Sign in again, then upload the file.";
+        return "GRIDGO could not confirm your sign-in just now. Upload the file again in a moment.";
       default:
         if (error.status >= 500) {
           return "The server had a problem storing that file. Try the upload again.";

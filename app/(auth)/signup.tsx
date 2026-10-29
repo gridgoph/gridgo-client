@@ -30,6 +30,7 @@ import {
 import { continuationAfterSignUp } from "@/lib/clerkSignUp";
 import { enrollmentConsentBody, signupConsentProblem, signupDocuments } from "@/lib/legal";
 import { legalContext } from "@/lib/legalContext";
+import { PASSWORD_RULE, passwordLengthProblem } from "@/lib/signup";
 import { useEnrollmentConsent } from "@/store/enrollmentConsent";
 import { useLegalLibrary } from "@/store/legalLibrary";
 import { useSession } from "@/store/session";
@@ -54,6 +55,8 @@ export default function SignupScreen() {
     step,
     code,
     consent,
+    passwordChecked,
+    checkPassword,
     setConsent,
     enterEmailCode,
     setCode,
@@ -166,6 +169,9 @@ export default function SignupScreen() {
 
   const createAccount = async () => {
     if (!signUp || !fullName.trim() || !email.trim() || !password) return;
+    // Clerk's own minimum, stopped on the field rather than refused by Clerk.
+    checkPassword();
+    if (passwordLengthProblem(password)) return;
     const mismatch = passwordConfirmationError(password, confirmPassword);
     if (mismatch) {
       setError(mismatch);
@@ -310,7 +316,11 @@ export default function SignupScreen() {
                 />
               </FormField>
 
-              <FormField label="Password" helper="Use at least 15 characters.">
+              <FormField
+                label="Password"
+                helper={PASSWORD_RULE}
+                error={passwordChecked ? passwordLengthProblem(password) : null}
+              >
                 <PasswordField
                   value={password}
                   onChangeText={setPassword}

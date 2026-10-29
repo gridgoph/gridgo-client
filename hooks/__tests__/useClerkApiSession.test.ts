@@ -1,5 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 
+import { AppState, type AppStateStatus } from "react-native";
+
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
 import { ApiError, type User } from "@/lib/api";
 import { useLoginFlow } from "@/store/loginFlow";
@@ -49,6 +51,10 @@ const supplier: User = {
 };
 
 describe("useClerkApiSession", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     mockGetToken.mockReset().mockResolvedValue("clerk-jwt");
     mockAuthGetToken = mockGetToken;
@@ -146,17 +152,60 @@ describe("useClerkApiSession", () => {
     expect(useSession.getState().user).toBeNull();
   });
 
-  it("signs out a leftover session that cannot mint a JWT instead of failing login", async () => {
+  it("keeps a Clerk session that has no JWT yet instead of signing it out", async () => {
+    // A phone waking from the background or a file picker can answer empty for
+    // a while. Signing out here ended a live session for good (#338); a
+    // leftover the person wants gone is cleared by their own sign-in tap.
     mockGetToken.mockResolvedValue(null);
 
     renderHook(() => useClerkApiSession());
 
-    await waitFor(() => expect(mockSignOut).toHaveBeenCalled(), { timeout: 8000 });
+    await waitFor(() => expect(mockGetToken).toHaveBeenCalledWith({ skipCache: true }), {
+      timeout: 8000,
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(mockSignOut).not.toHaveBeenCalled();
     expect(mockMe).not.toHaveBeenCalled();
-    expect(mockActivate).not.toHaveBeenCalled();
     expect(useSession.getState().user).toBeNull();
     expect(useSession.getState().error).toBeNull();
     expect(useSession.getState().loading).toBe(false);
+  });
+
+  it("joins the kept session when the app comes back to the front", async () => {
+    let onAppState: ((status: AppStateStatus) => void) | undefined;
+    jest.spyOn(AppState, "addEventListener").mockImplementation((_type, listener) => {
+      onAppState = listener as (status: AppStateStatus) => void;
+      return { remove: jest.fn() } as unknown as ReturnType<typeof AppState.addEventListener>;
+    });
+    const client: User = {
+      id: "u1",
+      email: "ana@company.com",
+      name: "Ana",
+      role: "client",
+      accountType: "individual",
+    };
+    mockGetToken.mockResolvedValue(null);
+    mockMe.mockResolvedValue(client);
+
+    renderHook(() => useClerkApiSession());
+    // The launch join has given up: every probe of CLERK_SSO_TOKEN_WAIT spent.
+    await waitFor(() => expect(mockGetToken).toHaveBeenCalledTimes(10), { timeout: 8000 });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(mockMe).not.toHaveBeenCalled();
+    expect(useSession.getState().user).toBeNull();
+
+    // Back from the file picker: Clerk has its token again.
+    mockGetToken.mockResolvedValue("clerk-jwt");
+    await act(async () => {
+      onAppState?.("active");
+    });
+
+    await waitFor(() => expect(useSession.getState().user?.id).toBe("u1"));
+    expect(mockSignOut).not.toHaveBeenCalled();
   });
 
   it("installs a token provider that reads Clerk's cache instead of minting per request", async () => {

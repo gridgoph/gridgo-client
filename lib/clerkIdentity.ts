@@ -1,6 +1,6 @@
 import type { User } from "@/lib/api";
 import { clerkErrorCode, clerkErrorMessage, splitFullName } from "@/lib/clerkAuth";
-import { checkSignupField, EMPTY_SIGNUP, MIN_PASSWORD_LENGTH } from "@/lib/signup";
+import { checkSignupField, EMPTY_SIGNUP, PASSWORD_RULE } from "@/lib/signup";
 import { canPickOnWeb, pickFileOnWeb } from "@/lib/webFilePick";
 
 /**
@@ -110,7 +110,15 @@ export type PortraitOutcome =
   | { status: "ok" }
   /** The client closed the picker. Nothing happened and nothing is said. */
   | { status: "cancelled" }
-  | { status: "failed"; message: string };
+  /**
+   * `photo` is there when the picture was chosen and only the save failed, so
+   * Try again can send the same picture rather than reopening the library.
+   * `chooseAgain` is there instead when that picture is no longer on the
+   * phone, so the only way on is a fresh choice.
+   */
+  | { status: "failed"; message: string; photo?: PortraitAsset; chooseAgain?: true };
+
+export type PortraitFailure = Extract<PortraitOutcome, { status: "failed" }>;
 
 export const PORTRAIT_LIBRARY_REFUSED =
   "GRIDGO needs access to your photos to set a picture. Turn it on for this app in your phone's settings.";
@@ -125,14 +133,24 @@ export const PORTRAIT_LIBRARY_REFUSED =
 export const PORTRAIT_NEEDS_REBUILD =
   "Changing your picture needs a rebuilt GRIDGO app on this phone. Your other details still work.";
 
-const PORTRAIT_FAILED =
-  "That picture could not be saved to your GRIDGO sign-in. Check this phone's connection and try again.";
+/**
+ * Never Clerk's own sentence. What reached a client on Android was
+ * "Unsupported FormDataPart implementation" — true, and no use to anyone
+ * holding the phone.
+ */
+export const PORTRAIT_FAILED =
+  "GRIDGO couldn't save your photo. Check this phone's connection, then try again.";
+
+export const PORTRAIT_GONE =
+  "GRIDGO couldn't find that photo on this phone any more. Choose it again.";
 
 type ImagePickerNative = typeof import("expo-image-picker");
 type DocumentPickerNative = typeof import("expo-document-picker");
+type FileSystemNative = typeof import("expo-file-system");
 
 let imagePickerNative: ImagePickerNative | null | undefined;
 let documentPickerNative: DocumentPickerNative | null | undefined;
+let fileSystemNative: FileSystemNative | null | undefined;
 
 /**
  * Whether a native Expo module is compiled into this binary.
@@ -193,40 +211,52 @@ function getDocumentPickerNative(): DocumentPickerNative | null {
   }
 }
 
-/**
- * What React Native can actually hand Clerk.
- *
- * Clerk sends a `file` that is a string as the raw request body under
- * `application/octet-stream`, so a `file://` path would be uploaded verbatim
- * and stored as the picture. The other branch builds a `FormData` and appends
- * the value, which is exactly what React Native's own `FormData` understands
- * as `{ uri, name, type }`. So the descriptor is the shape that works, and the
- * cast at the call site is the price of a type written for a browser's `File`.
- */
-export type PortraitFile = { uri: string; name: string; type: string };
+function getFileSystemNative(): FileSystemNative | null {
+  if (fileSystemNative !== undefined) return fileSystemNative;
+  if (!optionalNative("FileSystem")) {
+    fileSystemNative = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    fileSystemNative = require("expo-file-system") as FileSystemNative;
+    return fileSystemNative;
+  } catch {
+    fileSystemNative = null;
+    return null;
+  }
+}
 
-export function portraitFile(asset: {
+/** A chosen picture, held until Clerk has it. */
+export type PortraitAsset = {
   uri: string;
-  fileName?: string | null;
-  mimeType?: string | null;
-}): PortraitFile {
-  const type = asset.mimeType || "image/jpeg";
-  // Clerk stores the name it is given; nobody should find "IMG_0421" is the
-  // only thing naming their own account picture.
-  const suffix = type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
-  return { uri: asset.uri, name: asset.fileName || `client-photo.${suffix}`, type };
+  /** A browser's own `File`, which already carries the bytes. */
+  file?: File;
+};
+
+/**
+ * What Clerk's multipart upload can actually send.
+ *
+ * Clerk appends `file` to a `FormData`, and Expo 57's fetch serializes each
+ * part as bytes: a `Blob`, or anything with `bytes()`. React Native's old
+ * `{ uri, name, type }` descriptor is neither, so Android refused it with
+ * "Unsupported FormDataPart implementation" before a byte left the phone
+ * (gridgo-client#336, the same fix as gridgo-supplier#117). An
+ * `expo-file-system` `File` reads the picked image's bytes; a browser-picked
+ * `File` already has them. A string is never sent — Clerk would upload the
+ * path itself as the picture.
+ *
+ * Null only on a binary without the file system, which is said as a rebuild.
+ */
+export function portraitFile(asset: PortraitAsset): Blob | null {
+  if (asset.file) return asset.file;
+  const FileSystem = getFileSystemNative();
+  if (!FileSystem) return null;
+  return new FileSystem.File(asset.uri) as unknown as Blob;
 }
 
 type PickedPortrait =
-  | {
-      status: "ok";
-      asset: {
-        uri: string;
-        fileName?: string | null;
-        mimeType?: string | null;
-        file?: File;
-      };
-    }
+  | { status: "ok"; asset: PortraitAsset }
   | { status: "cancelled" }
   | { status: "failed"; message: string };
 
@@ -241,15 +271,7 @@ async function pickPortraitAsset(): Promise<PickedPortrait> {
     try {
       const picked = await pickFileOnWeb("image/*");
       if (!picked) return { status: "cancelled" };
-      return {
-        status: "ok",
-        asset: {
-          uri: picked.uri,
-          fileName: picked.name,
-          mimeType: picked.mimeType,
-          file: picked.file,
-        },
-      };
+      return { status: "ok", asset: { uri: picked.uri, file: picked.file } };
     } catch {
       return { status: "failed", message: PORTRAIT_NEEDS_REBUILD };
     }
@@ -269,7 +291,7 @@ async function pickPortraitAsset(): Promise<PickedPortrait> {
       });
       const asset = picked.canceled ? null : picked.assets[0];
       if (!asset) return { status: "cancelled" };
-      return { status: "ok", asset };
+      return { status: "ok", asset: { uri: asset.uri } };
     } catch (error) {
       if (!isNativePickerMissing(error)) {
         return { status: "failed", message: PORTRAIT_LIBRARY_REFUSED };
@@ -292,10 +314,7 @@ async function pickPortraitAsset(): Promise<PickedPortrait> {
     if (picked.canceled) return { status: "cancelled" };
     const asset = picked.assets[0];
     if (!asset) return { status: "cancelled" };
-    return {
-      status: "ok",
-      asset: { uri: asset.uri, fileName: asset.name, mimeType: asset.mimeType },
-    };
+    return { status: "ok", asset: { uri: asset.uri } };
   } catch (error) {
     if (isNativePickerMissing(error)) {
       return { status: "failed", message: PORTRAIT_NEEDS_REBUILD };
@@ -317,16 +336,54 @@ export async function changeClientPhoto(
 ): Promise<PortraitOutcome> {
   const picked = await pickPortraitAsset();
   if (picked.status !== "ok") return picked;
+  return saveClientPhoto(user, picked.asset);
+}
+
+/** Put a chosen picture on the sign-in. Also what Try again calls. */
+export async function saveClientPhoto(
+  user: ClerkPortraitUser,
+  photo: PortraitAsset,
+): Promise<PortraitOutcome> {
+  const file = portraitFile(photo);
+  if (!file) return { status: "failed", message: PORTRAIT_NEEDS_REBUILD };
+  if (!photo.file && !nativeFileExists(file)) return portraitGone();
 
   try {
-    const file = picked.asset.file ?? (portraitFile(picked.asset) as unknown as Blob);
     await user.setProfileImage({ file });
     // Clerk's own copy of the user is what every screen reads `imageUrl` from,
     // so it is re-read here rather than leaving the old picture on screen.
     await user.reload?.();
     return { status: "ok" };
-  } catch (error) {
-    return { status: "failed", message: clerkErrorMessage(error, PORTRAIT_FAILED) };
+  } catch {
+    if (!photo.file && !(await nativeFileReadable(file))) return portraitGone();
+    return { status: "failed", message: PORTRAIT_FAILED, photo };
+  }
+}
+
+/**
+ * The picked photo is only a path into the picker's cache, which Android may
+ * clear while GRIDGO is in the background. Holding that path for Try again
+ * would retry a file that is gone, and say "check your connection", forever.
+ */
+function portraitGone(): PortraitFailure {
+  return { status: "failed", message: PORTRAIT_GONE, chooseAgain: true };
+}
+
+function nativeFileExists(file: Blob): boolean {
+  try {
+    return (file as unknown as { exists?: boolean }).exists !== false;
+  } catch {
+    return false;
+  }
+}
+
+async function nativeFileReadable(file: Blob): Promise<boolean> {
+  if (!nativeFileExists(file)) return false;
+  try {
+    await (file as unknown as { bytes: () => Promise<Uint8Array> }).bytes();
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -340,9 +397,24 @@ function isNativePickerMissing(error: unknown): boolean {
    -------------------------------------------------------------------------- */
 
 export type ClerkNameUser = {
-  update: (params: { firstName?: string; lastName?: string }) => Promise<unknown>;
+  update: (params: { firstName: string; lastName: string }) => Promise<unknown>;
   reload?: () => Promise<unknown>;
 };
+
+/**
+ * The whole name, as the two fields Clerk stores.
+ *
+ * Split the way sign-up splits it — anything past the first word is the
+ * surname — with one difference: `lastName` is always sent, empty when the
+ * name is one word. Sign-up can leave it out because there is nothing to
+ * replace; here, leaving it out kept the old surname, so "Ana" saved as
+ * "Ana Maria Bautista" (gridgo-client#337). Clerk's instances do not require a
+ * last name, and its serializer sends `""` as `last_name=`, which clears it.
+ */
+export function clerkName(fullName: string): { firstName: string; lastName: string } {
+  const { firstName, lastName = "" } = splitFullName(fullName);
+  return { firstName, lastName };
+}
 
 export const CLERK_NAME_KEPT =
   "Your details are saved. GRIDGO could not update the name on your sign-in as well — try again in a moment, and it will catch up.";
@@ -364,9 +436,7 @@ export async function syncClerkName(
   if (!trimmed) return { status: "ok" };
 
   try {
-    // Clerk stores a first and a last name, so one typed string is split the
-    // same way sign-up splits it. Anything past the first word is the surname.
-    await user.update(splitFullName(trimmed));
+    await user.update(clerkName(trimmed));
     await user.reload?.();
     return { status: "ok" };
   } catch {
@@ -640,4 +710,4 @@ function isWrongPassword(error: unknown): boolean {
 }
 
 /** Restated where the screen needs it, so the rule is written in one place. */
-export { MIN_PASSWORD_LENGTH };
+export { PASSWORD_RULE };

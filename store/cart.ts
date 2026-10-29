@@ -5,7 +5,7 @@ import * as api from "@/lib/api";
 import { liveGeneration } from "@/lib/live";
 import { travelChoiceOf } from "@/lib/checkout";
 import { groupSavedPlaces } from "@/lib/savedPlaces";
-import { hydrateCartListings } from "@/lib/listingCache";
+import { hydrateCartListings, withLineListing } from "@/lib/listingCache";
 import { createPersistStorage } from "@/lib/persistStorage";
 
 const STORAGE_KEY = "gridgo.client.cart.v2";
@@ -65,6 +65,8 @@ export type CartState = {
   warm: () => void;
   /** Store whatever the API just returned. */
   adopt: (cart: api.Cart) => void;
+  /** A full listing just read for a line's product (`withLineListing`). */
+  putListing: (listing: api.CatalogItem) => void;
   run: <T>(work: (cartId: string) => Promise<T>) => Promise<T>;
   /**
    * Replace the basket with a new one holding only what `work` puts in it.
@@ -216,6 +218,11 @@ export const useCart = create<CartState>()(
       adopt: (cart) => {
         loadSequence++;
         set({ cartId: cart.id, cart: hydrateCartListings(cart, get().cart), loading: false, error: null });
+      },
+
+      putListing: (listing) => {
+        const cart = get().cart;
+        if (cart) set({ cart: withLineListing(cart, listing) });
       },
 
       run: async (work) => {

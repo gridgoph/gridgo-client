@@ -338,16 +338,20 @@ export function printTimeLine(item: Parameters<typeof productionDays>[0] | null 
 // Artwork formats
 // ---------------------------------------------------------------------------
 
-/** Formats this listing takes as an uploaded file. */
+/**
+ * Formats this listing takes as an uploaded file. A basket line's compact
+ * listing stub carries no formats, so a missing list reads as none rather
+ * than throwing (the Artwork step waits for the full listing before drawing).
+ */
 export function fileFormats(item: CatalogItem): AcceptedFormat[] {
-  return item.acceptedFormats.filter(
+  return (item.acceptedFormats ?? []).filter(
     (format) => format.active !== false && format.inputKind === "file",
   );
 }
 
 /** Formats this listing takes as a link instead of a file. */
 export function linkFormats(item: CatalogItem): AcceptedFormat[] {
-  return item.acceptedFormats.filter(
+  return (item.acceptedFormats ?? []).filter(
     (format) => format.active !== false && format.inputKind === "url",
   );
 }

@@ -1,11 +1,16 @@
 import type { Cart, CatalogItem } from "@/lib/api";
+import { fileFormats } from "@/lib/listing";
 import {
   clearListingCache,
+  holdSheetListing,
   hydrateCartListings,
   LISTING_TTL_MS,
   listingNow,
+  listingTrusted,
   rememberListing,
+  replaceListing,
   takeListing,
+  withLineListing,
 } from "@/lib/listingCache";
 
 jest.mock("@/lib/api", () => {
@@ -176,4 +181,94 @@ it("lets a pending server read replace an old match snapshot", async () => {
   finish(item("sci_1", "New server listing"));
   await expect(pending).resolves.toMatchObject({ name: "New server listing" });
   expect(listingNow("sci_1")?.name).toBe("New server listing");
+});
+
+const PDF = {
+  code: "pdf",
+  displayName: "PDF",
+  inputKind: "file" as const,
+  extensions: ["pdf"],
+  mimeTypes: ["application/pdf"],
+  active: true,
+};
+
+/** The listing gridgo-api's `publicCartListingStub` puts on a line add: no formats, photos or options. */
+function stub(id: string): CatalogItem {
+  return { id, name: "Tarpaulin", supplierId: "s", selectedOptions: [] } as unknown as CatalogItem;
+}
+
+function cartWith(listing: CatalogItem, lineId = "cline_new"): Cart {
+  return {
+    id: "cart_1",
+    state: "draft",
+    version: 1,
+    serviceLevel: "standard",
+    scheduledFor: null,
+    fulfillmentMode: "delivery",
+    defaultDropoff: null,
+    checkedOutOrderId: null,
+    createdAt: "2026-08-24T00:00:00.000Z",
+    updatedAt: "2026-08-24T00:00:00.000Z",
+    lines: [
+      {
+        id: lineId,
+        supplierId: "s",
+        catalogItemId: listing.id,
+        quantity: 1,
+        optionIds: [],
+        measurement: null,
+        structuredSpec: {},
+        artworkFileId: null,
+        mockupFileId: null,
+        dropoff: null,
+        sortOrder: 0,
+        listing,
+        lineSubtotalMinor: 2500,
+      },
+    ],
+  };
+}
+
+describe("the add's listing stub (the Artwork crash)", () => {
+  const full = { ...item("sci_tarp", "Tarpaulin"), acceptedFormats: [PDF] };
+
+  it("leaves the stub on the line once the alert stream has emptied the cache", () => {
+    rememberListing(full);
+    clearListingCache();
+    const line = hydrateCartListings(cartWith(stub("sci_tarp"))).lines[0];
+    expect(line.listing).toEqual(stub("sci_tarp"));
+    // What used to throw "Cannot read property 'filter' of undefined".
+    expect(fileFormats(line.listing!)).toEqual([]);
+  });
+
+  it("draws the line from the sheet held just before the add, whatever cleared the cache", () => {
+    rememberListing(full);
+    clearListingCache();
+    holdSheetListing(full);
+    const line = hydrateCartListings(cartWith(stub("sci_tarp"))).lines[0];
+    expect(fileFormats(line.listing!)).toEqual([PDF]);
+  });
+
+  it("keeps a copy already held, and marks its own as partial so the next sheet still reads in full", async () => {
+    holdSheetListing(full);
+    holdSheetListing({ ...full, name: "Older copy" });
+    expect(listingNow("sci_tarp")?.name).toBe("Tarpaulin");
+    api.getCatalogItem.mockResolvedValueOnce({ ...full, description: "Full sheet" });
+    await expect(takeListing("sci_tarp")).resolves.toMatchObject({ description: "Full sheet" });
+  });
+
+  it("does not trust a listing whose sheet threw again because the add held it", async () => {
+    api.getCatalogItem.mockReturnValueOnce(new Promise(() => undefined));
+    void replaceListing("sci_tarp");
+    holdSheetListing(full);
+    expect(listingNow("sci_tarp")).toBeNull();
+    expect(listingTrusted("sci_tarp")).toBe(false);
+  });
+
+  it("puts a fresh read on every line of that product, replacing a full copy too", () => {
+    const fresh = { ...full, name: "Fresh read" };
+    const cart = cartWith(full);
+    expect(withLineListing(cart, fresh).lines[0].listing).toBe(fresh);
+    expect(withLineListing(cart, item("sci_other"))).toBe(cart);
+  });
 });

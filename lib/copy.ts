@@ -7,6 +7,7 @@
 
 import { ApiError } from "@/lib/api";
 import { coverSpineErrorMessage } from "@/lib/coverSpine";
+import { MIN_PASSWORD_LENGTH } from "@/lib/signup";
 
 /**
  * Where an order stands on money, in plain language.
@@ -116,7 +117,7 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "invalid_credentials":
         return "Wrong email or password. Check both and try again.";
       case "unauthorized":
-        return "Your session expired. Sign in again to continue.";
+        return "GRIDGO could not confirm your sign-in just now. Try again in a moment.";
       case "forbidden":
         return "You do not have permission for that action.";
       case "order_not_found":
@@ -365,7 +366,7 @@ export function userFacingError(error: unknown, fallback: string): string {
       case "invalid_email":
         return "Enter a complete email address, like ana@company.com.";
       case "invalid_password":
-        return "Use a password with at least 8 characters.";
+        return `Use a password with at least ${MIN_PASSWORD_LENGTH} characters.`;
       case "name_required":
         return "Enter the name this account belongs to.";
       case "phone_required":

@@ -174,8 +174,9 @@ describe("OrderFlowErrorBoundary", () => {
     for (const step of steps) {
       expect(present.has(`${step}.tsx`)).toBe(true);
       const source = readFileSync(join(dir, `${step}.tsx`), "utf8");
-      // The listing's own boundary reads the sheet again before retrying.
-      const boundary = step === "listing" ? "ListingErrorBoundary" : "OrderFlowErrorBoundary";
+      // The listing's and the artwork's own boundaries read the listing again before retrying.
+      const boundary =
+        step === "listing" ? "ListingErrorBoundary" : step === "artwork" ? "ArtworkErrorBoundary" : "OrderFlowErrorBoundary";
       expect(source).toContain(`export { ${boundary} as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";`);
     }
   });

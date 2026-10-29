@@ -15,7 +15,7 @@ export const APPROVAL_DOWNLOAD_NEEDS_REBUILD = "Saving the approval record needs
 function refusedMessage(status: number, body: string): string {
   const code = refusalCode(body);
   if (code === "approval_proof_not_found") return "There is no approval record to download for this order yet.";
-  if (status === 401) return "Your session expired. Sign in again, then download.";
+  if (status === 401) return "GRIDGO could not confirm your sign-in just now. Try the download again in a moment.";
   if (status === 403 || code === "forbidden") return "This approval record can only be downloaded by the account that placed the order.";
   return "GRIDGO could not prepare the approval record. Try again in a moment.";
 }
