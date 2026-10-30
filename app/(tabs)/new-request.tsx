@@ -354,7 +354,7 @@ export default function NewRequestScreen() {
           </Text>
         </View>
 
-        <RequestStepper currentIndex={draft.stepIndex} counted />
+        <RequestStepper currentIndex={draft.stepIndex} />
 
         {/*
           The one orchestrated moment in this flow: a step landing. Animated
