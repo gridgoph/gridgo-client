@@ -1,5 +1,6 @@
+import { ChevronDown } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FormField } from "@/components/form/FormField";
@@ -11,6 +12,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { EvidencePhotoList } from "@/components/EvidencePhotoList";
 import { IssueWindowCountdown } from "@/components/IssueWindowCountdown";
 import { StatusChip } from "@/components/StatusChip";
+import { useThemeColors } from "@/hooks/useTheme";
 import type { Issue, Order } from "@/lib/api";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -83,6 +85,8 @@ export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
   const [description, setDescription] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [closingAsFine, setClosingAsFine] = useState(false);
+  const [showConsequences, setShowConsequences] = useState(false);
+  const colors = useThemeColors();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Another order's photos are never this report's.
@@ -204,6 +208,27 @@ export function IssueWindowCard({ order, onUpdated, onWindowElapsed }: Props) {
         <Text className="text-h3 text-text-primary">{status.headline}</Text>
         {/* Once Operations has a finding, it is the answer the detail promised. */}
         {decision ? null : <Text className="text-body text-text-secondary">{status.detail}</Text>}
+        {status.consequences && !decision && !openIssue ? (
+          <View className="gap-1">
+            <Pressable
+              onPress={() => setShowConsequences((shown) => !shown)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showConsequences }}
+              accessibilityLabel="What happens next"
+              className="gg-touch flex-row items-center gap-1 self-start"
+              hitSlop={8}
+              style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+            >
+              <Text className="text-body font-medium text-text-primary underline">What happens next</Text>
+              <View style={showConsequences ? { transform: [{ rotate: "180deg" }] } : undefined}>
+                <ChevronDown size={16} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+              </View>
+            </Pressable>
+            {showConsequences ? (
+              <Text className="text-caption text-text-muted">{status.consequences}</Text>
+            ) : null}
+          </View>
+        ) : null}
         {!liveClock && (status.elapsedLabel || status.remainingLabel) ? (
           <Text className="text-caption text-text-muted">
             {[status.elapsedLabel, status.remainingLabel].filter(Boolean).join(" · ")}

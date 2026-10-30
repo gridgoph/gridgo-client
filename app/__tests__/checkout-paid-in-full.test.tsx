@@ -203,7 +203,7 @@ describe("CheckoutScreen, paid in full", () => {
     expect(screen.getByText("Pay in full now")).toBeTruthy();
     // ₱40 + 10% fee = ₱44 printing, + ₱25 delivery: the whole ₱69 is paid now.
     expect(screen.getAllByText("₱69.00").length).toBeGreaterThan(1);
-    expect(screen.getByText(/You pay the whole total now, in one transfer/)).toBeTruthy();
+    // The plan's sentence is folded under "About paying by QR"; the row says it.
     expect(screen.queryByText(/Before delivery/)).toBeNull();
     expect(screen.queryByText(/75%|25%/)).toBeNull();
     expect(screen.queryByText(/downpayment|balance/i)).toBeNull();

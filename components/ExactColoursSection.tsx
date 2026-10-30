@@ -33,6 +33,8 @@ type Props = {
   targets: ColorTarget[];
   artworkColors: ArtworkColorsEntry[];
   fileName: (fileId: string) => string;
+  /** Leave out the EXACT COLOURS heading where a fold above already names it. */
+  showHeading?: boolean;
 };
 
 const FORMATS: ColorTargetFormat[] = ["pantone", "cmyk", "hex"];
@@ -48,7 +50,13 @@ const CMYK_KEYS = ["c", "m", "y", "k"] as const;
  * Colours are a brief for the shop and never a gate: nothing here holds up
  * checkout.
  */
-export function ExactColoursSection({ lineId, targets, artworkColors, fileName }: Props) {
+export function ExactColoursSection({
+  lineId,
+  targets,
+  artworkColors,
+  fileName,
+  showHeading = true,
+}: Props) {
   const colors = useThemeColors();
   const saving = useColorTargets((state) => state.saving[lineId] === true);
   const error = useColorTargets((state) => state.error[lineId] ?? null);
@@ -89,12 +97,14 @@ export function ExactColoursSection({ lineId, targets, artworkColors, fileName }
 
   return (
     <View className="gap-3">
-      <View className="flex-row items-center justify-between gap-3">
-        <Text className="min-w-0 flex-1 text-overline text-text-muted">EXACT COLOURS</Text>
-        <View className="rounded-pill border border-outline px-2 py-0.5">
-          <Text className="text-caption text-text-secondary">Optional</Text>
+      {showHeading ? (
+        <View className="flex-row items-center justify-between gap-3">
+          <Text className="min-w-0 flex-1 text-overline text-text-muted">EXACT COLOURS</Text>
+          <View className="rounded-pill border border-outline px-2 py-0.5">
+            <Text className="text-caption text-text-secondary">Optional</Text>
+          </View>
         </View>
-      </View>
+      ) : null}
       <Text className="text-body text-text-secondary">
         Name the brand or school colours the print must match: a Pantone code, CMYK values or a
         hex value.

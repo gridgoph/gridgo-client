@@ -29,7 +29,7 @@ jest.mock("@/lib/api", () => {
     getProductCategories: jest.fn(async () => []),
     getCart: jest.fn(async () => null),
     getFeaturedPrints: jest.fn(async () => ({ items: [] })),
-    listCatalogShops: jest.fn(async () => []),
+    listCatalogShops: jest.fn(async () => ({ shops: [], complete: true })),
   };
 });
 

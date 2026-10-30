@@ -361,10 +361,29 @@ describe("CheckoutScreen", () => {
     // Both are retired server-side, so neither is a control a client can pick.
     // The notice deliberately *says* there is no cash on delivery — that is the
     // constraint stated before someone hits it, not an option being offered.
-    expect(screen.queryByLabelText(/cash on delivery/i)).toBeNull();
+    // ("About paying by QR. … No cash on delivery." is the rule, not an option.)
+    expect(screen.queryByLabelText(/^cash on delivery/i)).toBeNull();
+    expect(screen.queryByRole("radio", { name: /cash on delivery/i })).toBeNull();
     expect(screen.queryByLabelText(/pilot credit/i)).toBeNull();
     expect(screen.queryByText(/pilot credit/i)).toBeNull();
-    expect(screen.getByText(/There is no cash on delivery/)).toBeTruthy();
+    // Said on the folded "About paying by QR", so it is read without opening it.
+    expect(screen.getByText(/No cash on delivery/)).toBeTruthy();
+  });
+
+  it("gives one payment instruction, with the wallet notes folded", async () => {
+    await renderInSafeArea(<CheckoutScreen />);
+    await screen.findByText("WHAT GRIDGO IS PRINTING");
+
+    expect(screen.getByText(/Scan the QR and pay the amount shown/)).toBeTruthy();
+    expect(screen.getByLabelText(/^About paying by QR\./).props.accessibilityState).toEqual({
+      expanded: false,
+    });
+    // The policy paragraphs no longer repeat over the evidence fields.
+    expect(screen.queryByText(/GRIDGO takes payment by QR only/)).toBeNull();
+    expect(screen.queryByText(/You send 75% now/)).toBeNull();
+    // The amount and the evidence fields are all still there.
+    expect(screen.getByText("Send now (75%)")).toBeTruthy();
+    expect(screen.getByLabelText("Payment reference")).toBeTruthy();
   });
 
   it("does not re-ask when the job is wanted", async () => {
@@ -493,7 +512,7 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    expect(screen.getByLabelText("Step 4 of 4: Pay, where you are now.")).toBeTruthy();
+    expect(screen.getByLabelText("Step 4 of 4: Review & pay, where you are now.")).toBeTruthy();
     expect(screen.getByLabelText("Step 3 of 4: Artwork, done. Go back to it.")).toBeTruthy();
   });
 
@@ -589,14 +608,14 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText("HOW IT GETS TO YOU")).toBeTruthy();
   });
 
-  it("keeps Home in the footer and leaves Multi-drop unpressable", async () => {
+  it("keeps Home in the footer and draws no Multi-drop choice it cannot honour", async () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
     expect(screen.getByLabelText("Go to Home and keep this order")).toBeTruthy();
     expect(screen.queryByText("Leaving keeps everything here — it is waiting when you come back.")).toBeNull();
-    expect(screen.getByLabelText("Multi-drop").props.accessibilityState.disabled).toBe(true);
-    expect(screen.getByText("Multi-drop is not offered yet.")).toBeTruthy();
+    expect(screen.queryByLabelText("Multi-drop")).toBeNull();
+    expect(screen.queryByText(/Multi-drop is not offered/)).toBeNull();
   });
 
   it("fills delivery from the saved Home address when the basket has none", async () => {

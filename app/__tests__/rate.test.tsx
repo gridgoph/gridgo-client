@@ -29,6 +29,15 @@ describe("rating a finished order", () => {
     expect(screen.queryByText("Distance")).toBeNull();
   });
 
+  it("says what feedback does without promising the next shop", async () => {
+    await render(wrap(<RateOrderScreen />));
+
+    expect(screen.getByText("Your feedback helps GRIDGO improve future matches.")).toBeTruthy();
+    expect(screen.queryByText(/decides who prints/)).toBeNull();
+    // Anonymity is said beside the note, which is the part a shop reads.
+    expect(screen.getByText(/nobody sees who left it/)).toBeTruthy();
+  });
+
   it("cannot be sent until all three are answered", async () => {
     // The platform refuses a partial rating, so offering to send one would
     // walk the client into a refusal they cannot act on.

@@ -4,6 +4,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Animated from "react-native-reanimated";
 
+import { MatchPrepNote } from "@/components/MatchPrepNote";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { PRIORITY_CARD_MOVE, PriorityCard } from "@/components/PriorityCard";
 import { Screen } from "@/components/Screen";
@@ -163,6 +164,7 @@ export default function JobRankingScreen() {
   return (
     <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen" contentContainerClassName="gg-page pb-6 pt-2">
+        <MatchPrepNote current="priorities" />
         <Text className="text-h2 text-text-primary">What matters most for this job?</Text>
         <Text className="mt-2 text-body-lg text-text-secondary">
           {changing

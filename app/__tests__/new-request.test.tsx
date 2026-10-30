@@ -152,7 +152,9 @@ describe("NewRequestScreen", () => {
     await renderInSafeArea(<NewRequestScreen />);
     await waitFor(() => expect(api.listZones).toHaveBeenCalled());
 
-    fireEvent.press(screen.getByText("Continue"));
+    // The count says where the draft stands; the button says where it goes.
+    expect(screen.getByText("Step 1 of 4: Details")).toBeTruthy();
+    fireEvent.press(screen.getByText("Continue to Artwork"));
 
     expect(await screen.findByText(/Choose a size/i)).toBeTruthy();
   });
@@ -169,7 +171,7 @@ describe("NewRequestScreen", () => {
     await renderInSafeArea(<NewRequestScreen />);
 
     expect(await screen.findByText("Choose artwork file")).toBeTruthy();
-    expect(screen.queryByText("Continue")).toBeNull();
+    expect(screen.queryByText("Continue to Review")).toBeNull();
   });
 
   it("adopts an uploaded file that arrives when the draft rehydrates", async () => {
@@ -188,7 +190,7 @@ describe("NewRequestScreen", () => {
 
     // Named on the upload card, and again on the preview it now unlocks.
     expect((await screen.findAllByText("opening-banner.pdf")).length).toBeGreaterThan(0);
-    expect(screen.getByText("Continue")).toBeTruthy();
+    expect(screen.getByText("Continue to Review")).toBeTruthy();
     expect(screen.queryByText("Choose artwork file")).toBeNull();
   });
 

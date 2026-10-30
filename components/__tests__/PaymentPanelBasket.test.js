@@ -67,6 +67,8 @@ it("says the one payment covers every shop while it is checked", async () => {
   const pending = { ...order, state: "initial_payment_review", payments: { ...order.payments, initial: { status: "pending_confirmation", amountMinor: 24800, reference: "1234567890123" } } };
   await act(async () => { view = create(React.createElement(PaymentUnderReviewCard, { order: pending, installment: "downpayment", basket })); });
   const rows = view.root.findAllByType("SpecRow").map((row) => [row.props.label, row.props.value]);
-  expect(rows).toContainEqual(["Pay in full", "₱817.20"]);
+  // What was sent, never another "Pay in full" over money already transferred.
+  expect(rows).toContainEqual(["Amount submitted", "₱817.20"]);
+  expect(rows.map(([label]) => label)).not.toContain("Pay in full");
   expect(rows).toContainEqual(["Covers", "All 3 shops in this order"]);
 });

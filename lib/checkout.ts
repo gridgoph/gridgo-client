@@ -43,6 +43,21 @@ export const TRAVEL_CHOICES: readonly TravelChoice[] = [
   "multi_drop",
 ] as const;
 
+/**
+ * The choices drawn on checkout. Multi-drop is not offered on a new basket, so
+ * it is not drawn as an alternative to read and reject (ux-findings-1030 #7);
+ * only a basket GRIDGO already holds as a multi-drop keeps showing it, so its
+ * saved state stays visible. Pick-up follows the platform's hub switch.
+ */
+export function offeredTravelChoices(
+  current: TravelChoice,
+  pickupEnabled: boolean,
+): TravelChoice[] {
+  return TRAVEL_CHOICES.filter((choice) =>
+    choice === "pickup" ? pickupEnabled : choice === "multi_drop" ? current === "multi_drop" : true,
+  );
+}
+
 export function travelLabel(choice: TravelChoice): string {
   switch (choice) {
     case "delivery":
@@ -146,6 +161,20 @@ export const PAYMENT_CHOICE_LABEL = "QR Ph";
 
 export const PAYMENT_CHOICE_BLURB =
   "Scan with GCash, Maya or your bank app, then send GRIDGO the receipt and its reference number.";
+
+/**
+ * Checkout's one payment instruction, over the evidence fields. Everything
+ * else about paying — which wallets, no cash, the plan — sits folded under
+ * `PAYMENT_DETAILS_TITLE`, because the same model said four times pushed the
+ * screenshot and reference below the fold (ux-findings-1030 #4).
+ */
+export const CHECKOUT_PAY_INSTRUCTION =
+  "Scan the QR and pay the amount shown. Then add your wallet screenshot and its reference number, and GRIDGO confirms it by hand in working hours.";
+
+export const PAYMENT_DETAILS_TITLE = "About paying by QR";
+
+/** Said while folded, so the one hard rule is read before anyone opens it. */
+export const PAYMENT_DETAILS_SUMMARY = "GCash, Maya or a bank e-wallet. No cash on delivery.";
 
 /*
  * What placing the order does with the money is `paymentPlanNote` in

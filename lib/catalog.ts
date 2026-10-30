@@ -56,18 +56,28 @@ export function groupCatalogByFamily(
   return ordered;
 }
 
-/** Unit label for price display. */
+const UNIT_LABEL: Record<string, string> = {
+  sqm: "per sqm",
+  sheet: "per sheet",
+  pack100: "per 100",
+  box100: "per 100",
+  piece: "each",
+};
+
+/** What one priced unit is called after the figure: "each", "per sqm". */
+export function unitPriceSuffix(unit: string): string {
+  return UNIT_LABEL[unit] ?? unit;
+}
+
+/**
+ * Unit label for price display. Formats the figure it is given as it is: a
+ * client screen passes GRIDGO's figure, or draws a shop's catalog rate through
+ * `GridgoPrice` with `unitPriceSuffix` instead.
+ */
 export function formatUnitPrice(basePriceMinor: number, unit: string): string {
   const php = `₱${(basePriceMinor / 100).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
-  const unitLabel: Record<string, string> = {
-    sqm: "per sqm",
-    sheet: "per sheet",
-    pack100: "per 100",
-    box100: "per 100",
-    piece: "each",
-  };
-  return `${php} ${unitLabel[unit] ?? unit}`;
+  return `${php} ${unitPriceSuffix(unit)}`;
 }

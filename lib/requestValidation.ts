@@ -21,6 +21,12 @@ export const REQUEST_STEPS: { id: RequestStepId; label: string }[] = [
   { id: "confirm", label: "Send" },
 ];
 
+/** "Continue to Artwork": the button names where it goes, not just that it goes. */
+export function continueLabel(stepIndex: number): string {
+  const next = REQUEST_STEPS[stepIndex + 1];
+  return next ? `Continue to ${next.label}` : "Continue";
+}
+
 export type RequestDraftFields = {
   productId: string;
   /** Catalog unit — decides the quantity bounds and how a quantity reads. */

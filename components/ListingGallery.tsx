@@ -61,7 +61,10 @@ export function ListingGallery({ photos, name, onStale }: Props) {
           expiresAt={photos[0]?.downloadUrlExpiresAt}
           onStale={onStale}
           altText={altOf(photos[0])}
-          ratio="wide"
+          // No photo at all is the same "No sample photo" plate in a banner
+          // strip: a full 4:3 well with nothing in it took a third of the
+          // phone and read as a photo still loading (ux-findings-1030 #6).
+          ratio={count === 0 ? "banner" : "wide"}
           emptyLabel="No sample photo"
         />
       </View>

@@ -1,4 +1,5 @@
 import {
+  continueLabel,
   describeArtworkFile,
   formatBytes,
   validateArtworkStep,
@@ -125,5 +126,14 @@ describe("formatBytes", () => {
     expect(formatBytes(900)).toBe("900 B");
     expect(formatBytes(204_800)).toBe("200 KB");
     expect(formatBytes(5_242_880)).toBe("5.0 MB");
+  });
+});
+
+describe("continueLabel", () => {
+  it("names the next step of the four, and only says Continue past the end", () => {
+    expect(continueLabel(0)).toBe("Continue to Artwork");
+    expect(continueLabel(1)).toBe("Continue to Review");
+    expect(continueLabel(2)).toBe("Continue to Send");
+    expect(continueLabel(3)).toBe("Continue");
   });
 });

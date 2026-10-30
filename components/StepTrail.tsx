@@ -1,7 +1,10 @@
+import { ChevronLeft } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
+import { useThemeColors } from "@/hooks/useTheme";
 import {
   orderStepAccessibilityLabel,
+  orderStepCaption,
   orderSteps,
   type OrderStep,
   type OrderStepId,
@@ -21,13 +24,15 @@ type Props = {
 };
 
 /**
- * Where you are in one basket run: Match → Listing → Artwork → Pay.
+ * Where you are in one basket run: Match → Print details → Artwork → Review & pay.
  *
  * Four plates on a press, not four pages of a wizard — each is a screen the
  * client has already been through and can walk back to, and the bar's job is
  * to say which one they are standing on. A step still ahead is drawn quiet and
  * takes no tap: there is nothing on it yet, and a control that answers nothing
- * is worse than no control.
+ * is worse than no control. A finished step the client can walk back to wears a
+ * back chevron, so which labels answer a tap is seen rather than discovered, and
+ * the line under the bar says what the current step asks of them.
  *
  * The current step is the one yellow thing on the bar. That is the stepper
  * exemption in the yellow rule and the whole of this component's budget, so the
@@ -39,27 +44,35 @@ type Props = {
  */
 export function StepTrail({ current, onStep, canGo }: Props) {
   const steps = orderSteps(current);
+  const caption = orderStepCaption(current);
 
   return (
-    <View
-      className="flex-row gap-2"
-      accessibilityRole="progressbar"
-      accessibilityLabel={`Your order: step ${steps.findIndex((s) => s.state === "current") + 1} of ${steps.length}`}
-    >
-      {steps.map((step, index) => (
-        <TrailStep
-          key={step.id}
-          step={step}
-          position={index + 1}
-          // Only a finished step is a destination, and only where the screen
-          // has one to offer.
-          onPress={
-            step.state === "done" && (canGo?.(step.id) ?? true)
-              ? () => onStep(step.id)
-              : null
-          }
-        />
-      ))}
+    <View className="gap-1">
+      <View
+        className="flex-row gap-2"
+        accessibilityRole="progressbar"
+        accessibilityLabel={`Your order: step ${steps.findIndex((s) => s.state === "current") + 1} of ${steps.length}`}
+      >
+        {steps.map((step, index) => (
+          <TrailStep
+            key={step.id}
+            step={step}
+            position={index + 1}
+            // Only a finished step is a destination, and only where the screen
+            // has one to offer.
+            onPress={
+              step.state === "done" && (canGo?.(step.id) ?? true)
+                ? () => onStep(step.id)
+                : null
+            }
+          />
+        ))}
+      </View>
+      {caption ? (
+        <Text className="text-caption text-text-secondary" numberOfLines={2}>
+          {caption}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -73,6 +86,7 @@ function TrailStep({
   position: number;
   onPress: (() => void) | null;
 }) {
+  const colors = useThemeColors();
   const rule =
     step.state === "current"
       ? "h-1 w-full rounded-pill bg-action-yellow"
@@ -90,9 +104,14 @@ function TrailStep({
   const body = (
     <>
       <View className={rule} />
-      <Text className={label} numberOfLines={1}>
-        {step.label}
-      </Text>
+      <View className="min-w-0 flex-row items-center gap-0.5">
+        {onPress ? (
+          <ChevronLeft size={14} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+        ) : null}
+        <Text className={`min-w-0 flex-shrink ${label}`} numberOfLines={1}>
+          {step.label}
+        </Text>
+      </View>
     </>
   );
 
@@ -105,7 +124,7 @@ function TrailStep({
         accessible
         accessibilityRole="text"
         accessibilityState={{ selected: step.state === "current" }}
-        accessibilityLabel={orderStepAccessibilityLabel(step, position)}
+        accessibilityLabel={orderStepAccessibilityLabel(step, position, false)}
       >
         {body}
       </View>

@@ -71,6 +71,12 @@ describe("IssueWindowCard", () => {
 
     expect(await screen.findByText(/Is everything okay\?/)).toBeTruthy();
     expect(screen.getByText(/within 24 hours of delivery/)).toBeTruthy();
+    // Two sentences decide it; the payout hold and the clock are folded.
+    expect(screen.getByText(/^Confirm only if everything is fine\./)).toBeTruthy();
+    expect(screen.getByLabelText("What happens next").props.accessibilityState).toMatchObject({
+      expanded: false,
+    });
+    expect(screen.queryByText(/holds the supplier payout/)).toBeNull();
     expect(screen.getByText("Everything is fine")).toBeTruthy();
     expect(screen.getByText("Report a problem")).toBeTruthy();
     expect(api.confirmDelivery).not.toHaveBeenCalled();

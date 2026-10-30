@@ -2321,7 +2321,7 @@ export type ShopBoard = {
   hours?: ShopHours | null;
 };
 
-const CATALOG_SHOP_PAGE_CAP = 25;
+export const CATALOG_SHOP_PAGE_CAP = 25;
 
 /** What `POST /me/catalog-quotes` prices: one configured listing, nothing saved. */
 export type CatalogQuoteInput = {
@@ -2369,10 +2369,20 @@ export async function catalogQuote(input: CatalogQuoteInput): Promise<CatalogQuo
   return result.quote;
 }
 
+/**
+ * The approved-shop directory. `complete` is false when the page cap stopped
+ * the read with a cursor still outstanding: shops past it exist, so nothing
+ * may be said to be on no press from this list alone.
+ */
+export type CatalogShopDirectory = {
+  shops: ShopSummary[];
+  complete: boolean;
+};
+
 /** Approved shops with at least one complete listing. Follows catalog pages. */
 export async function listCatalogShops(
   categoryCode?: string | null,
-): Promise<ShopSummary[]> {
+): Promise<CatalogShopDirectory> {
   const shops: ShopSummary[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < CATALOG_SHOP_PAGE_CAP; page += 1) {
@@ -2385,10 +2395,10 @@ export async function listCatalogShops(
       nextCursor?: string | null;
     }>(`/catalog/shops${query}`);
     shops.push(...(pageBody.shops ?? []));
-    if (!pageBody.nextCursor) break;
+    if (!pageBody.nextCursor) return { shops, complete: true };
     cursor = pageBody.nextCursor;
   }
-  return shops;
+  return { shops, complete: false };
 }
 
 /** One shop's whole board. */

@@ -32,6 +32,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { HubPickupPanel } from "@/components/HubPickupPanel";
 import { CheckoutVoucher } from "@/components/CheckoutVoucher";
 import { OrganizationDiscountRow, OrganizationSavingsNote } from "@/components/OrganizationDiscount";
+import { OrderDisclosure } from "@/components/OrderDisclosure";
 import { VoucherCoveredPayment } from "@/components/VoucherCoveredPayment";
 import { VoucherDiscountRow } from "@/components/VoucherDiscountRow";
 import { ErrorState } from "@/components/ErrorState";
@@ -92,15 +93,17 @@ import {
   type LineArtworkStatus,
   fulfilmentModeFor,
   invoiceNote,
-  PAYMENT_CHOICE_BLURB,
+  CHECKOUT_PAY_INSTRUCTION,
   PAYMENT_CHOICE_LABEL,
+  PAYMENT_DETAILS_SUMMARY,
+  PAYMENT_DETAILS_TITLE,
   placeOrderBlockers,
   SWIPE_TO_DELETE_HINT,
   travelBlurb,
   travelCaveat,
   travelChoiceOf,
   travelLabel,
-  TRAVEL_CHOICES,
+  offeredTravelChoices,
   type TravelChoice,
 } from "@/lib/checkout";
 import { lineLayoutSummary, lineNeedsLayout, printLayoutRefusalOf } from "@/lib/printLayout";
@@ -199,6 +202,8 @@ export default function CheckoutScreen() {
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [showQr, setShowQr] = useState(false);
+  /** "About paying by QR": the wallets and the plan, folded until asked for. */
+  const [payDetailsOpen, setPayDetailsOpen] = useState(false);
   const [viewingProof, setViewingProof] = useState(false);
   // The line a swipe or a Remove tap has asked about. Nothing leaves the
   // basket until this is answered.
@@ -299,6 +304,7 @@ export default function CheckoutScreen() {
   const groups = useMemo(() => shopGroups(cart), [cart]);
 
   const travel = travelChoiceOf(cart);
+  const travelOptions = offeredTravelChoices(travel, hubPickupEnabled(settings));
   // Chosen before the match (#158): read back here, never asked again.
   const locked = cart?.requestFulfillment ?? null;
   // A line priced by colour has its own reasons for no total yet (still
@@ -1117,27 +1123,28 @@ export default function CheckoutScreen() {
             />
           ) : (
           <>
-          <Segmented
-            options={TRAVEL_CHOICES.filter((choice) => choice !== "pickup" || hubPickupEnabled(settings)).map((choice) => ({
-              value: choice,
-              label: travelLabel(choice),
-              disabled: choice === "multi_drop",
-            }))}
-            value={travel}
-            onChange={(next) => void setTravel(next as TravelChoice)}
-            disabled={busy}
-            accessibilityLabel="How your order gets to you"
-          />
+          {travelOptions.length > 1 || !travelOptions.includes(travel) ? (
+            <Segmented
+              options={travelOptions.map((choice) => ({
+                value: choice,
+                label: travelLabel(choice),
+                disabled: choice === "multi_drop",
+              }))}
+              value={travel}
+              onChange={(next) => void setTravel(next as TravelChoice)}
+              disabled={busy}
+              accessibilityLabel="How your order gets to you"
+            />
+          ) : (
+            // One way it can travel: say it, rather than a one-segment control.
+            <Text className="text-body-lg font-medium text-text-primary">{travelLabel(travel)}</Text>
+          )}
           <Text className="text-body text-text-secondary">{travelBlurb(travel)}</Text>
           {travel === "multi_drop" ? (
             <Text className="text-caption text-text-muted">
               Multi-drop is not offered on this order. Use Delivery for one address.
             </Text>
-          ) : (
-            <Text className="text-caption text-text-muted">
-              Multi-drop is not offered yet.
-            </Text>
-          )}
+          ) : null}
           {travelCaveat(travel) && travel !== "multi_drop" ? (
             <Text className="text-caption text-text-muted">{travelCaveat(travel)}</Text>
           ) : null}
@@ -1213,6 +1220,30 @@ export default function CheckoutScreen() {
         ) : (
           <Section title="HOW YOU PAY">
             {/*
+              The amount first, then the one instruction and the QR, then the
+              evidence fields: the order a client pays in. The rest of what
+              paying means is folded at the end of the section.
+            */}
+            {totals.downpaymentMinor != null ? (
+              totals.downpaymentPercent >= FULL_PAYMENT_PERCENT ? (
+                <View className="gg-card gap-1">
+                  <SpecRow label="Pay in full now" value={formatPhp(totals.downpaymentMinor)} />
+                </View>
+              ) : (
+                <View className="gg-card gap-1">
+                  <SpecRow
+                    label={`Send now (${totals.downpaymentPercent}%)`}
+                    value={formatPhp(totals.downpaymentMinor)}
+                  />
+                  <SpecRow
+                    label={`Before delivery (${FULL_PAYMENT_PERCENT - totals.downpaymentPercent}%)`}
+                    value={totals.balanceMinor == null ? "—" : formatPhp(totals.balanceMinor)}
+                  />
+                </View>
+              )
+            ) : null}
+
+            {/*
               The panel is the QR. It named the method and then gave the client
               nothing to scan, which is a sheet telling someone to pay and hiding
               the code — so tapping it opens GRIDGO's own QR at a size a second
@@ -1234,7 +1265,7 @@ export default function CheckoutScreen() {
                   <Text className="text-caption text-text-secondary">Only method</Text>
                 </View>
               </View>
-              <Text className="text-body text-text-secondary">{PAYMENT_CHOICE_BLURB}</Text>
+              <Text className="text-body text-text-secondary">{CHECKOUT_PAY_INSTRUCTION}</Text>
               <View className="mt-1 flex-row items-center gap-2">
                 <QrCode
                   size={16}
@@ -1253,34 +1284,7 @@ export default function CheckoutScreen() {
                 />
               </View>
             </Pressable>
-            <Text className="text-caption text-text-muted">{DIGITAL_ONLY_NOTICE}</Text>
-            {multi ? (
-              <MultiShopPaymentNote groups={groups} />
-            ) : (
-              <Text className="text-caption text-text-muted">
-                {paymentPlanNote(totals.downpaymentPercent)}
-              </Text>
-            )}
-
-            {totals.downpaymentMinor != null ? (
-              totals.downpaymentPercent >= FULL_PAYMENT_PERCENT ? (
-                <View className="gg-card gap-1">
-                  <SpecRow label="Pay in full now" value={formatPhp(totals.downpaymentMinor)} />
-                </View>
-              ) : (
-                <View className="gg-card gap-1">
-                  <SpecRow
-                    label={`Send now (${totals.downpaymentPercent}%)`}
-                    value={formatPhp(totals.downpaymentMinor)}
-                  />
-                  <SpecRow
-                    label={`Before delivery (${FULL_PAYMENT_PERCENT - totals.downpaymentPercent}%)`}
-                    value={totals.balanceMinor == null ? "—" : formatPhp(totals.balanceMinor)}
-                  />
-                </View>
-              )
-            ) : null}
-
+            {multi ? <MultiShopPaymentNote groups={groups} /> : null}
             <View collapsable={false} ref={(node) => { fields.current.proof = node; }}>
               <PaymentProofRow
                 state={proof.state}
@@ -1336,6 +1340,24 @@ export default function CheckoutScreen() {
                 </View>
               </FormField>
             </View>
+
+            <OrderDisclosure
+              title={PAYMENT_DETAILS_TITLE}
+              summary={PAYMENT_DETAILS_SUMMARY}
+              icon={Info}
+              open={payDetailsOpen}
+              onToggle={() => setPayDetailsOpen((open) => !open)}
+            />
+            {payDetailsOpen ? (
+              <View className="gap-2 px-1">
+                <Text className="text-caption text-text-muted">{DIGITAL_ONLY_NOTICE}</Text>
+                {multi ? null : (
+                  <Text className="text-caption text-text-muted">
+                    {paymentPlanNote(totals.downpaymentPercent)}
+                  </Text>
+                )}
+              </View>
+            ) : null}
           </Section>
         )}
 
