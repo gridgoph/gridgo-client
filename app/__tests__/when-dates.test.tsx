@@ -113,7 +113,7 @@ describe("WhenScreen, with an order already started", () => {
     useBasketGroupTarget.getState().set("cline_2", "Shop A", DATE_EARLY);
     await renderInSafeArea(<WhenScreen />);
 
-    await fireEvent.press(screen.getByText("Continue"));
+    await fireEvent.press(screen.getByText("Continue to Priorities"));
 
     expect(useJobDeadline.getState().by).toBe(DATE_EARLY);
     expect(mockPush).toHaveBeenCalledWith({

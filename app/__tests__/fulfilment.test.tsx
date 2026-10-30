@@ -99,7 +99,7 @@ describe("delivery or pick-up", () => {
   it("will not go on until delivery or pick-up is chosen", async () => {
     await renderInSafeArea(<FulfilmentScreen />);
 
-    fireEvent.press(screen.getByText("Continue"));
+    fireEvent.press(screen.getByText("Continue to Priorities"));
 
     expect(await screen.findByText("Choose delivery or pick-up.")).toBeTruthy();
     expect(mockPush).not.toHaveBeenCalled();
@@ -110,7 +110,7 @@ describe("delivery or pick-up", () => {
     await renderInSafeArea(<FulfilmentScreen />);
     await screen.findByText("12 Quimpo Blvd, Talomo");
 
-    fireEvent.press(screen.getByText("Continue"));
+    fireEvent.press(screen.getByText("Continue to Priorities"));
 
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({ pathname: "/request/rank" }));
     expect(useJobFulfilment.getState().choice).toEqual({ fulfillmentMode: "delivery", dropoff: HOME_ADDRESS.point });
@@ -130,7 +130,7 @@ for (const enabled of [false, undefined]) {
     expect(screen.queryByRole("radio", { name: /Pick up/ })).toBeNull();
     expect(screen.queryByText("COLLECT AT")).toBeNull();
     expect(screen.getByRole("radio", { name: /Deliver to me/ }).props.accessibilityState.checked).toBe(true);
-    await fireEvent.press(screen.getByText("Continue"));
+    await fireEvent.press(screen.getByText("Continue to Priorities"));
     expect(useJobFulfilment.getState().choice?.fulfillmentMode).toBe("delivery");
   });
 }

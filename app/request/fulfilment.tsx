@@ -19,6 +19,7 @@ import { userFacingError } from "@/lib/copy";
 import { hubFeeLabel, hubPickupOf, hubPickupEnabled } from "@/lib/hubPickup";
 import { prefetchMatch } from "@/lib/matchPrefetch";
 import {
+  FULFILMENT_CONTINUE_LABEL,
   PICKUP_CHOICE,
   deliveryChoice,
   fulfilmentBlurb,
@@ -263,7 +264,7 @@ export default function FulfilmentScreen() {
 
       <View className="gg-page gap-2 pb-2 pt-2">
         <PrimaryButton
-          label={ready || !mode ? "Continue" : listed?.length === 0 ? "Add an address" : "Choose an address"}
+          label={ready || !mode ? FULFILMENT_CONTINUE_LABEL : listed?.length === 0 ? "Add an address" : "Choose an address"}
           onPress={proceed}
         />
         {attempted && !ready ? (
