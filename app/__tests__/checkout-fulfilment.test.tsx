@@ -7,7 +7,6 @@ import {
   CHECKOUT_SETTINGS,
   HOME,
   checkoutCart,
-  checkoutLine,
   renderInSafeArea,
 } from "@/test/checkoutFixtures";
 
@@ -135,27 +134,8 @@ describe("checkout reads back the choice made before matching", () => {
     await show(checkoutCart({ requestFulfillment: null }));
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    // Delivery is the one way this basket can travel: said, not offered
-    // beside a Multi-drop that cannot be picked.
-    expect(screen.getAllByText("Delivery").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("radio", { name: "Multi-drop" })).toBeNull();
-    expect(screen.queryByText(/Multi-drop is not offered/)).toBeNull();
+    expect(screen.getByRole("radio", { name: "Multi-drop" })).toBeTruthy();
     expect(screen.getByLabelText("Change the delivery address")).toBeTruthy();
-  });
-
-  it("still shows a basket GRIDGO holds as a multi-drop as one", async () => {
-    await show(
-      checkoutCart({
-        requestFulfillment: null,
-        lines: [checkoutLine({ dropoff: { lat: 7.1, lng: 125.6, label: "Office" } })],
-      }),
-    );
-    await screen.findByText("WHAT GRIDGO IS PRINTING");
-
-    const multiDrop = screen.getByRole("radio", { name: "Multi-drop" });
-    expect(multiDrop.props.accessibilityState).toMatchObject({ disabled: true, selected: true });
-    expect(screen.getByText("Multi-drop is not offered on this order. Use Delivery for one address.")).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "Delivery" })).toBeTruthy();
   });
 });
 
@@ -163,15 +143,9 @@ it.each([false, true])("legacy checkout offers pickup only when enabled=%s", asy
   api.getSettings.mockResolvedValue({ ...CHECKOUT_SETTINGS, hubPickupEnabled: enabled });
   await show(checkoutCart({ requestFulfillment: null }));
   await screen.findByText("WHAT GRIDGO IS PRINTING");
-  if (enabled) {
-    expect(await screen.findByRole("radio", { name: "Pickup" })).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "Delivery" })).toBeTruthy();
-  } else {
-    // Delivery alone is a fact, not a one-segment control.
-    expect(screen.queryByRole("radio", { name: "Pickup" })).toBeNull();
-    expect(screen.queryByRole("radio")).toBeNull();
-    expect(screen.getAllByText("Delivery").length).toBeGreaterThan(0);
-  }
+  if (enabled) expect(await screen.findByRole("radio", { name: "Pickup" })).toBeTruthy();
+  else expect(screen.queryByRole("radio", { name: "Pickup" })).toBeNull();
+  expect(screen.getByRole("radio", { name: "Delivery" })).toBeTruthy();
 });
 
 it("explains a locked pickup draft while preserving its selected hub", async () => {

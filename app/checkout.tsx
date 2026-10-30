@@ -103,7 +103,7 @@ import {
   travelCaveat,
   travelChoiceOf,
   travelLabel,
-  offeredTravelChoices,
+  TRAVEL_CHOICES,
   type TravelChoice,
 } from "@/lib/checkout";
 import { lineLayoutSummary, lineNeedsLayout, printLayoutRefusalOf } from "@/lib/printLayout";
@@ -304,7 +304,6 @@ export default function CheckoutScreen() {
   const groups = useMemo(() => shopGroups(cart), [cart]);
 
   const travel = travelChoiceOf(cart);
-  const travelOptions = offeredTravelChoices(travel, hubPickupEnabled(settings));
   // Chosen before the match (#158): read back here, never asked again.
   const locked = cart?.requestFulfillment ?? null;
   // A line priced by colour has its own reasons for no total yet (still
@@ -1123,28 +1122,27 @@ export default function CheckoutScreen() {
             />
           ) : (
           <>
-          {travelOptions.length > 1 || !travelOptions.includes(travel) ? (
-            <Segmented
-              options={travelOptions.map((choice) => ({
-                value: choice,
-                label: travelLabel(choice),
-                disabled: choice === "multi_drop",
-              }))}
-              value={travel}
-              onChange={(next) => void setTravel(next as TravelChoice)}
-              disabled={busy}
-              accessibilityLabel="How your order gets to you"
-            />
-          ) : (
-            // One way it can travel: say it, rather than a one-segment control.
-            <Text className="text-body-lg font-medium text-text-primary">{travelLabel(travel)}</Text>
-          )}
+          <Segmented
+            options={TRAVEL_CHOICES.filter((choice) => choice !== "pickup" || hubPickupEnabled(settings)).map((choice) => ({
+              value: choice,
+              label: travelLabel(choice),
+              disabled: choice === "multi_drop",
+            }))}
+            value={travel}
+            onChange={(next) => void setTravel(next as TravelChoice)}
+            disabled={busy}
+            accessibilityLabel="How your order gets to you"
+          />
           <Text className="text-body text-text-secondary">{travelBlurb(travel)}</Text>
           {travel === "multi_drop" ? (
             <Text className="text-caption text-text-muted">
               Multi-drop is not offered on this order. Use Delivery for one address.
             </Text>
-          ) : null}
+          ) : (
+            <Text className="text-caption text-text-muted">
+              Multi-drop is not offered yet.
+            </Text>
+          )}
           {travelCaveat(travel) && travel !== "multi_drop" ? (
             <Text className="text-caption text-text-muted">{travelCaveat(travel)}</Text>
           ) : null}

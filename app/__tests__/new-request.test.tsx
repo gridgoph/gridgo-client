@@ -152,8 +152,9 @@ describe("NewRequestScreen", () => {
     await renderInSafeArea(<NewRequestScreen />);
     await waitFor(() => expect(api.listZones).toHaveBeenCalled());
 
-    // The count says where the draft stands; the button says where it goes.
-    expect(screen.getByText("Step 1 of 4: Details")).toBeTruthy();
+    // The pills say where the draft stands; the button says where it goes,
+    // with no second "Step N of 4" count under them.
+    expect(screen.queryByText(/^Step \d of 4/)).toBeNull();
     fireEvent.press(screen.getByText("Continue to Artwork"));
 
     expect(await screen.findByText(/Choose a size/i)).toBeTruthy();

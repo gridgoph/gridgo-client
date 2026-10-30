@@ -43,21 +43,6 @@ export const TRAVEL_CHOICES: readonly TravelChoice[] = [
   "multi_drop",
 ] as const;
 
-/**
- * The choices drawn on checkout. Multi-drop is not offered on a new basket, so
- * it is not drawn as an alternative to read and reject (ux-findings-1030 #7);
- * only a basket GRIDGO already holds as a multi-drop keeps showing it, so its
- * saved state stays visible. Pick-up follows the platform's hub switch.
- */
-export function offeredTravelChoices(
-  current: TravelChoice,
-  pickupEnabled: boolean,
-): TravelChoice[] {
-  return TRAVEL_CHOICES.filter((choice) =>
-    choice === "pickup" ? pickupEnabled : choice === "multi_drop" ? current === "multi_drop" : true,
-  );
-}
-
 export function travelLabel(choice: TravelChoice): string {
   switch (choice) {
     case "delivery":

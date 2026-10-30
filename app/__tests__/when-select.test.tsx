@@ -86,7 +86,7 @@ describe("choosing a day", () => {
     expect(JSON.stringify(screen.toJSON())).not.toMatch(/#C62828|#B33A3A/i);
     fireEvent.press(screen.getAllByLabelText(/: Secured$/)[0]);
 
-    await waitFor(() => expect(screen.getByText("Continue")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Continue to Delivery")).toBeTruthy());
     expect(screen.queryByText("Pick a date")).toBeNull();
   });
 });

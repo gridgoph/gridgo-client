@@ -1,6 +1,8 @@
 import type { Cart, CartLineRecord, MatchResult } from "@/lib/api";
 import {
+  FULFILMENT_CONTINUE_LABEL,
   PICKUP_CHOICE,
+  dateContinueLabel,
   deliveryChoice,
   fulfilmentStepFor,
   fulfilmentSummary,
@@ -32,6 +34,21 @@ describe("whether the job is asked delivery or pick-up", () => {
     expect(fulfilmentStepFor(basket([LINE]))).toBe("legacy");
     expect(isLockedFulfilment({ requestFulfillment: null })).toBe(false);
     expect(isLockedFulfilment({ requestFulfillment: deliveryChoice(HOME) })).toBe(true);
+  });
+});
+
+describe("the Continue that names where the date goes next", () => {
+  it("goes to Delivery when the job is asked", () => {
+    expect(dateContinueLabel(null)).toBe("Continue to Delivery");
+    expect(dateContinueLabel(basket([]))).toBe("Continue to Delivery");
+  });
+
+  it("goes to Priorities when the basket already settled it", () => {
+    expect(dateContinueLabel(basket([LINE], { fulfillmentMode: "pickup", dropoff: OFFICE }))).toBe(
+      "Continue to Priorities",
+    );
+    expect(dateContinueLabel(basket([LINE]))).toBe("Continue to Priorities");
+    expect(FULFILMENT_CONTINUE_LABEL).toBe("Continue to Priorities");
   });
 });
 

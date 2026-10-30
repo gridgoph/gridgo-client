@@ -135,7 +135,7 @@ beforeEach(() => {
   api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
   clearProductCategoryCache();
   api.listCatalog.mockResolvedValue(CATALOG);
-  api.listCatalogShops.mockResolvedValue({ shops: [SHOP], complete: true });
+  api.listCatalogShops.mockResolvedValue([SHOP]);
   api.getCatalogShop.mockResolvedValue(BOARD);
   // The boards are cached for a minute across screens, so each test starts
   // from a cold read rather than the previous test's shop.

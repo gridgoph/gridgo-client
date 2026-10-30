@@ -26,33 +26,7 @@ export type CategoryBoards = {
    * carrying (gridgo-api#132).
    */
   unreadable: string[];
-  /**
-   * Boards listed and still being read. Non-zero only on the early answer
-   * `onFirstWave` hands over while the rest of a long directory is read.
-   */
-  pending: number;
-  /**
-   * The directory itself stopped short: its page cap was reached with more
-   * shops still listed, so boards exist that this read never saw.
-   */
-  truncated: boolean;
 };
-
-/**
- * Whether a read covers every listed board. Only then can a screen say a
- * subcategory is on no press: a board still to come, or one that failed, may
- * be the one that lists it.
- */
-export function boardsComplete(
-  read: Pick<CategoryBoards, "unreadable" | "pending" | "truncated">,
-): boolean {
-  return read.pending === 0 && read.unreadable.length === 0 && !read.truncated;
-}
-
-/** A finished read that still cannot say a product is on no press. */
-export function boardsShort(read: Pick<CategoryBoards, "unreadable" | "truncated">): boolean {
-  return read.unreadable.length > 0 || read.truncated;
-}
 
 type Entry = { at: number; value: Promise<CategoryBoards> };
 
@@ -62,27 +36,17 @@ const cache = new Map<string, Entry>();
 export const BOARDS_TTL_MS = 60_000;
 
 /**
- * How many boards are read together before anything is drawn.
+ * How many shops' boards are read at once.
  *
- * The first wave is what the screen waits on, so it is read all at once, as
- * it always was. A directory longer than that is read to the end behind it —
- * a category screen that stopped at twelve boards told clients a product on
- * board thirteen was on no press (ux-findings-1030 #3).
+ * One page of the shop list (`GET /catalog/shops` pages at 20, followed by
+ * `listCatalogShops`). Twelve stopped short of a page, so a product listed
+ * only on the thirteenth board was called off press (ux-findings-1030 #3).
+ * Reading the whole directory would be a round trip per listed shop before
+ * anything is drawn, so the read stays one page and the cap is stated
+ * wherever it could hide a shop — the match screen says how many shops it
+ * looked at.
  */
-export const FIRST_WAVE_BOARDS = 12;
-
-/** Boards in flight at once after the first wave: never the whole directory. */
-export const BOARD_CONCURRENCY = 6;
-
-type LoadOptions = {
-  force?: boolean;
-  /**
-   * Called once with the first wave's boards when more are still being read,
-   * so a long directory paints as soon as a short one would. Not called on a
-   * cached answer, which is already whole.
-   */
-  onFirstWave?: (partial: CategoryBoards) => void;
-};
+export const MAX_BOARDS = 20;
 
 /**
  * Every shop's board, for one category or — with an empty code — for all of
@@ -90,89 +54,47 @@ type LoadOptions = {
  */
 export async function loadCategoryBoards(
   categoryCode: string,
-  { force = false, onFirstWave }: LoadOptions = {},
+  { force = false, maxBoards = MAX_BOARDS }: { force?: boolean; maxBoards?: number } = {},
 ): Promise<CategoryBoards> {
-  const key = categoryCode;
+  // The cap is part of the key. A short read and a full category read are
+  // different answers, and serving one from the other's entry would shorten
+  // the category screen.
+  const key = `${categoryCode}|${maxBoards}`;
   const held = cache.get(key);
   if (!force && held && Date.now() - held.at < BOARDS_TTL_MS) return held.value;
 
-  const value = read(categoryCode, onFirstWave);
+  const value = read(categoryCode, maxBoards);
   cache.set(key, { at: Date.now(), value });
   // A failed read must not be cached, or one flaky moment breaks the category
-  // for the next minute — and neither is a read with a board missing, or the
-  // retry that answers it would be served the same gap.
-  const drop = () => {
+  // for the next minute.
+  value.catch(() => {
     if (cache.get(key)?.value === value) cache.delete(key);
-  };
-  value.then((result) => {
-    if (boardsShort(result)) drop();
-  }, drop);
+  });
   return value;
 }
 
-async function read(
-  categoryCode: string,
-  onFirstWave?: (partial: CategoryBoards) => void,
-): Promise<CategoryBoards> {
-  const directory = await api.listCatalogShops(
-    canonicalCategoryCode(categoryCode) || categoryCode,
+async function read(categoryCode: string, maxBoards: number): Promise<CategoryBoards> {
+  const shops = await api.listCatalogShops(canonicalCategoryCode(categoryCode) || categoryCode);
+  const page = shops.slice(0, maxBoards);
+
+  const results = await Promise.all(
+    page.map(async (shop) => {
+      try {
+        return await api.getCatalogShop(shop.supplierId);
+      } catch {
+        return null;
+      }
+    }),
   );
-  const shops = directory.shops;
-  const truncated = !directory.complete;
-  const results: (api.ShopBoard | null)[] = new Array(shops.length).fill(null);
-  const readOne = async (index: number) => {
-    try {
-      results[index] = await api.getCatalogShop(shops[index].supplierId);
-    } catch {
-      results[index] = null;
-    }
-  };
 
-  const firstWave = Math.min(FIRST_WAVE_BOARDS, shops.length);
-  await Promise.all(Array.from({ length: firstWave }, (_, index) => readOne(index)));
-  if (firstWave === shops.length) {
-    return settle(categoryCode, shops, results, shops.length, truncated);
-  }
-
-  onFirstWave?.(settle(categoryCode, shops, results, firstWave, truncated));
-
-  let next = firstWave;
-  const worker = async () => {
-    while (next < shops.length) {
-      const index = next;
-      next += 1;
-      await readOne(index);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(BOARD_CONCURRENCY, shops.length - firstWave) }, worker),
-  );
-  return settle(categoryCode, shops, results, shops.length, truncated);
-}
-
-/** The answer so far, from the first `readCount` boards of the directory. */
-function settle(
-  categoryCode: string,
-  shops: api.ShopSummary[],
-  results: (api.ShopBoard | null)[],
-  readCount: number,
-  truncated: boolean,
-): CategoryBoards {
   const boards: api.ShopBoard[] = [];
   const unreadable: string[] = [];
-  for (let index = 0; index < readCount; index += 1) {
-    const board = results[index];
+  results.forEach((board, index) => {
     if (board) boards.push(board);
     else unreadable.push(`Board ${index + 1}`);
-  }
-  return {
-    categoryCode,
-    shops,
-    boards,
-    unreadable,
-    pending: shops.length - readCount,
-    truncated,
-  };
+  });
+
+  return { categoryCode, shops, boards, unreadable };
 }
 
 /** Drop everything held, e.g. after signing out. */
