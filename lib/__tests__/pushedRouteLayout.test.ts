@@ -131,6 +131,8 @@ describe("pushed route layout contract", () => {
       }
       if (signedIn) {
         expect(screen.getByTestId("route:request/category").props.options.title).toBe("New request");
+        // GRIDGO matches the job; the client never chooses the shop.
+        expect(screen.getByTestId("route:request/match").props.options.title).toBe("Your match");
         expect(screen.getByTestId("route:(tabs)").props.options.headerShown).toBe(false);
       } else {
         expect(screen.getByTestId("route:(auth)/login").props.options.title).toBe("Sign in");

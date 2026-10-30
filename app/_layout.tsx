@@ -361,6 +361,10 @@ function AppNavigation() {
                   name="request/rank"
                   options={pushedScreenOptions("Your priorities")}
                 />
+                {/*
+                  GRIDGO matches the job and the client never sees a shop, so
+                  the title never asks them to choose a supplier.
+                */}
                 <Stack.Screen
                   name="request/match"
                   options={pushedScreenOptions("Your match")}
