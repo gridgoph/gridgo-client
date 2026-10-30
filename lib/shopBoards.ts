@@ -31,6 +31,11 @@ export type CategoryBoards = {
    * `onFirstWave` hands over while the rest of a long directory is read.
    */
   pending: number;
+  /**
+   * The directory itself stopped short: its page cap was reached with more
+   * shops still listed, so boards exist that this read never saw.
+   */
+  truncated: boolean;
 };
 
 /**
@@ -38,8 +43,15 @@ export type CategoryBoards = {
  * subcategory is on no press: a board still to come, or one that failed, may
  * be the one that lists it.
  */
-export function boardsComplete(read: Pick<CategoryBoards, "unreadable" | "pending">): boolean {
-  return read.pending === 0 && read.unreadable.length === 0;
+export function boardsComplete(
+  read: Pick<CategoryBoards, "unreadable" | "pending" | "truncated">,
+): boolean {
+  return read.pending === 0 && read.unreadable.length === 0 && !read.truncated;
+}
+
+/** A finished read that still cannot say a product is on no press. */
+export function boardsShort(read: Pick<CategoryBoards, "unreadable" | "truncated">): boolean {
+  return read.unreadable.length > 0 || read.truncated;
 }
 
 type Entry = { at: number; value: Promise<CategoryBoards> };
@@ -93,7 +105,7 @@ export async function loadCategoryBoards(
     if (cache.get(key)?.value === value) cache.delete(key);
   };
   value.then((result) => {
-    if (result.unreadable.length) drop();
+    if (boardsShort(result)) drop();
   }, drop);
   return value;
 }
@@ -102,7 +114,11 @@ async function read(
   categoryCode: string,
   onFirstWave?: (partial: CategoryBoards) => void,
 ): Promise<CategoryBoards> {
-  const shops = await api.listCatalogShops(canonicalCategoryCode(categoryCode) || categoryCode);
+  const directory = await api.listCatalogShops(
+    canonicalCategoryCode(categoryCode) || categoryCode,
+  );
+  const shops = directory.shops;
+  const truncated = !directory.complete;
   const results: (api.ShopBoard | null)[] = new Array(shops.length).fill(null);
   const readOne = async (index: number) => {
     try {
@@ -114,9 +130,11 @@ async function read(
 
   const firstWave = Math.min(FIRST_WAVE_BOARDS, shops.length);
   await Promise.all(Array.from({ length: firstWave }, (_, index) => readOne(index)));
-  if (firstWave === shops.length) return settle(categoryCode, shops, results, shops.length);
+  if (firstWave === shops.length) {
+    return settle(categoryCode, shops, results, shops.length, truncated);
+  }
 
-  onFirstWave?.(settle(categoryCode, shops, results, firstWave));
+  onFirstWave?.(settle(categoryCode, shops, results, firstWave, truncated));
 
   let next = firstWave;
   const worker = async () => {
@@ -129,7 +147,7 @@ async function read(
   await Promise.all(
     Array.from({ length: Math.min(BOARD_CONCURRENCY, shops.length - firstWave) }, worker),
   );
-  return settle(categoryCode, shops, results, shops.length);
+  return settle(categoryCode, shops, results, shops.length, truncated);
 }
 
 /** The answer so far, from the first `readCount` boards of the directory. */
@@ -138,6 +156,7 @@ function settle(
   shops: api.ShopSummary[],
   results: (api.ShopBoard | null)[],
   readCount: number,
+  truncated: boolean,
 ): CategoryBoards {
   const boards: api.ShopBoard[] = [];
   const unreadable: string[] = [];
@@ -146,7 +165,14 @@ function settle(
     if (board) boards.push(board);
     else unreadable.push(`Board ${index + 1}`);
   }
-  return { categoryCode, shops, boards, unreadable, pending: shops.length - readCount };
+  return {
+    categoryCode,
+    shops,
+    boards,
+    unreadable,
+    pending: shops.length - readCount,
+    truncated,
+  };
 }
 
 /** Drop everything held, e.g. after signing out. */

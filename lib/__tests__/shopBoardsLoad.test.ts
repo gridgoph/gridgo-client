@@ -1,6 +1,7 @@
 import type { ShopBoard, ShopSummary } from "@/lib/api";
 import {
   boardsComplete,
+  boardsShort,
   clearBoardCache,
   FIRST_WAVE_BOARDS,
   loadCategoryBoards,
@@ -51,11 +52,11 @@ function board(supplierId: string, subcategoryCode: string): ShopBoard {
  * A directory of `count` approved boards where only the last one lists flyers,
  * read with a delay so the test can see how many reads are in flight at once.
  */
-function directory(count: number, failing: Set<number> = new Set()) {
+function directory(count: number, failing: Set<number> = new Set(), complete = true) {
   const shops = Array.from({ length: count }, (_, index) => shop(index));
   let inFlight = 0;
   let peak = 0;
-  api.listCatalogShops.mockResolvedValue(shops);
+  api.listCatalogShops.mockResolvedValue({ shops, complete });
   api.getCatalogShop.mockImplementation(async (supplierId: string) => {
     const index = Number(supplierId.split("_")[1]);
     inFlight += 1;
@@ -134,6 +135,28 @@ describe("loadCategoryBoards", () => {
 
     directory(13);
     const retried = await loadCategoryBoards("marketing_collateral");
+    expect(boardsComplete(retried)).toBe(true);
+  });
+
+  it("never calls a read whole when the directory stopped at its page cap", async () => {
+    directory(13, new Set(), false);
+    const read = await loadCategoryBoards("marketing_collateral");
+
+    expect(read.unreadable).toEqual([]);
+    expect(read.pending).toBe(0);
+    expect(read.truncated).toBe(true);
+    expect(boardsComplete(read)).toBe(false);
+    expect(boardsShort(read)).toBe(true);
+  });
+
+  it("does not hold a cut-off directory, so a retry reads it again", async () => {
+    directory(13, new Set(), false);
+    await loadCategoryBoards("marketing_collateral");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    directory(13);
+    const retried = await loadCategoryBoards("marketing_collateral");
+    expect(api.listCatalogShops).toHaveBeenCalledTimes(2);
     expect(boardsComplete(retried)).toBe(true);
   });
 

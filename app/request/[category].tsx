@@ -22,12 +22,16 @@ import { userFacingError } from "@/lib/copy";
 import { findCategory, type ProductCategory, type ProductSubcategory } from "@/lib/productCategories";
 import {
   boardsComplete,
+  boardsShort,
   loadCategoryBoards,
   orderableSubcategories,
   pickListingFor,
   type CategoryBoards,
 } from "@/lib/shopBoards";
 import { subcategoryHoursView } from "@/lib/shopHours";
+
+/** Some boards, or part of the directory, did not load: said with a Retry. */
+const SHORT_READ = "Some of today's prices did not load, so this list may be short.";
 
 // A step that throws while drawing shows a way on instead of closing the app.
 export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
@@ -62,9 +66,13 @@ export default function CategoryScreen() {
   const [coverage, setCoverage] = useState<"whole" | "reading" | "short">("whole");
   const [boardsError, setBoardsError] = useState<string | null>(null);
 
+  // Both reads land here — the focus load and the photo-link re-read — so a
+  // short answer always carries the Retry that can finish it, and a whole one
+  // clears an error an earlier read left behind.
   const showRead = useCallback((read: CategoryBoards) => {
     setBoards(read.boards);
     setCoverage(boardsComplete(read) ? "whole" : read.pending > 0 ? "reading" : "short");
+    setBoardsError(boardsShort(read) ? SHORT_READ : null);
   }, []);
 
   const boardSequence = useRef(0);
@@ -84,11 +92,6 @@ export default function CategoryScreen() {
       if (sequence !== boardSequence.current) return;
       if (tree) setCategories(tree);
       showRead(read);
-      setBoardsError(
-        read.unreadable.length
-          ? "Some of today's prices did not load, so this list may be short."
-          : null,
-      );
     } catch (e) {
       if (sequence !== boardSequence.current) return;
       setBoards(null);
@@ -108,9 +111,18 @@ export default function CategoryScreen() {
   const heldListings = useMemo(() => (boards ? boardListings(boards) : null), [boards]);
   const rereadBoards = useCallback(async ({ force }: { force: boolean }) => {
     if (!categoryCode) return null;
-    const read = await loadCategoryBoards(categoryCode, { force });
-    showRead(read);
-    return boardListings(read.boards);
+    try {
+      const read = await loadCategoryBoards(categoryCode, { force });
+      showRead(read);
+      return boardListings(read.boards);
+    } catch (e) {
+      // The boards on screen stay, but no longer count as today's whole answer.
+      setCoverage("short");
+      setBoardsError(
+        userFacingError(e, "GRIDGO could not read today's prices, so this list may be short."),
+      );
+      throw e;
+    }
   }, [categoryCode, showRead]);
   const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadBoards);
 
