@@ -1,4 +1,4 @@
-import { CircleAlert, FileCheck } from "lucide-react-native";
+import { CircleAlert, FileCheck, Lightbulb, Palette } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
@@ -9,6 +9,7 @@ import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ArtworkSizeNote } from "@/components/ArtworkSizeNote";
 import { ArtworkAttachmentList } from "@/components/ArtworkAttachmentList";
 import { HeldFileCard } from "@/components/HeldFileCard";
+import { OrderDisclosure } from "@/components/OrderDisclosure";
 import { PrepareFileGuide } from "@/components/PrepareFileGuide";
 import { PrintLayoutChoice } from "@/components/PrintLayoutChoice";
 import { PrintLayoutPreview } from "@/components/PrintLayoutPreview";
@@ -70,7 +71,6 @@ import {
 } from "@/lib/listing";
 import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
-import { MOCKUP_LABEL } from "@/lib/productPreview";
 import { layoutAdvice, layoutLabel, lineNeedsLayout, offeredLayouts, paperChange, type KnownLayout } from "@/lib/printLayout";
 import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
 import { ProhibitedItemsNote } from "@/components/legal/ProhibitedItemsNote";
@@ -143,6 +143,13 @@ export default function ArtworkScreen() {
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   const [layoutY, setLayoutY] = useState<number | null>(null);
   const [coverY, setCoverY] = useState<number | null>(null);
+  /**
+   * The two folds under the files (ux-findings-1030 #5): how to prepare a
+   * file, and the optional exact colours. Null leaves colours on their
+   * default — open once any are named, so a client sees what they set.
+   */
+  const [prepareOpen, setPrepareOpen] = useState(false);
+  const [coloursOpen, setColoursOpen] = useState<boolean | null>(null);
   // Once per visit: after that the client scrolls where they like.
   const focusedRef = useRef(false);
   useEffect(() => {
@@ -662,30 +669,24 @@ export default function ArtworkScreen() {
             </View>
           </View>
         ) : null}
+        {/*
+          One line for the task, then the short reminder and its link. How to
+          prepare a file is folded under the list: it is advice, and the
+          upload is the work (ux-findings-1030 #5).
+        */}
         <Text className="mt-3 text-body-lg text-text-secondary">
           For {name}
-          {size ? ` · ${size}` : ""}.
-        </Text>
-
-        <Text className="mt-1 text-body text-text-secondary">
+          {size ? ` · ${size}` : ""}:{" "}
           {takesFiles && links.length
-            ? `Upload files, paste ${designLinkPhrase(links)}, or both.`
+            ? `upload files, paste ${designLinkPhrase(links)}, or both.`
             : links.length
-              ? `Paste ${designLinkPhrase(links)}.`
-              : "Upload the files you want printed."}{" "}
-          Add a front and a back, or a separate logo, each with its own label.
+              ? `paste ${designLinkPhrase(links)}.`
+              : "upload the files you want printed."}
         </Text>
 
         <View className="mt-3">
-          <ProhibitedItemsNote onOpen={(href) => router.push(href)} />
+          <ProhibitedItemsNote compact onOpen={(href) => router.push(href)} />
         </View>
-
-        {/* Before the files: what this product type wants, from GRIDGO's targets. */}
-        {guide && takesFiles ? (
-          <View className="mt-6">
-            <PrepareFileGuide rows={guide} />
-          </View>
-        ) : null}
 
         {held && takesFiles && !fileIds.includes(held.fileId) && roomLeft > 0 ? (
           <View className="mt-6">
@@ -772,6 +773,31 @@ export default function ArtworkScreen() {
               saveError={linkSaveError}
               savedUnchecked={false}
             />
+          </View>
+        ) : null}
+
+        {takesFiles ? (
+          <View className="mt-4 gap-3">
+            <OrderDisclosure
+              title="Preparing your files"
+              summary={
+                guide
+                  ? "Colour, sharpness, and labelling a front and back."
+                  : "Labelling a front and back, or a separate logo."
+              }
+              icon={Lightbulb}
+              open={prepareOpen}
+              onToggle={() => setPrepareOpen((open) => !open)}
+            />
+            {prepareOpen ? (
+              <>
+                <Text className="px-1 text-body text-text-secondary">
+                  Add a front and a back, or a separate logo, each with its own label.
+                </Text>
+                {/* What this product type wants, from GRIDGO's targets. */}
+                {guide ? <PrepareFileGuide rows={guide} /> : null}
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -972,7 +998,6 @@ export default function ArtworkScreen() {
               productName={name}
               size={size || null}
             />
-            <Text className="text-caption text-text-muted">{MOCKUP_LABEL}</Text>
           </View>
         ) : null}
 
@@ -981,13 +1006,29 @@ export default function ArtworkScreen() {
           from each file sit under the client's, so a file that does not say
           what they asked for is seen here rather than on the print.
         */}
-        <View className="mt-8">
-          <ExactColoursSection
-            lineId={line.id}
-            targets={colorTargetsOf(line)}
-            artworkColors={line.artworkColors ?? []}
-            fileName={colorFileNamer(entries, (fileId) => files[fileId]?.originalFilename)}
+        <View className="mt-8 gap-3">
+          <OrderDisclosure
+            title="Exact colours"
+            summary={
+              colorTargetsOf(line).length
+                ? `Optional · ${colorTargetsOf(line).length} named`
+                : "Optional · match brand or school colours"
+            }
+            icon={Palette}
+            open={coloursOpen ?? colorTargetsOf(line).length > 0}
+            onToggle={() =>
+              setColoursOpen((open) => !(open ?? colorTargetsOf(line).length > 0))
+            }
           />
+          {coloursOpen ?? colorTargetsOf(line).length > 0 ? (
+            <ExactColoursSection
+              lineId={line.id}
+              targets={colorTargetsOf(line)}
+              artworkColors={line.artworkColors ?? []}
+              fileName={colorFileNamer(entries, (fileId) => files[fileId]?.originalFilename)}
+              showHeading={false}
+            />
+          ) : null}
         </View>
 
         {item && !uploads.length && !links.length && otherLinks.length ? (

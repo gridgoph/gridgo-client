@@ -316,9 +316,11 @@ describe("ArtworkScreen", () => {
 
     // The right shape: no size note, and no threshold of the app's own.
     expect(screen.queryByText("This file does not match the print size")).toBeNull();
-    expect(screen.getByText("Prepare your file")).toBeTruthy();
-    expect(screen.getByText("Save it in CMYK")).toBeTruthy();
-    expect(screen.getByText("300 DPI at the printed size")).toBeTruthy();
+    // The product's own advice is folded under the files; the file's warnings
+    // below are what this file needs, and stay open.
+    expect(
+      screen.getByLabelText("Preparing your files. Colour, sharpness, and labelling a front and back."),
+    ).toBeTruthy();
     expect(screen.getByText("RGB")).toBeTruthy();
     expect(screen.getByText("72 DPI at the size ordered, 300 recommended")).toBeTruthy();
     expect(screen.getByText("Lower resolution than recommended")).toBeTruthy();

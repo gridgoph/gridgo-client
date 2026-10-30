@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
-import { PROHIBITED_ITEMS_NOTE, ProhibitedItemsNote } from "@/components/legal/ProhibitedItemsNote";
+import {
+  PROHIBITED_ITEMS_NOTE,
+  PROHIBITED_ITEMS_SHORT,
+  ProhibitedItemsNote,
+} from "@/components/legal/ProhibitedItemsNote";
 import type { LegalVersion } from "@/lib/api";
 import { useLegalLibrary } from "@/store/legalLibrary";
 
@@ -29,6 +33,22 @@ describe("ProhibitedItemsNote", () => {
     expect(PROHIBITED_ITEMS_NOTE).toMatch(/IDs and official documents/);
     expect(PROHIBITED_ITEMS_NOTE).not.toMatch(/₱|fee/);
     expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("says it in one line where the full list is a tap away", async () => {
+    library([acceptableUse]);
+    await render(<ProhibitedItemsNote compact onOpen={jest.fn()} />);
+
+    expect(screen.getByText(PROHIBITED_ITEMS_SHORT)).toBeTruthy();
+    expect(screen.queryByText(PROHIBITED_ITEMS_NOTE)).toBeNull();
+    expect(screen.getByRole("link")).toBeTruthy();
+  });
+
+  it("keeps the whole list when compact has no policy to link to", async () => {
+    library([]);
+    await render(<ProhibitedItemsNote compact onOpen={jest.fn()} />);
+
+    expect(screen.getByText(PROHIBITED_ITEMS_NOTE)).toBeTruthy();
   });
 
   it("opens the Acceptable Use and Artwork Rights policy", async () => {
