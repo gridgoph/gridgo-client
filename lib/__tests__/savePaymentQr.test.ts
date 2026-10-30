@@ -1,10 +1,22 @@
+import { Platform } from "react-native";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import {
+  SAVE_QR_DENIED,
+  SAVE_QR_LABEL,
+  savePaymentQrToPhotos,
+  saveQrMessage,
+} from "@/lib/savePaymentQr";
+
+const mockShare = jest.fn();
+const mockAvailable = jest.fn();
 
 const mockRequestPermissionsAsync = jest.fn();
 const mockSaveToLibraryAsync = jest.fn();
 
 jest.mock("@/lib/nativeModules", () => ({
+  getSharingNative: () => ({ shareAsync: mockShare, isAvailableAsync: mockAvailable }),
   getMediaLibraryNative: () => ({
     requestPermissionsAsync: mockRequestPermissionsAsync,
     saveToLibraryAsync: mockSaveToLibraryAsync,
@@ -25,17 +37,37 @@ jest.mock("expo-asset", () => ({
   },
 }));
 
-import {
-  SAVE_QR_DENIED,
-  SAVE_QR_LABEL,
-  savePaymentQrToPhotos,
-  saveQrMessage,
-} from "@/lib/savePaymentQr";
-
 describe("savePaymentQrToPhotos", () => {
   beforeEach(() => {
+    Platform.OS = "ios";
+    mockShare.mockReset();
+    mockAvailable.mockReset();
     mockRequestPermissionsAsync.mockReset();
     mockSaveToLibraryAsync.mockReset();
+  });
+
+  it("shares the QR on Android without requesting gallery access", async () => {
+    Platform.OS = "android";
+    mockAvailable.mockResolvedValue(true);
+    mockShare.mockResolvedValue(undefined);
+    await expect(savePaymentQrToPhotos(null)).resolves.toEqual({ ok: true });
+    expect(mockShare).toHaveBeenCalledWith("file://bundled-qr.jpg", expect.objectContaining({ mimeType: "image/*" }));
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
+    expect(mockSaveToLibraryAsync).not.toHaveBeenCalled();
+  });
+
+  it("reports an unavailable Android share sheet without gallery fallback", async () => {
+    Platform.OS = "android";
+    mockAvailable.mockResolvedValue(false);
+    await expect(savePaymentQrToPhotos(null)).resolves.toEqual({ ok: false, reason: "failed" });
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it("reports Android sharing failure without claiming a save", async () => {
+    Platform.OS = "android";
+    mockAvailable.mockResolvedValue(true);
+    mockShare.mockRejectedValue(new Error("share failed"));
+    await expect(savePaymentQrToPhotos(null)).resolves.toEqual({ ok: false, reason: "failed" });
   });
 
   it("asks permission on the tap and saves the bundled plate", async () => {

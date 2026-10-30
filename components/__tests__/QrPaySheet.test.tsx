@@ -13,7 +13,7 @@ import {
 } from "@/components/QrPaySheet";
 import { images } from "@/constants/images";
 import { notificationImageUrl } from "@/lib/api";
-import { SAVE_QR_DENIED, SAVE_QR_LABEL } from "@/lib/savePaymentQr";
+import { SAVE_QR_A11Y, SAVE_QR_DENIED, SAVE_QR_LABEL } from "@/lib/savePaymentQr";
 
 jest.mock("@/lib/savePaymentQr", () => {
   const actual = jest.requireActual("@/lib/savePaymentQr") as typeof import("@/lib/savePaymentQr");
@@ -155,7 +155,7 @@ describe("QrPaySheet", () => {
     expect(style.overflow).not.toBe("hidden");
     expect(image.props.source).toBe(images.gcashQr);
     expect(screen.getByText(SAVE_QR_LABEL)).toBeTruthy();
-    expect(screen.getByLabelText("Save to photos")).toBeTruthy();
+    expect(screen.getByLabelText(SAVE_QR_A11Y)).toBeTruthy();
   });
 
   it("uses the uploaded plate when settings carry imageUrl", async () => {
@@ -191,7 +191,7 @@ describe("saving the QR", () => {
       <QrPaySheet open onClose={() => {}} downpaymentMinor={5175} />,
     );
 
-    fireEvent.press(screen.getByLabelText("Save to photos"));
+    fireEvent.press(screen.getByLabelText(SAVE_QR_A11Y));
     expect(await screen.findByText(SAVE_QR_DENIED)).toBeTruthy();
   });
 });

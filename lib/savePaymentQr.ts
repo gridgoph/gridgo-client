@@ -1,21 +1,25 @@
 /**
- * Save GRIDGO's payment QR to the phone's photos.
+ * Keep GRIDGO's payment QR: Android shares a cached file; iOS saves to photos.
  *
  * Permission is asked on the tap, never when the sheet opens. A denial is a
  * line of what to do — GRIDGO cannot raise the dialog again once it is blocked.
  */
 
+import { Platform } from "react-native";
+
 import { Asset } from "expo-asset";
 
 import { images } from "@/constants/images";
 import { notificationImageUrl } from "@/lib/api";
-import { getFileSystemLegacyNative, getMediaLibraryNative } from "@/lib/nativeModules";
+import { getFileSystemLegacyNative, getMediaLibraryNative, getSharingNative } from "@/lib/nativeModules";
 
 export const SAVE_QR_LABEL = "Save QR";
-export const SAVE_QR_A11Y = "Save to photos";
+export const SAVE_QR_A11Y = Platform.OS === "android" ? "Save or share QR" : "Save to photos";
 export const SAVE_QR_DENIED =
   "Allow GRIDGO to save photos in Settings so you can keep this QR.";
-export const SAVE_QR_SAVED = "Saved to photos.";
+export const SAVE_QR_SAVED = Platform.OS === "android"
+  ? "Choose an app in the share sheet to save or use the QR."
+  : "Saved to photos.";
 export const SAVE_QR_FAILED = "The QR could not be saved. Try again.";
 export const SAVE_QR_NEEDS_REBUILD =
   "Saving the QR needs a rebuilt GRIDGO app on this phone.";
@@ -52,10 +56,26 @@ async function localUriFor(imageUrl?: string | null): Promise<string> {
 }
 
 /**
- * Ask (write-only) and save. Callers pass the settings URL or null for the
- * bundled GCash plate.
+ * Android uses the share sheet without gallery permissions, including on older
+ * devices. iOS keeps its write-only photo save. Opening a share sheet does not
+ * prove the user saved, so the Android result copy makes no saved claim.
  */
 export async function savePaymentQrToPhotos(imageUrl?: string | null): Promise<SaveQrResult> {
+  if (Platform.OS === "android") {
+    const Sharing = getSharingNative();
+    if (!Sharing) return { ok: false, reason: "rebuild" };
+    try {
+      if (!(await Sharing.isAvailableAsync())) return { ok: false, reason: "failed" };
+      await Sharing.shareAsync(await localUriFor(imageUrl), {
+        mimeType: "image/*",
+        dialogTitle: "Save or share payment QR",
+      });
+      return { ok: true };
+    } catch {
+      return { ok: false, reason: "failed" };
+    }
+  }
+
   const MediaLibrary = getMediaLibraryNative();
   if (!MediaLibrary) return { ok: false, reason: "rebuild" };
 
