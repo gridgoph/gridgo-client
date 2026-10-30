@@ -608,14 +608,14 @@ describe("CheckoutScreen", () => {
     expect(screen.getByText("HOW IT GETS TO YOU")).toBeTruthy();
   });
 
-  it("keeps Home in the footer and draws no Multi-drop choice it cannot honour", async () => {
+  it("keeps Home in the footer and leaves Multi-drop unpressable", async () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
     expect(screen.getByLabelText("Go to Home and keep this order")).toBeTruthy();
     expect(screen.queryByText("Leaving keeps everything here — it is waiting when you come back.")).toBeNull();
-    expect(screen.queryByLabelText("Multi-drop")).toBeNull();
-    expect(screen.queryByText(/Multi-drop is not offered/)).toBeNull();
+    expect(screen.getByLabelText("Multi-drop").props.accessibilityState.disabled).toBe(true);
+    expect(screen.getByText("Multi-drop is not offered yet.")).toBeTruthy();
   });
 
   it("fills delivery from the saved Home address when the basket has none", async () => {

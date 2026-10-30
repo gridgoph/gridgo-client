@@ -3,7 +3,6 @@ import {
   artworkRefusalOf,
   fulfilmentModeFor,
   lineArtworkStatus,
-  offeredTravelChoices,
   invoiceNote,
   blockerLine,
   isTimingAvailable,
@@ -195,13 +194,6 @@ describe("how it travels", () => {
         cart({ lines: [line({ dropoff: { lat: 7.1, lng: 125.6, label: "Office" } })] }),
       ),
     ).toBe("multi_drop");
-  });
-
-  it("offers only the ways a new basket can travel", () => {
-    expect(offeredTravelChoices("delivery", false)).toEqual(["delivery"]);
-    expect(offeredTravelChoices("delivery", true)).toEqual(["delivery", "pickup"]);
-    // A basket GRIDGO already holds as a multi-drop keeps showing its state.
-    expect(offeredTravelChoices("multi_drop", false)).toEqual(["delivery", "multi_drop"]);
   });
 
   it("says plainly what Operations still has to settle", () => {
