@@ -21,17 +21,11 @@ import { boardListings } from "@/lib/photoLinks";
 import { userFacingError } from "@/lib/copy";
 import { findCategory, type ProductCategory, type ProductSubcategory } from "@/lib/productCategories";
 import {
-  boardsComplete,
-  boardsShort,
   loadCategoryBoards,
   orderableSubcategories,
   pickListingFor,
-  type CategoryBoards,
 } from "@/lib/shopBoards";
 import { subcategoryHoursView } from "@/lib/shopHours";
-
-/** Some boards, or part of the directory, did not load: said with a Retry. */
-const SHORT_READ = "Some of today's prices did not load, so this list may be short.";
 
 // A step that throws while drawing shows a way on instead of closing the app.
 export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
@@ -58,22 +52,7 @@ export default function CategoryScreen() {
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   const [boards, setBoards] = useState<api.ShopBoard[] | null>(null);
-  /**
-   * How much of the directory `boards` covers. A product is only ever said to
-   * be on no press from a whole read: a board still coming, or one that failed
-   * to load, may be the one that lists it.
-   */
-  const [coverage, setCoverage] = useState<"whole" | "reading" | "short">("whole");
   const [boardsError, setBoardsError] = useState<string | null>(null);
-
-  // Both reads land here — the focus load and the photo-link re-read — so a
-  // short answer always carries the Retry that can finish it, and a whole one
-  // clears an error an earlier read left behind.
-  const showRead = useCallback((read: CategoryBoards) => {
-    setBoards(read.boards);
-    setCoverage(boardsComplete(read) ? "whole" : read.pending > 0 ? "reading" : "short");
-    setBoardsError(boardsShort(read) ? SHORT_READ : null);
-  }, []);
 
   const boardSequence = useRef(0);
   const loadBoards = useCallback(async () => {
@@ -81,26 +60,21 @@ export default function CategoryScreen() {
     if (!categoryCode) return;
     try {
       const [read, tree] = await Promise.all([
-        loadCategoryBoards(categoryCode, {
-          // A long directory paints its first boards while the rest are read.
-          onFirstWave: (partial) => {
-            if (sequence === boardSequence.current) showRead(partial);
-          },
-        }),
+        loadCategoryBoards(categoryCode),
         api.getProductCategories().catch(() => null),
       ]);
       if (sequence !== boardSequence.current) return;
       if (tree) setCategories(tree);
-      showRead(read);
+      setBoards(read.boards);
+      setBoardsError(null);
     } catch (e) {
       if (sequence !== boardSequence.current) return;
       setBoards(null);
-      setCoverage("whole");
       setBoardsError(
         userFacingError(e, "GRIDGO could not read today's prices, so this list may be short."),
       );
     }
-  }, [categoryCode, showRead]);
+  }, [categoryCode]);
 
   useLiveRefresh(["catalog", "services", "availability"], loadBoards, { refreshOnFocus: false });
 
@@ -111,19 +85,10 @@ export default function CategoryScreen() {
   const heldListings = useMemo(() => (boards ? boardListings(boards) : null), [boards]);
   const rereadBoards = useCallback(async ({ force }: { force: boolean }) => {
     if (!categoryCode) return null;
-    try {
-      const read = await loadCategoryBoards(categoryCode, { force });
-      showRead(read);
-      return boardListings(read.boards);
-    } catch (e) {
-      // The boards on screen stay, but no longer count as today's whole answer.
-      setCoverage("short");
-      setBoardsError(
-        userFacingError(e, "GRIDGO could not read today's prices, so this list may be short."),
-      );
-      throw e;
-    }
-  }, [categoryCode, showRead]);
+    const read = await loadCategoryBoards(categoryCode, { force });
+    setBoards(read.boards);
+    return boardListings(read.boards);
+  }, [categoryCode]);
   const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadBoards);
 
   useFocusEffect(useCallback(() => {
@@ -285,21 +250,10 @@ export default function CategoryScreen() {
         ) : null}
 
         {huntedQuoted.length ? (
-          coverage === "reading" ? (
-            // Not "quoted by Operations" yet: the boards still being read may
-            // list them.
-            <View
-              className="mt-8"
-              accessibilityRole="progressbar"
-              accessibilityLabel="Checking more shops"
-            >
-              <Text className="text-body text-text-secondary">
-                Checking more of today&apos;s prices…
-              </Text>
-            </View>
-          ) : (
-            <QuotedPanel items={huntedQuoted} split={split} confirmed={coverage === "whole"} />
-          )
+          <QuotedPanel
+            items={huntedQuoted}
+            split={split}
+          />
         ) : null}
       </View>
     </FormScreen>
@@ -309,24 +263,18 @@ export default function CategoryScreen() {
 function QuotedPanel({
   items,
   split,
-  confirmed,
 }: {
   items: ProductSubcategory[];
   split: boolean;
-  /** False when a board failed to load: then nothing is said to be off press. */
-  confirmed: boolean;
 }) {
   return (
     <View className="mt-8 gap-3">
       {split ? (
-        <Text className="text-overline text-text-muted">
-          {confirmed ? "QUOTED BY OPERATIONS" : "NOT CONFIRMED YET"}
-        </Text>
+        <Text className="text-overline text-text-muted">QUOTED BY OPERATIONS</Text>
       ) : null}
       <Text className="text-body text-text-secondary">
-        {confirmed
-          ? `GRIDGO prints ${split ? "these too" : "these"}. None of them is on a press today, so Operations quotes them with you directly.`
-          : `GRIDGO prints ${split ? "these too" : "these"}. Some prices did not load, so try again to see whether one is on a press today.`}
+        GRIDGO prints {split ? "these too" : "these"}. None of them is on a press
+        today, so Operations quotes them with you directly.
       </Text>
       <View className="gg-panel gap-4">
         {items.map((subcategory) => (

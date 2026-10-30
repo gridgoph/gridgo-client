@@ -139,7 +139,7 @@ beforeEach(() => {
   api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
   clearProductCategoryCache();
   api.listCatalog.mockResolvedValue(CATALOG);
-  api.listCatalogShops.mockResolvedValue({ shops: [SHOP], complete: true });
+  api.listCatalogShops.mockResolvedValue([SHOP]);
   api.getCatalogShop.mockResolvedValue(BOARD);
   // The boards are cached for a minute across screens, so each test starts
   // from a cold read rather than the previous test's shop.
@@ -237,7 +237,7 @@ describe("CategoryScreen", () => {
     // head the only list on the screen and tell the client nothing the sentence
     // under it does not already say in words.
     mockOpenCategory = "specialized_prototyping";
-    api.listCatalogShops.mockResolvedValue({ shops: [], complete: true });
+    api.listCatalogShops.mockResolvedValue([]);
     await renderInSafeArea(<CategoryScreen />);
 
     expect(await screen.findByText(/None of them is on a press today/)).toBeTruthy();

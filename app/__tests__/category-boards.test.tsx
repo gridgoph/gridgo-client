@@ -138,7 +138,7 @@ beforeEach(() => {
   api.productCategoriesNow.mockReturnValue(PRODUCT_CATEGORY_SEED);
   clearProductCategoryCache();
   api.listCatalog.mockResolvedValue(CATALOG);
-  api.listCatalogShops.mockResolvedValue({ shops: [SHOP], complete: true });
+  api.listCatalogShops.mockResolvedValue([SHOP]);
   api.getCatalogShop.mockResolvedValue(BOARD);
   // The boards are cached for a minute across screens, so each test starts
   // from a cold read rather than the previous test's shop.
@@ -154,9 +154,9 @@ beforeEach(() => {
 });
 
 /**
- * A category is read from every approved board before a product is said to be
- * on no press. The directory used to stop at twelve boards, which put a product
- * listed only on board thirteen under "Quoted by Operations".
+ * The category screen reads one page of the shop list. It used to stop at
+ * twelve boards, which put a product listed only on board thirteen under
+ * "Quoted by Operations".
  */
 function flyerListing(supplierId: string, index: number) {
   return {
@@ -168,16 +168,15 @@ function flyerListing(supplierId: string, index: number) {
   };
 }
 
-function thirteenBoards(failing?: number, complete = true) {
+function thirteenBoards() {
   const shops = Array.from({ length: 13 }, (_, index) => ({
     ...SHOP,
     supplierId: `shop_${index}`,
     categories: ["marketing_collateral"],
   }));
-  api.listCatalogShops.mockResolvedValue({ shops, complete });
+  api.listCatalogShops.mockResolvedValue(shops);
   api.getCatalogShop.mockImplementation(async (supplierId: string) => {
     const index = Number(supplierId.split("_")[1]);
-    if (index === failing) throw new Error("Network request failed");
     return {
       ...shops[index],
       services: [
@@ -191,7 +190,7 @@ function thirteenBoards(failing?: number, complete = true) {
   });
 }
 
-describe("CategoryScreen with a long directory", () => {
+describe("CategoryScreen with a 13-board directory", () => {
   it("puts a product listed only on board 13 on a press", async () => {
     mockOpenCategory = "marketing_collateral";
     thirteenBoards();
@@ -201,28 +200,5 @@ describe("CategoryScreen with a long directory", () => {
     expect(api.getCatalogShop).toHaveBeenCalledTimes(13);
     // Flyers is not among the products said to be quoted by Operations.
     expect(screen.getByText(/None of them is on a press today/)).toBeTruthy();
-  });
-
-  it("never says a product is off press when a board failed to load", async () => {
-    mockOpenCategory = "marketing_collateral";
-    thirteenBoards(12);
-    await renderInSafeArea(<CategoryScreen />);
-
-    expect(await screen.findByText("Prices not loaded")).toBeTruthy();
-    expect(screen.getByText(/Some of today's prices did not load/)).toBeTruthy();
-    expect(screen.queryByText(/None of them is on a press today/)).toBeNull();
-    expect(screen.queryByText("QUOTED BY OPERATIONS")).toBeNull();
-  });
-
-  it("never says a product is off press when the directory stopped at its page cap", async () => {
-    mockOpenCategory = "marketing_collateral";
-    // Every listed board reads, but more shops were listed past the cap.
-    thirteenBoards(undefined, false);
-    await renderInSafeArea(<CategoryScreen />);
-
-    expect(await screen.findByText("Prices not loaded")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
-    expect(screen.queryByText(/None of them is on a press today/)).toBeNull();
-    expect(screen.queryByText("QUOTED BY OPERATIONS")).toBeNull();
   });
 });
