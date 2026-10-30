@@ -6,6 +6,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { AddressDeletion, DeleteAddressButton } from "@/components/AddressDeletion";
 import { ErrorState } from "@/components/ErrorState";
 import { HubPickupPanel } from "@/components/HubPickupPanel";
+import { MatchPrepNote } from "@/components/MatchPrepNote";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SkeletonLine } from "@/components/Skeleton";
@@ -172,6 +173,7 @@ export default function FulfilmentScreen() {
   return (
     <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen" contentContainerClassName="gg-page pb-8 pt-2">
+        <MatchPrepNote current="delivery" />
         <Text className="text-h2 text-text-primary">How should it reach you?</Text>
         <Text className="mt-2 text-body-lg text-text-secondary">
           GRIDGO matches a printer for where it is going, so this comes first.

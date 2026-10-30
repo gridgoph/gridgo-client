@@ -16,9 +16,13 @@ describe("StepTrail", () => {
     await render(<StepTrail current="listing" onStep={jest.fn()} />);
 
     expect(screen.getByText("Match")).toBeTruthy();
-    expect(screen.getByText("Listing")).toBeTruthy();
+    expect(screen.getByText("Print details")).toBeTruthy();
     expect(screen.getByText("Artwork")).toBeTruthy();
-    expect(screen.getByText("Pay")).toBeTruthy();
+    expect(screen.getByText("Review & pay")).toBeTruthy();
+    // The task on the current step, said under the bar.
+    expect(
+      screen.getByText("Choose options and quantity, then add it to your order."),
+    ).toBeTruthy();
   });
 
   it("marks where the client is standing and takes no tap for it", async () => {
@@ -35,7 +39,7 @@ describe("StepTrail", () => {
     const onStep = jest.fn();
     await render(<StepTrail current="listing" onStep={onStep} />);
 
-    fireEvent.press(screen.getByLabelText("Step 4 of 4: Pay, not reached yet."));
+    fireEvent.press(screen.getByLabelText("Step 4 of 4: Review & pay, not reached yet."));
     expect(onStep).not.toHaveBeenCalled();
   });
 
@@ -47,7 +51,8 @@ describe("StepTrail", () => {
       <StepTrail current="pay" onStep={onStep} canGo={(step) => step === "shop"} />,
     );
 
-    fireEvent.press(screen.getByLabelText("Step 2 of 4: Listing, done. Go back to it."));
+    // Said as done, without the "go back" it cannot keep.
+    fireEvent.press(screen.getByLabelText("Step 2 of 4: Print details, done."));
     expect(onStep).not.toHaveBeenCalled();
   });
 
@@ -58,7 +63,7 @@ describe("StepTrail", () => {
     fireEvent.press(screen.getByLabelText("Step 1 of 4: Match, done. Go back to it."));
     expect(onStep).toHaveBeenCalledWith("shop");
 
-    fireEvent.press(screen.getByLabelText("Step 2 of 4: Listing, done. Go back to it."));
+    fireEvent.press(screen.getByLabelText("Step 2 of 4: Print details, done. Go back to it."));
     expect(onStep).toHaveBeenCalledWith("listing");
   });
 });

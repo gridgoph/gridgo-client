@@ -44,7 +44,7 @@ import {
   suggestedDeadline,
 } from "@/lib/deadline";
 import { describeQuantity } from "@/lib/quantity";
-import { REQUEST_STEPS, validateStep } from "@/lib/requestValidation";
+import { continueLabel, REQUEST_STEPS, validateStep } from "@/lib/requestValidation";
 import { describeSize, sizeCatalogFor, type SizeCatalogEntry } from "@/lib/sizes";
 import {
   resumeSubmitPhase,
@@ -291,7 +291,7 @@ export default function NewRequestScreen() {
       ? "Send request"
       : stepId === "artwork" && needsFile
         ? "Choose artwork file"
-        : "Continue";
+        : continueLabel(draft.stepIndex);
 
   const onPrimaryPress = () => {
     if (stepId === "artwork" && needsFile) {
@@ -353,7 +353,7 @@ export default function NewRequestScreen() {
           </Text>
         </View>
 
-        <RequestStepper currentIndex={draft.stepIndex} />
+        <RequestStepper currentIndex={draft.stepIndex} counted />
 
         {/*
           The one orchestrated moment in this flow: a step landing. Animated

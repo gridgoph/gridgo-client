@@ -182,7 +182,7 @@ describe("ArtworkScreen", () => {
     await renderInSafeArea(<ArtworkScreen />);
 
     expect(screen.getByLabelText("Step 3 of 4: Artwork, where you are now.")).toBeTruthy();
-    expect(screen.getByLabelText("Step 2 of 4: Listing, done. Go back to it.")).toBeTruthy();
+    expect(screen.getByLabelText("Step 2 of 4: Print details, done. Go back to it.")).toBeTruthy();
   });
 
   it("draws no disabled yellow button while there is nothing to take to checkout", async () => {

@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { DeadlineCalendar, DeadlineCalendarSkeleton } from "@/components/DeadlineCalendar";
+import { MatchPrepNote } from "@/components/MatchPrepNote";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -308,6 +309,7 @@ export default function WhenScreen() {
         contentContainerClassName="gg-page pb-4 pt-2"
         showsVerticalScrollIndicator={false}
       >
+        {groupMode ? null : <MatchPrepNote current="date" />}
         <Text className="text-h2 text-text-primary">
           {groupMode ? `New date for ${label ?? "these items"}` : `When do you need your ${thing}?`}
         </Text>

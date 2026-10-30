@@ -493,7 +493,7 @@ describe("CheckoutScreen", () => {
     await renderInSafeArea(<CheckoutScreen />);
     await screen.findByText("WHAT GRIDGO IS PRINTING");
 
-    expect(screen.getByLabelText("Step 4 of 4: Pay, where you are now.")).toBeTruthy();
+    expect(screen.getByLabelText("Step 4 of 4: Review & pay, where you are now.")).toBeTruthy();
     expect(screen.getByLabelText("Step 3 of 4: Artwork, done. Go back to it.")).toBeTruthy();
   });
 

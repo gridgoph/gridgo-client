@@ -16,14 +16,19 @@ type Props = {
    * be worse than either.
    */
   steps?: readonly StepperStep[];
+  /**
+   * Say "Step 2 of 4: Artwork" under the pills. The pills alone read as four
+   * buttons; the line says they are a count, and where in it the client is.
+   */
+  counted?: boolean;
 };
 
 /**
  * Progress through a numbered flow.
  * The current step is the only yellow element on the bar.
  */
-export function RequestStepper({ currentIndex, steps = REQUEST_STEPS }: Props) {
-  return (
+export function RequestStepper({ currentIndex, steps = REQUEST_STEPS, counted = false }: Props) {
+  const row = (
     <View className="flex-row items-center gap-2" accessibilityRole="progressbar">
       {steps.map((step, index) => {
         const current = index === currentIndex;
@@ -40,6 +45,23 @@ export function RequestStepper({ currentIndex, steps = REQUEST_STEPS }: Props) {
       })}
     </View>
   );
+  if (!counted) return row;
+
+  const here = steps[currentIndex];
+  return (
+    <View className="gap-2">
+      {row}
+      {here ? (
+        <Text className="text-caption text-text-secondary">
+          {stepCountLine(currentIndex, steps.length, here.label)}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+export function stepCountLine(index: number, total: number, label: string): string {
+  return `Step ${index + 1} of ${total}: ${label}`;
 }
 
 function StepPill({
@@ -68,6 +90,9 @@ function StepPill({
   return (
     <View
       className={shell}
+      // A count, not a control: one announcement per pill, never a button.
+      accessible
+      accessibilityRole="text"
       accessibilityState={{ selected: current }}
       accessibilityLabel={`Step ${index + 1}: ${label}${current ? ", current" : done ? ", done" : ""}`}
     >
