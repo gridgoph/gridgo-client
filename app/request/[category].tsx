@@ -21,9 +21,11 @@ import { boardListings } from "@/lib/photoLinks";
 import { userFacingError } from "@/lib/copy";
 import { findCategory, type ProductCategory, type ProductSubcategory } from "@/lib/productCategories";
 import {
+  boardsComplete,
   loadCategoryBoards,
   orderableSubcategories,
   pickListingFor,
+  type CategoryBoards,
 } from "@/lib/shopBoards";
 import { subcategoryHoursView } from "@/lib/shopHours";
 
@@ -52,7 +54,18 @@ export default function CategoryScreen() {
 
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
   const [boards, setBoards] = useState<api.ShopBoard[] | null>(null);
+  /**
+   * How much of the directory `boards` covers. A product is only ever said to
+   * be on no press from a whole read: a board still coming, or one that failed
+   * to load, may be the one that lists it.
+   */
+  const [coverage, setCoverage] = useState<"whole" | "reading" | "short">("whole");
   const [boardsError, setBoardsError] = useState<string | null>(null);
+
+  const showRead = useCallback((read: CategoryBoards) => {
+    setBoards(read.boards);
+    setCoverage(boardsComplete(read) ? "whole" : read.pending > 0 ? "reading" : "short");
+  }, []);
 
   const boardSequence = useRef(0);
   const loadBoards = useCallback(async () => {
@@ -60,21 +73,31 @@ export default function CategoryScreen() {
     if (!categoryCode) return;
     try {
       const [read, tree] = await Promise.all([
-        loadCategoryBoards(categoryCode),
+        loadCategoryBoards(categoryCode, {
+          // A long directory paints its first boards while the rest are read.
+          onFirstWave: (partial) => {
+            if (sequence === boardSequence.current) showRead(partial);
+          },
+        }),
         api.getProductCategories().catch(() => null),
       ]);
       if (sequence !== boardSequence.current) return;
       if (tree) setCategories(tree);
-      setBoards(read.boards);
-      setBoardsError(null);
+      showRead(read);
+      setBoardsError(
+        read.unreadable.length
+          ? "Some of today's prices did not load, so this list may be short."
+          : null,
+      );
     } catch (e) {
       if (sequence !== boardSequence.current) return;
       setBoards(null);
+      setCoverage("whole");
       setBoardsError(
         userFacingError(e, "GRIDGO could not read today's prices, so this list may be short."),
       );
     }
-  }, [categoryCode]);
+  }, [categoryCode, showRead]);
 
   useLiveRefresh(["catalog", "services", "availability"], loadBoards, { refreshOnFocus: false });
 
@@ -86,9 +109,9 @@ export default function CategoryScreen() {
   const rereadBoards = useCallback(async ({ force }: { force: boolean }) => {
     if (!categoryCode) return null;
     const read = await loadCategoryBoards(categoryCode, { force });
-    setBoards(read.boards);
+    showRead(read);
     return boardListings(read.boards);
-  }, [categoryCode]);
+  }, [categoryCode, showRead]);
   const onStalePhoto = usePhotoLinkRefresh(heldListings, rereadBoards);
 
   useFocusEffect(useCallback(() => {
@@ -250,10 +273,21 @@ export default function CategoryScreen() {
         ) : null}
 
         {huntedQuoted.length ? (
-          <QuotedPanel
-            items={huntedQuoted}
-            split={split}
-          />
+          coverage === "reading" ? (
+            // Not "quoted by Operations" yet: the boards still being read may
+            // list them.
+            <View
+              className="mt-8"
+              accessibilityRole="progressbar"
+              accessibilityLabel="Checking more shops"
+            >
+              <Text className="text-body text-text-secondary">
+                Checking more of today&apos;s prices…
+              </Text>
+            </View>
+          ) : (
+            <QuotedPanel items={huntedQuoted} split={split} confirmed={coverage === "whole"} />
+          )
         ) : null}
       </View>
     </FormScreen>
@@ -263,18 +297,24 @@ export default function CategoryScreen() {
 function QuotedPanel({
   items,
   split,
+  confirmed,
 }: {
   items: ProductSubcategory[];
   split: boolean;
+  /** False when a board failed to load: then nothing is said to be off press. */
+  confirmed: boolean;
 }) {
   return (
     <View className="mt-8 gap-3">
       {split ? (
-        <Text className="text-overline text-text-muted">QUOTED BY OPERATIONS</Text>
+        <Text className="text-overline text-text-muted">
+          {confirmed ? "QUOTED BY OPERATIONS" : "NOT CONFIRMED YET"}
+        </Text>
       ) : null}
       <Text className="text-body text-text-secondary">
-        GRIDGO prints {split ? "these too" : "these"}. None of them is on a press
-        today, so Operations quotes them with you directly.
+        {confirmed
+          ? `GRIDGO prints ${split ? "these too" : "these"}. None of them is on a press today, so Operations quotes them with you directly.`
+          : `GRIDGO prints ${split ? "these too" : "these"}. Some prices did not load, so try again to see whether one is on a press today.`}
       </Text>
       <View className="gg-panel gap-4">
         {items.map((subcategory) => (
