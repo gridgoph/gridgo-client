@@ -16,7 +16,7 @@ import * as api from "@/lib/api";
 import { formatPhp, type Basket, type InstallmentCode, type Order } from "@/lib/api";
 import { allGroupsPhrase } from "@/lib/basketGroups";
 import { userFacingError } from "@/lib/copy";
-import { afterPayCopy, checkPaymentReference, downpaymentPercentOf, installmentLabel, MANUAL_CONFIRMATION_NOTICE, paymentInstallment, paysInFull, payInstruction } from "@/lib/payment";
+import { afterPayCopy, checkPaymentReference, downpaymentPercentOf, MANUAL_CONFIRMATION_NOTICE, paymentInstallment, paysInFull, payInstruction, submittedAmountLabel } from "@/lib/payment";
 import { liveGeneration } from "@/lib/live";
 import { OCR_READING, OCR_UNREADABLE } from "@/lib/receiptOcr";
 import { useOrderPayment } from "@/store/checkoutPayment";
@@ -176,7 +176,7 @@ export function PaymentUnderReviewCard({
       </View>
 
       <View className="gg-panel">
-        <SpecRow label={installmentLabel(installment, order)} value={
+        <SpecRow label={submittedAmountLabel(installment, order)} value={
           sentMinor != null ? formatPhp(sentMinor) : "—"
         } />
         {order.basketId && basket ? (

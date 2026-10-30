@@ -84,4 +84,5 @@ it("reads the canonical reference while pending without presenting another payme
   await act(async () => view.update(React.createElement(PaymentUnderReviewCard, { order: pending, installment: "balance" })));
   expect(view.root.findAllByType("PrimaryButton")).toHaveLength(0);
   expect(view.root.findAllByType("SpecRow").find((row) => row.props.label === "Reference you sent").props.value).toBe("9876543210000");
+  expect(view.root.findAllByType("SpecRow").some((row) => row.props.label === "Balance submitted")).toBe(true);
 });
