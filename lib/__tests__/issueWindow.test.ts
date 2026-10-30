@@ -72,6 +72,23 @@ describe("summarizeIssueWindow", () => {
     expect(status.elapsedLabel).toMatch(/Delivered 3 hours ago/);
   });
 
+  it("decides in two short sentences and keeps the consequences apart", () => {
+    const status = summarizeIssueWindow({
+      state: "issue_window_open",
+      openedAt: timeline[1].at,
+      expiresAt: new Date(NOW + 21 * HOUR).toISOString(),
+      windowHours: 24,
+      hasOpenIssue: false,
+      now: NOW,
+    });
+    expect(status.detail).toBe(
+      "Confirm only if everything is fine. If something is wrong, report it within 24 hours of delivery.",
+    );
+    expect(status.detail).not.toMatch(/payout/);
+    expect(status.consequences).toMatch(/holds the supplier payout/);
+    expect(status.consequences).toMatch(/closes on its own/);
+  });
+
   it("takes the window length from the setting, not from a constant", () => {
     const status = summarizeIssueWindow({
       state: "issue_window_open",
