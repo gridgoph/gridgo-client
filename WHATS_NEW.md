@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.491 (Improvement)
+
+- Clearer order steps, one price everywhere, and simpler artwork, payment and delivery-check screens.
+- More products show as ready to order, and checkout says again why Multi-drop is not offered yet.
+
 ## 1.0.477 (New feature)
 
 - The sound when your receipt prints after you order is now a short, soft ping.
