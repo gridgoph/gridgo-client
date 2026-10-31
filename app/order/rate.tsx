@@ -139,9 +139,14 @@ export default function RateOrderScreen() {
       <View className="gg-page gap-6 pb-8 pt-2">
         <View className="gap-2">
           <Text className="text-h1 text-text-primary">How did it go?</Text>
+          {/*
+            What feedback does, said no bigger than it is: it is one input to
+            future matches beside the client's own priorities and who is free,
+            never a promise of a particular shop (ux-findings-1030 #10). The
+            anonymity line sits with the written note, which is what is read.
+          */}
           <Text className="text-body text-text-secondary">
-            This decides who prints your next job. It is never shown to you as a shop name,
-            and nobody sees who left it.
+            Your feedback helps GRIDGO improve future matches.
           </Text>
         </View>
 
@@ -166,7 +171,9 @@ export default function RateOrderScreen() {
           <Text className="text-body-lg text-text-primary">
             Anything worth passing on?
           </Text>
-          <Text className="text-caption text-text-muted">Optional. The shop reads it without your name.</Text>
+          <Text className="text-caption text-text-muted">
+            Optional. The shop reads it without your name, and nobody sees who left it.
+          </Text>
           <TextField
             value={comment}
             onChangeText={setComment}

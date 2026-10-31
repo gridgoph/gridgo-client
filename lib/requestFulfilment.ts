@@ -29,6 +29,14 @@ export function fulfilmentStepFor(cart: Pick<Cart, "lines" | "requestFulfillment
   return cart.requestFulfillment ? "locked" : "legacy";
 }
 
+/** The date step's Continue: it names where the date goes next, by the same rule as `fulfilmentStepFor`. */
+export function dateContinueLabel(cart: Pick<Cart, "lines" | "requestFulfillment"> | null): string {
+  return fulfilmentStepFor(cart) === "ask" ? "Continue to Delivery" : FULFILMENT_CONTINUE_LABEL;
+}
+
+/** Delivery or pick-up always goes on to the priorities. */
+export const FULFILMENT_CONTINUE_LABEL = "Continue to Priorities";
+
 /** Whether a basket's travel was chosen before matching, and so cannot change at checkout. */
 export function isLockedFulfilment(cart: Pick<Cart, "requestFulfillment"> | null | undefined): boolean {
   return Boolean(cart?.requestFulfillment);

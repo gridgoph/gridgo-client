@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { DeadlineCalendar, DeadlineCalendarSkeleton } from "@/components/DeadlineCalendar";
+import { MatchPrepNote } from "@/components/MatchPrepNote";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
@@ -18,7 +19,7 @@ import {
   type BasketDate,
 } from "@/lib/basketGroups";
 import { clearMatchPrefetch, prefetchMatch } from "@/lib/matchPrefetch";
-import { fulfilmentStepFor } from "@/lib/requestFulfilment";
+import { dateContinueLabel, fulfilmentStepFor } from "@/lib/requestFulfilment";
 import { userFacingError } from "@/lib/copy";
 import { closedNowLine } from "@/lib/operatingHours";
 import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
@@ -287,6 +288,7 @@ export default function WhenScreen() {
         label={targetLabel ?? "this shop"}
         deadline={targetDeadline}
         onContinue={() => go(targetDeadline)}
+        continueLabel={dateContinueLabel(cart)}
         onChange={() => {
           clearMatchPrefetch();
           useBasketGroupTarget.getState().clear();
@@ -308,6 +310,7 @@ export default function WhenScreen() {
         contentContainerClassName="gg-page pb-4 pt-2"
         showsVerticalScrollIndicator={false}
       >
+        {groupMode ? null : <MatchPrepNote current="date" />}
         <Text className="text-h2 text-text-primary">
           {groupMode ? `New date for ${label ?? "these items"}` : `When do you need your ${thing}?`}
         </Text>
@@ -407,7 +410,7 @@ export default function WhenScreen() {
             // The date is already the largest thing on the screen. Repeating it
             // here wrapped the control onto two lines to say what the masthead
             // had just said.
-            label={saving ? "Saving the date…" : chosen ? (groupMode ? "Use this date" : "Continue") : "Pick a date"}
+            label={saving ? "Saving the date…" : chosen ? (groupMode ? "Use this date" : dateContinueLabel(cart)) : "Pick a date"}
             onPress={confirm}
             disabled={!chosen || saving}
           />
@@ -503,12 +506,14 @@ function GroupDate({
   label,
   deadline,
   onContinue,
+  continueLabel,
   onChange,
 }: {
   thing: string;
   label: string;
   deadline: string | null;
   onContinue: () => void;
+  continueLabel: string;
   onChange: () => void;
 }) {
   const day = deadline ? groupDateLabel(deadline) : null;
@@ -532,7 +537,7 @@ function GroupDate({
         </View>
       </View>
       <View className="gg-page gap-3 pb-2 pt-2">
-        <PrimaryButton label="Continue" onPress={onContinue} />
+        <PrimaryButton label={continueLabel} onPress={onContinue} />
         <SecondaryButton label="Pick a different date" onPress={onChange} />
       </View>
     </Screen>

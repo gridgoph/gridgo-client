@@ -9,6 +9,7 @@ import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
+import { GridgoPrice } from "@/components/GridgoPrice";
 import { DateTimeField } from "@/components/form/DateTimeField";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { FormField, FormSection } from "@/components/form/FormField";
@@ -33,7 +34,7 @@ import * as api from "@/lib/api";
 import { paymentPlanPreview, settingsDownpaymentPercent } from "@/lib/payment";
 import { composeAddress, DELIVERY_CITY } from "@/lib/address";
 import { isArtworkBusy } from "@/lib/artworkUpload";
-import { formatUnitPrice } from "@/lib/catalog";
+import { unitPriceSuffix } from "@/lib/catalog";
 import { userFacingError } from "@/lib/copy";
 import {
   describeLeadTime,
@@ -44,7 +45,7 @@ import {
   suggestedDeadline,
 } from "@/lib/deadline";
 import { describeQuantity } from "@/lib/quantity";
-import { REQUEST_STEPS, validateStep } from "@/lib/requestValidation";
+import { continueLabel, REQUEST_STEPS, validateStep } from "@/lib/requestValidation";
 import { describeSize, sizeCatalogFor, type SizeCatalogEntry } from "@/lib/sizes";
 import {
   resumeSubmitPhase,
@@ -291,7 +292,7 @@ export default function NewRequestScreen() {
       ? "Send request"
       : stepId === "artwork" && needsFile
         ? "Choose artwork file"
-        : "Continue";
+        : continueLabel(draft.stepIndex);
 
   const onPrimaryPress = () => {
     if (stepId === "artwork" && needsFile) {
@@ -508,9 +509,13 @@ function DetailsStep({
               <>
                 <Text className="text-h3 text-text-primary">{draft.productName}</Text>
                 {draft.basePriceMinor > 0 ? (
-                  <Text className="text-body text-text-secondary">
-                    From {formatUnitPrice(draft.basePriceMinor, draft.unit)}
-                  </Text>
+                  // The catalog's rate is the shop's; a client reads GRIDGO's,
+                  // the same figure the listing sheet shows for it.
+                  <GridgoPrice
+                    supplierMinor={draft.basePriceMinor}
+                    prefix="From "
+                    suffix={` ${unitPriceSuffix(draft.unit)}`}
+                  />
                 ) : null}
               </>
             ) : (
@@ -771,10 +776,19 @@ function SendStep({
       </View>
 
       <View className="gg-card">
-        <SpecRow
-          label="Catalog rate"
-          value={unitPriceMinor > 0 ? formatUnitPrice(unitPriceMinor, unit) : "Priced on request"}
-        />
+        {/* SpecRow's line, with GRIDGO's figure in it rather than the shop's. */}
+        <View className="flex-row items-baseline justify-between gap-4 border-b border-outline-subtle py-3">
+          <Text className="shrink-0 text-body text-text-secondary">Price from</Text>
+          {unitPriceMinor > 0 ? (
+            <GridgoPrice
+              supplierMinor={unitPriceMinor}
+              suffix={` ${unitPriceSuffix(unit)}`}
+              className="shrink text-right text-body text-text-primary"
+            />
+          ) : (
+            <Text className="shrink text-right text-body text-text-primary">Priced on request</Text>
+          )}
+        </View>
         <SpecRow label="Quantity" value={describeQuantity(quantity, unit)} />
         <View className="gap-1 pt-3">
           <View className="flex-row items-baseline justify-between gap-4">

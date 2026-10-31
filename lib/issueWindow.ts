@@ -140,6 +140,12 @@ export type IssueWindowStatus = {
   canReport: boolean;
   headline: string;
   detail: string;
+  /**
+   * What else follows from the choice — the payout hold, the window closing
+   * by itself — kept folded under the decision while it is open, so the two
+   * sentences above it are the whole decision. Null when there is no choice.
+   */
+  consequences?: string | null;
   /** "Delivered 3 hours ago" — real elapsed time since the window opened. */
   elapsedLabel: string | null;
   /**
@@ -295,13 +301,16 @@ export function summarizeIssueWindow({
   /*
     Two endings, and the good one leads. Most jobs arrive fine, and a card that
     opened with "tell Operations" read as though something was expected to be
-    wrong. Saying it is fine closes the job now; saying nothing lets the clock
-    close it; saying something is wrong holds the payout.
+    wrong. The decision is two sentences; what follows from it (the payout
+    hold, the clock closing it) is folded under them, and closing as fine still
+    states its full effect in its own confirmation (ux-findings-1030 #9).
   */
   return {
     canReport: true,
     headline: "Your order is with you. Is everything okay?",
-    detail: `If it is, say so and this job closes now. If something is wrong, tell Operations within ${issueWindowLengthLabel(windowHours)} of delivery — reporting holds the supplier payout while they review it. Say nothing and the window closes on its own once it passes.`,
+    detail: `Confirm only if everything is fine. If something is wrong, report it within ${issueWindowLengthLabel(windowHours)} of delivery.`,
+    consequences:
+      "Reporting holds the supplier payout while Operations reviews it. Say nothing and the window closes on its own once it passes.",
     elapsedLabel,
     remainingLabel,
   };

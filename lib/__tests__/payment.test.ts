@@ -6,6 +6,7 @@ import {
   downpaymentDue,
   downpaymentPercentOf,
   installmentLabel,
+  submittedAmountLabel,
   installmentSharePercent,
   installmentUnderReview,
   isInstallmentConfirmed,
@@ -96,6 +97,8 @@ describe("the legacy split", () => {
     const legacy = order("production", "confirmed");
     expect(installmentLabel("downpayment", legacy)).toBe("Downpayment");
     expect(installmentLabel("balance", legacy)).toBe("Remaining balance");
+    expect(submittedAmountLabel("downpayment", legacy)).toBe("Downpayment submitted");
+    expect(submittedAmountLabel("balance", legacy)).toBe("Balance submitted");
     expect(payActionTitle("downpayment", legacy)).toBe("Pay the 75% downpayment");
     expect(payActionTitle("balance", legacy)).toBe("Pay the remaining 25%");
   });
@@ -134,6 +137,12 @@ describe("paid in full", () => {
     expect(installmentLabel("downpayment", paidInFullOrder("production", "confirmed"))).toBe("Paid in full");
     expect(payActionTitle("downpayment", paidInFullOrder("awaiting_initial_payment"))).toBe("Pay in full");
     expect(installmentSharePercent("balance", paidInFullOrder("production"))).toBe(0);
+  });
+
+  it("labels a sent payment as sent, never as another request to pay", () => {
+    const pending = paidInFullOrder("initial_payment_review", "pending_confirmation");
+    expect(submittedAmountLabel("downpayment", pending)).toBe("Amount submitted");
+    expect(submittedAmountLabel("downpayment", pending)).not.toMatch(/^Pay|Paid/);
   });
 
   it("does not crash on a status added after this build", () => {

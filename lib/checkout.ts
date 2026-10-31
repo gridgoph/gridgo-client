@@ -147,6 +147,20 @@ export const PAYMENT_CHOICE_LABEL = "QR Ph";
 export const PAYMENT_CHOICE_BLURB =
   "Scan with GCash, Maya or your bank app, then send GRIDGO the receipt and its reference number.";
 
+/**
+ * Checkout's one payment instruction, over the evidence fields. Everything
+ * else about paying — which wallets, no cash, the plan — sits folded under
+ * `PAYMENT_DETAILS_TITLE`, because the same model said four times pushed the
+ * screenshot and reference below the fold (ux-findings-1030 #4).
+ */
+export const CHECKOUT_PAY_INSTRUCTION =
+  "Scan the QR and pay the amount shown. Then add your wallet screenshot and its reference number, and GRIDGO confirms it by hand in working hours.";
+
+export const PAYMENT_DETAILS_TITLE = "About paying by QR";
+
+/** Said while folded, so the one hard rule is read before anyone opens it. */
+export const PAYMENT_DETAILS_SUMMARY = "GCash, Maya or a bank e-wallet. No cash on delivery.";
+
 /*
  * What placing the order does with the money is `paymentPlanNote` in
  * `lib/payment.ts`: the up-front share comes from `GET /settings`, so the

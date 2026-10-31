@@ -13,8 +13,9 @@ type Props = {
 };
 
 /**
- * A heading that opens what the received order screen keeps folded:
- * "Get help?" and "View details" (report 5A28D524).
+ * A heading that opens what a screen keeps folded: the received order's
+ * "Get help?" and "View details" (report 5A28D524), checkout's "About paying
+ * by QR", and the artwork step's preparation and exact-colour notes.
  *
  * The heading is a real button that announces whether it is expanded; what it
  * opens is drawn by the screen straight under it, so the cards and rows in

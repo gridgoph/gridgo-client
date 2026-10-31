@@ -38,12 +38,15 @@ export const BOARDS_TTL_MS = 60_000;
 /**
  * How many shops' boards are read at once.
  *
- * The list route pages at 20. Reading every board on a browse screen would be
- * twenty round trips before anything is drawn, so the first page is capped and
- * the cap is stated wherever it could hide a shop — the match screen says how
- * many shops it looked at.
+ * One page of the shop list (`GET /catalog/shops` pages at 20, followed by
+ * `listCatalogShops`). Twelve stopped short of a page, so a product listed
+ * only on the thirteenth board was called off press (ux-findings-1030 #3).
+ * Reading the whole directory would be a round trip per listed shop before
+ * anything is drawn, so the read stays one page and the cap is stated
+ * wherever it could hide a shop — the match screen says how many shops it
+ * looked at.
  */
-export const MAX_BOARDS = 12;
+export const MAX_BOARDS = 20;
 
 /**
  * Every shop's board, for one category or — with an empty code — for all of

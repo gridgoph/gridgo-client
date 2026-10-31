@@ -361,9 +361,13 @@ function AppNavigation() {
                   name="request/rank"
                   options={pushedScreenOptions("Your priorities")}
                 />
+                {/*
+                  GRIDGO matches the job and the client never sees a shop, so
+                  the title never asks them to choose a supplier.
+                */}
                 <Stack.Screen
                   name="request/match"
-                  options={pushedScreenOptions("Choose a supplier")}
+                  options={pushedScreenOptions("Your match")}
                 />
                 {/*
                   Checkout's "Add more from Shop A": what that shop group can
@@ -375,7 +379,7 @@ function AppNavigation() {
                 />
                 <Stack.Screen
                   name="request/listing"
-                  options={pushedScreenOptions("Listing")}
+                  options={pushedScreenOptions("Print details")}
                 />
                 <Stack.Screen
                   name="request/artwork"

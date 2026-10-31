@@ -47,10 +47,20 @@ describe("ListingGallery", () => {
     await view.unmount();
   });
 
-  it("says no sample when a listing has no photos", async () => {
+  it("says no sample when a listing has no photos, in a short strip", async () => {
     const view = await renderGallery([]);
 
     expect(screen.getByText("No sample photo")).toBeTruthy();
+    // The banner strip, not a full 4:3 well with nothing in it.
+    expect(JSON.stringify(view.toJSON())).toContain('"aspectRatio":2.5');
+    expect(JSON.stringify(view.toJSON())).not.toContain('"aspectRatio":1.3333');
+    await view.unmount();
+  });
+
+  it("keeps the full-size frame for a single real photo", async () => {
+    const view = await renderGallery([photo(1)]);
+
+    expect(JSON.stringify(view.toJSON())).toContain('"aspectRatio":1.3333');
     await view.unmount();
   });
 

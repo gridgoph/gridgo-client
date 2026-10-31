@@ -68,6 +68,9 @@ function StepPill({
   return (
     <View
       className={shell}
+      // A count, not a control: one announcement per pill, never a button.
+      accessible
+      accessibilityRole="text"
       accessibilityState={{ selected: current }}
       accessibilityLabel={`Step ${index + 1}: ${label}${current ? ", current" : done ? ", done" : ""}`}
     >

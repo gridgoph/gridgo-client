@@ -81,6 +81,17 @@ export function installmentLabel(code: InstallmentCode, order?: PlanFields): str
   return code === "downpayment" ? "Downpayment" : "Remaining balance";
 }
 
+/**
+ * The amount row on a payment GRIDGO is still checking. It describes what the
+ * client already sent: an action label ("Pay in full") over money already
+ * transferred reads as a second request, and invites a duplicate transfer
+ * (ux-findings-1030 #8). Never "paid" either — Operations has not confirmed it.
+ */
+export function submittedAmountLabel(code: InstallmentCode, order?: PlanFields): string {
+  if (order && paysInFull(order) && code === "downpayment") return "Amount submitted";
+  return code === "downpayment" ? "Downpayment submitted" : "Balance submitted";
+}
+
 /** The share of the total each half carries, for guidance copy. */
 export function installmentSharePercent(code: InstallmentCode, order?: PlanFields): number {
   const upfront = order ? downpaymentPercentOf(order) : LEGACY_DOWNPAYMENT_PERCENT;
