@@ -150,18 +150,24 @@ describe("a hub pick-up on the shelf", () => {
 });
 
 describe("a delivery with a rider on the way", () => {
-  it("shows the same code the rider sees, and what to do if they differ", async () => {
+  it("shows the code to read out, and what to do if GRIDGO refuses it", async () => {
     api.getOrder.mockResolvedValue(refundOrder({ state: "out_for_delivery", riderId: "user_rider" }));
     api.getOrderHandover.mockResolvedValue(deliveryHandover());
     await renderScreen(<OrderDetailScreen />);
 
-    expect(await screen.findByText("Match this code with your rider")).toBeTruthy();
+    expect(await screen.findByText("Read this code to your rider")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Read this code out to your rider. They type it in and GRIDGO checks it. Don't accept the order until delivery is recorded.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/same code on their phone/)).toBeNull();
     expect(screen.getByLabelText("Handover code: 4 8 2, 9 1 3")).toBeTruthy();
-    expect(screen.getByText("If the codes do not match")).toBeTruthy();
+    expect(screen.getByText("If GRIDGO refuses the code")).toBeTruthy();
     expect(
       screen.getByText("Do not accept the order. The rider reports it to Operations, who contact you."),
     ).toBeTruthy();
-    expect(screen.getByText("Tell Operations the codes do not match")).toBeTruthy();
+    expect(screen.getByText("Tell Operations the code was refused")).toBeTruthy();
     // A door code is never a QR.
     expect(screen.queryByLabelText("Claim QR code for the hub staff to scan")).toBeNull();
   });
@@ -172,6 +178,6 @@ describe("a delivery with a rider on the way", () => {
     await renderScreen(<OrderDetailScreen />);
 
     expect(await screen.findAllByText(/Out for delivery/i)).toBeTruthy();
-    expect(screen.queryByText("Match this code with your rider")).toBeNull();
+    expect(screen.queryByText("Read this code to your rider")).toBeNull();
   });
 });

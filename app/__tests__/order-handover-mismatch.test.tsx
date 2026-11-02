@@ -35,8 +35,8 @@ it("reports a code mismatch to Operations only after the client confirms", async
   api.escalateHandover.mockResolvedValue(undefined);
   await renderScreen(<OrderDetailScreen />);
 
-  fireEvent.press(await screen.findByText("Tell Operations the codes do not match"));
-  expect(await screen.findByText("Tell Operations the codes do not match?")).toBeTruthy();
+  fireEvent.press(await screen.findByText("Tell Operations the code was refused"));
+  expect(await screen.findByText("Tell Operations the code was refused?")).toBeTruthy();
   expect(api.escalateHandover).not.toHaveBeenCalled();
   fireEvent.press(screen.getByText("Tell Operations"));
   await waitFor(() =>

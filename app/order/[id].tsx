@@ -828,7 +828,7 @@ export default function OrderDetailScreen() {
     </View>
   ) : (
       <View className={delivering ? "gap-6" : "gg-page gap-6 pb-16 pt-4"}>
-        {/* At the door, the code the rider also sees is the thing to find first. */}
+        {/* At the door, the code the client reads to the rider is the thing to find first. */}
         {delivering && handover && handover !== "error" ? (
           <DeliveryHandoverCard orderId={order.id} handover={handover} />
         ) : null}
@@ -886,7 +886,7 @@ export default function OrderDetailScreen() {
         */}
         {/*
           With the handover switch on, both endings carry a credential: the
-          hub's QR and code, or the code the rider also sees. An order made
+          hub's QR and code, or the code read to the rider. An order made
           ready before the switch has none and keeps the old counter card.
         */}
         {missedCalls}
