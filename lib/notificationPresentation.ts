@@ -491,7 +491,9 @@ function calloutFor(
   if (shopRecoveryNotificationNeedsYou(notification)) {
     return /no replacement/i.test(notification.body)
       ? { ...SHOP_CHOICE_CALLOUT, title: "Choose a full refund" }
-      : SHOP_CHOICE_CALLOUT;
+      : /pay the price difference/i.test(notification.body)
+        ? { tone: "warning", icon: "wallet", title: "Pay the rest by QR", detail: "Open the order to pay." }
+        : SHOP_CHOICE_CALLOUT;
   }
   const asked = notification.type ? TYPE_CALLOUTS[notification.type] : undefined;
   if (!asked) return null;

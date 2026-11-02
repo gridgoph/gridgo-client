@@ -268,7 +268,36 @@ export function refundStatusMeta(status: string): RefundStatusMeta {
  * only needs somewhere to go.
  */
 export function isDeliveryCredit(refund: Pick<Refund, "kind">): boolean {
-  return refund.kind === "delivery_pin";
+  return refund.kind === "delivery_pin" || refund.kind === "shop_move";
+}
+
+/**
+ * What a credit is for, in words. A `shop_move` credit is the difference when
+ * the order moved to a cheaper shop (gridgo-api#225); it behaves exactly like
+ * the delivery-pin one: reserved at once, never pausing the order.
+ */
+export function creditCopy(refund: Pick<Refund, "kind">): {
+  label: string;
+  short: string;
+  why: string;
+  explain: string;
+  when: string;
+} {
+  return refund.kind === "shop_move"
+    ? {
+        label: "Price-difference credit",
+        short: "price-difference",
+        why: "Your new shop costs less, so GRIDGO returns the difference.",
+        explain: "The difference between your printing and the new shop's price. Your order is not affected.",
+        when: "Shop changed",
+      }
+    : {
+        label: "Delivery-fee credit",
+        short: "delivery-fee",
+        why: "Your new pin costs less to deliver to, so GRIDGO returns the difference.",
+        explain: "The difference between the delivery fee you paid and the fee to your new pin. Your printing and your order are not affected.",
+        when: "Pin moved",
+      };
 }
 
 /** The chip, with the credit's own first step: an account to send it to. */
@@ -312,7 +341,7 @@ export function refundReasonPlaceholder(kind: string | null): string {
 }
 
 export function refundKindLabel(kind: string): string {
-  if (kind === "delivery_pin") return "Delivery-fee credit";
+  if (kind === "delivery_pin" || kind === "shop_move") return creditCopy({ kind }).label;
   return REFUND_KINDS.find((option) => option.value === kind)?.label ?? "Refund request";
 }
 
@@ -323,14 +352,15 @@ export function refundHeadline(refund: Refund): { headline: string; detail: stri
     : "your receiving account";
   const amount = refund.settlement ? formatPhp(refund.settlement.totalMinor) : null;
   if (isDeliveryCredit(refund) && refund.status === "destination_review") {
+    const credit = creditCopy(refund);
     return refund.destination
       ? {
           headline: "Operations is checking your receiving account",
-          detail: `Your ${amount ?? "delivery-fee"} credit is sent once they have checked the QR. Your order carries on as normal.`,
+          detail: `Your ${amount ?? credit.short} credit is sent once they have checked the QR. Your order carries on as normal.`,
         }
       : {
-          headline: `Add where to send your ${amount ?? "delivery-fee"} credit`,
-          detail: "Your new pin costs less to deliver to, so GRIDGO returns the difference. Add your receiving QR; Operations checks it, then sends the credit by hand. Your order carries on as normal.",
+          headline: `Add where to send your ${amount ?? credit.short} credit`,
+          detail: `${credit.why} Add your receiving QR; Operations checks it, then sends the credit by hand. Your order carries on as normal.`,
         };
   }
   switch (refund.status) {

@@ -334,7 +334,13 @@ export function userFacingError(error: unknown, fallback: string): string {
 
       // ---- the shop could not take the order (docs/SHOP_RECOVERY_API.md) ----
       case "shop_recovery_offer_changed":
-        return "GRIDGO checked the offer again while you were deciding. Look at the date shown now, then choose again.";
+        return "GRIDGO checked the offer again while you were deciding. Look at the date and price shown now, then choose again.";
+      case "shop_move_top_up_consent_required":
+        return "The amount to pay has changed since the screen loaded. Look at the price shown now, then choose again.";
+      case "invalid_shop_recovery_option":
+        return "That shop is no longer on offer. The order below shows the shops you can choose now.";
+      case "shop_move_top_up_use_recovery":
+        return "Pay the rest or choose a full refund from the new-shop choice on this order.";
       case "shop_recovery_stale":
       case "shop_recovery_not_available":
         return "This choice has moved on since the screen loaded. The order below shows where it stands now.";

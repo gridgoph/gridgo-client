@@ -100,7 +100,7 @@ import { currentRefund, refundEntry } from "@/lib/refunds";
 import { appliedChangeLine, deliveryPinNeedsClient } from "@/lib/deliveryPin";
 import { changeItemName, changeNeedsClient, changeRequestView, paidChanges } from "@/lib/orderChanges";
 import { rescheduleView } from "@/lib/reschedule";
-import { shopRecoveryView } from "@/lib/shopRecovery";
+import { isShopMoveTopUp, shopMoveLines, shopRecoveryView } from "@/lib/shopRecovery";
 import { useOrderShare } from "@/store/orderShare";
 import { useSurvey } from "@/store/survey";
 import { useFoundingTester } from "@/store/foundingTester";
@@ -1040,6 +1040,7 @@ function MoneyDetails({
   const checkoutTotal = order.totalMinor ?? total;
   // Approved changes the client paid for by QR, on top of checkout (report F9FCD485).
   const changes = paidChanges(order);
+  const moves = shopMoveLines(order);
   const pickupFee =
     order.fulfillmentMode === "pickup" && (order.deliveryFeeMinor ?? 0) > 0
       ? (order.deliveryFeeMinor as number)
@@ -1073,7 +1074,11 @@ function MoneyDetails({
         {changes.map((change) => (
           <SpecRow
             key={change.id}
-            label={`Change${changeItemName(order, change.lineItemId) ? ` to ${changeItemName(order, change.lineItemId)}` : ""} · paid by QR`}
+            label={
+              isShopMoveTopUp(order, change.id)
+                ? "New shop · rest paid by QR"
+                : `Change${changeItemName(order, change.lineItemId) ? ` to ${changeItemName(order, change.lineItemId)}` : ""} · paid by QR`
+            }
             value={`+${formatPhp(change.totalMinor)}`}
           />
         ))}
@@ -1109,6 +1114,10 @@ function MoneyDetails({
             The checkout total was {formatPhp(checkoutTotal)}; the receipt keeps the checkout figures.
           </Text>
         ) : null}
+        {/* A move to another shop leaves the committed total alone (gridgo-api#225). */}
+        {moves.map((line) => (
+          <Text key={line} className="text-caption text-text-muted">{line}</Text>
+        ))}
       </View>
       <SecondaryButton label="View receipt" onPress={onOpenReceipt} />
       {physicalInvoice ? (
