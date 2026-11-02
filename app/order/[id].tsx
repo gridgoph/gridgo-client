@@ -2,12 +2,13 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronLeft, ChevronRight, LifeBuoy, MessageCircle, ScrollText, Share2, Star } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Screen } from "@/components/Screen";
 
 import { AcknowledgementReceiptEntry } from "@/components/AcknowledgementReceiptEntry";
 import { BasketGroupsCard } from "@/components/BasketGroupsCard";
+import { SampleLinkCard } from "@/components/SampleLinkCard";
 import { CorrectionCard } from "@/components/CorrectionCard";
 import { ErrorState } from "@/components/ErrorState";
 import { DropoffConfirmationCard } from "@/components/DropoffConfirmationCard";
@@ -114,6 +115,7 @@ import { describeQuantity } from "@/lib/quantity";
 import { EMPTY_TAXONOMY, taxonomyLabel, type Taxonomy } from "@/lib/taxonomy";
 import { zoneName, type Zone } from "@/lib/zones";
 import { readsAcknowledgementReceipt } from "@/lib/acknowledgementReceipt";
+import { sampleBatchHref } from "@/lib/sampleFirst";
 
 /**
  * One print job, end to end.
@@ -488,6 +490,15 @@ export default function OrderDetailScreen() {
     </View>
   );
 
+  /* A sample, or a batch made from one, and the way to its other half (gridgo-api#222). */
+  const sampleLink = (
+    <SampleLinkCard
+      order={order}
+      onOpenOrder={(orderId) => router.push({ pathname: "/order/[id]", params: { id: orderId } })}
+      onOpenSample={(draftId) => router.push(sampleBatchHref(draftId) as Href)}
+    />
+  );
+
   /*
     One of several shops in a multi-shop order: every card below is this
     group's own — its progress, rider, action and money — and this is the way
@@ -780,6 +791,8 @@ export default function OrderDetailScreen() {
     <View className="gg-page gap-6 pb-16 pt-4">
       {heading}
 
+      {sampleLink}
+
       {/* The check window and its countdown, or the job complete once it has closed. */}
       {finished ? <JobCompleteCard order={order} compact /> : null}
       {actionZone === "issue" ? actionZoneView : null}
@@ -834,6 +847,8 @@ export default function OrderDetailScreen() {
         ) : null}
 
         {heading}
+
+        {sampleLink}
 
         {basketGroups}
 

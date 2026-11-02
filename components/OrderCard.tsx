@@ -11,6 +11,8 @@ import { paymentStatusLabel } from "@/lib/copy";
 import { paysInFull } from "@/lib/payment";
 import { orderReferenceSpoken } from "@/lib/orderReference";
 import { readyByDate, readyEarlyLabel, READY_TIME_EXPLANATION } from "@/lib/readyTime";
+import { orderSampleLink } from "@/lib/sampleFirst";
+import { EMPTY_TAXONOMY, taxonomyLabel } from "@/lib/taxonomy";
 import {
   formatPriceRange,
   orderStateMeta,
@@ -53,10 +55,14 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
         ? formatPriceRange(range.subtotalMinMinor, range.subtotalMaxMinor)
         : "Not priced yet";
   const moneyNote = exactTotal != null ? paymentStatusLabel(order.paymentStatus, paysInFull(order)) : "Estimate";
+  const sampleLink = orderSampleLink(order);
+  const sampleTag = sampleLink?.tag ?? null;
   const spec = [
-    `Qty ${order.quantity}`,
+    // A sample is one piece whatever the listing's unit (gridgo-api#222).
+    sampleLink?.kind === "sample" ? "1 sample piece" : `Qty ${order.quantity}`,
     order.size || null,
-    order.material || null,
+    // An order can store a material code; never draw the bare slug.
+    order.material ? taxonomyLabel(EMPTY_TAXONOMY, order.material) : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -66,7 +72,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${order.title}, ${order.groupLabel ? `${groupTag(order)}, part of a larger order, ` : ""}${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyEarlyLabel(order) ? `. ${readyEarlyLabel(order)}` : ""}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
+        accessibilityLabel={`${order.title}, ${sampleTag ? `${sampleTag}, ` : ""}${order.groupLabel ? `${groupTag(order)}, part of a larger order, ` : ""}${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyEarlyLabel(order) ? `. ${readyEarlyLabel(order)}` : ""}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
         accessibilityHint={orderWaitingOn(order) ?? undefined}
         className="p-4"
       >
@@ -88,6 +94,12 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
               {order.groupLabel ? (
                 <View className="gg-chip">
                   <Text className="text-caption text-text-secondary">{groupTag(order)}</Text>
+                </View>
+              ) : null}
+              {/* A paid sample, or the batch made from one (gridgo-api#222). */}
+              {sampleTag ? (
+                <View className="gg-chip">
+                  <Text className="text-caption text-text-secondary">{sampleTag}</Text>
                 </View>
               ) : null}
             </View>

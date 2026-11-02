@@ -12,6 +12,7 @@ import { OtherListingRow } from "@/components/OtherListingRow";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
+import { SampleOfferButton } from "@/components/SampleOfferButton";
 import { TopPickCard } from "@/components/TopPickCard";
 import { TourTarget } from "@/components/TourTarget";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
@@ -296,9 +297,11 @@ export default function MatchScreen() {
   const settings = usePlatformSettings((state) => state.settings);
   /** An Out of Zone listing the client tapped, waiting on the warning. */
   const [farListing, setFarListing] = useState<PickableListing | null>(null);
+  /** Whether that listing was tapped for a sample first (gridgo-api#222). */
+  const [farSample, setFarSample] = useState(false);
 
   const openListing = useCallback(
-    (item: PickableListing) => {
+    (item: PickableListing, sample = false) => {
       setFarListing(null);
       // The pick travels as its token, so the sheet's add names this listing
       // without anything on the client's side saying whose it is.
@@ -315,7 +318,7 @@ export default function MatchScreen() {
       // GRIDGO's, and the press behind it is GRIDGO's business.
       router.push({
         pathname: "/request/listing",
-        params: { itemId: item.id },
+        params: sample ? { itemId: item.id, sample: "1" } : { itemId: item.id },
       });
     },
     [match, router],
@@ -329,14 +332,15 @@ export default function MatchScreen() {
     one would.
   */
   const chooseListing = useCallback(
-    (item: PickableListing) => {
+    (item: PickableListing, sample = false) => {
       // A pick-up is collected at GRIDGO Office for a flat fee, so how far the
       // press is from the hub costs the client nothing.
       if (useJobFulfilment.getState().choice?.fulfillmentMode !== "pickup" && isOutOfZone(item.distanceZone)) {
         setFarListing(item);
+        setFarSample(sample);
         return;
       }
-      openListing(item);
+      openListing(item, sample);
     },
     [openListing],
   );
@@ -529,6 +533,9 @@ export default function MatchScreen() {
             onPress={() => chooseListing(topPick)}
             onStalePhoto={onStalePhoto}
           />
+          <View className="mt-3">
+            <SampleOfferButton listing={topPick} onPress={() => chooseListing(topPick, true)} />
+          </View>
         </View>
 
         {others.length ? (
@@ -537,12 +544,14 @@ export default function MatchScreen() {
               OTHER LISTINGS FOR THIS DAY
             </Text>
             {others.map((item) => (
-              <OtherListingRow
-                key={item.id}
-                listing={item}
-                onPress={() => chooseListing(item)}
-                onStalePhoto={onStalePhoto}
-              />
+              <View key={item.id} className="gap-2">
+                <OtherListingRow
+                  listing={item}
+                  onPress={() => chooseListing(item)}
+                  onStalePhoto={onStalePhoto}
+                />
+                <SampleOfferButton listing={item} onPress={() => chooseListing(item, true)} />
+              </View>
             ))}
           </View>
         ) : null}
@@ -581,7 +590,7 @@ export default function MatchScreen() {
         confirmLabel="Choose this listing"
         cancelLabel="Pick another listing"
         onConfirm={() => {
-          if (farListing) openListing(farListing);
+          if (farListing) openListing(farListing, farSample);
         }}
         onCancel={() => setFarListing(null)}
       />

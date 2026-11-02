@@ -677,6 +677,22 @@ export type Order = {
   /** "Shop A", "Shop B" — never the shop's identity. */
   groupLabel?: string | null;
   /**
+   * Sample First (gridgo-api#222): `["sample"]` on a paid sample,
+   * `["batch_from_sample"]` on the batch ordered from it. Read through
+   * `orderSampleLink` in `lib/sampleFirst.ts`.
+   */
+  orderTags?: string[];
+  /** The sample's batch draft, on both orders. */
+  sampleBatchDraftId?: string | null;
+  /** On a batch: the sample it was made to match. */
+  sampleOrderId?: string | null;
+  /** On a sample: the batch, once ordered. */
+  batchOrderId?: string | null;
+  /** What the client decided about the sample: the batch's standard. */
+  sampleDecision?: SampleDecision | null;
+  /** On a batch: which price it was ordered at. */
+  sampleBatchPricing?: { pricing: SampleBatchPricing; heldUntil: string | null } | null;
+  /**
    * Which of this shop's deliveries this is, and how many it has, once the
    * client split one shop into separate deliveries (gridgo-api#275,
    * `docs/SHOP_DELIVERIES_API.md`). Absent for a shop delivering once.
@@ -766,6 +782,12 @@ export type PlatformSettings = {
    * stays visible either way.
    */
   physicalInvoiceRequestsEnabled?: boolean;
+  /**
+   * How many days a sampled batch keeps its price after the sample arrives
+   * (gridgo-api#222, default 14). A draft keeps the length it was ordered
+   * under, so a screen reads the draft's own `holdDays` first.
+   */
+  sampleBatchHoldDays?: number;
   /**
    * The share of the total a new order takes up front: 100 (paid in full) or
    * 75. Absent on an API that predates the setting, which still writes 75/25
@@ -2262,6 +2284,16 @@ export type CatalogItem = {
   /** Present only once the shop has five or more reviews. */
   rating?: ShopRating;
   /**
+   * The shop sells one sample piece before the batch (gridgo-api#222,
+   * `docs/SAMPLE_FIRST_API.md`). Read through `sampleOffer` in
+   * `lib/sampleFirst.ts`. Absent on an older API.
+   */
+  sampleAvailable?: boolean;
+  /** The shop's own sample price. Never drawn on its own. */
+  samplePriceMinor?: number | null;
+  /** GRIDGO's sample price, fee inside: what a client reads. */
+  clientSamplePriceMinor?: number | null;
+  /**
    * Whether the shop is open now and when it next opens (gridgo-api#219).
    * Sent on full public listings only; read through `lib/shopHours.ts`.
    */
@@ -2833,6 +2865,9 @@ export type OtherListing = Pick<
   | "optionGroups"
   | "version"
   | "shopHours"
+  | "sampleAvailable"
+  | "samplePriceMinor"
+  | "clientSamplePriceMinor"
 > &
   MatchedListingFields & { minimumTurnaroundHours?: number | null };
 
@@ -3027,6 +3062,18 @@ export type CartLineRecord = {
    * custom merchandise, one tap otherwise. Absent on an API from before.
    */
   approvalMethod?: ApprovalMethod;
+  /**
+   * A paid sample (gridgo-api#222): the line is one piece, and
+   * `batchQuantity` is the batch it stands for. Null on an ordinary line.
+   */
+  sample?: { batchQuantity: number; replacesSampleBatchId: string | null } | null;
+  /** A batch ordered from an approved sample; only its quantity can change. */
+  sampleBatch?: {
+    draftId: string;
+    pricing: SampleBatchPricing;
+    sampleOrderId: string | null;
+    heldUntil: string | null;
+  } | null;
 };
 
 /**
@@ -3730,6 +3777,136 @@ export async function cancelQuoteRequest(id: string, reason?: string): Promise<Q
   return result.quoteRequest;
 }
 
+// ---- Sample First (gridgo-api#222, docs/SAMPLE_FIRST_API.md) ----
+
+export type SampleBatchPricing = "held" | "current";
+
+export type SampleBatchStatus =
+  | "awaiting_sample"
+  | "approved"
+  | "ordered"
+  | "rejected"
+  | "cancelled"
+  | (string & {});
+
+/** The sample decision copied onto the sample and batch orders. */
+export type SampleDecision = {
+  draftId: string;
+  decision: "approved" | "rejected" | (string & {});
+  method?: string;
+  at: string;
+  samplePhotoFileId?: string | null;
+  note?: string | null;
+  reason?: string;
+  next?: "resample" | "cancel";
+};
+
+/** A batch price GRIDGO worked out: item money, before service fee and delivery. */
+export type SampleBatchPrice = { quantity: number; clientItemMinor: number };
+
+/** The batch a client meant to order, kept while the sample is made. */
+export type SampleBatch = {
+  id: string;
+  status: SampleBatchStatus;
+  tags?: string[];
+  catalogItemId: string;
+  itemName: string | null;
+  sampleOrderId: string;
+  sampleOrderState: string | null;
+  batchOrderId: string | null;
+  previousDraftId: string | null;
+  replacedByDraftId: string | null;
+  batch: {
+    quantity: number;
+    optionIds?: string[];
+    specialInstructions?: string | null;
+    [key: string]: unknown;
+  };
+  holdDays: number;
+  sampleDeliveredAt: string | null;
+  heldUntil: string | null;
+  holdActive: boolean;
+  holdExpired: boolean;
+  heldPrice: SampleBatchPrice | null;
+  currentPrice: SampleBatchPrice | null;
+  canOrderAtHeldPrice: boolean;
+  heldPriceBlocker: string | null;
+  canOrderAtCurrentPrice: boolean;
+  /** A tick today; an unknown method is approved with its own evidence. */
+  approval: {
+    version: number;
+    method: string;
+    accepted: boolean;
+    samplePhotoFileId: string | null;
+    note?: string | null;
+    at: string;
+  } | null;
+  rejection: { version: number; reason: string; next: "resample" | "cancel"; at: string } | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listSampleBatches(): Promise<SampleBatch[]> {
+  const result = await request<{ sampleBatches: SampleBatch[] }>("/me/sample-batches");
+  return result.sampleBatches ?? [];
+}
+
+/** `quantity` prices both the held and today's figure for another batch size. */
+export async function getSampleBatch(id: string, quantity?: number): Promise<SampleBatch> {
+  const query = quantity != null ? `?quantity=${encodeURIComponent(String(quantity))}` : "";
+  const result = await request<{ sampleBatch: SampleBatch }>(
+    `/me/sample-batches/${encodeURIComponent(id)}${query}`,
+  );
+  return result.sampleBatch;
+}
+
+/** Approve with a tick and a photo uploaded as `approval_sample_photo`. */
+export async function approveSampleBatch(
+  id: string,
+  input: { samplePhotoFileId: string; note?: string },
+): Promise<SampleBatch> {
+  const result = await request<{ sampleBatch: SampleBatch }>(
+    `/me/sample-batches/${encodeURIComponent(id)}/approve`,
+    {
+      method: "POST",
+      body: JSON.stringify({ accepted: true, method: "tick", ...input }),
+    },
+  );
+  return result.sampleBatch;
+}
+
+export async function rejectSampleBatch(
+  id: string,
+  input: { reason: string; next: "resample" | "cancel" },
+): Promise<SampleBatch> {
+  const result = await request<{ sampleBatch: SampleBatch }>(
+    `/me/sample-batches/${encodeURIComponent(id)}/reject`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.sampleBatch;
+}
+
+export async function cancelSampleBatch(id: string, reason?: string): Promise<SampleBatch> {
+  const result = await request<{ sampleBatch: SampleBatch }>(
+    `/me/sample-batches/${encodeURIComponent(id)}/cancel`,
+    { method: "POST", body: JSON.stringify(reason ? { reason } : {}) },
+  );
+  return result.sampleBatch;
+}
+
+/** A new basket holding the batch, at the held or today's price. */
+export async function createSampleBatchCart(
+  id: string,
+  input: { pricing: SampleBatchPricing; quantity?: number },
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/sample-batches/${encodeURIComponent(id)}/cart`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.cart;
+}
+
 export type CartFulfilment = {
   fulfillmentMode?: FulfilmentMode;
   serviceLevel?: ServiceLevel;
@@ -3826,6 +4003,13 @@ export async function addCartLine(
     /** Up to eight exact colours; omit when the client named none. */
     colorTargets?: ColorTargetInput[];
     dropoff?: OrderPoint | null;
+    /**
+     * Order one sample piece instead (gridgo-api#222). `quantity` is then the
+     * batch the sample stands for. Only into an empty basket.
+     */
+    sample?: boolean;
+    /** With `sample`: the draft rejected for a new sample that this replaces. */
+    replacesSampleBatchId?: string;
   },
 ): Promise<Cart> {
   const result = await request<{ cart: Cart }>(

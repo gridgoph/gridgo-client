@@ -119,6 +119,37 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "This quote has expired. Ask GRIDGO to renew it in chat, or request a new quote.";
       case "quote_not_accepted":
         return "Choose this quote's option first, from My quotes.";
+      // ---- Sample First (gridgo-api#222) ----
+      case "sample_cart_exclusive":
+        return "A sample, or a batch made from one, is checked out on its own. Finish or empty this order first.";
+      case "sample_unavailable":
+        return "This shop no longer offers a sample of this product. You can still order the full batch.";
+      case "sample_speed_fixed":
+        return "A sample is made at the shop's standard speed. The speed you choose is kept for your batch.";
+      case "sample_batch_specs_locked":
+        return "Your batch keeps the specs of the sample you approved. Only the quantity, drop-off and date can change. To change anything else, reject the sample and order a new one.";
+      case "sample_hold_expired":
+        return "The held price has ended. You can still order this batch at today's price.";
+      case "sample_batch_not_approved":
+        return "Approve the sample before you order its batch.";
+      case "sample_shop_changed":
+        return "Another shop made your sample, so its batch price was not held. You can order at today's price.";
+      case "sample_batch_ordered":
+        return "This batch has already been ordered. Open it from Orders.";
+      case "sample_batch_not_resampleable":
+        return "This sample cannot be replaced. Open My samples to see where it stands.";
+      case "sample_batch_already_resampled":
+        return "You already ordered a new sample for this batch.";
+      case "sample_not_delivered":
+        return "You can decide once the sample has reached you.";
+      case "sample_batch_decided":
+        return "This sample has already been decided. It has been refreshed.";
+      case "sample_batch_not_found":
+        return "This sample was not found. Open My samples and pick it again.";
+      case "invalid_approval_file":
+        return "Add a photo of the sample you received, then approve it.";
+      case "catalog_item_stale":
+        return "This product is no longer listed by that shop, so the batch cannot be ordered.";
       case "hub_pickup_disabled":
         return "Hub pick-up is currently unavailable for new orders. Choose delivery, or start a new print job to change a locked pick-up choice.";
       case "invalid_credentials":

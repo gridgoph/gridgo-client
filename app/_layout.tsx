@@ -555,6 +555,9 @@ function AppNavigation() {
                 <Stack.Screen name="quotes/index" options={pushedScreenOptions("Quotes")} />
                 <Stack.Screen name="quotes/new" options={pushedScreenOptions("Quotes")} />
                 <Stack.Screen name="quotes/[id]" options={pushedScreenOptions("Quote")} />
+                {/* Sample First (gridgo-api#222), from Account, a sample order and a batch order. */}
+                <Stack.Screen name="samples/index" options={pushedScreenOptions("Samples")} />
+                <Stack.Screen name="samples/[id]" options={pushedScreenOptions("Sample")} />
                 {/* The voucher wallet (gridgo-api#204), from Account. */}
                 <Stack.Screen name="vouchers" options={pushedScreenOptions("Vouchers")} />
                 {/* Founding Tester invites (client#323), from the path card and Account. */}
