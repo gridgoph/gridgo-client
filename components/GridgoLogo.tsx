@@ -2,7 +2,7 @@ import { Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
 import type { AccountType } from "@/lib/api";
-import { useThemeColors } from "@/hooks/useTheme";
+import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 
 /**
  * The GRIDGO mark: a 3x3 grid with one corner lit.
@@ -205,6 +205,7 @@ type LogoProps = {
 export function GridgoLogo({ size = 28, role }: LogoProps) {
   const visibleRole = role ? ROLE_VISIBLE[role] : null;
   const metrics = gridgoLockupMetrics(size, visibleRole != null);
+  const theme = useThemeName();
 
   return (
     <View
@@ -218,13 +219,42 @@ export function GridgoLogo({ size = 28, role }: LogoProps) {
     >
       <GridgoMark size={metrics.markSize} />
       {/* The text block the mark is measured against: wordmark over role. */}
-      <View>
-        <Text
-          className="font-brand text-text-primary"
-          style={{ fontSize: metrics.wordmarkFontSize, lineHeight: metrics.wordmarkLineHeight }}
-        >
-          GRID<Text className="text-brand">GO</Text>
-        </Text>
+      <View testID="gridgo-lockup-text">
+        {theme === "light" ? (
+          // Light: GO is black type on a yellow block (client#335) — the
+          // yellow carries the brand, and black type stays legible on the
+          // light canvas where `#FFDE58` type was not.
+          <View className="flex-row items-center">
+            <Text
+              className="font-brand text-text-primary"
+              style={{ fontSize: metrics.wordmarkFontSize, lineHeight: metrics.wordmarkLineHeight }}
+            >
+              GRID
+            </Text>
+            <View
+              className="bg-action-yellow"
+              style={{
+                marginLeft: 1,
+                borderRadius: Math.max(3, Math.round(metrics.wordmarkFontSize * 0.18)),
+                paddingHorizontal: Math.max(2, Math.round(metrics.wordmarkFontSize * 0.12)),
+              }}
+            >
+              <Text
+                className="font-brand text-action-yellow-on"
+                style={{ fontSize: metrics.wordmarkFontSize, lineHeight: metrics.wordmarkLineHeight }}
+              >
+                GO
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Text
+            className="font-brand text-text-primary"
+            style={{ fontSize: metrics.wordmarkFontSize, lineHeight: metrics.wordmarkLineHeight }}
+          >
+            GRID<Text className="text-brand">GO</Text>
+          </Text>
+        )}
         {visibleRole != null ? (
           <View
             // One fixed slot, so the mark's growth and the role's height are

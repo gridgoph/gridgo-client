@@ -1,10 +1,10 @@
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import HomeScreen from "@/app/(tabs)/home";
 import { useCart } from "@/store/cart";
-import { useRequestDraft } from "@/store/requestDraft";
+import { useHomeSummary } from "@/store/homeSummary";
 import { useSession } from "@/store/session";
 
 const mockPush = jest.fn();
@@ -27,6 +27,9 @@ jest.mock("@/lib/api", () => {
     listCatalog: jest.fn(async () => []),
     getProductCategories: jest.fn(async () => []),
     getCart: jest.fn(async () => null),
+    getHomeSummary: jest.fn(async () => null),
+    getFeaturedPrints: jest.fn(async () => ({ items: [] })),
+    saveAccountThemePreference: jest.fn(async (value: string) => value),
   };
 });
 
@@ -50,10 +53,12 @@ function renderInSafeArea(ui: ReactElement) {
 
 beforeEach(() => {
   mockPush.mockClear();
+  useHomeSummary.getState().clear();
   api.listOrders.mockReset();
   api.listOrders.mockResolvedValue([]);
+  api.getHomeSummary.mockReset();
+  api.getHomeSummary.mockRejectedValue(new Error("offline"));
   useCart.getState().reset();
-  useRequestDraft.getState().reset();
   useSession.setState({
     user: {
       id: "user_1",
@@ -68,23 +73,59 @@ beforeEach(() => {
 });
 
 /**
- * Home is a summary: anything waiting on the client, then how to start
- * something new. It is not a second orders list — that is the tab below.
+ * Home is one screen (client#335): a search that greets the client, Featured
+ * Prints, the five families as round buttons, the smart tile and Reorder.
+ * The job lists live on Orders.
  */
-describe("Home as a summary", () => {
-  it("invites a first print, searchable, when there are no jobs", async () => {
+describe("Home on one screen", () => {
+  it("greets the client by first name in the search", async () => {
+    await renderInSafeArea(<HomeScreen />);
+    expect(await screen.findByPlaceholderText("Hello Rina, what are we printing?")).toBeTruthy();
+  });
+
+  it("draws the families as round buttons and keeps job lists off Home", async () => {
     await renderInSafeArea(<HomeScreen />);
 
-    expect(await screen.findByText("START YOUR FIRST PRINT")).toBeTruthy();
-    expect(screen.queryByText("START A PRINT")).toBeNull();
-    expect(screen.getByLabelText("Search what GRIDGO prints")).toBeTruthy();
-    expect(screen.getByLabelText("Marketing & promotional collateral")).toBeTruthy();
-    expect(screen.getByLabelText("Documents & publications")).toBeTruthy();
-    expect(screen.queryByText("NEEDS YOU")).toBeNull();
-    expect(screen.queryByText("YOUR JOBS")).toBeNull();
+    expect(await screen.findByLabelText("Marketing & promotional collateral")).toBeTruthy();
+    expect(screen.getByText("Marketing")).toBeTruthy();
+    expect(screen.getByText("Docs")).toBeTruthy();
     expect(screen.queryByText("IN PROGRESS")).toBeNull();
     expect(screen.queryByText("RECENTLY FINISHED")).toBeNull();
-    expect(screen.queryByText("View all")).toBeNull();
-    expect(screen.queryByText("No print jobs yet")).toBeNull();
+    expect(screen.queryByText("START YOUR FIRST PRINT")).toBeNull();
+  });
+
+  it("keeps Reorder in place, disabled, before there is a past print", async () => {
+    await renderInSafeArea(<HomeScreen />);
+    const reorder = await screen.findByLabelText("Reorder. No past print yet");
+    expect(reorder.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
+  });
+
+  it("offers the newest past order on the Reorder tile", async () => {
+    api.listOrders.mockResolvedValue([
+      { id: "ord_old", title: "Old flyers", state: "completed", createdAt: "2026-08-01T00:00:00Z" },
+      { id: "ord_new", title: "Event tarpaulin", state: "completed", createdAt: "2026-09-01T00:00:00Z" },
+    ]);
+    await renderInSafeArea(<HomeScreen />);
+    expect(await screen.findByLabelText("Reorder Event tarpaulin")).toBeTruthy();
+  });
+
+  it("shows the smart tile GRIDGO's summary names", async () => {
+    api.getHomeSummary.mockResolvedValue({
+      serverTime: "2026-11-02T08:00:00.000Z",
+      tile: "active_order",
+      missions: null,
+      activeOrder: {
+        orderId: "ord_1", state: "production", step: 2, stepKey: "printing", stepCount: 4,
+        fulfillmentMode: "delivery", basketId: null, awaitingPayment: false,
+        promisedAt: "2026-11-04T09:00:00.000Z", statusAt: "2026-11-02T03:10:00.000Z",
+        time: { kind: "promised", at: "2026-11-04T09:00:00.000Z" },
+      },
+      activeOrderCount: 1,
+      testerVoucher: null,
+      bugReport: { rewardAvailable: false, amountMinor: 1500 },
+    });
+    await renderInSafeArea(<HomeScreen />);
+    expect(await screen.findByLabelText("Your order, Printing")).toBeTruthy();
+    expect(screen.getByText(/^Ready by Wed/)).toBeTruthy();
   });
 });

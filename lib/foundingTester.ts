@@ -396,3 +396,23 @@ export function celebrationCopy(view: EarnedView): CelebrationCopy {
     action: "See my vouchers",
   };
 }
+
+/* --------------------------------------------------------------------------
+   The Founding Tester screen (client#335)
+   -------------------------------------------------------------------------- */
+
+/** The line under a step, by its state: "Done", the step's own detail, or what unlocks it. */
+export function stepStatusLine(step: StepRow, index: number): string {
+  if (step.status === "done") return "Done";
+  if (step.status === "next") return step.detail;
+  return `Unlocks after step ${index}`;
+}
+
+/**
+ * The mission voucher's code, when the soonest tester voucher GRIDGO reports
+ * is the mission's own. Another programme voucher (an invite, a bug report)
+ * is never shown as the mission's reward.
+ */
+export function missionVoucher<T extends { kind: string; code: string }>(voucher: T | null | undefined): T | null {
+  return voucher && voucher.kind === "mission" && voucher.code ? voucher : null;
+}

@@ -13,6 +13,7 @@ import { APP_SOUND_COPY } from "@/lib/appSound";
 import { previewUpdateChime } from "@/lib/updateChime";
 import { WHATS_NEW_HISTORY_COPY } from "@/lib/whatsNewHistory";
 import { useNotificationNudge } from "@/store/notificationNudge";
+import { useSession } from "@/store/session";
 import { useThemeStore } from "@/store/theme";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -36,7 +37,8 @@ export default function SettingsScreen() {
   const colors = useThemeColors();
   const scheme = useThemeName();
   const preference = useThemePreference();
-  const setPreference = useThemeStore((s) => s.setPreference);
+  const choose = useThemeStore((s) => s.choose);
+  const userId = useSession((s) => s.user?.id ?? null);
   const muted = useNotificationNudge((s) => s.muted);
   const setMuted = useNotificationNudge((s) => s.setMuted);
   const toggleSound = () => {
@@ -63,7 +65,7 @@ export default function SettingsScreen() {
                 return (
                   <Pressable
                     key={option.value}
-                    onPress={() => setPreference(option.value)}
+                    onPress={() => void choose(option.value, userId)}
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
                     // Routine control — monochrome accent, never actionYellow.

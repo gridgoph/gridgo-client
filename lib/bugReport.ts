@@ -172,3 +172,17 @@ function titleCase(value: string): string {
   const trimmed = value.trim();
   return trimmed ? trimmed[0].toUpperCase() + trimmed.slice(1) : "";
 }
+
+/** Issue reports take at most 5000 characters (gridgo-api `docs/ISSUE_REPORTS_API.md`). */
+export const ISSUE_REPORT_MAX = 5000;
+
+/**
+ * The issue-report copy of a report: the chat message as sent, plus where its
+ * screenshots and the reply live, so staff confirming it open the right thread.
+ */
+export function issueReportText(report: string, threadId: string, screenshots: number): string {
+  const tail = [`Support chat thread: ${threadId}`];
+  if (screenshots > 0) tail.push(`Screenshots: ${screenshots}, in that thread`);
+  const text = `${report}\n\n${tail.join("\n")}`;
+  return text.length > ISSUE_REPORT_MAX ? text.slice(0, ISSUE_REPORT_MAX) : text;
+}

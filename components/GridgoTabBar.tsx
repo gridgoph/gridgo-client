@@ -1,13 +1,15 @@
 import type { BottomTabBarProps } from "expo-router/js-tabs";
-import { Bell, Building2, FileText, House, User, type LucideIcon } from "lucide-react-native";
+import { Bell, Building2, FileText, House, Plus, User, type LucideIcon } from "lucide-react-native";
 import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BellSwing } from "@/components/BellSwing";
+import { QuickActionsSheet } from "@/components/QuickActionsSheet";
 import { ACTION_TAB, TABS, type TabName } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useUnreadCount } from "@/store/notifications";
 import { useIsApprovedOrganization } from "@/store/organization";
+import { useQuickActions } from "@/store/quickActions";
 
 /* ---------------------------------------------------------------------------
    Bar geometry
@@ -106,14 +108,18 @@ export type TabBarMetrics = {
   itemPaddingTop: number;
   itemGap: number;
   itemPaddingBottom: number;
-  /** The floating yellow disc that starts a request. Never below the 44pt touch floor. */
+  /** The raised yellow "+" in the centre. Never below the 44pt touch floor. */
   actionDiameter: number;
   /**
-   * How far a disc used to rise through this bar's hairline. Always 0: the
-   * plus floats over the scene now, so this bar paints edge to edge.
+   * How far the "+" rises through the bar's hairline (client#335). The bar's
+   * layout box is this much taller than its paint, so the raised half stays
+   * inside the bar's bounds and stays tappable on Android.
    */
   actionRise: number;
 };
+
+/** How far the centre "+" stands above the painted bar. */
+const ACTION_RISE = 20;
 
 /** The glyph in a tab column. One size in both states, on both platforms. */
 const TAB_ICON_SIZE = 24;
@@ -135,7 +141,7 @@ export function tabBarMetrics(platformOS: string): TabBarMetrics {
       itemGap: 2,
       itemPaddingBottom: 3,
       actionDiameter: 56,
-      actionRise: 0,
+      actionRise: ACTION_RISE,
     };
   }
   // Material 3: 80dp container, 12dp above the item, 16dp below it, 24dp icon.
@@ -145,16 +151,11 @@ export function tabBarMetrics(platformOS: string): TabBarMetrics {
     itemGap: 4,
     itemPaddingBottom: 16,
     actionDiameter: 56,
-    actionRise: 0,
+    actionRise: ACTION_RISE,
   };
 }
 
 export const TAB_BAR_METRICS = tabBarMetrics(Platform.OS);
-
-/** Air between the floating plus and the tab bar — close, never touching. */
-export const START_PRINT_FAB_GAP = 16;
-/** Inset from the page edge. A hair more than the tab gap so it is not glued to the corner. */
-export const START_PRINT_FAB_INSET_RIGHT = 20;
 
 /**
  * What sits below the content row: whatever the platform reserves, with the
@@ -182,25 +183,19 @@ export function tabBarPaddingBottom(insetBottom: number): number {
  * table above is one assertion rather than a re-derivation in the test.
  *
  * This is the number UIKit and Material 3 publish, and it is the same in all
- * three GRIDGO apps. The plus floats over the scene rather than overhanging
- * this bar, so the layout box and the painted bar are the same height.
+ * three GRIDGO apps. The raised "+" sits in a strip above this, inside the
+ * bar's layout box ({@link tabBarHeight}).
  */
 export function tabBarPaintedHeight(platformOS: string, insetBottom: number): number {
   return tabBarMetrics(platformOS).columnHeight + tabBarPaddingBottom(insetBottom);
 }
 
 /**
- * The bar's layout box. Equals {@link tabBarPaintedHeight}: there is no
- * overhang strip now that the plus floats on the scene.
+ * The bar's layout box: the painted bar plus the strip the raised "+" stands
+ * in. Only the centre column reaches into that strip.
  */
 export function tabBarHeight(platformOS: string, insetBottom: number): number {
   return tabBarMetrics(platformOS).actionRise + tabBarPaintedHeight(platformOS, insetBottom);
-}
-
-export function startPrintFabBottom(_insetBottom: number): number {
-  // The tab scene already sits above the bar. Adding the bar's height here
-  // parked the disc a whole row too high. This is only the air above the bar.
-  return START_PRINT_FAB_GAP;
 }
 
 /**
@@ -253,82 +248,123 @@ const ICONS: Record<Exclude<TabName, typeof ACTION_TAB>, LucideIcon> = {
 /**
  * The GRIDGO tab bar.
  *
- * Four labelled destinations. The yellow "+" floats over the scene (see
- * `StartPrintFab`) instead of living in this bar, so the row paints edge to
- * edge the way gridgo-supplier does.
+ * Four labelled destinations with the raised yellow "+" in the centre
+ * (client#335): Home, Orders, "+", Alerts, Account. The "+" opens the quick
+ * actions (`QuickActionsSheet`) — it is not a destination, so it carries no
+ * label and is never "selected".
  *
  * The column height and the item padding come from `tabBarMetrics` — a 57pt
  * row on iOS, and Material 3's 80dp container on Android — with the note
  * above this file's metrics explaining why the two differ and why neither adds
  * a design gap on top of a platform inset.
  *
- * Each column is laid out with `justify-end`, so any slack a platform leaves
- * over its natural stack sits above the glyph and absorbs the badge's `-top-1`
- * overhang. No fixed `h-13` — a rigid 52 left zero top slack and put the badge
- * above the bar border.
- *
- * The surface and top border are absolute to the outer edges, so they fill the
- * inset region down to the physical edge whatever the padding is.
+ * The layout box is `actionRise` taller than the paint: the surface and its
+ * hairline start that far down, and only the "+" column reaches up into the
+ * strip, so the raised half of the disc is inside the bar and tappable.
  *
  * The open tab is said twice over, in colour and in weight: its glyph goes
  * from muted to full-strength ink and its label from muted regular to medium.
  * The row therefore still reads correctly in grayscale. Yellow is spent in one
- * place only — the floating disc that starts a print request.
+ * place only — the "+".
  */
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const unreadCount = useUnreadCount();
   const approvedOrganization = useIsApprovedOrganization();
+  const showActions = useQuickActions((s) => s.show);
+
+  const items = state.routes.flatMap((route, index) => {
+    const tab = TABS.find((entry) => entry.name === route.name);
+    if (!tab || tab.name === ACTION_TAB) return [];
+    // Only an approved organization account is offered Organizations.
+    if (tab.name === "organizations" && !approvedOrganization) return [];
+    const focused = state.index === index;
+    const onPress = () => {
+      const event = navigation.emit({
+        type: "tabPress",
+        target: route.key,
+        canPreventDefault: true,
+      });
+      if (!focused && !event.defaultPrevented) {
+        navigation.navigate(route.name);
+      }
+    };
+    return [
+      <TabItem
+        key={route.key}
+        name={tab.name}
+        label={tab.label}
+        focused={focused}
+        onPress={onPress}
+        badge={tab.name === "notifications" && unreadCount > 0 ? unreadCount : 0}
+      />,
+    ];
+  });
+  // The "+" sits in the middle: after Orders on the four-tab bar.
+  items.splice(Math.floor(items.length / 2), 0, <ActionColumn key="quick-actions" onPress={showActions} />);
 
   return (
     <View
       testID="gridgo-tab-bar"
       className="relative"
-      style={{ paddingBottom: tabBarPaddingBottom(insets.bottom) }}
+      style={{ paddingTop: TAB_BAR_METRICS.actionRise, paddingBottom: tabBarPaddingBottom(insets.bottom) }}
     >
       {/*
-        Drawn before the row, so the action disc paints over the top border and
-        the hairline breaks around it with no cut-out to maintain. Spans the
-        full outer height including the bottom inset region.
+        Drawn before the row, so the "+" paints over the top border and the
+        hairline breaks around it with no cut-out to maintain. Spans down
+        through the bottom inset region.
       */}
       <View
         className="absolute inset-x-0 bottom-0 border-t border-outline bg-surface"
-        style={{ top: 0 }}
+        style={{ top: TAB_BAR_METRICS.actionRise }}
       />
 
-      <View className="flex-row items-end">
-        {state.routes.map((route, index) => {
-          const tab = TABS.find((entry) => entry.name === route.name);
-          if (!tab || tab.name === ACTION_TAB) return null;
-          // Only an approved organization account is offered Organizations.
-          if (tab.name === "organizations" && !approvedOrganization) return null;
+      <View className="flex-row items-end">{items}</View>
+      <QuickActionsSheet />
+    </View>
+  );
+}
 
-          const focused = state.index === index;
-
-          const onPress = () => {
-            const event = navigation.emit({
-              type: "tabPress",
-              target: route.key,
-              canPreventDefault: true,
-            });
-
-            if (!focused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
-            }
-          };
-
-          return (
-            <TabItem
-              key={route.key}
-              name={tab.name}
-              label={tab.label}
-              focused={focused}
-              onPress={onPress}
-              badge={tab.name === "notifications" && unreadCount > 0 ? unreadCount : 0}
-            />
-          );
-        })}
-      </View>
+/** The raised yellow "+" that opens the quick actions. */
+function ActionColumn({ onPress }: { onPress: () => void }) {
+  const colors = useThemeColors();
+  const size = TAB_BAR_METRICS.actionDiameter;
+  return (
+    <View
+      className="flex-1 items-center"
+      style={{ marginTop: -TAB_BAR_METRICS.actionRise, minHeight: TAB_BAR_METRICS.columnHeight + TAB_BAR_METRICS.actionRise }}
+    >
+      <Pressable
+        testID="quick-actions-open"
+        accessibilityRole="button"
+        accessibilityLabel="Quick actions"
+        accessibilityHint="Start a print, chat with GRIDGO, track or reorder"
+        onPress={onPress}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: colors.actionYellow,
+          alignItems: "center",
+          justifyContent: "center",
+          ...Platform.select({
+            ios: {
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.22,
+              shadowRadius: 5,
+            },
+            default: { elevation: 4 },
+          }),
+        }}
+      >
+        {({ pressed }) => (
+          <>
+            <Plus size={26} color={colors.actionYellowOn} strokeWidth={2.5} />
+            {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-pill" /> : null}
+          </>
+        )}
+      </Pressable>
     </View>
   );
 }

@@ -29,6 +29,8 @@ type Props = {
   onActivate?: () => void;
   /** The results opened or closed, so Home can stand the board aside. */
   onResultsChange?: (showing: boolean) => void;
+  /** What the empty field says. Home greets the client by first name here. */
+  placeholder?: string;
 };
 
 /** How long the results sit still before a screen reader hears the count. */
@@ -63,6 +65,7 @@ export function HomeSearch({
   onOpenPicker,
   onActivate,
   onResultsChange,
+  placeholder,
 }: Props) {
   const colors = useThemeColors();
   const inputRef = useRef<TextInput>(null);
@@ -164,8 +167,8 @@ export function HomeSearch({
       <View
         className={
           focused
-            ? "flex-row items-center gap-3 rounded-field border-2 border-accent bg-surface px-3"
-            : "flex-row items-center gap-3 rounded-field border border-outline bg-surface px-3"
+            ? "flex-row items-center gap-3 rounded-pill border-2 border-accent bg-surface px-4"
+            : "flex-row items-center gap-3 rounded-pill border border-outline bg-surface px-4"
         }
       >
         <Search size={18} color={colors.textMuted} strokeWidth={2} />
@@ -197,7 +200,7 @@ export function HomeSearch({
           onSubmitEditing={() => {
             if (search.searching) openPicker(true);
           }}
-          placeholder="What are you printing?"
+          placeholder={placeholder ?? "What are you printing?"}
           placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
           autoCorrect={false}

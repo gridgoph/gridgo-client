@@ -1,20 +1,14 @@
 import type { ReactNode } from "react";
 
 import { Screen } from "@/components/Screen";
-import { StartPrintFab } from "@/components/StartPrintFab";
 
 /**
- * A main tab: canvas, status-bar inset, and the yellow "+" on the bottom right.
+ * A main tab: canvas and status-bar inset.
  *
- * Home, Orders, Notifications and Account all open through this so the plus
- * cannot drift onto one screen and off another, and so the stepper — which is
- * already a request in progress — never grows a second one.
+ * Home, Orders, Notifications and Account all open through this. The yellow
+ * "+" lives in the centre of the tab bar now (client#335), not on each
+ * screen, so it can never drift onto one tab and off another.
  */
 export function TabScreen({ children }: { children: ReactNode }) {
-  return (
-    <Screen edges={["top"]}>
-      {children}
-      <StartPrintFab />
-    </Screen>
-  );
+  return <Screen edges={["top"]}>{children}</Screen>;
 }

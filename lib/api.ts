@@ -3324,6 +3324,98 @@ export async function getAccount(): Promise<User> {
 }
 
 // ---------------------------------------------------------------------------
+// Client Home (client#335). Contract: gridgo-api `docs/CLIENT_HOME_API.md`.
+// ---------------------------------------------------------------------------
+
+/** Light, dark, or follow the phone. Saved on the account. */
+export type AccountThemePreference = "system" | "light" | "dark";
+
+const THEME_PREFERENCES: readonly AccountThemePreference[] = ["system", "light", "dark"];
+
+function readThemePreference(value: unknown): AccountThemePreference | null {
+  return THEME_PREFERENCES.find((known) => known === value) ?? null;
+}
+
+/**
+ * The theme saved on the account, from `GET /auth/me/client`
+ * (`clientProfile.themePreference`). Null when the API does not send one.
+ */
+export async function getAccountThemePreference(): Promise<AccountThemePreference | null> {
+  const body = await request<{ clientProfile?: { themePreference?: unknown } | null }>("/auth/me/client");
+  return readThemePreference(body?.clientProfile?.themePreference);
+}
+
+/** `PATCH /me/theme`. The last write wins; repeating the current value is a no-op. */
+export async function saveAccountThemePreference(
+  themePreference: AccountThemePreference,
+): Promise<AccountThemePreference> {
+  const body = await request<{ themePreference?: unknown }>("/me/theme", {
+    method: "PATCH",
+    body: JSON.stringify({ themePreference }),
+  });
+  return readThemePreference(body?.themePreference) ?? themePreference;
+}
+
+/** The order the smart tile shows: one of four steps. */
+export type HomeActiveOrder = {
+  orderId: string;
+  state: string;
+  /** 1 placed, 2 printing, 3 on the way / ready for pickup, 4 delivered. */
+  step: number;
+  stepKey: "placed" | "printing" | "on_the_way" | "delivered" | (string & {});
+  stepCount: number;
+  fulfillmentMode: "delivery" | "pickup" | (string & {});
+  basketId: string | null;
+  awaitingPayment: boolean;
+  promisedAt: string | null;
+  statusAt: string | null;
+  time: { kind: "promised" | "since" | "delivered" | (string & {}); at: string } | null;
+};
+
+/** The client's soonest-expiring unused tester-programme voucher. */
+export type HomeTesterVoucher = {
+  voucherId: string;
+  kind: "mission" | "referral" | "bug_report" | (string & {});
+  valueMinor: number;
+  code: string;
+  expiresAt: string;
+  secondsRemaining: number;
+  daysLeft: number;
+  redeemable: boolean;
+  reserved: boolean;
+};
+
+/** `GET /me/home-summary`: everything the smart tile shows, in one call. */
+export type HomeSummary = {
+  serverTime: string;
+  tile: "missions" | "active_order" | "tester_voucher" | "invite" | (string & {});
+  missions: (FoundingTester & { total?: number }) | null;
+  activeOrder: HomeActiveOrder | null;
+  activeOrderCount: number;
+  testerVoucher: HomeTesterVoucher | null;
+  bugReport: { rewardAvailable: boolean; amountMinor: number } | null;
+};
+
+export async function getHomeSummary(): Promise<HomeSummary> {
+  return request<HomeSummary>("/me/home-summary");
+}
+
+/**
+ * File a report through `POST /issue-reports` with the client's session, so
+ * the report records its reporter — the only way a confirmed bug can earn the
+ * tester's one-time voucher (gridgo-api `docs/ISSUE_REPORTS_API.md`).
+ */
+export async function fileIssueReport(input: {
+  issue: string;
+  category?: "bug" | "feature" | "other";
+}): Promise<{ id: string; createdAt: string }> {
+  return request<{ id: string; createdAt: string }>("/issue-reports", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Founding Tester path and invites (client#323). Contract: gridgo-api
 // `docs/FOUNDING_TESTER_API.md`. Every route answers `FoundingTesterRead`, and
 // the installation ID is this app's own UUID v4 (`lib/installationId.ts`).

@@ -1,160 +1,104 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { ChevronRight } from "lucide-react-native";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
-import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useReducedMotion } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 
 import { TabScreen } from "@/components/TabScreen";
-import { ErrorState } from "@/components/ErrorState";
-import { FoundingTesterCard } from "@/components/FoundingTesterCard";
+import { CartButton } from "@/components/CartButton";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
-import { HomeCategoryRow } from "@/components/HomeCategoryRow";
-import { HomeSampleStrip } from "@/components/HomeSampleStrip";
+import { HomeCategoryCircles } from "@/components/HomeCategoryCircles";
+import { HomeFeaturedPrints } from "@/components/HomeFeaturedPrints";
+import { HomeReorderTile } from "@/components/HomeReorderTile";
 import { HomeSearch } from "@/components/HomeSearch";
-import { HomeActionRow, HomeFinishedRow, HomeJobRow } from "@/components/HomeRow";
-import { PushEnableCard } from "@/components/PushEnableCard";
-import { ScreenHeader } from "@/components/ScreenHeader";
+import { HomeActionRow } from "@/components/HomeRow";
+import { HomeSmartTile } from "@/components/HomeSmartTile";
+import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
 import { SeasonBanner } from "@/components/SeasonBanner";
-import { LegalNoticeBanner } from "@/components/legal/LegalNoticeBanner";
-import { SkeletonHomeDocket } from "@/components/Skeleton";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { TourTarget } from "@/components/TourTarget";
-import { tabScreenContentPadding } from "@/components/GridgoTabBar";
+import { LegalNoticeBanner } from "@/components/legal/LegalNoticeBanner";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
+import { useReorder } from "@/hooks/useReorder";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
-import { useThemeColors } from "@/hooks/useTheme";
 import { useTourAutoStart, useTourScreen } from "@/hooks/useTourScreen";
-import { useVisibleTourStep } from "@/hooks/useTourStep";
 import * as api from "@/lib/api";
-import { userFacingError } from "@/lib/copy";
 import { foundingTesterView } from "@/lib/foundingTester";
-import { startPrintHref } from "@/lib/startPrint";
 import { featuredPrintsFrom, type HomeSample } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
+import { lastOrder, smartTileView } from "@/lib/homeSummary";
 import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
 import { type ProductCategory } from "@/lib/productCategories";
 import { useBasketGroupTarget } from "@/store/basketGroup";
-import { cartIsOpen, useCart } from "@/store/cart";
+import { cartLineCount, useCart } from "@/store/cart";
+import { useHomeSummary, useOwnHomeSummary } from "@/store/homeSummary";
 import { useNotifications } from "@/store/notifications";
 import { useSeasonWindows } from "@/store/seasonWindows";
-import { draftHasContent, useRequestDraft } from "@/store/requestDraft";
 import { useFoundingTester } from "@/store/foundingTester";
 import { useSession } from "@/store/session";
 
 /**
- * Home answers two questions, in this order: is anything waiting on me, and
- * how do I start something new.
+ * Home is one phone screen with no scrolling (client#335): the mark, cart and
+ * theme; a search that greets the client; Featured Prints; the five families
+ * as one row of round buttons; and two tiles — the smart tile and Reorder.
  *
- * It is a summary, not a second orders list. The Orders tab already carries
- * the full cards, search, filters, sort and reorder. Repeating those cards
- * here is what stretched a handful of jobs across five or six screens.
- *
- * Jobs come in three shapes, in the order they matter (`lib/homeJobs.ts`).
- * Waiting jobs lead with the next verb, grouped as one docket — a flush list,
- * because the question there is "which of these, and what do I do". Jobs in
- * progress are the other question, "where has it got to", so they are cards
- * led by the state in words, with the compact stage rail and what happens
- * next. Finished jobs are one quiet line each, the latest two: three finished
- * cards used to look exactly like live work and push the start menu off the
- * first screen, and an uncapped list of rows piled up the same way.
- * Each group is capped; the rest live on Orders, one tap away through
- * "View all".
- *
- * Starting is one section, in the order a person arrives in: search first for
- * someone who already knows they want a tarpaulin — typed in place, with
- * matches dropping down under the field — then the five categories
- * for someone who is looking. Those five are one full-width board, not a grid:
- * two columns orphaned the fifth family beside an empty half-row and cut the
- * contents line off mid-item on most of the rest. The search bar deliberately
- * sits inside that section rather than at the top of the screen — question one
- * is still whether anything is waiting, and a bar pinned above the docket
- * would answer question two first. The yellow "+" still owns the primary
- * start, so nothing in this column is yellow.
+ * Featured Prints is the one part that flexes, so on a small phone it shrinks
+ * first and nothing else moves. Only it swipes. The full job list lives on
+ * Orders; Home keeps a single line for a job that is waiting on the client,
+ * because "is anything waiting on me" must never need a second tab to answer.
+ * The yellow "+" in the tab bar opens every other action.
  */
 export default function HomeScreen() {
-  const { user } = useSession();
+  const user = useSession((s) => s.user);
   const router = useRouter();
-  const colors = useThemeColors();
-  const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
-  const draftTitle = useRequestDraft((s) => s.title || s.productName);
-  const hasDraft = useRequestDraft(draftHasContent);
   const refreshNotifications = useNotifications((s) => s.refresh);
   const refreshAccount = useSession((s) => s.refresh);
   const startJob = useStartPrintJob();
   const loadCart = useCart((s) => s.load);
-  const cartOpen = useCart(cartIsOpen);
+  const cartCount = useCart(cartLineCount);
   const seasons = useSeasonWindows((s) => s.seasons);
   const dismissedSeasons = useSeasonWindows((s) => s.dismissed);
   const seasonsHydrated = useSeasonWindows((s) => s.hydrated);
   const loadSeasons = useSeasonWindows((s) => s.load);
   const dismissSeason = useSeasonWindows((s) => s.dismiss);
+  const summary = useOwnHomeSummary();
+  const summaryFailed = useHomeSummary((s) => s.failed);
+  const { reorder, pendingLabel, confirmReplace, cancelReplace } = useReorder();
 
-  const [orders, setOrders] = useState<api.Order[]>([]);
+  const [orders, setOrders] = useState<api.Order[] | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [samples, setSamples] = useState<HomeSample[] | null>(null);
-  const [samplesLoading, setSamplesLoading] = useState(false);
 
-  /**
-   * FEATURED PRINTS, read for every client.
-   *
-   * It used to be read only for a client with nothing on press, which meant
-   * the list staff curate never reached anyone who had ordered before (issue
-   * report 876B533C). It sits after the jobs, so a job waiting on the client
-   * still leads. The list is the one GRIDGO's staff curated
-   * (`GET /featured-prints`); an empty or failed
-   * read leaves the row out rather than showing an empty shelf, and never
-   * falls back to anything else — the start board under it answers
-   * everything the row does, one tap further along.
-   */
+  // FEATURED PRINTS: GRIDGO's curated list (`GET /featured-prints`). An empty
+  // or failed read leaves the block out rather than showing an empty shelf.
   const loadSequence = useRef(0);
-  const loadSamples = useCallback(async (sequence: number) => {
-    setSamplesLoading(true);
-    try {
-      const read = featuredPrintsFrom(await api.getFeaturedPrints());
-      if (sequence === loadSequence.current) setSamples(read);
-    } catch {
-      if (sequence === loadSequence.current) setSamples([]);
-    } finally {
-      if (sequence === loadSequence.current) setSamplesLoading(false);
-    }
-  }, []);
-
-  /**
-   * The row's photo links are signed for five minutes and Home can sit in the
-   * background for hours. Resuming onto an old read re-reads the list, and a
-   * tile failing on an expired link re-reads it — the server does not cache
-   * it, so the photos come back rather than turning into "This photo will not
-   * load".
-   */
-  const heldSamples = samples?.length ? samples : null;
   const rereadSamples = useCallback(async () => {
     const read = featuredPrintsFrom(await api.getFeaturedPrints());
     setSamples(read);
     return read;
   }, []);
-  const onStalePhoto = usePhotoLinkRefresh(heldSamples, rereadSamples);
+  const onStalePhoto = usePhotoLinkRefresh(samples?.length ? samples : null, rereadSamples);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
-    setSamplesLoading(false);
-    try {
-      const list = await api.listOrders();
-      if (sequence !== loadSequence.current) return;
-      setOrders(list);
-      setError(null);
-      void loadSamples(sequence);
-    } catch (e) {
-      if (sequence !== loadSequence.current) return;
-      setOrders([]);
-      setError(userFacingError(e, "Could not load home. Check your connection and try again."));
-    } finally {
-      if (sequence === loadSequence.current) setLoading(false);
-    }
+    void api
+      .listOrders()
+      .then((list) => {
+        if (sequence === loadSequence.current) setOrders(list);
+      })
+      .catch(() => {
+        // Home still starts a print; the waiting line and Reorder wait.
+        if (sequence === loadSequence.current) setOrders((current) => current ?? []);
+      });
+    void api
+      .getFeaturedPrints()
+      .then((body) => {
+        if (sequence === loadSequence.current) setSamples(featuredPrintsFrom(body));
+      })
+      .catch(() => {
+        if (sequence === loadSequence.current) setSamples((current) => current ?? []);
+      });
     void api
       .getProductCategories()
       .then((tree) => {
@@ -164,381 +108,146 @@ export default function HomeScreen() {
       .catch(() => {
         // Seed already on screen.
       });
+    void useHomeSummary.getState().load(useSession.getState().user?.id ?? null);
     void refreshNotifications();
     // The basket lives on GRIDGO, so the count on the cart control is only
     // honest if it is re-read. Coming back from checkout is exactly when it
     // has changed.
     void loadCart();
     void loadSeasons();
-    // The Founding Tester missions ride on the account, and a confirmed
-    // payment or a handover is exactly the order change that ticks one.
+    // The Founding Tester missions ride on the account.
     void refreshAccount();
-    // Which order's survey is open is GRIDGO's answer, read only while the
-    // survey is the step left to do.
     const tester = foundingTesterView(useSession.getState().user);
     if (tester?.kind === "missions" && tester.steps.some((step) => step.key === "rated" && step.status === "next")) {
       void useFoundingTester.getState().loadOpenSurveys();
     }
-  }, [refreshNotifications, loadCart, loadSamples, loadSeasons, refreshAccount]);
+  }, [refreshNotifications, loadCart, loadSeasons, refreshAccount]);
 
-  useLiveRefresh(["orders", "catalog", "services", "availability", "settings", "credits"], load, { refreshOnFocus: false });
+  useLiveRefresh(["orders", "catalog", "identity", "settings", "credits"], load, { refreshOnFocus: false });
 
   useFocusEffect(
     useCallback(() => {
       void load();
-      // Back on Home, any "add more from Shop A" errand is over: the next
-      // product started from here searches every shop.
+      // Back on Home, any "add more from Shop A" errand is over.
       useBasketGroupTarget.getState().clear();
-      return () => { loadSequence.current++; };
+      return () => {
+        loadSequence.current++;
+      };
     }, [load]),
   );
 
-  const jobs = homeJobs(orders);
-  const foundingTester = foundingTesterView(user);
-  const openSurveys = useFoundingTester((s) => s.openSurveys);
-  // Held until the phone has read its dismissals back, or a banner already
-  // put away would flash on every cold start.
+  const jobs = homeJobs(orders ?? []);
+  const waiting = jobs.needsYou[0] ?? null;
+  const previous = lastOrder(orders ?? []);
+  const tile = summary || summaryFailed ? smartTileView(summary, user) : null;
   const seasonToday = davaoToday();
-  const seasonBanners = seasonsHydrated
-    ? bannersToShow(seasons, dismissedSeasons, seasonToday)
-    : [];
-  const showJobs = !loading && !error;
-  // "View all" rides on whichever of the two quieter sections comes first.
-  // The docket never needs it: every waiting job is already on it.
-  const viewAllOn = jobs.inProgress.length ? "inProgress" : "finished";
+  const seasonBanner = seasonsHydrated ? bannersToShow(seasons, dismissedSeasons, seasonToday)[0] ?? null : null;
+  const featured = samples ?? [];
+  const showFeatured = samples === null || featured.length > 0;
 
-  // Nothing on press: the one moment Home has room to introduce the platform
-  // rather than report on it.
-  const welcoming = !loading && !error && orders.length === 0;
-  const shownSamples = samples ?? [];
-  const showSamples = showJobs && (samplesLoading || shownSamples.length > 0);
-
-  /*
-    The first-order tour starts here, once, for a client with nothing on
-    press (`lib/tour.ts`). Its two Home steps light the search bar and the
-    category board, which sit below the docket and the samples — so the
-    section is scrolled into view before the light lands on it.
-  */
+  // The first-order tour starts here, once, for a client with nothing on press.
   useTourScreen("home");
-  useTourAutoStart(welcoming);
-  const tourStep = useVisibleTourStep().step?.id;
-  const reduceMotion = useReducedMotion();
-  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
-  const startY = useRef(0);
-  const boardY = useRef(0);
-  useEffect(() => {
-    if (tourStep !== "home.search" && tourStep !== "home.categories") return;
-    const y = tourStep === "home.search" ? startY.current : startY.current + boardY.current;
-    scrollRef.current?.scrollTo({ y: Math.max(0, y - 96), animated: !reduceMotion });
-  }, [tourStep, reduceMotion]);
+  useTourAutoStart(orders !== null && orders.length === 0);
 
-  // Typing in the search opens results under it. The field goes to the top of
-  // the screen, section label still in view, so the results have the room
-  // between it and the keyboard. Instant on web: a browser cancels a smooth
-  // scroll at the next keystroke, which left the field where it was.
   const [searchOpen, setSearchOpen] = useState(false);
-  const makeRoomForSearch = useCallback(() => {
-    scrollRef.current?.scrollTo({
-      y: Math.max(0, startY.current - 8),
-      animated: !reduceMotion && Platform.OS !== "web",
-    });
-  }, [reduceMotion]);
+  const firstName = (user?.name ?? "").trim().split(/\s+/)[0];
 
   return (
     <TabScreen>
       {/*
-        Keyboard-aware because Home takes typing now: the search field sits
-        mid-page, and its results must not open behind the keyboard. A tap on
-        the background dismisses; a tap on a result still presses.
+        Keyboard-aware because Home takes typing: the search's results must
+        not open behind the keyboard. The content is sized to the screen, so
+        nothing scrolls unless the phone is too small to hold it.
       */}
       <KeyboardAwareScrollView
-        ref={scrollRef}
         className="gg-screen"
+        contentContainerStyle={{ flexGrow: 1 }}
         bottomOffset={KEYBOARD_CARET_GAP}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={KEYBOARD_DISMISS}
       >
-        <View className="gg-page pt-4" style={{ paddingBottom: tabPad }}>
-          {/*
-            One header: the mark, and cart and chat as the two ways back into
-            work already in flight. The client's name lives on Account — putting
-            it here split the top of Home into chrome and a greeting, and the
-            jobs slot starts higher without it.
-
-            No portrait, illustration or photo in this row. The mark is the
-            identity here, and a second image beside it would make the header
-            about the account rather than about the work.
-          */}
-          <ScreenHeader>
-            <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
-          </ScreenHeader>
-
-          {/*
-            A client with nothing on press gets a greeting and a sentence
-            saying what happens next. The name is not in the header row — that
-            split the top of Home into chrome and a greeting and pushed the
-            jobs slot down for everyone. Here it costs nothing, because this
-            block only exists on the one Home that has no jobs to report.
-
-            It is not the grey "No print jobs yet" panel that used to sit here.
-            That spent the best space on the screen on a button that went
-            exactly where the board below already goes; this says what GRIDGO
-            does with the job and then gets out of the way.
-          */}
-          {welcoming ? (
-            <View className="mt-6">
-              <Text className="text-h1 text-text-primary">{greeting(user?.name)}</Text>
-              <Text className="mt-2 text-body text-text-secondary">
-                Choose what you need and GRIDGO finds the printer.
-              </Text>
+        <View className="gg-page flex-1 gap-3 pb-3 pt-2">
+          <View className="flex-row items-center justify-between gap-3">
+            <View className="min-w-0 flex-1">
+              <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
             </View>
-          ) : null}
+            <CartButton count={cartCount} onPress={() => router.push("/checkout")} />
+            <ThemeSwitch />
+          </View>
 
-          {/*
-            A draft in progress is a fact the client cannot see anywhere else,
-            so Home surfaces it as a way back into it. It sits with the waiting
-            work rather than with the menu below, because it is a job of theirs
-            that has stalled, not a new one to start.
-          */}
-          {hasDraft ? (
-            <Pressable
-              onPress={() => router.push("/(tabs)/new-request")}
-              accessibilityRole="button"
-              accessibilityLabel={`Continue your request for ${draftTitle || "an unnamed job"}`}
-              className="mt-6 gg-panel-high gg-touch flex-row items-center gap-3"
-            >
-              {({ pressed }) => (
-                <>
-                  <View className="flex-1">
-                    <Text className="text-caption text-text-muted">Request in progress</Text>
-                    <Text
-                      className="mt-1 text-body-lg font-medium text-text-primary"
-                      numberOfLines={1}
+          <TourTarget step="home.search">
+            <HomeSearch
+              categories={categories}
+              placeholder={firstName ? `Hello ${firstName}, what are we printing?` : "What are we printing?"}
+              onPick={(category, subcategory) => startJob(category.code, subcategory.code)}
+              onOpenPicker={(query) =>
+                router.push(query ? { pathname: "/request/category", params: { q: query } } : "/request/category")
+              }
+              onResultsChange={setSearchOpen}
+            />
+          </TourTarget>
+
+          {searchOpen ? null : (
+            <>
+              {waiting ? (
+                <View className="gg-card-flush">
+                  <HomeActionRow order={waiting} onPress={() => router.push(`/order/${waiting.id}`)} />
+                  {jobs.needsYou.length > 1 ? (
+                    <Pressable
+                      onPress={() => router.navigate("/(tabs)/orders")}
+                      accessibilityRole="button"
+                      className="gg-touch justify-center border-t border-outline-subtle px-4"
                     >
-                      {draftTitle || "An unnamed request"}
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
-                  {pressed ? (
-                    <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-card" />
+                      <Text className="text-caption text-text-secondary">
+                        {jobs.needsYou.length - 1} more {jobs.needsYou.length === 2 ? "job needs" : "jobs need"} you
+                      </Text>
+                    </Pressable>
                   ) : null}
-                </>
+                </View>
+              ) : seasonBanner ? (
+                <SeasonBanner window={seasonBanner} today={seasonToday} onDismiss={() => dismissSeason(seasonBanner.id)} />
+              ) : (
+                <LegalNoticeBanner />
               )}
-            </Pressable>
-          ) : null}
 
-          {error ? (
-            <View className="mt-8">
-              <ErrorState label="Could not load" body={error} onRetry={() => void load()} />
-            </View>
-          ) : null}
-
-          {/*
-            One jobs slot, so the page does not resettle when the list lands.
-            The placeholder is the docket's own shape, because the docket is
-            the case that matters: a job waiting on the client must not appear
-            to arrive late. Categories paint from seed on the first frame and
-            are not placeholdered.
-          */}
-          {loading ? (
-            <View className="mt-8 gap-3">
-              <SectionHead label="YOUR JOBS" />
-              <SkeletonHomeDocket count={2} />
-            </View>
-          ) : null}
-
-          {showJobs && jobs.needsYou.length ? (
-            <View className="mt-8 gap-3">
-              <SectionHead label="NEEDS YOU" count={jobs.needsYou.length} />
-              <View className="gg-card-flush">
-                {jobs.needsYou.map((order, index) => (
-                  <View key={order.id}>
-                    {index > 0 ? <View className="gg-divider" /> : null}
-                    <HomeActionRow order={order} onPress={() => router.push(`/order/${order.id}`)} />
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {/*
-            A season coming up, six to four weeks out. After the docket,
-            because a job waiting on the client still outranks a heads-up;
-            above everything else, because the heads-up only matters while
-            there is still time to act on it. Closing it is remembered for
-            that season on this phone.
-          */}
-          {seasonBanners.length ? (
-            <View className="mt-8 gap-3">
-              {seasonBanners.map((window) => (
-                <SeasonBanner
-                  key={window.id}
-                  window={window}
-                  today={seasonToday}
-                  onDismiss={() => dismissSeason(window.id)}
+              {showFeatured ? (
+                <HomeFeaturedPrints
+                  samples={featured}
+                  loading={samples === null}
+                  onPick={(sample) => startJob(sample.categoryCode, sample.subcategoryCode)}
+                  onSeeAll={() => router.push("/request/category")}
+                  onStalePhoto={onStalePhoto}
                 />
-              ))}
-            </View>
-          ) : null}
+              ) : (
+                <View className="flex-1" />
+              )}
 
-          {/*
-            An editorial change to a legal document: read once, never asked to
-            agree to. It draws nothing once seen on this phone.
-          */}
-          <LegalNoticeBanner className="mt-8" />
-
-          {showJobs && jobs.inProgress.length ? (
-            <View className="mt-8 gap-3">
-              <SectionHead
-                label="IN PROGRESS"
-                count={jobs.inProgressTotal}
-                action={viewAllOn === "inProgress" ? <ViewAll total={orders.length} /> : null}
-              />
-              <View className="gap-3">
-                {jobs.inProgress.map((order) => (
-                  <HomeJobRow
-                    key={order.id}
-                    order={order}
-                    onPress={() => router.push(`/order/${order.id}`)}
+              {categories.length ? (
+                <TourTarget step="home.categories">
+                  <HomeCategoryCircles
+                    categories={categories}
+                    onPress={(category) => router.push(`/request/${category.code}`)}
                   />
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {showJobs && jobs.finished.length ? (
-            <View className="mt-8 gap-3">
-              {/*
-                Finished work is a flush list of one-line rows, not cards: it
-                is there to be found again, not to be watched. No count — how
-                many jobs a client has finished answers nothing on Home.
-              */}
-              <SectionHead
-                label="RECENTLY FINISHED"
-                action={viewAllOn === "finished" ? <ViewAll total={orders.length} /> : null}
-              />
-              <View className="gg-card-flush">
-                {jobs.finished.map((order, index) => (
-                  <View key={order.id}>
-                    {index > 0 ? <View className="gg-divider" /> : null}
-                    <HomeFinishedRow
-                      order={order}
-                      onPress={() => router.push(`/order/${order.id}`)}
-                    />
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {/*
-            The Founding Tester missions, while the account can still earn the
-            label. After the jobs, because a job waiting on the client outranks
-            a reward; on an empty Home that puts it straight under the
-            greeting, where the first mission is the next thing to do. Gone
-            from Home once earned: the label lives on Account.
-          */}
-          {foundingTester?.kind === "missions" ? (
-            <View className="mt-8 gap-3">
-              <SectionHead label="FOUNDING TESTER" />
-              <FoundingTesterCard view={foundingTester} context={{ orders, openSurveyOrderIds: openSurveys ?? undefined, cartOpen, startHref: startPrintHref() }} />
-            </View>
-          ) : null}
-
-          {/*
-            Phone notifications, while this phone has not said yes. Home is
-            where every client lands, so the way to turn them on — after "Not
-            now" on the explainer, or after Android blocked them — never
-            depends on finding a secondary screen. After the jobs, because a
-            job waiting on the client outranks a setting; before the menu,
-            because below it nobody scrolls. Draws nothing once granted.
-          */}
-          <PushEnableCard spacing="section" />
-
-          {/*
-            Real work, before the menu that describes it. A first screen that
-            only lists families never shows a client one thing GRIDGO makes,
-            and a photograph of a printed tarpaulin at a real starting price
-            does more for that than any amount of copy, for a returning client
-            as much as a new one. It comes after every job section, so nothing
-            waiting on the client is pushed down by it. FEATURED PRINTS is
-            GRIDGO's own curated list — never what other clients are printing —
-            so its heading is the same quiet SectionHead as the board below it.
-          */}
-          {showSamples ? (
-            <View className="mt-8 gap-3">
-              <SectionHead label="FEATURED PRINTS" />
-              <HomeSampleStrip
-                samples={shownSamples}
-                loading={samplesLoading && shownSamples.length === 0}
-                onPick={(sample) => startJob(sample.categoryCode, sample.subcategoryCode)}
-                onStalePhoto={onStalePhoto}
-              />
-            </View>
-          ) : null}
-
-          {categories.length ? (
-            <View
-              className="mt-8 gap-3"
-              onLayout={(event) => { startY.current = event.nativeEvent.layout.y; }}
-            >
-              {/*
-                The empty Home's call to act is this board, so it says so. The
-                yellow "+" is still the one filled start control.
-              */}
-              <SectionHead label={welcoming ? "START YOUR FIRST PRINT" : "START A PRINT"} />
-              <TourTarget step="home.search">
-                <HomeSearch
-                  categories={categories}
-                  onPick={(category, subcategory) => startJob(category.code, subcategory.code)}
-                  onOpenPicker={(query) =>
-                    router.push(
-                      query ? { pathname: "/request/category", params: { q: query } } : "/request/category",
-                    )
-                  }
-                  onActivate={makeRoomForSearch}
-                  onResultsChange={setSearchOpen}
-                />
-              </TourTarget>
-              {/*
-                One board, not a grid. Five families in two columns left the
-                fifth alone beside an empty half-row and cut the contents line
-                off mid-item on most of the others; in one column every row is
-                full width, every name and contents line is set whole, and the
-                five read as one scan down the page. The crop-marked mark is
-                what keeps this board apart from the docket above it. It
-                stands aside while search results are open under the field.
-              */}
-              {searchOpen ? null : (
-                <TourTarget
-                  step="home.categories"
-                  className="gg-card-flush"
-                  onLayout={(y) => { boardY.current = y; }}
-                >
-                  {categories.map((category, index) => (
-                    <View key={category.code}>
-                      {index > 0 ? <View className="gg-divider" /> : null}
-                      <HomeCategoryRow
-                        category={category}
-                        onPress={() => router.push(`/request/${category.code}`)}
-                      />
-                    </View>
-                  ))}
                 </TourTarget>
-              )}
-            </View>
-          ) : null}
+              ) : null}
 
+              <View className="flex-row gap-3">
+                <HomeSmartTile view={tile} onPress={(href) => router.push(href as Href)} />
+                <HomeReorderTile title={previous?.title ?? null} onPress={() => previous && void reorder(previous)} />
+              </View>
+            </>
+          )}
         </View>
       </KeyboardAwareScrollView>
+
+      <ReplaceDraftDialog label={pendingLabel} onConfirm={confirmReplace} onCancel={cancelReplace} />
     </TabScreen>
   );
 }
 
 /**
  * A drag dismisses the keyboard on a phone. On web, react-native-web treats
- * every scroll as a drag — including the one Home makes when the board stands
- * aside for the results — so the field lost focus mid-word. A browser has no
+ * every scroll as a drag, so the field lost focus mid-word. A browser has no
  * soft keyboard to dismiss.
  */
 const KEYBOARD_DISMISS = Platform.select({
@@ -546,80 +255,3 @@ const KEYBOARD_DISMISS = Platform.select({
   android: "on-drag",
   default: "none",
 } as const);
-
-/**
- * The way from Home's snapshot to the full list on Orders.
- *
- * Always offered once there are jobs to show, not only when some are hidden:
- * Orders is where search, filters and reorder live, and a client looking for
- * those should not have to know the tab bar holds them. It is the one place
- * the design system spends the brand token, and it is a small link, not a
- * fill.
- */
-function ViewAll({ total }: { total: number }) {
-  const router = useRouter();
-
-  return (
-    <Pressable
-      onPress={() => router.navigate("/(tabs)/orders")}
-      accessibilityRole="button"
-      accessibilityLabel={`View all ${total} jobs`}
-      className="gg-touch justify-center"
-      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-    >
-      <Text className="text-button text-brand">View all</Text>
-    </Pressable>
-  );
-}
-
-/**
- * One section eyebrow on Home.
- *
- * Every section on this screen used to open with a bare grey overline, and
- * four of them in a column is what made the page read as three identical
- * slabs. The eyebrow itself stays exactly that — quiet, uppercase, ink — but
- * it now carries the two things a section head is actually for.
- *
- * A count, where the number is the point: "is anything waiting on me" is
- * answered by "three" before a word of the docket is read, and the pill is
- * neutral ink rather than a colour, because three jobs waiting is a fact and
- * not an alarm. And the way out, where there is one — "View all" is the single
- * place on Home that spends the brand token, and it is a small link.
- *
- * The label is its own text node on purpose: a count concatenated into it
- * would make "NEEDS YOU" a string that changes with the data.
- */
-function SectionHead({
-  label,
-  count,
-  action,
-}: {
-  label: string;
-  count?: number;
-  action?: ReactNode;
-}) {
-  return (
-    <View className="flex-row items-center gap-2">
-      <Text className="text-overline text-text-muted">{label}</Text>
-      {count != null && count > 0 ? (
-        <View className="rounded-pill border border-outline bg-surface px-2 py-0.5">
-          <Text className="text-caption text-text-secondary">{count}</Text>
-        </View>
-      ) : null}
-      <View className="flex-1" />
-      {action}
-    </View>
-  );
-}
-
-/**
- * The headline over an empty Home.
- *
- * The client's own first name where GRIDGO holds one, because this is the one
- * place on Home addressed to the person rather than to their work. A session
- * without a name gets a welcome instead of "Hello," with nothing after it.
- */
-function greeting(name: string | null | undefined): string {
-  const first = (name ?? "").trim().split(/\s+/)[0];
-  return first ? `Hello, ${first}` : "Welcome to GRIDGO";
-}
