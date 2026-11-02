@@ -2561,7 +2561,7 @@ export type HubRedeliveryRequest = {
 /**
  * The handover credential for one order (gridgo-api#125,
  * `docs/HUB_HANDOVER_API.md`). Delivery orders carry only the six-digit
- * `otp` the rider also sees. A hub pick-up adds the opaque `qrToken` — the
+ * `otp` the client reads to the rider. A hub pick-up adds the opaque `qrToken` — the
  * only thing ever drawn inside the QR — and the hub snapshot and unclaimed
  * count the reminders are counted from.
  */
