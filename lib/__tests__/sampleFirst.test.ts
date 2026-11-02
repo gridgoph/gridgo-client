@@ -13,6 +13,8 @@ import {
   orderSampleLine,
   orderSampleLink,
   sampleLineCaption,
+  batchSize,
+  batchStepperUnit,
   sampleOffer,
   sampleStage,
   sampleStatusView,
@@ -120,6 +122,16 @@ describe("basket lines", () => {
   it("says a sample is one piece standing for the batch", () => {
     const line = { sample: { batchQuantity: 500, replacesSampleBatchId: null }, sampleBatch: null };
     expect(sampleLineCaption(line)).toBe("Sample · 1 piece. Your batch of 500 is saved until you approve it.");
+    // With the listing to hand, the batch is said in its own unit.
+    expect(sampleLineCaption({ ...line, listing: { pricingUnit: "per_package", packageQty: 100 } as never })).toBe(
+      "Sample · 1 piece. Your batch of 500 packs (50,000 pieces) is saved until you approve it.",
+    );
+    expect(batchSize({ pricingUnit: "per_piece", packageQty: null } as never, 1)).toBe("1 piece");
+    // The batch stepper counts in the listing's unit, or plain items when unsure.
+    expect(batchStepperUnit({ pricingUnit: "per_package", packageQty: 100 })).toBe("pack100");
+    expect(batchStepperUnit({ pricingUnit: "per_package", packageQty: 50 })).toBe("");
+    expect(batchStepperUnit({ pricingUnit: "per_unit", packageQty: null })).toBe("piece");
+    expect(batchStepperUnit(null)).toBe("");
     expect(lineQuantityFixed(line)).toBe(true);
   });
 

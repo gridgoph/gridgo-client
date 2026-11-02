@@ -4,8 +4,8 @@ import { QuantityStepper } from "@/components/form/QuantityStepper";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ChoiceList, type Choice } from "@/components/sampleFirst/ChoiceList";
 import { SkeletonLine } from "@/components/Skeleton";
-import { formatPhp, type SampleBatch, type SampleBatchPricing } from "@/lib/api";
-import { batchOrderLabel, batchPriceAt, heldPriceNote, holdLine } from "@/lib/sampleFirst";
+import { formatPhp, type CatalogItem, type SampleBatch, type SampleBatchPricing } from "@/lib/api";
+import { batchOrderLabel, batchPriceAt, batchSize, batchStepperUnit, heldPriceNote } from "@/lib/sampleFirst";
 import { useSampleBatches } from "@/store/sampleBatches";
 
 /**
@@ -19,6 +19,7 @@ import { useSampleBatches } from "@/store/sampleBatches";
  */
 export function BatchOrderPanel({
   batch,
+  listing,
   quantity,
   onQuantity,
   pricing,
@@ -27,6 +28,8 @@ export function BatchOrderPanel({
   onNewSample,
 }: {
   batch: SampleBatch;
+  /** The listing, once read, to say the batch in its own unit. */
+  listing: CatalogItem | null;
   quantity: number;
   onQuantity: (next: number) => void;
   pricing: SampleBatchPricing | null;
@@ -44,7 +47,8 @@ export function BatchOrderPanel({
     {
       value: "held",
       label: "Held price",
-      note: batch.canOrderAtHeldPrice ? holdLine(batch) : heldPriceNote(batch),
+      // The clock is already under the status; only say why the hold is out of reach.
+      note: batch.canOrderAtHeldPrice ? null : heldPriceNote(batch),
       disabled: !batch.canOrderAtHeldPrice,
       trailing: <PriceFigure minor={held} />,
       trailingLabel: priceSpoken(held),
@@ -65,16 +69,16 @@ export function BatchOrderPanel({
 
       <View className="gap-2">
         <Text className="text-body font-medium text-text-primary">How many</Text>
-        <QuantityStepper value={quantity} unit="" onChange={onQuantity} />
+        <QuantityStepper value={quantity} unit={batchStepperUnit(listing)} onChange={onQuantity} />
         <Text className="text-caption text-text-muted">
-          You sampled a batch of {batch.batch.quantity.toLocaleString("en-PH")}. A bigger batch gets
+          You sampled a batch of {batchSize(listing, batch.batch.quantity)}. A bigger batch gets
           the shop&apos;s bulk price from when you ordered the sample.
         </Text>
       </View>
 
       <ChoiceList label="Batch price" choices={choices} selected={pricing} onSelect={onPricing} disabled={busy != null} />
       <Text className="text-caption text-text-muted">
-        Printing for {quantity.toLocaleString("en-PH")}. Delivery is added at checkout.
+        Printing for {batchSize(listing, quantity)}. Delivery is added at checkout.
       </Text>
 
       <View className="gap-2">

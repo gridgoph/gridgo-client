@@ -19,6 +19,14 @@ describe("OrderCard sample badges", () => {
     await render(<OrderCard order={artworkOrder(sampleOrderFields("sample"))} onPress={() => undefined} />);
     expect(screen.getByText("Sample")).toBeTruthy();
     expect(screen.getByLabelText(/^Trade fair flyers, Sample, /)).toBeTruthy();
+    // One sample piece, whatever the listing's unit.
+    expect(screen.getByText(/^1 sample piece/)).toBeTruthy();
+  });
+
+  it("names a stored material code instead of drawing the bare slug", async () => {
+    await render(<OrderCard order={artworkOrder({ material: "matte_150gsm" })} onPress={() => undefined} />);
+    expect(screen.getByText(/Matte 150gsm$/)).toBeTruthy();
+    expect(screen.queryByText(/matte_150gsm/)).toBeNull();
   });
 
   it("tags a batch from a sample", async () => {

@@ -12,6 +12,7 @@ import { paysInFull } from "@/lib/payment";
 import { orderReferenceSpoken } from "@/lib/orderReference";
 import { readyByDate, readyEarlyLabel, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 import { orderSampleLink } from "@/lib/sampleFirst";
+import { EMPTY_TAXONOMY, taxonomyLabel } from "@/lib/taxonomy";
 import {
   formatPriceRange,
   orderStateMeta,
@@ -54,11 +55,14 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
         ? formatPriceRange(range.subtotalMinMinor, range.subtotalMaxMinor)
         : "Not priced yet";
   const moneyNote = exactTotal != null ? paymentStatusLabel(order.paymentStatus, paysInFull(order)) : "Estimate";
-  const sampleTag = orderSampleLink(order)?.tag ?? null;
+  const sampleLink = orderSampleLink(order);
+  const sampleTag = sampleLink?.tag ?? null;
   const spec = [
-    `Qty ${order.quantity}`,
+    // A sample is one piece whatever the listing's unit (gridgo-api#222).
+    sampleLink?.kind === "sample" ? "1 sample piece" : `Qty ${order.quantity}`,
     order.size || null,
-    order.material || null,
+    // An order can store a material code; never draw the bare slug.
+    order.material ? taxonomyLabel(EMPTY_TAXONOMY, order.material) : null,
   ]
     .filter(Boolean)
     .join(" · ");

@@ -176,7 +176,7 @@ describe("ordering a sample first", () => {
     await renderInSafeArea(<ListingScreen />);
     expect(await screen.findByRole("button", { name: "Add to my order" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Order a sample first · ₱55.00" })).toBeTruthy();
-    expect(screen.getByText(/You pay for one sample piece now, plus delivery\. Your batch of 1 is saved/)).toBeTruthy();
+    expect(screen.getByText(/You pay for one sample piece now, plus delivery\. The batch above is saved/)).toBeTruthy();
   });
 
   it("leads with the sample when the client came for one, keeping the batch size", async () => {
@@ -185,7 +185,8 @@ describe("ordering a sample first", () => {
     expect(await screen.findByRole("button", { name: "Order a sample" })).toBeTruthy();
     expect(screen.getByText("Order a sample · ₱55.00")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add the full batch instead" })).toBeTruthy();
-    expect(screen.getByText(/Your batch of 500 is saved/)).toBeTruthy();
+    // The batch the sample stands for is the quantity on the sheet, kept from the sample page.
+    expect(screen.getAllByText(/^500 (packs|pieces)/).length).toBeGreaterThan(0);
   });
 
   it("adds the sample line with the intended batch, then goes to artwork", async () => {

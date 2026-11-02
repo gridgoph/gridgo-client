@@ -14,9 +14,11 @@ import { SkeletonBlock } from "@/components/Skeleton";
 import { SpecRow } from "@/components/SpecRow";
 import { StatusChip } from "@/components/StatusChip";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import type { SampleBatch, SampleBatchPricing } from "@/lib/api";
+import type { CatalogItem, SampleBatch, SampleBatchPricing } from "@/lib/api";
+import { listingNow, takeListing } from "@/lib/listingCache";
 import { readyByDate } from "@/lib/readyTime";
 import {
+  batchSize,
   canCancelBatch,
   canResample,
   defaultBatchPricing,
@@ -70,6 +72,22 @@ export default function SampleBatchScreen() {
     const timer = setTimeout(() => void useSampleBatches.getState().load(id, quantity), 300);
     return () => clearTimeout(timer);
   }, [id, quantity]);
+
+  // The listing says what one unit of the batch is (a pack of 100, a piece).
+  const itemId = batch?.catalogItemId ?? null;
+  const [listing, setListing] = useState<CatalogItem | null>(() => listingNow(itemId));
+  useEffect(() => {
+    if (!itemId) return;
+    let live = true;
+    takeListing(itemId)
+      .then((item) => {
+        if (live) setListing(item);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [itemId]);
 
   if (!batch) {
     if (readError) {
@@ -173,6 +191,7 @@ export default function SampleBatchScreen() {
         {stage === "approved" ? (
           <BatchOrderPanel
             batch={batch}
+            listing={listing}
             quantity={batchQuantity}
             onQuantity={setQuantity}
             pricing={chosenPricing}
@@ -199,7 +218,7 @@ export default function SampleBatchScreen() {
           ) : null}
         </View>
 
-        <BatchRecord batch={batch} />
+        <BatchRecord batch={batch} listing={listing} />
 
         {canCancelBatch(batch) ? (
           <Pressable
@@ -218,7 +237,7 @@ export default function SampleBatchScreen() {
 }
 
 /** The batch as it was saved, and what the client decided about the sample. */
-function BatchRecord({ batch }: { batch: SampleBatch }) {
+function BatchRecord({ batch, listing }: { batch: SampleBatch; listing: CatalogItem | null }) {
   const note = typeof batch.batch.specialInstructions === "string" ? batch.batch.specialInstructions.trim() : "";
   const approvedAt = batch.approval ? readyByDate(batch.approval.at) : null;
   const rejectedAt = batch.rejection ? readyByDate(batch.rejection.at) : null;
@@ -227,7 +246,7 @@ function BatchRecord({ batch }: { batch: SampleBatch }) {
       <Text className="text-overline text-text-muted">YOUR BATCH</Text>
       <View className="gg-card-flush px-4">
         <SpecRow label="Product" value={batch.itemName ?? "—"} />
-        <SpecRow label="Quantity" value={batch.batch.quantity.toLocaleString("en-PH")} />
+        <SpecRow label="Quantity" value={batchSize(listing, batch.batch.quantity)} />
         {note ? <SpecRow label="Notes" value={note} /> : null}
         {approvedAt ? (
           <SpecRow label="Approved" value={batch.approval?.samplePhotoFileId ? `${approvedAt}, with a photo` : approvedAt} />

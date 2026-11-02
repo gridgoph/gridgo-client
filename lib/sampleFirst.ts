@@ -46,9 +46,29 @@ export function sampleOffer(
   return { clientMinor, supplierMinor };
 }
 
-/** Under the sample buttons: what is paid now and what is kept for later. */
-export function sampleOfferNote(batchQuantity: number): string {
-  return `You pay for one sample piece now, plus delivery. Your batch of ${batchQuantity.toLocaleString("en-PH")} is saved at this shop's prices until you decide.`;
+/** Under the sample buttons, below the batch it saves: what is paid now and what is kept. */
+export const SAMPLE_OFFER_NOTE =
+  "You pay for one sample piece now, plus delivery. The batch above is saved at this shop's prices until you decide.";
+
+/**
+ * A batch's size in the listing's own unit — "5 packs (500 pieces)" or
+ * "500 pieces" — or the bare count when the listing is not to hand.
+ */
+export function batchSize(
+  listing: Pick<CatalogItem, "pricingUnit" | "packageQty"> | null | undefined,
+  quantity: number,
+): string {
+  const count = quantity.toLocaleString("en-PH");
+  if (!listing) return count;
+  if (listing.pricingUnit !== "per_package" || !listing.packageQty) return quantity === 1 ? "1 piece" : `${count} pieces`;
+  const packs = quantity === 1 ? "1 pack" : `${count} packs`;
+  return `${packs} (${(quantity * listing.packageQty).toLocaleString("en-PH")} pieces)`;
+}
+
+/** The quantity stepper's unit for a batch of this listing; "" counts plain items. */
+export function batchStepperUnit(listing: Pick<CatalogItem, "pricingUnit" | "packageQty"> | null | undefined): string {
+  if (listing?.pricingUnit === "per_package") return listing.packageQty === 100 ? "pack100" : "";
+  return listing?.pricingUnit === "per_unit" ? "piece" : "";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -56,9 +76,11 @@ export function sampleOfferNote(batchQuantity: number): string {
 /* -------------------------------------------------------------------------- */
 
 /** The caption a sample or batch line carries in checkout; null for an ordinary line. */
-export function sampleLineCaption(line: Pick<CartLineRecord, "sample" | "sampleBatch">): string | null {
+export function sampleLineCaption(
+  line: Pick<CartLineRecord, "sample" | "sampleBatch"> & { listing?: CartLineRecord["listing"] },
+): string | null {
   if (line.sample) {
-    return `Sample · 1 piece. Your batch of ${line.sample.batchQuantity.toLocaleString("en-PH")} is saved until you approve it.`;
+    return `Sample · 1 piece. Your batch of ${batchSize(line.listing, line.sample.batchQuantity)} is saved until you approve it.`;
   }
   if (line.sampleBatch) {
     const until = readyByDate(line.sampleBatch.heldUntil);
@@ -69,6 +91,18 @@ export function sampleLineCaption(line: Pick<CartLineRecord, "sample" | "sampleB
     return `Batch from your approved sample, at ${price}. Only the quantity can change.`;
   }
   return null;
+}
+
+/** A basket holding a sample, or a batch from one: GRIDGO takes nothing else in it. */
+export function isSampleBasket(lines: Pick<CartLineRecord, "sample" | "sampleBatch">[]): boolean {
+  return lines.some((line) => Boolean(line.sample || line.sampleBatch));
+}
+
+export const SAMPLE_BASKET_NOTE = "A sample, or a batch from one, is ordered on its own.";
+
+/** A batch from a sample keeps the sample's specs and artwork: only its quantity changes. */
+export function lineSpecsLocked(line: Pick<CartLineRecord, "sampleBatch">): boolean {
+  return Boolean(line.sampleBatch);
 }
 
 /** A sample line is one piece: its quantity is not the client's to step. */

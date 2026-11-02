@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, screen } from "@testing-library/react-native";
 
 import SampleBatchScreen from "@/app/samples/[id]";
 import { renderScreen } from "@/test/renderScreen";

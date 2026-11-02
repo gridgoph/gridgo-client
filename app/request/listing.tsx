@@ -82,7 +82,7 @@ import { type OrderStepId } from "@/lib/orderSteps";
 import { designLinkPhrase } from "@/lib/designLink";
 import { SHOP_PAUSED_LINE, SHOP_PAUSED_MESSAGE, shopHoursView, shopPaused } from "@/lib/shopHours";
 import { FULFILMENT_LOCK_MESSAGE, isFulfilmentLockRefusal, needsFreshBasket } from "@/lib/requestFulfilment";
-import { sampleOffer, sampleOfferNote } from "@/lib/sampleFirst";
+import { SAMPLE_OFFER_NOTE, sampleOffer } from "@/lib/sampleFirst";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useJobFulfilment } from "@/store/jobFulfilment";
@@ -931,7 +931,7 @@ export default function ListingScreen() {
               disabled={blocked}
               onPress={() => void add(sampleLeads ? "batch" : "sample")}
             />
-            <Text className="text-center text-caption text-text-muted">{sampleOfferNote(quantity)}</Text>
+            <Text className="text-center text-caption text-text-muted">{SAMPLE_OFFER_NOTE}</Text>
           </View>
         ) : null}
 
