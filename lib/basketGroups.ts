@@ -8,9 +8,11 @@
  * are named "Shop A", "Shop B" by GRIDGO, never by who the shop is.
  *
  * Decided with Operations (4–6 Oct 2026), and the rules here follow them:
- * - each product keeps the date the client chose for it (gridgo-client#189),
- *   so a group is one shop on one date: two dates from the same shop are two
- *   groups, each printed, delivered and charged delivery on its own;
+ * - each product keeps the date the client chose for it (gridgo-client#189);
+ *   a group is one delivery: a shop's products travel together by the
+ *   earliest of their dates, unless the client chooses to deliver them
+ *   separately — then each date is its own group, printed, delivered and
+ *   charged delivery on its own (gridgo-api#275);
  * - one delivery-or-pick-up choice for the whole basket;
  * - a basket of two or more groups is paid in full up front, in one transfer;
  * - one combined receipt with a section per group;
@@ -33,8 +35,10 @@ import type {
   MatchInput,
   Order,
 } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { parseDeadline } from "@/lib/deadline";
 import { dayKeyOfDeadline } from "@/lib/deadlineCalendar";
+import { userFacingError } from "@/lib/copy";
 import { getOrderStateMeta, type OrderStateMeta } from "@/lib/orderState";
 import { organizationDiscountOf } from "@/lib/organization";
 import { voucherDiscountOf } from "@/lib/vouchers";
@@ -79,6 +83,11 @@ export type ShopGroupView = {
   zone: DistanceZone | null;
   /** Only for an Out of Zone leg — the one place a client reads kilometres. */
   distanceKm: number | null;
+  /** Which of this shop's deliveries this is, once the shop is split (gridgo-api#275). */
+  deliveryNumber?: number | null;
+  shopDeliveryCount?: number | null;
+  /** The shop has two or more products, so it could go out as separate deliveries. */
+  canDeliverSeparately?: boolean;
 };
 
 /**
@@ -94,9 +103,9 @@ export function shopGroups(cart: Cart | null | undefined): ShopGroupView[] {
   const byId = new Map(cart.lines.map((line) => [line.id, line]));
   const legs = cart.clientQuote?.deliveryLines ?? [];
   return byDate(cart.groups, (group) => groupDeadlineOf(group, cart)).map((group) => {
-    const leg = legs.find((candidate) =>
-      candidate.lineIds.some((id) => group.lineIds.includes(id)),
-    );
+    const leg =
+      legs.find((candidate) => candidate.groupId === group.id) ??
+      legs.find((candidate) => candidate.lineIds.some((id) => group.lineIds.includes(id)));
     return {
       id: group.id,
       label: group.label,
@@ -117,6 +126,10 @@ export function shopGroups(cart: Cart | null | undefined): ShopGroupView[] {
         voucherDiscountOf(cart.clientQuote?.voucherGroups?.find((share) => share.groupId === group.id)),
       zone: leg?.distanceZone ?? null,
       distanceKm: typeof leg?.distanceKm === "number" ? leg.distanceKm : null,
+      // The quote's leg says the same thing; either one names the delivery.
+      deliveryNumber: positiveInt(group.deliveryNumber ?? leg?.deliveryNumber),
+      shopDeliveryCount: positiveInt(group.shopDeliveryCount ?? leg?.shopDeliveryCount),
+      canDeliverSeparately: group.canDeliverSeparately === true,
     };
   });
 }
@@ -262,12 +275,12 @@ export function multiShopPaymentNote(groups: readonly { label: string; deadline:
 export function groupDeliveryNote(pickup: boolean): string {
   return pickup
     ? "Every part comes to GRIDGO Office on its own date, so you collect it all in one place."
-    : "Each shop delivers each date on its own, so each has its own delivery fee. Adding more from the same shop for the same date adds no delivery fee.";
+    : "Each shop sends its items together by the earliest date among them, with one delivery fee. Choose to deliver separately and each date comes on its own, with its own fee.";
 }
 
 /** The date step's note, when the basket already has dates in it. */
 export const SAME_DATE_NOTE =
-  "Each item keeps its own date. Pick a date already in your order and, if the same shop prints it, it rides in that delivery.";
+  "Each item keeps its own date. Items from the same shop go out together by the earliest of their dates, unless you choose separate deliveries at checkout.";
 
 /** The overline over the groups: "2 SHOPS, ONE ORDER", "2 DATES, ONE ORDER". */
 export function groupsHeading(groups: readonly { label: string; deadline: string | null }[]): string {
@@ -283,10 +296,24 @@ export function groupsHeading(groups: readonly { label: string; deadline: string
  * read as the same charge twice.
  */
 export function groupMoneyLabel(
-  group: { label: string; deadline: string | null },
+  group: DeliveryOf & { deadline: string | null },
   all: readonly { label: string; deadline: string | null }[],
 ): string {
-  return groupSpread(all).dates > 1 ? `${group.label} · ${groupDateLabel(group.deadline)}` : group.label;
+  const label = deliveryLabel(group);
+  return groupSpread(all).dates > 1 ? `${label} · ${groupDateLabel(group.deadline)}` : label;
+}
+
+/**
+ * A group's delivery-fee row before paying: "Delivery · Shop A", or
+ * "Shop A, delivery 1 of 2" once that shop goes out separately — each of its
+ * deliveries is a fee of its own, and the row says which.
+ */
+export function deliveryFeeRowLabel(
+  group: DeliveryOf & { deadline: string | null },
+  all: readonly { label: string; deadline: string | null }[],
+): string {
+  const label = groupMoneyLabel(group, all);
+  return deliveryOf(group) ? label : `Delivery · ${label}`;
 }
 
 /** The title over a placed order's groups: "One order, 2 shops", "One order, 2 dates". */
@@ -312,11 +339,138 @@ export function allGroupsPhrase(basket: Pick<Basket, "deadline" | "groups" | "sh
 }
 
 /** An order card's tag for one group: "Shop A · Fri 12 Oct", else "Shop A · multi-shop". */
-export function groupTag(order: Pick<Order, "groupLabel" | "deadline">): string | null {
+export function groupTag(
+  order: Pick<Order, "groupLabel" | "deadline" | "deliveryNumber" | "shopDeliveryCount">,
+): string | null {
   if (!order.groupLabel) return null;
+  const label = deliveryLabel({ ...order, label: order.groupLabel });
   return parseDeadline(order.deadline)
-    ? `${order.groupLabel} · ${groupDateLabel(order.deadline)}`
-    : `${order.groupLabel} · multi-shop`;
+    ? `${label} · ${groupDateLabel(order.deadline)}`
+    : `${label} · multi-shop`;
+}
+
+// ---------------------------------------------------------------------------
+// Separate deliveries from one shop (gridgo-api#275, docs/SHOP_DELIVERIES_API.md)
+// ---------------------------------------------------------------------------
+
+/** Anything that may carry a shop's delivery position. */
+type DeliveryOf = {
+  label: string;
+  deliveryNumber?: number | null;
+  shopDeliveryCount?: number | null;
+};
+
+/**
+ * "Delivery 1 of 2" — only for a shop split into separate deliveries. A shop
+ * delivering once says nothing, so a single delivery reads as it always did.
+ */
+export function deliveryOf(group: Omit<DeliveryOf, "label">): string | null {
+  const number = positiveInt(group.deliveryNumber);
+  const count = positiveInt(group.shopDeliveryCount);
+  if (number == null || count == null || count < 2) return null;
+  return `Delivery ${number} of ${count}`;
+}
+
+/** "Shop A, delivery 1 of 2", or just "Shop A" for a shop delivering once. */
+export function deliveryLabel(group: DeliveryOf): string {
+  const of = deliveryOf(group);
+  return of ? `${group.label}, ${of.charAt(0).toLowerCase()}${of.slice(1)}` : group.label;
+}
+
+/** The distinct dates among a group's products, soonest first. */
+function lineDates(group: Pick<ShopGroupView, "lines">, cart: Pick<Cart, "deadline" | "groups"> | null | undefined): string[] {
+  const seen = new Map<string, string>();
+  for (const line of group.lines) {
+    const deadline = lineDeadlineOf(line, cart);
+    const key = dayKeyOfDeadline(deadline);
+    if (deadline && key && !seen.has(key)) seen.set(key, deadline);
+  }
+  return byDate([...seen.values()], (deadline) => deadline);
+}
+
+/**
+ * Said under a shop's products while they travel together across more than
+ * one date: the delivery is due by the earliest. Null when they share a date.
+ */
+export function combinedDateLine(
+  group: Pick<ShopGroupView, "lines" | "deadline">,
+  cart: Pick<Cart, "deadline" | "groups"> | null | undefined,
+): string | null {
+  if (lineDates(group, cart).length < 2) return null;
+  return `Delivered together by ${groupDateLabel(group.deadline)}, the earliest date here.`;
+}
+
+export type DeliveryChoice = {
+  /** True while this shop goes out as more than one delivery. */
+  separate: boolean;
+  /** What a tap asks GRIDGO for. */
+  split: "by_deadline" | "none";
+  /** One plain line under the choice. */
+  note: string;
+};
+
+/**
+ * The "Deliver separately" choice for one group, or null where it would do
+ * nothing. Offered on a shop whose products are on two or more dates and
+ * still travel together, and — once split — on that shop's first delivery
+ * only, so the shop has one control however many deliveries it became.
+ */
+export function deliveryChoice(
+  group: ShopGroupView,
+  cart: Cart | null | undefined,
+): DeliveryChoice | null {
+  if (cart?.state !== "draft" || !group.canDeliverSeparately) return null;
+  const count = group.shopDeliveryCount ?? 1;
+  if (count > 1) {
+    if (group.deliveryNumber != null && group.deliveryNumber !== 1) return null;
+    return {
+      separate: true,
+      split: "none",
+      note: `${count} deliveries, each with its own delivery fee. Untick to send them together by the earliest date.`,
+    };
+  }
+  const dates = lineDates(group, cart);
+  if (dates.length < 2) return null;
+  return {
+    separate: false,
+    split: "by_deadline",
+    note: `One delivery for each date (${dates.map(groupDateLabel).join(", ")}), each with its own delivery fee.`,
+  };
+}
+
+/**
+ * Why GRIDGO refused a delivery choice, in plain words. A `deadline_not_met`
+ * names the products that cannot make the date, from the basket's own lines.
+ */
+export function deliveryChoiceError(
+  error: unknown,
+  cart: Pick<Cart, "lines"> | null | undefined,
+  split: "by_deadline" | "none",
+): string {
+  if (error instanceof ApiError && error.message === "deadline_not_met") {
+    const body = (error.body ?? {}) as { lineIds?: unknown; deadline?: unknown };
+    const ids = Array.isArray(body.lineIds) ? body.lineIds.filter((id): id is string => typeof id === "string") : [];
+    const names = ids
+      .map((id) => cart?.lines.find((line) => line.id === id)?.listing?.name)
+      .filter((name): name is string => Boolean(name));
+    const when = typeof body.deadline === "string" && parseDeadline(body.deadline)
+      ? ` by ${groupDateLabel(body.deadline)}`
+      : " in time";
+    const who = names.length ? listWords(names) : "An item";
+    return split === "none"
+      ? `${who} cannot be ready${when}, so these cannot go together. Keep separate deliveries, or choose a later date.`
+      : `${who} cannot be ready${when}. Choose a later date for ${names.length > 1 ? "them" : "it"}.`;
+  }
+  return userFacingError(error, "GRIDGO could not change how this shop delivers. Try again in a moment.");
+}
+
+function listWords(words: string[]): string {
+  if (words.length < 2) return words[0] ?? "";
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+function positiveInt(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
 // ---------------------------------------------------------------------------

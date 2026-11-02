@@ -85,6 +85,8 @@ const STALE_MATCH_CODES = new Set([
   "select_token_cart_mismatch",
   "select_token_listing_mismatch",
   "select_token_dropoff_mismatch",
+  // The offer was for joining a delivery and the add asked for a separate one, or the reverse (gridgo-api#275).
+  "select_token_delivery_mismatch",
   "catalog_item_stale",
   "deadline_not_met",
 ]);
