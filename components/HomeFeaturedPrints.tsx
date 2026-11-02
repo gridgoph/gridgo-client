@@ -23,14 +23,30 @@ const GAP = 12;
 /** How much of the next card stays in view: the cut edge that says "swipe". */
 const PEEK = 36;
 const PAD = 16;
+/**
+ * The shortest a card may get: its name, unit line and price (68) over a
+ * sliver of photo. Below this the card would clip its own words.
+ */
+export const FEATURED_CARD_MIN_HEIGHT = 84;
+/**
+ * The block around the cards: top padding, the heading (`text-h2`, 30), the
+ * gap under it (`mt-3`) and the dots and "See all" row (`gg-touch`, 44).
+ */
+const BLOCK_CHROME = PAD + 30 + 12 + 44;
+/** The shortest the whole block gets before Home would have to scroll. */
+export const FEATURED_MIN_HEIGHT = BLOCK_CHROME + FEATURED_CARD_MIN_HEIGHT;
 
 /**
  * FEATURED PRINTS as one yellow block that swipes sideways (client#335).
  *
  * It is the one part of Home that flexes: the block takes whatever height the
  * screen has left after the fixed rows, so on a small phone it shrinks first
- * and the categories and tiles stay put. The products are the ones GRIDGO's
- * staff curated (`GET /featured-prints`), at GRIDGO's own starting price —
+ * and the categories and tiles stay put. The cards take the pager's measured
+ * height, so the swipe row sits out of flow: when the cards could size the
+ * pager, the pager never shrank below its first guess and the tiles went under
+ * the tab bar.
+ *
+ * The products are the ones GRIDGO's staff curated (`GET /featured-prints`), at GRIDGO's own starting price —
  * never a shop's figure and never what other clients are printing.
  *
  * The block is yellow in both themes, so everything drawn straight on it is
@@ -43,6 +59,7 @@ export function HomeFeaturedPrints({ samples, loading, onPick, onSeeAll, onStale
   // on the first frame rather than popping in.
   const [measured, setMeasured] = useState<{ width: number; height: number } | null>(null);
   const box = measured ?? { width: Math.max(200, window.width - 4 * PAD), height: 260 };
+  const cardHeight = Math.max(FEATURED_CARD_MIN_HEIGHT, box.height);
   const [page, setPage] = useState(0);
   const cardWidth = Math.max(160, box.width - PEEK);
   const count = loading && !samples.length ? 3 : samples.length;
@@ -53,7 +70,7 @@ export function HomeFeaturedPrints({ samples, loading, onPick, onSeeAll, onStale
   };
 
   return (
-    <View testID="featured-prints" className="flex-1 rounded-card bg-action-yellow" style={{ paddingTop: PAD, minHeight: 236 }}>
+    <View testID="featured-prints" className="flex-1 rounded-card bg-action-yellow" style={{ paddingTop: PAD, minHeight: FEATURED_MIN_HEIGHT }}>
       <View className="flex-row items-center justify-between" style={{ paddingHorizontal: PAD }}>
         <Text className="text-h2 text-action-yellow-on" accessibilityRole="header">
           Featured prints
@@ -61,11 +78,12 @@ export function HomeFeaturedPrints({ samples, loading, onPick, onSeeAll, onStale
         <DotMark />
       </View>
 
-      <View className="mt-3 flex-1" onLayout={onPagerLayout} style={{ marginHorizontal: PAD }}>
+      <View testID="featured-pager" className="mt-3 flex-1" onLayout={onPagerLayout} style={{ marginHorizontal: PAD }}>
         <ScrollView
+          testID="featured-row"
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={{ marginHorizontal: -PAD }}
+          style={{ position: "absolute", top: 0, bottom: 0, left: -PAD, right: -PAD }}
           contentContainerStyle={{ paddingHorizontal: PAD, gap: GAP }}
           decelerationRate="fast"
           snapToInterval={cardWidth + GAP}
@@ -78,7 +96,7 @@ export function HomeFeaturedPrints({ samples, loading, onPick, onSeeAll, onStale
         >
           {loading && !samples.length
             ? [0, 1, 2].map((key) => (
-                <View key={key} style={{ width: cardWidth, height: box.height }}>
+                <View key={key} style={{ width: cardWidth, height: cardHeight }}>
                   <SkeletonBlock className="h-full w-full rounded-card" />
                 </View>
               ))
@@ -87,12 +105,12 @@ export function HomeFeaturedPrints({ samples, loading, onPick, onSeeAll, onStale
                   key={sample.id}
                   sample={sample}
                   width={cardWidth}
-                  height={box.height}
+                  height={cardHeight}
                   onPress={() => onPick(sample)}
                   onStalePhoto={onStalePhoto}
                 />
               ))}
-          </ScrollView>
+        </ScrollView>
       </View>
 
       <View className="flex-row items-center justify-between" style={{ paddingLeft: PAD, paddingRight: 4 }}>
