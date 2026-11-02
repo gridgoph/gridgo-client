@@ -8,6 +8,7 @@ import type { Basket, Order } from "@/lib/api";
 import {
   basketGroupDeadlineOf,
   byDate,
+  deliveryLabel,
   groupDateLine,
   groupLetter,
   groupStateMeta,
@@ -24,7 +25,7 @@ type Props = {
 
 /**
  * The groups of one multi-group order, at the top of its order view
- * (gridgo-api#117). A group is one shop on one date (gridgo-client#189), so
+ * (gridgo-api#117). A group is one delivery from one shop (gridgo-api#275), so
  * each row says its date beside its state, soonest first.
  *
  * Behind one order and one payment, each shop is its own job: its own rider,
@@ -56,7 +57,7 @@ export function BasketGroupsCard({ order, basket, onSelect }: Props) {
           <GroupPlate letter={groupLetter(order.groupLabel ?? "Shop")} />
           <View className="min-w-0 flex-1 gap-0.5">
             <Text className="text-body font-medium text-text-primary">
-              {order.groupLabel ?? "This shop group"}
+              {order.groupLabel ? deliveryLabel({ ...order, label: order.groupLabel }) : "This shop group"}
             </Text>
             <Text className="text-caption text-text-secondary">
               {groupDateLine(order.deadline ?? order.basketDeadline ?? null)}
@@ -69,6 +70,8 @@ export function BasketGroupsCard({ order, basket, onSelect }: Props) {
           const selected = group.orderId === order.id;
           const meta = groupStateMeta(group, basket?.fulfillmentMode ?? order.fulfillmentMode);
           const dateLine = groupDateLine(basketGroupDeadlineOf(group, basket));
+          // "Shop A, delivery 1 of 2" once a shop went out separately (gridgo-api#275).
+          const name = deliveryLabel(group);
           return (
             <Pressable
               key={group.orderId}
@@ -77,7 +80,7 @@ export function BasketGroupsCard({ order, basket, onSelect }: Props) {
               }}
               accessibilityRole="tab"
               accessibilityState={{ selected }}
-              accessibilityLabel={`${group.label}. ${dateLine}. ${meta.label}.${selected ? " Showing now." : ""}`}
+              accessibilityLabel={`${name}. ${dateLine}. ${meta.label}.${selected ? " Showing now." : ""}`}
               testID={`basket-group-${groupLetter(group.label)}`}
               className={
                 selected
@@ -88,7 +91,7 @@ export function BasketGroupsCard({ order, basket, onSelect }: Props) {
             >
               <GroupPlate letter={groupLetter(group.label)} />
               <View className="min-w-0 flex-1 gap-1">
-                <Text className="text-body font-medium text-text-primary">{group.label}</Text>
+                <Text className="text-body font-medium text-text-primary">{name}</Text>
                 <Text className="text-caption text-text-secondary">{dateLine}</Text>
                 <View className="flex-row">
                   <StatusChip tone={meta.tone} label={meta.label} icon={meta.icon} />

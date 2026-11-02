@@ -27,7 +27,7 @@ import {
   receiptReadError,
   receiptStage,
 } from "@/lib/acknowledgementReceipt";
-import { groupTag } from "@/lib/basketGroups";
+import { deliveryLabel, groupTag } from "@/lib/basketGroups";
 import { orderReference } from "@/lib/orderReference";
 
 type Read =
@@ -227,7 +227,7 @@ export default function AcknowledgementReceiptScreen() {
         {group ? (
           <Text className="text-caption text-text-secondary">
             Each part of a multi-shop order has its own acknowledgement receipt and number. This one
-            covers {order?.groupLabel ?? "this part"} only. Switch parts on the order to see the others.
+            covers {order?.groupLabel ? deliveryLabel({ ...order, label: order.groupLabel }) : "this part"} only. Switch parts on the order to see the others.
           </Text>
         ) : null}
 

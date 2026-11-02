@@ -677,6 +677,13 @@ export type Order = {
   /** "Shop A", "Shop B" — never the shop's identity. */
   groupLabel?: string | null;
   /**
+   * Which of this shop's deliveries this is, and how many it has, once the
+   * client split one shop into separate deliveries (gridgo-api#275,
+   * `docs/SHOP_DELIVERIES_API.md`). Absent for a shop delivering once.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
+  /**
    * The basket's one deadline, from before each product kept its own date
    * (gridgo-client#189). A group's own date is its `deadline`.
    */
@@ -2898,6 +2905,13 @@ export type CartQuoteReason = {
 
 /** One delivery leg: a print run's lines and the zone its farthest drop falls in. */
 export type CartQuoteDeliveryLine = {
+  /** The cart group this fee belongs to, with its label (gridgo-api#275). Absent on an older API. */
+  groupId?: string;
+  label?: string;
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
+  /** The delivery's date: the earliest of its products. */
+  deadline?: string | null;
   lineIds: string[];
   distanceZone: DistanceZone | null;
   deliveryFeeMinor: number | null;
@@ -3044,6 +3058,17 @@ export type CartGroup = {
   readyBy?: string | null;
   /** Tight, Secured or Rush for this group (gridgo-api#292). */
   scheduling?: Scheduling | null;
+  /**
+   * Which of this shop's deliveries this is, and how many it has, once the
+   * client split one shop into separate deliveries (gridgo-api#275,
+   * `docs/SHOP_DELIVERIES_API.md`). Absent for a shop delivering once.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
+  /** True when this shop has two or more products, so it can be delivered separately. */
+  canDeliverSeparately?: boolean;
+  /** True when this shop goes out as more than one delivery. */
+  separateDelivery?: boolean;
 };
 
 export type Cart = {
@@ -3075,7 +3100,7 @@ export type Cart = {
   checkoutNotice?: CheckoutNotice | null;
   lines: CartLineRecord[];
   /**
-   * One per shop and date, in the order they were first added
+   * One per delivery (a shop by default; one per date once split, gridgo-api#275), in the order first added
    * (gridgo-client#189). Absent on older APIs.
    */
   groups?: CartGroup[];
@@ -3103,6 +3128,13 @@ export type BasketGroup = {
   totalMinor: number;
   pickupFeeMinor?: number;
   organizationDiscountMinor?: number;
+  /**
+   * Which of this shop's deliveries this is, and how many it has, once the
+   * client split one shop into separate deliveries (gridgo-api#275,
+   * `docs/SHOP_DELIVERIES_API.md`). Absent for a shop delivering once.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
 };
 
 /**
@@ -3200,6 +3232,13 @@ export type InvoiceGroup = {
   organizationDiscountMinor?: number;
   /** This group's share of the voucher, already out of `totalMinor` (gridgo-api#204). */
   voucherDiscountMinor?: number;
+  /**
+   * Which of this shop's deliveries this is, and how many it has, once the
+   * client split one shop into separate deliveries (gridgo-api#275,
+   * `docs/SHOP_DELIVERIES_API.md`). Absent for a shop delivering once.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
 };
 
 export type Invoice = {
@@ -3608,6 +3647,25 @@ export async function setCartDropoffs(
   const result = await request<{ cart: Cart }>(
     `/me/carts/${encodeURIComponent(cartId)}/dropoffs`,
     { method: "PUT", body: JSON.stringify(input) },
+  );
+  return result.cart;
+}
+
+/**
+ * How one shop's products travel (gridgo-api#275, `docs/SHOP_DELIVERIES_API.md`):
+ * `by_deadline` is one delivery per product date, each with its own delivery
+ * fee; `none` puts them all in one delivery by the earliest date. `groupId` is
+ * any current group of that shop. Refused with `409 deadline_not_met`
+ * (`{lineIds, deadline}`) when a delivery could not be ready by its date.
+ */
+export async function setCartDeliveries(
+  cartId: string,
+  groupId: string,
+  split: "by_deadline" | "none",
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/groups/${encodeURIComponent(groupId)}/deliveries`,
+    { method: "PUT", body: JSON.stringify({ split }) },
   );
   return result.cart;
 }

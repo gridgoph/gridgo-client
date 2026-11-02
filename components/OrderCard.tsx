@@ -79,7 +79,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
             >
               {order.title}
             </Text>
-            <View className="mt-2 flex-row items-center gap-2">
+            <View className="mt-2 flex-row flex-wrap items-center gap-2">
               <OrderReference id={order.id} />
               {/*
                 One group of a larger order: its letter and its date, never its

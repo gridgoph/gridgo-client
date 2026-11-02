@@ -225,6 +225,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "A shop in your order can no longer make one of your dates. Choose a later date for that item, or remove it.";
       case "cart_group_not_found":
         return "That shop group is no longer in your order. Add this as a new product instead.";
+      case "invalid_delivery_split":
+        return "GRIDGO could not change how this shop delivers. Reopen your order and try again.";
       case "basket_payment_required":
         return "This order is paid as one payment for every shop in it. Open the order and send the payment from there.";
       // ---- basket: the press's widest print ----

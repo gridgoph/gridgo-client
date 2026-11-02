@@ -5,7 +5,7 @@ import { Pressable, Text, View } from "react-native";
 import { VOUCHER_SHARE_LABEL, voucherAmount } from "@/lib/vouchers";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
-import { addMoreFromLabel, groupDateLine, type ShopGroupView } from "@/lib/basketGroups";
+import { addMoreFromLabel, deliveryOf, groupDateLine, type ShopGroupView } from "@/lib/basketGroups";
 import { listingZoneLine } from "@/lib/distanceZone";
 import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
 
@@ -59,10 +59,12 @@ type Props = {
   onChangeDate?: () => void;
   /** The client tried to place the order and this group still has no date. */
   dateError?: boolean;
+  /** The "Deliver separately" choice for this shop, drawn under the date (gridgo-api#275). */
+  deliveryChoice?: ReactNode;
 };
 
 /**
- * One group of a multi-group basket on checkout: one shop on one date
+ * One group of a multi-group basket on checkout: one delivery from one shop
  * (gridgo-api#117, gridgo-client#189).
  *
  * Plate and label, the date it is needed by, what the group's items come to,
@@ -80,9 +82,13 @@ export function ShopGroupSection({
   onAddMore,
   onChangeDate,
   dateError = false,
+  deliveryChoice,
 }: Props) {
   const colors = useThemeColors();
   const count = group.lines.length;
+  // "Delivery 1 of 2" once this shop goes out separately; nothing otherwise.
+  const ofCount = deliveryOf(group);
+  const items = count === 1 ? "1 item" : `${count} items`;
   const zone = listingZoneLine({
     distanceZone: group.zone,
     distanceKm: group.distanceKm ?? undefined,
@@ -97,16 +103,14 @@ export function ShopGroupSection({
         className="flex-row items-center gap-3"
         accessible
         accessibilityRole="header"
-        accessibilityLabel={`${group.label}. ${groupDateLine(group.deadline)}. ${count === 1 ? "1 item" : `${count} items`}. ${
+        accessibilityLabel={`${group.label}. ${ofCount ? `${ofCount}. ` : ""}${groupDateLine(group.deadline)}. ${items}. ${
           group.itemsMinor == null ? "Price not yet known" : formatPhp(group.itemsMinor)
         }`}
       >
         <GroupPlate letter={group.letter} />
         <View className="min-w-0 flex-1 gap-0.5">
           <Text className="text-body-lg font-medium text-text-primary">{group.label}</Text>
-          <Text className="text-caption text-text-muted">
-            {count === 1 ? "1 item" : `${count} items`}
-          </Text>
+          <Text className="text-caption text-text-muted">{ofCount ? `${ofCount} · ${items}` : items}</Text>
         </View>
         <Text className="text-body text-text-secondary">
           {group.itemsMinor == null ? "Not yet" : formatPhp(group.itemsMinor)}
@@ -147,12 +151,18 @@ export function ShopGroupSection({
         ) : null}
       </Pressable>
 
+      {deliveryChoice}
+
       {children}
 
       <View className="gg-panel flex-row items-baseline justify-between gap-3">
         <View className="min-w-0 flex-1 gap-0.5">
           <Text className="text-body text-text-secondary">
-            {pickup ? "Brought to GRIDGO Office" : `Delivery from ${group.label}`}
+            {pickup
+              ? "Brought to GRIDGO Office"
+              : ofCount
+                ? `${ofCount} from ${group.label}`
+                : `Delivery from ${group.label}`}
           </Text>
           {!pickup && zone ? <Text className="text-caption text-text-muted">{zone}</Text> : null}
         </View>

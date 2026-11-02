@@ -14,6 +14,7 @@
 import type { Basket, BasketGroup, Invoice, InvoiceLine, MatchedOrder, Order, OrderPayments } from "@/lib/api";
 import {
   basketGroupDeadlineOf,
+  deliveryLabel,
   byDate,
   groupLetter,
   groupSpread,
@@ -216,7 +217,8 @@ function invoiceParts(invoice: Invoice) {
   const groups = invoice.groups && invoice.groups.length > 1
     ? byDate(invoice.groups, (group) => group.deadline ?? null).map((group): ReceiptGroup => ({
         orderId: group.orderId,
-        label: group.label,
+        // "Shop A, delivery 1 of 2" once a shop went out separately (gridgo-api#275).
+        label: deliveryLabel(group),
         letter: groupLetter(group.label),
         deadline: group.deadline ?? null,
         lines: group.lines.map((line) => receiptLine(line, invoice.serviceFeeRateBps)),
@@ -423,7 +425,7 @@ export function receiptFulfilmentRow(
   money: Pick<ReceiptMoney, "deliveryFeeMinor" | "pickup">,
   /**
    * Groups on a multi-group receipt (or their count): a pick-up fee is still
-   * charged once, and delivery is one per shop and date.
+   * charged once, and delivery is one per shop delivery.
    */
   groups: number | readonly { label: string; deadline: string | null }[] = 0,
 ): { label: string; value: string } {
