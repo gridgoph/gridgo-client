@@ -25,6 +25,7 @@ import { canInvite, foundingTesterView, INVITE_ROUTE, INVITE_TITLE } from "@/lib
 import { startPrintHref } from "@/lib/startPrint";
 import { officerState } from "@/lib/organization";
 import { MY_FILES_ROUTE } from "@/lib/myFiles";
+import { QUOTES_ROUTE } from "@/lib/quoteRequests";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
 import { accountTypeOption } from "@/lib/signup";
 import { cartIsOpen, useCart } from "@/store/cart";
@@ -208,6 +209,12 @@ export default function AccountScreen() {
               files ticked "Save to My files" are here; everything else
               follows the 30-day rule.
             */}
+            {/* Custom signage and 3D printing quotes (gridgo-api#226). */}
+            <DestinationRow
+              title="My quotes"
+              detail="Custom signage and 3D printing, priced by shops"
+              onPress={() => router.push(QUOTES_ROUTE)}
+            />
             <DestinationRow
               title="My files"
               detail="Artwork you saved to use again, kept until you delete it"

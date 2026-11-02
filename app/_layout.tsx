@@ -548,6 +548,13 @@ function AppNavigation() {
                 />
                 {/* The artwork the client chose to keep (gridgo-client#334), from Account and the Artwork step. */}
                 <Stack.Screen name="my-files" options={pushedScreenOptions("My files")} />
+                {/*
+                  Quotes for custom signage and 3D printing (gridgo-api#226),
+                  from Account, the "+" sheet, the category screens and the inbox.
+                */}
+                <Stack.Screen name="quotes/index" options={pushedScreenOptions("Quotes")} />
+                <Stack.Screen name="quotes/new" options={pushedScreenOptions("Quotes")} />
+                <Stack.Screen name="quotes/[id]" options={pushedScreenOptions("Quote")} />
                 {/* The voucher wallet (gridgo-api#204), from Account. */}
                 <Stack.Screen name="vouchers" options={pushedScreenOptions("Vouchers")} />
                 {/* Founding Tester invites (client#323), from the path card and Account. */}

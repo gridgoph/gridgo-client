@@ -1,7 +1,7 @@
 import { TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
@@ -44,6 +44,7 @@ import { basketMatchContext } from "@/lib/basketGroups";
 import { loadCategoryBoards } from "@/lib/shopBoards";
 import { everyShopPaused } from "@/lib/shopHours";
 import { useBasketGroupTarget } from "@/store/basketGroup";
+import { isQuotedProduct, newQuoteHref } from "@/lib/quoteRequests";
 import { useCart } from "@/store/cart";
 import { useJobDeadline } from "@/store/jobDeadline";
 import { useJobFulfilment, withJobFulfilment } from "@/store/jobFulfilment";
@@ -443,8 +444,17 @@ export default function MatchScreen() {
           <EmptyState
             title={`GRIDGO cannot print ${subcategoryName.toLowerCase()} today`}
             body="Nothing on GRIDGO's presses covers this one right now. Operations can still quote it with you — or pick something else to print."
-            actionLabel="Choose something else"
-            onAction={() => router.dismissTo("/request/category")}
+            {...(isQuotedProduct(subcategory)
+              ? {
+                  actionLabel: "Request a quote",
+                  onAction: () => router.push(newQuoteHref(subcategory) as Href),
+                  altActionLabel: "Choose something else",
+                  onAltAction: () => router.dismissTo("/request/category"),
+                }
+              : {
+                  actionLabel: "Choose something else",
+                  onAction: () => router.dismissTo("/request/category"),
+                })}
           />
         </View>
       </Screen>

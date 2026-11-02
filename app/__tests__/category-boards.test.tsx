@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -200,5 +200,29 @@ describe("CategoryScreen with a 13-board directory", () => {
     expect(api.getCatalogShop).toHaveBeenCalledTimes(13);
     // Flyers is not among the products said to be quoted by Operations.
     expect(screen.getByText(/None of them is on a press today/)).toBeTruthy();
+  });
+});
+
+// Presses, so it goes last in this file.
+describe("CategoryScreen with signage on a board", () => {
+  it("still offers a quote for custom work (gridgo-api#226)", async () => {
+    mockOpenCategory = "recognition_awards_signage";
+    api.getCatalogShop.mockResolvedValue({
+      ...BOARD,
+      categories: ["recognition_awards_signage"],
+      services: [
+        {
+          ...BOARD.services[0],
+          categoryCode: "recognition_awards_signage",
+          items: [{ ...listing("business_store_signages", 715000), categoryCode: "recognition_awards_signage", name: "Signage" }],
+        },
+      ],
+    });
+    await renderInSafeArea(<CategoryScreen />);
+
+    expect(await screen.findByText("No fixed price for custom work?")).toBeTruthy();
+    expect(screen.queryByText("Lovis Printshop")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Request a quote" }));
+    expect(mockPush).toHaveBeenCalledWith("/quotes/new?productType=business_store_signages");
   });
 });

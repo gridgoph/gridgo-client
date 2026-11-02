@@ -7,6 +7,7 @@ import { useListingDraft } from "@/store/listingDraft";
 import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useHandoverActions } from "@/store/handoverActions";
 import { useNotifications } from "@/store/notifications";
+import { useQuotes } from "@/store/quotes";
 import { useVouchers } from "@/store/vouchers";
 import { usePromotions } from "@/store/promotions";
 import { useSurvey } from "@/store/survey";
@@ -486,6 +487,7 @@ useSession.subscribe((state, previous) => {
   useOrderRanking.getState().clear();
   useNotifications.getState().setOwner(id);
   useVouchers.getState().reset();
+  useQuotes.getState().reset();
   // A new sign-in brings the claim sheet back while there is one to claim.
   usePromotions.getState().reset();
   useSurvey.getState().reset();

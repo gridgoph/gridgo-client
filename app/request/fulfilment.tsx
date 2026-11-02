@@ -53,7 +53,13 @@ export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowE
 export default function FulfilmentScreen() {
   const router = useRouter();
   const colors = useThemeColors();
-  const { subcategory, category } = useLocalSearchParams<{ subcategory?: string; category?: string }>();
+  const { subcategory, category, purpose } = useLocalSearchParams<{
+    subcategory?: string;
+    category?: string;
+    /** `quote`: chosen for a quote request's brief, which it returns to. */
+    purpose?: string;
+  }>();
+  const forQuote = purpose === "quote";
 
   const held = useJobFulfilment((state) => state.choice);
   const setChoice = useJobFulfilment((state) => state.set);
@@ -156,6 +162,11 @@ export default function FulfilmentScreen() {
     }
     const choice = mode === "pickup" ? PICKUP_CHOICE : deliveryChoice(chosen as OrderPoint);
     setChoice(choice);
+    // A quote's brief asked; it reads the choice back and nothing is matched.
+    if (forQuote) {
+      router.back();
+      return;
+    }
     // The match on the usual order starts now, while the client confirms or
     // re-ranks on the next step.
     if (subcategory) {
@@ -174,10 +185,12 @@ export default function FulfilmentScreen() {
   return (
     <Screen edges={["bottom"]}>
       <ScrollView className="gg-screen" contentContainerClassName="gg-page pb-8 pt-2">
-        <MatchPrepNote current="delivery" />
+        {forQuote ? null : <MatchPrepNote current="delivery" />}
         <Text className="text-h2 text-text-primary">How should it reach you?</Text>
         <Text className="mt-2 text-body-lg text-text-secondary">
-          GRIDGO matches a printer for where it is going, so this comes first.
+          {forQuote
+            ? "Shops quote for where it is going."
+            : "GRIDGO matches a printer for where it is going, so this comes first."}
         </Text>
 
         <View className="mt-6 gap-3" accessibilityRole="radiogroup" accessibilityLabel={pickupAvailable ? "Delivery or pick-up" : "Delivery"}>
@@ -264,7 +277,7 @@ export default function FulfilmentScreen() {
 
       <View className="gg-page gap-2 pb-2 pt-2">
         <PrimaryButton
-          label={ready || !mode ? FULFILMENT_CONTINUE_LABEL : listed?.length === 0 ? "Add an address" : "Choose an address"}
+          label={ready || !mode ? (forQuote ? "Use this" : FULFILMENT_CONTINUE_LABEL) : listed?.length === 0 ? "Add an address" : "Choose an address"}
           onPress={proceed}
         />
         {attempted && !ready ? (
