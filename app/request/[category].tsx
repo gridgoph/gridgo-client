@@ -9,6 +9,7 @@ import { CategorySampleCard, CategorySampleRow } from "@/components/CategorySamp
 import { CategoryViewToggle } from "@/components/CategoryViewToggle";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
+import { QuoteInvite } from "@/components/QuoteInvite";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { TourTarget } from "@/components/TourTarget";
@@ -120,6 +121,8 @@ export default function CategoryScreen() {
     subcategoryMatchesHunt(entry, null, hunt),
   );
   const hunting = isHunting(hunt);
+  // A listed signage or 3D job can still be one-off work: it can be quoted (gridgo-api#226).
+  const customOnBoards = huntedOnBoards.find((subcategory) => isQuotedProduct(subcategory.code)) ?? null;
   const split = huntedOnBoards.length > 0 && huntedQuoted.length > 0 && !hunting;
   const huntMissed = hunting && huntedOnBoards.length === 0 && huntedQuoted.length === 0;
 
@@ -249,6 +252,12 @@ export default function CategoryScreen() {
                 })}
               </View>
             )}
+          </View>
+        ) : null}
+
+        {boards && customOnBoards ? (
+          <View className="mt-6">
+            <QuoteInvite name={customOnBoards.name} onPress={() => router.push(newQuoteHref(customOnBoards.code) as Href)} />
           </View>
         ) : null}
 

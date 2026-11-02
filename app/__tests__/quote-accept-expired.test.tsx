@@ -40,7 +40,7 @@ it("says the options expired and offers a new quote instead of checkout", async 
 
   fireEvent.press(await screen.findByRole("button", { name: "Accept option A" }));
 
-  expect(await screen.findByText(/^These options have expired/)).toBeTruthy();
+  expect(await screen.findByText(/^These options are no longer valid/)).toBeTruthy();
   expect(screen.getByText("Expired")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Request a new quote" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: /^Accept option/ })).toBeNull();

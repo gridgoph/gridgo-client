@@ -88,10 +88,13 @@ export const useQuotes = create<QuotesState>((set, get) => ({
     } catch (error) {
       // A 410 carries the request as it now stands, so the screen shows it expired.
       const refreshed = expiredQuoteFrom(error);
-      set((state) => ({
-        ...(refreshed ? put(state, refreshed) : {}),
-        actionError: quoteErrorMessage(error, "GRIDGO could not accept this option. Try again."),
-      }));
+      // An expired request's own status line already says why; only say it
+      // again when GRIDGO sent no refreshed request to draw.
+      set((state) =>
+        refreshed
+          ? put(state, refreshed)
+          : { actionError: quoteErrorMessage(error, "GRIDGO could not accept this option. Try again.") },
+      );
       if (!refreshed) void get().load(id);
       return null;
     } finally {

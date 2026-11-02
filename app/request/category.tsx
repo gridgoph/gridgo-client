@@ -5,6 +5,7 @@ import { Pressable, Text, TextInput, View, type TextStyle } from "react-native";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 
 import { FormScreen } from "@/components/FormScreen";
+import { QuoteInvite } from "@/components/QuoteInvite";
 import { TourTarget } from "@/components/TourTarget";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -256,19 +257,7 @@ function SearchResults({
         />
       ))}
       {quoted ? (
-        <View className="mt-2 gg-panel gap-3">
-          <Text className="text-body-lg font-medium text-text-primary">No fixed price for custom work?</Text>
-          <Text className="text-body text-text-secondary">
-            GRIDGO asks shops to quote {quoted.name.toLowerCase()} and sends you up to three options.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onRequestQuote(quoted.code)}
-            className="gg-btn-secondary self-start px-6"
-          >
-            <Text className="text-button text-text-primary">Request a quote</Text>
-          </Pressable>
-        </View>
+        <QuoteInvite name={quoted.name} onPress={() => onRequestQuote(quoted.code)} />
       ) : null}
     </View>
   );
