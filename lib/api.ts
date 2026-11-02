@@ -660,6 +660,8 @@ export type Order = {
    * Read through `lib/shopRecovery.ts`.
    */
   shopRecovery?: ShopRecovery | null;
+  /** Every accepted move to another shop, with its prices (gridgo-api#225). */
+  shopMoves?: ShopMove[];
   /**
    * The shop asked for a later deadline (gridgo-api
    * `docs/ORDER_RESCHEDULE_API.md`). Read through `lib/reschedule.ts`.
@@ -5081,12 +5083,66 @@ export async function withdrawRefund(
 export type ShopRecovery = {
   id: string;
   status: string;
+  /** `shop | gridgo | client`; absent on an API from before gridgo-api#225. */
+  fault?: string;
   createdAt: string;
   refundRequestId: string | null;
-  /** The replacement's client-ready date. Null when no shop can take it. */
-  replacement: { promiseBy: string } | null;
+  /** The best-ranked replacement. Null when no shop can take it. */
+  replacement: ShopRecoveryOption | null;
+  /** Up to three more anonymous matches, in rank order (gridgo-api#225). */
+  alternatives?: ShopRecoveryOption[];
+  /** True only when the replacement needs no extra payment. */
   canAccept: boolean;
+  canPickAlternative?: boolean;
+  canPayDifference?: boolean;
   canRefund: boolean;
+  /** Set once the client chose to pay the rest: the change request to pay. */
+  topUp?: { changeRequestId: string; amountMinor: number } | null;
+};
+
+/**
+ * One shop GRIDGO offers in place of the one that could not carry on. The shop
+ * itself is never named. `optionId` is sent back to pick an alternative.
+ */
+export type ShopRecoveryOption = {
+  optionId?: string | null;
+  /** The client-ready date with this shop. */
+  promiseBy: string;
+  /** Absent on an API from before gridgo-api#225. Read through `lib/shopRecovery.ts`. */
+  pricing?: ShopMovePricing | null;
+};
+
+/**
+ * The substitute-shop price rule (gridgo-api `docs/SHOP_RECOVERY_API.md`
+ * #substitute-shop-price-rule). `rule` is an open string: `cheaper | same |
+ * covered | above_cap`, or `not_applicable` with `ruleApplies: false` on a
+ * client-caused move. The prices are the shops' own figures, so a screen draws
+ * only the differences and its own fee-inclusive printing (`lib/shopRecovery.ts`).
+ */
+export type ShopMovePricing = {
+  ruleApplies: boolean;
+  rule: string;
+  originalPriceMinor: number;
+  newPriceMinor: number;
+  differenceMinor: number;
+  gridgoCoverMinor: number;
+  clientPaysMinor: number;
+  refundMinor: number;
+};
+
+/** One accepted move to another shop, as the owning client sees it. */
+export type ShopMove = Partial<ShopMovePricing> & {
+  recoveryId: string;
+  at: string;
+  fault?: string;
+  /** `replacement | alternative` */
+  choice?: string;
+  /** `applied | awaiting_payment | refund_requested` */
+  status: string;
+  refundRequestId?: string | null;
+  /** `reserved | reconciliation_required`, or null. */
+  refundStatus?: string | null;
+  topUpChangeRequestId?: string | null;
 };
 
 /**
@@ -5121,13 +5177,20 @@ export type RescheduleRequest = {
 };
 
 /**
- * Take the replacement shop. A `409 shop_recovery_offer_changed` carries a
- * refreshed offer in its body and is never accepted for the client.
+ * Take the replacement shop, or an alternative by its `optionId`. An offer
+ * above GRIDGO's cover needs `acceptTopUpMinor` equal to what the client pays
+ * (`409 shop_move_top_up_consent_required` otherwise). A `409
+ * shop_recovery_offer_changed` carries a refreshed offer in its body and is
+ * never accepted for the client.
  */
-export async function acceptShopRecovery(orderId: string, recoveryId: string): Promise<ShopRecovery | null> {
+export async function acceptShopRecovery(
+  orderId: string,
+  recoveryId: string,
+  choice: { optionId?: string; acceptTopUpMinor?: number } = {},
+): Promise<ShopRecovery | null> {
   const result = await request<{ recovery: ShopRecovery | null }>(
     `/orders/${encodeURIComponent(orderId)}/shop-recovery/accept`,
-    { method: "POST", body: JSON.stringify({ recoveryId }) },
+    { method: "POST", body: JSON.stringify({ recoveryId, ...choice }) },
   );
   return result.recovery;
 }

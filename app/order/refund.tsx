@@ -21,6 +21,7 @@ import {
   canReplaceDestination,
   canWithdrawRefund,
   currentRefund,
+  creditCopy,
   isDeliveryCredit,
   isRefundActive,
   refundHeadline,
@@ -31,6 +32,7 @@ import {
   refundRejectionReason,
 } from "@/lib/refunds";
 import { formatTimelineStamp } from "@/lib/relativeTime";
+import { shopRecoveryWithdrawNote } from "@/lib/shopRecovery";
 
 /**
  * One order's refund: where it stands, what comes back, where it goes, and
@@ -211,13 +213,10 @@ export default function RefundScreen() {
               {refund.status === "paid" ? "WHAT WAS REFUNDED" : "WHAT COMES BACK"}
             </Text>
             {credit ? (
-              /* Delivery only: the printing, the fee and the order are untouched. */
+              /* A credit only: the rest of the order is untouched. */
               <View className="gg-card gap-2">
-                <SpecRow label="Delivery-fee credit" value={formatPhp(refund.settlement.totalMinor)} />
-                <Text className="text-caption text-text-muted">
-                  The difference between the delivery fee you paid and the fee to your new pin. Your
-                  printing and your order are not affected.
-                </Text>
+                <SpecRow label={creditCopy(refund).label} value={formatPhp(refund.settlement.totalMinor)} />
+                <Text className="text-caption text-text-muted">{creditCopy(refund).explain}</Text>
               </View>
             ) : (
               <RefundBreakdownCard settlement={refund.settlement} order={order} />
@@ -270,7 +269,7 @@ export default function RefundScreen() {
             <View className="gap-1">
               <Text className="text-body-lg font-medium text-text-primary">{refundKindLabel(refund.kind)}</Text>
               <Text className="text-caption text-text-muted">
-                {credit ? "Pin moved" : "Sent"} {formatTimelineStamp(refund.createdAt)}
+                {credit ? creditCopy(refund).when : "Sent"} {formatTimelineStamp(refund.createdAt)}
                 {refund.filingDeadlineAt ? ` · deadline was ${formatDeadline(refund.filingDeadlineAt)}` : ""}
               </Text>
             </View>
@@ -313,7 +312,10 @@ export default function RefundScreen() {
       <ConfirmDialog
         visible={withdrawing}
         question="Withdraw this refund request?"
-        body="The job carries on as it was and nothing is refunded. You can ask again while the time to ask is still open."
+        body={
+          shopRecoveryWithdrawNote(order, refund.id) ??
+          "The job carries on as it was and nothing is refunded. You can ask again while the time to ask is still open."
+        }
         confirmLabel="Withdraw request"
         cancelLabel="Keep it"
         tone="destructive"
