@@ -30,14 +30,14 @@ export const TABS: readonly TabDefinition[] = [
   { name: "home", label: "Home" },
   { name: "orders", label: "Orders" },
   { name: "organizations", label: "Organizations" },
-  { name: "notifications", label: "Notifications" },
+  { name: "notifications", label: "Alerts" },
   { name: "account", label: "Account" },
   { name: "new-request", label: "New request" },
 ];
 
 /**
  * The stepper. It stays a tab route so a draft can reopen it, but it is not
- * in the bar — the yellow "+" on each main screen is the way into a request.
+ * in the bar — the bar's centre "+" opens the quick actions instead.
  *
  * Typed as the literal, not `TabName`. `Exclude<TabName, typeof ACTION_TAB>`
  * must stay the four labelled destinations; annotating this as `TabName`

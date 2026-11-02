@@ -1,11 +1,10 @@
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import HomeScreen from "@/app/(tabs)/home";
+import { useThemeStore } from "@/store/theme";
 import { useCart } from "@/store/cart";
-import { usePush } from "@/store/push";
-import { useRequestDraft } from "@/store/requestDraft";
 import { useSession } from "@/store/session";
 
 const mockPush = jest.fn();
@@ -28,6 +27,9 @@ jest.mock("@/lib/api", () => {
     listCatalog: jest.fn(async () => []),
     getProductCategories: jest.fn(async () => []),
     getCart: jest.fn(async () => null),
+    getHomeSummary: jest.fn(async () => null),
+    getFeaturedPrints: jest.fn(async () => ({ items: [] })),
+    saveAccountThemePreference: jest.fn(async (value: string) => value),
   };
 });
 
@@ -51,10 +53,7 @@ function renderInSafeArea(ui: ReactElement) {
 
 beforeEach(() => {
   mockPush.mockClear();
-  api.listOrders.mockReset();
-  api.listOrders.mockResolvedValue([]);
   useCart.getState().reset();
-  useRequestDraft.getState().reset();
   useSession.setState({
     user: {
       id: "user_1",
@@ -69,35 +68,16 @@ beforeEach(() => {
 });
 
 /**
- * Home is where every client lands, so it is where the way to turn phone
- * notifications on has to be — after "Not now" on the explainer, or after
- * Android has blocked them. It draws nothing once they are on.
+ * The switch saves the choice on the account (`PATCH /me/theme`), so every
+ * screen and every phone follows it (client#335).
  */
-function pushPermission(permission: "undetermined" | "blocked" | "granted") {
-  usePush.setState({ supported: true, permission, busy: false, error: null });
-}
-
-it("offers phone notifications on Home while this phone has not said yes", async () => {
-  pushPermission("undetermined");
+it("shows the tapped theme at once and saves it on the account", async () => {
+  useThemeStore.setState({ preference: "system", unsynced: false, owner: "user_1" });
   await renderInSafeArea(<HomeScreen />);
 
-  expect(await screen.findByText("Get these on your phone")).toBeTruthy();
-  expect(screen.getByText("Turn on notifications")).toBeTruthy();
-});
+  fireEvent.press(await screen.findByLabelText("Dark theme"));
 
-it("points a blocked phone at its settings, from Home", async () => {
-  pushPermission("blocked");
-  await renderInSafeArea(<HomeScreen />);
-
-  expect(await screen.findByText("Notifications are off for GRIDGO")).toBeTruthy();
-  expect(screen.getByText("Open phone settings")).toBeTruthy();
-});
-
-it("draws no card once notifications are on", async () => {
-  pushPermission("granted");
-  await renderInSafeArea(<HomeScreen />);
-
-  expect(await screen.findByText("START YOUR FIRST PRINT")).toBeTruthy();
-  expect(screen.queryByText("Get these on your phone")).toBeNull();
-  expect(screen.queryByText("Notifications are off for GRIDGO")).toBeNull();
+  expect(useThemeStore.getState().preference).toBe("dark");
+  await screen.findByLabelText("Dark theme");
+  expect(api.saveAccountThemePreference).toHaveBeenCalledWith("dark");
 });

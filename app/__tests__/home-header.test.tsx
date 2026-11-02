@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -26,8 +26,14 @@ jest.mock("@/lib/api", () => {
     listCatalog: jest.fn(async () => []),
     getProductCategories: jest.fn(async () => []),
     getCart: jest.fn(async () => null),
+    getHomeSummary: jest.fn(async () => null),
+    getFeaturedPrints: jest.fn(async () => ({ items: [] })),
+    saveAccountThemePreference: jest.fn(async (value: string) => value),
   };
 });
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const api = require("@/lib/api");
 
 function renderInSafeArea(ui: ReactElement) {
   return render(ui, {
@@ -61,43 +67,25 @@ beforeEach(() => {
 });
 
 /**
- * The two controls in Home's header row. They are read as a pair, so they are
- * asserted as a pair: both present, both reachable, and neither carrying
- * anything it cannot back up with data.
+ * Home's header is the mark, the basket and the light/dark switch (client#335).
+ * Chat moved into the "+" sheet, where it sits with its hours and unread count.
  */
 describe("Home's header controls", () => {
-  it("carries both the cart and chat, beside the mark", async () => {
+  it("carries the cart and the theme switch beside the mark, and no chat", async () => {
     await renderInSafeArea(<HomeScreen />);
 
     expect(await screen.findByLabelText("Your order, empty")).toBeTruthy();
-    expect(screen.getByLabelText("Chat")).toBeTruthy();
+    expect(screen.getByLabelText("Light theme")).toBeTruthy();
+    expect(screen.getByLabelText("Dark theme")).toBeTruthy();
+    expect(screen.queryByLabelText("Chat")).toBeNull();
     expect(screen.getByLabelText("GRIDGO Business")).toBeTruthy();
-    expect(screen.queryByText("Cruz Signs")).toBeNull();
     expect(screen.queryByText("Rina Cruz")).toBeNull();
   });
 
+  // One press per file section: this goes last.
   it("opens checkout from the cart", async () => {
     await renderInSafeArea(<HomeScreen />);
-
     fireEvent.press(await screen.findByLabelText("Your order, empty"));
     expect(mockPush).toHaveBeenCalledWith("/checkout");
-  });
-
-  it("opens the chat list from chat", async () => {
-    await renderInSafeArea(<HomeScreen />);
-
-    fireEvent.press(await screen.findByLabelText("Chat"));
-    expect(mockPush).toHaveBeenCalledWith("/chat");
-  });
-
-  it("puts no unread badge on chat when Operations has nothing waiting", async () => {
-    // The cart's badge is data; a dot on chat would be decoration wearing
-    // data's clothes. Scoped to the control, because Home carries other
-    // numerals of its own — the how-it-works rail counts its steps.
-    await renderInSafeArea(<HomeScreen />);
-
-    const chat = within(await screen.findByLabelText("Chat"));
-    expect(chat.queryByText("1")).toBeNull();
-    expect(chat.queryByText("9+")).toBeNull();
   });
 });

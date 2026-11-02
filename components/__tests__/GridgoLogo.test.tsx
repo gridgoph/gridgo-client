@@ -39,7 +39,7 @@ function renderedMarkSize(): number {
 
 /** The View holding the wordmark — in this layout, the whole text block. */
 function textColumn() {
-  return screen.getByText(/GRID/).parent!;
+  return screen.getByTestId("gridgo-lockup-text", { includeHiddenElements: true });
 }
 
 const hidden = { includeHiddenElements: true } as const;

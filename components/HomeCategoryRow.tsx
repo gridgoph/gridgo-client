@@ -32,7 +32,7 @@ type Props = {
  * keeps: the vocabulary stays small enough to be consistent, and swapping the
  * icon set later is one file.
  */
-const ICONS = {
+export const CATEGORY_ICONS = {
   megaphone: Megaphone,
   shirt: Shirt,
   award: Award,
@@ -68,7 +68,7 @@ const ICONS = {
  */
 export function HomeCategoryRow({ category, onPress }: Props) {
   const colors = useThemeColors();
-  const Icon = ICONS[categoryGlyph(category)];
+  const Icon = CATEGORY_ICONS[categoryGlyph(category)];
   const caption = categoryExamples(category);
 
   return (

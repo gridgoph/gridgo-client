@@ -32,6 +32,20 @@ const SHORT_NAME: Record<string, string> = {
   document_publication: "Documents",
 };
 
+/**
+ * One word per family, for Home's row of round buttons (client#335). Five
+ * across a 390pt phone leaves about seventy points a label; "Merch & events"
+ * does not fit that, "Merch" does. The catalogue name stays the accessible
+ * name.
+ */
+const CIRCLE_NAME: Record<string, string> = {
+  marketing_collateral: "Marketing",
+  corporate_event_merch: "Merch",
+  recognition_awards_signage: "Awards",
+  specialized_prototyping: "Prototype",
+  document_publication: "Docs",
+};
+
 const GLYPH: Record<string, CategoryGlyph> = {
   marketing_collateral: "megaphone",
   corporate_event_merch: "shirt",
@@ -43,6 +57,11 @@ const GLYPH: Record<string, CategoryGlyph> = {
 /** The label a board row is set in. Falls back to the catalogue name. */
 export function categoryShortName(category: ProductCategory): string {
   return SHORT_NAME[canonicalCategoryCode(category.code)] ?? category.name;
+}
+
+/** The one-word label under a round category button. Falls back to the short name. */
+export function categoryCircleName(category: ProductCategory): string {
+  return CIRCLE_NAME[canonicalCategoryCode(category.code)] ?? categoryShortName(category);
 }
 
 /** The mark on the row's swatch. A category with no mark of its own gets a sheet. */

@@ -7,6 +7,7 @@ import {
   completeLine,
   foundingTesterView,
   inviteCounts,
+  missionVoucher,
   INVITE_CONDITIONS,
   inviteExplainer,
   mayHaveSurvey,
@@ -18,6 +19,7 @@ import {
   rewardLine,
   shareMessage,
   shouldAcknowledgeTracking,
+  stepStatusLine,
   stepAction,
   stepWaiting,
   type FoundingTesterView,
@@ -419,5 +421,40 @@ describe("what the celebration says about the voucher", () => {
     const copy = celebrationCopy(earned({ foundingTester: { ...earnedTester, reward: null } }));
     expect(copy.body).toMatch(/shows in your wallet once GRIDGO has added it/);
     expect(copy.body).not.toMatch(/₱/);
+  });
+});
+
+describe("Founding Tester screen step rules (client#335)", () => {
+  const user = (missions: Record<string, boolean>) => ({
+    foundingTester: { eligible: true, label: null, awardedAt: null, missions, completedCount: 0, rewardStatus: null, reward: null },
+  });
+
+  it("marks steps Done, Current and Locked only from GRIDGO's data", () => {
+    const view = foundingTesterView(user({ added: true, placed: false, tracked: false, received: false, rated: false }) as never);
+    expect(view?.kind).toBe("missions");
+    const steps = view?.kind === "missions" ? view.steps : [];
+    expect(steps.map((step) => step.status)).toEqual(["done", "next", "later", "later", "later"]);
+    expect(stepStatusLine(steps[0], 0)).toBe("Done");
+    expect(stepStatusLine(steps[1], 1)).toBe(steps[1].detail);
+    expect(stepStatusLine(steps[2], 2)).toBe("Unlocks after step 2");
+  });
+
+  it("has exactly one current step, even when a later step was done first", () => {
+    const view = foundingTesterView(user({ added: true, placed: false, tracked: true, received: false, rated: false }) as never);
+    const steps = view?.kind === "missions" ? view.steps : [];
+    expect(steps.filter((step) => step.status === "next")).toHaveLength(1);
+    expect(steps[2].status).toBe("done");
+  });
+
+  it("ticks nothing GRIDGO did not send", () => {
+    const view = foundingTesterView(user({ added: true }) as never);
+    expect(view?.kind === "missions" && view.steps).toHaveLength(1);
+  });
+
+  it("shows only the mission's own voucher as its reward", () => {
+    expect(missionVoucher({ kind: "mission", code: "ABC" })).toEqual({ kind: "mission", code: "ABC" });
+    expect(missionVoucher({ kind: "referral", code: "ABC" })).toBeNull();
+    expect(missionVoucher({ kind: "mission", code: "" })).toBeNull();
+    expect(missionVoucher(null)).toBeNull();
   });
 });
