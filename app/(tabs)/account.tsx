@@ -26,6 +26,7 @@ import { startPrintHref } from "@/lib/startPrint";
 import { officerState } from "@/lib/organization";
 import { MY_FILES_ROUTE } from "@/lib/myFiles";
 import { QUOTES_ROUTE } from "@/lib/quoteRequests";
+import { SAMPLES_ROUTE } from "@/lib/sampleFirst";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
 import { accountTypeOption } from "@/lib/signup";
 import { cartIsOpen, useCart } from "@/store/cart";
@@ -214,6 +215,12 @@ export default function AccountScreen() {
               title="My quotes"
               detail="Custom signage and 3D printing, priced by shops"
               onPress={() => router.push(QUOTES_ROUTE)}
+            />
+            {/* Samples paid for before a batch, and the batch each one holds (gridgo-api#222). */}
+            <DestinationRow
+              title="My samples"
+              detail="Samples you ordered, and the batch each one holds at a set price"
+              onPress={() => router.push(SAMPLES_ROUTE)}
             />
             <DestinationRow
               title="My files"

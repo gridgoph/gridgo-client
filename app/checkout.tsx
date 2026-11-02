@@ -134,6 +134,7 @@ import {
 import { zoneLine } from "@/lib/distanceZone";
 import { hubFeeLabel, hubPickupEnabled } from "@/lib/hubPickup";
 import { fulfilmentSummary } from "@/lib/requestFulfilment";
+import { lineQuantityFixed, sampleLineCaption } from "@/lib/sampleFirst";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
 import { artworkRightsPayload, cartRightsScope, useArtworkRights } from "@/store/artworkRights";
@@ -1672,6 +1673,9 @@ function LineRow({
       }
     : null;
   const unit = line.quantityMode ? quantityUnit(line.quantityMode, 1) : null;
+  // A sample is one piece, and a batch from one keeps its sample's specs (gridgo-api#222).
+  const sampleCaption = sampleLineCaption(line);
+  const fixedQuantity = lineQuantityFixed(line);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
@@ -1696,6 +1700,9 @@ function LineRow({
             </View>
             <View className="min-w-0 flex-1 gap-1">
               <Text className="text-body-lg font-medium text-text-primary">{name}</Text>
+              {sampleCaption ? (
+                <Text className="text-caption text-text-secondary">{sampleCaption}</Text>
+              ) : null}
               {paused ? (
                 <View className="gap-1">
                   <ShopHoursLine view={shopHoursView(line.listing?.shopHours)} />
@@ -1763,6 +1770,11 @@ function LineRow({
         </Pressable>
 
         <View className="flex-row items-stretch border-t border-outline-subtle">
+          {fixedQuantity ? (
+            <View className="justify-center px-4">
+              <Text className="text-body font-medium text-text-primary">1 sample</Text>
+            </View>
+          ) : (
           <View className="flex-row items-center">
             <IconAction
               icon="minus"
@@ -1780,6 +1792,7 @@ function LineRow({
               onPress={() => onQuantity(line.quantity + 1)}
             />
           </View>
+          )}
 
           <View className="w-px self-stretch bg-outline-subtle" />
           <RowAction label="Edit" onPress={onEdit} />

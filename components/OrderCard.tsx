@@ -11,6 +11,7 @@ import { paymentStatusLabel } from "@/lib/copy";
 import { paysInFull } from "@/lib/payment";
 import { orderReferenceSpoken } from "@/lib/orderReference";
 import { readyByDate, readyEarlyLabel, READY_TIME_EXPLANATION } from "@/lib/readyTime";
+import { orderSampleLink } from "@/lib/sampleFirst";
 import {
   formatPriceRange,
   orderStateMeta,
@@ -53,6 +54,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
         ? formatPriceRange(range.subtotalMinMinor, range.subtotalMaxMinor)
         : "Not priced yet";
   const moneyNote = exactTotal != null ? paymentStatusLabel(order.paymentStatus, paysInFull(order)) : "Estimate";
+  const sampleTag = orderSampleLink(order)?.tag ?? null;
   const spec = [
     `Qty ${order.quantity}`,
     order.size || null,
@@ -66,7 +68,7 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${order.title}, ${order.groupLabel ? `${groupTag(order)}, part of a larger order, ` : ""}${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyEarlyLabel(order) ? `. ${readyEarlyLabel(order)}` : ""}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
+        accessibilityLabel={`${order.title}, ${sampleTag ? `${sampleTag}, ` : ""}${order.groupLabel ? `${groupTag(order)}, part of a larger order, ` : ""}${orderReferenceSpoken(order.id) ?? `order ${order.id}`}, ${meta.label}, ${money}${readyEarlyLabel(order) ? `. ${readyEarlyLabel(order)}` : ""}${readyBy ? `. Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
         accessibilityHint={orderWaitingOn(order) ?? undefined}
         className="p-4"
       >
@@ -88,6 +90,12 @@ export function OrderCard({ order, onPress, onReorder }: Props) {
               {order.groupLabel ? (
                 <View className="gg-chip">
                   <Text className="text-caption text-text-secondary">{groupTag(order)}</Text>
+                </View>
+              ) : null}
+              {/* A paid sample, or the batch made from one (gridgo-api#222). */}
+              {sampleTag ? (
+                <View className="gg-chip">
+                  <Text className="text-caption text-text-secondary">{sampleTag}</Text>
                 </View>
               ) : null}
             </View>
