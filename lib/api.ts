@@ -1188,6 +1188,8 @@ export type Notification = {
   at: string;
   /** The wallet item a voucher notice is about (gridgo-api#204). */
   voucherId?: string;
+  /** The quote request a `quote_*` notice is about (gridgo-api#226). Never in push data. */
+  quoteRequestId?: string;
   /** The support thread a `support_message` notice is about. Never in push data. */
   threadId?: string;
   /** Organization reminders and notices (gridgo-client#165). */
@@ -3601,6 +3603,131 @@ export async function getCartGroupListings(
   return request<CartGroupListings>(
     `/me/carts/${encodeURIComponent(cartId)}/groups/${encodeURIComponent(groupId)}/listings`,
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Quote requests: custom signage and 3D printing (gridgo-api#226)             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A brief Operations prices by hand (gridgo-api `docs/QUOTE_REQUESTS_API.md`).
+ * The client projection carries no shop, supplier id, shop price or listing
+ * id; `clientPriceMinor` is already GRIDGO's all-in price.
+ */
+export type QuoteRequestStatus =
+  | "requested"
+  | "quoting"
+  | "published"
+  | "accepted"
+  | "ordered"
+  | "expired"
+  | "cancelled"
+  | (string & {});
+
+export type QuoteProductionTime =
+  | { mode: "same_day"; hours?: number | null }
+  | { mode: "days"; minDays?: number | null; maxDays?: number | null }
+  | { mode: string & {}; [key: string]: unknown };
+
+export type QuoteOption = {
+  label: string;
+  rank?: number;
+  clientPriceMinor: number;
+  productionTime?: QuoteProductionTime | null;
+  /** GRIDGO's client promise for this option. */
+  readyBy?: string | null;
+  eventDateFit?: "before" | "after" | null;
+  recommendedOptions?: string | null;
+  distanceZone?: DistanceZone | null;
+  rating?: ShopRating | null;
+  /** False once the request is no longer open for a choice. */
+  acceptable?: boolean;
+};
+
+export type QuoteRequest = {
+  id: string;
+  status: QuoteRequestStatus;
+  version: number;
+  productType: string;
+  productTypeName?: string | null;
+  use: string;
+  placement: "indoor" | "outdoor" | (string & {});
+  size: string;
+  quantity: number;
+  notes?: string | null;
+  budgetMinor?: number | null;
+  eventDate?: string | null;
+  referenceFiles?: { fileId: string; originalFilename: string | null }[];
+  requestFulfillment?: RequestFulfilment | null;
+  ranking?: string[];
+  options: QuoteOption[];
+  matchReason?: MatchReasonBadge | null;
+  publishedAt?: string | null;
+  validUntil?: string | null;
+  acceptedOption?: string | null;
+  acceptedAt?: string | null;
+  cartId?: string | null;
+  orderId?: string | null;
+  cancelledAt?: string | null;
+  cancelledBy?: string | null;
+  cancelReason?: string | null;
+  expiredAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type QuoteRequestInput = {
+  productType: string;
+  use: string;
+  placement: "indoor" | "outdoor";
+  size: string;
+  quantity: number;
+  referenceFileIds: string[];
+  notes?: string;
+  budgetMinor?: number;
+  eventDate?: string;
+  fulfillmentMode: FulfilmentMode;
+  dropoff?: OrderPoint;
+};
+
+export async function createQuoteRequest(input: QuoteRequestInput): Promise<QuoteRequest> {
+  const result = await request<{ quoteRequest: QuoteRequest }>("/me/quote-requests", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.quoteRequest;
+}
+
+export async function listQuoteRequests(): Promise<QuoteRequest[]> {
+  const result = await request<{ quoteRequests: QuoteRequest[] }>("/me/quote-requests");
+  return result.quoteRequests ?? [];
+}
+
+export async function getQuoteRequest(id: string): Promise<QuoteRequest> {
+  const result = await request<{ quoteRequest: QuoteRequest }>(
+    `/me/quote-requests/${encodeURIComponent(id)}`,
+  );
+  return result.quoteRequest;
+}
+
+/** Accepting opens a fresh draft cart holding the option; checkout is the ordinary one. */
+export async function acceptQuoteOption(
+  id: string,
+  option: string,
+  expectedVersion?: number,
+): Promise<{ quoteRequest: QuoteRequest; cart: Cart }> {
+  return request<{ quoteRequest: QuoteRequest; cart: Cart }>(
+    `/me/quote-requests/${encodeURIComponent(id)}/accept`,
+    { method: "POST", body: JSON.stringify({ option, expectedVersion }) },
+  );
+}
+
+export async function cancelQuoteRequest(id: string, reason?: string): Promise<QuoteRequest> {
+  const result = await request<{ quoteRequest: QuoteRequest }>(
+    `/me/quote-requests/${encodeURIComponent(id)}/cancel`,
+    { method: "POST", body: JSON.stringify(reason ? { reason } : {}) },
+  );
+  return result.quoteRequest;
 }
 
 export type CartFulfilment = {

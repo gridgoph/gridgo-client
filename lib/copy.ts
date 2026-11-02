@@ -112,6 +112,13 @@ export function userFacingError(error: unknown, fallback: string): string {
     if (coverSpine) return coverSpine;
 
     switch (code) {
+      // ---- a quoted job's basket (gridgo-api#226) ----
+      case "quote_line_locked":
+        return "A quoted job keeps the product and quantity it was priced for. Cancel the quote and request a new one to change them.";
+      case "quote_expired":
+        return "This quote has expired. Ask GRIDGO to renew it in chat, or request a new quote.";
+      case "quote_not_accepted":
+        return "Choose this quote's option first, from My quotes.";
       case "hub_pickup_disabled":
         return "Hub pick-up is currently unavailable for new orders. Choose delivery, or start a new print job to change a locked pick-up choice.";
       case "invalid_credentials":

@@ -12,6 +12,7 @@
 
 import type { HubSchedule } from "@/lib/api";
 import { clockLabel } from "@/lib/hubPickup";
+import { QUOTES_ROUTE } from "@/lib/quoteRequests";
 
 export type QuickActionKey = "start" | "chat" | "track" | "reorder" | "quote" | "report" | "missions";
 
@@ -66,7 +67,7 @@ export function quickActions(input: QuickActionsInput): QuickAction[] {
     input.reorderTitle
       ? action({ key: "reorder", title: "Reorder", detail: input.reorderTitle, href: null })
       : action({ key: "reorder", title: "Reorder", detail: "No past print yet", href: null, disabledReason: "No past print yet" }),
-    action({ key: "quote", title: "Get a quote", detail: "Signage & 3D, quoted in chat", href: CHAT_ROUTE }),
+    action({ key: "quote", title: "Get a quote", detail: "Signage & 3D, priced by shops", href: QUOTES_ROUTE }),
     action({
       key: "report",
       title: "Report a problem",
