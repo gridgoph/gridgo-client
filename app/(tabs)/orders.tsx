@@ -28,7 +28,7 @@ import {
   type OrderSort,
 } from "@/lib/orderList";
 import { orderNeedsClient } from "@/lib/orderState";
-import { useRequestDraft } from "@/store/requestDraft";
+import { orderDraftFields, useRequestDraft } from "@/store/requestDraft";
 
 /**
  * Every job the client has sent.
@@ -105,14 +105,13 @@ export default function OrdersScreen() {
 
   const reorder = (order: api.Order) => {
     const meta = productById.get(order.productId);
-    start(order.title, () =>
-      seedFromOrder(order, {
-        name: meta?.name,
-        basePriceMinor: meta?.basePriceMinor,
-        unit: meta?.unit,
-        family: meta?.family,
-      }),
-    );
+    const productMeta = {
+      name: meta?.name,
+      basePriceMinor: meta?.basePriceMinor,
+      unit: meta?.unit,
+      family: meta?.family,
+    };
+    start(order.title, () => seedFromOrder(order, productMeta), orderDraftFields(order, productMeta));
   };
 
   return (
