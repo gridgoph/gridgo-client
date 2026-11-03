@@ -56,16 +56,16 @@ export const HUB_MISMATCH =
 export const HUB_BRIGHTNESS = "In bright sun, turn your screen brightness up so the QR scans.";
 
 export const DELIVERY_MATCH =
-  "Your rider has the same code on their phone. Ask them to read it out, and accept the order only if it matches.";
+  "Read this code out to your rider. They type it in and GRIDGO checks it. Don't accept the order until delivery is recorded.";
 
 export const DELIVERY_MISMATCH = {
-  title: "If the codes do not match",
+  title: "If GRIDGO refuses the code",
   body: "Do not accept the order. The rider reports it to Operations, who contact you.",
 } as const;
 
-/** What a client-raised mismatch report says to Operations. */
+/** What a client-raised report says to Operations when the rider cannot record delivery. */
 export const DELIVERY_MISMATCH_REASON =
-  "Client reports that the rider's handover code did not match the code in the client app.";
+  "Client reports that the rider's entry of my code was refused, or the rider cannot proceed.";
 
 export type UnclaimedNotice = {
   tone: "info" | "warning";

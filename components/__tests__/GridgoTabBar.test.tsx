@@ -19,6 +19,10 @@ import { useNotifications } from "@/store/notifications";
 import { useOrganization } from "@/store/organization";
 import { useSession } from "@/store/session";
 
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ push: jest.fn(), navigate: jest.fn(), dismissTo: jest.fn() }),
+}));
+
 /** Style props arrive as an object or an array of them. */
 function flatten(style: unknown): Record<string, number | undefined> {
   return Array.isArray(style) ? Object.assign({}, ...style) : ((style ?? {}) as never);
@@ -136,11 +140,11 @@ describe("tabBarPaintedHeight", () => {
 });
 
 describe("tabBarHeight", () => {
-  it("is the painted bar: the plus floats over the scene, so there is no overhang strip", () => {
+  it("is the painted bar plus the strip the raised \"+\" stands in", () => {
     for (const os of ["ios", "android"]) {
       for (const inset of [0, 24, 34, 48]) {
-        expect(tabBarMetrics(os).actionRise).toBe(0);
-        expect(tabBarHeight(os, inset)).toBe(tabBarPaintedHeight(os, inset));
+        expect(tabBarMetrics(os).actionRise).toBe(20);
+        expect(tabBarHeight(os, inset)).toBe(tabBarPaintedHeight(os, inset) + 20);
       }
     }
   });
@@ -178,10 +182,9 @@ describe("tabBarTopGap", () => {
     expect(tabBarTopGap("ios")).toBe(tabBarMetrics("ios").itemPaddingTop);
   });
 
-  it("is the full gap, because there is no overhang strip to eat it", () => {
+  it("is measured from the paint, so the \"+\" strip never eats it", () => {
     for (const os of ["ios", "android"]) {
-      expect(tabBarTopGap(os)).toBeGreaterThan(0);
-      expect(tabBarMetrics(os).actionRise).toBe(0);
+      expect(tabBarTopGap(os)).toBe(tabBarMetrics(os).itemPaddingTop + Math.max(0, tabBarMetrics(os).columnHeight - (tabBarMetrics(os).itemPaddingTop + 24 + tabBarMetrics(os).itemGap + 16 + tabBarMetrics(os).itemPaddingBottom)));
     }
   });
 });
@@ -211,7 +214,7 @@ describe("tabBarMetrics", () => {
     expect(android.columnHeight + tabBarPaddingBottom(48)).toBe(128);
   });
 
-  it("keeps the floating plus on the 44pt touch floor on both platforms", () => {
+  it("keeps the raised plus on the 44pt touch floor on both platforms", () => {
     for (const os of ["ios", "android", "web"]) {
       expect(tabBarMetrics(os).actionDiameter).toBeGreaterThanOrEqual(44);
     }
@@ -243,12 +246,18 @@ describe("GridgoTabBar", () => {
     }
   });
 
-  it("does not put New request in the bar — the plus floats on the scene", async () => {
+  it("puts the quick-actions \"+\" in the centre, not New request", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
     expect(screen.queryByText("New request")).toBeNull();
     expect(screen.queryByRole("tab", { name: "New request" })).toBeNull();
     expect(screen.getAllByRole("tab")).toHaveLength(4);
+    // Home, Orders, "+", Alerts, Account.
+    const tree = JSON.stringify(screen.toJSON());
+    const at = (label: string) => tree.indexOf(`"accessibilityLabel":"${label}"`);
+    expect(screen.getByRole("button", { name: "Quick actions" })).toBeTruthy();
+    expect(at("Orders")).toBeLessThan(at("Quick actions"));
+    expect(at("Quick actions")).toBeLessThan(at("Alerts"));
   });
 
   it("never offers Organizations to a personal account or an unapproved organization", async () => {
@@ -275,7 +284,7 @@ describe("GridgoTabBar", () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
     const tabs = screen.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel);
-    expect(tabs).toEqual(["Home", "Orders", "Organizations", "Notifications", "Account"]);
+    expect(tabs).toEqual(["Home", "Orders", "Organizations", "Alerts", "Account"]);
   });
 
   it("marks only the open tab as selected", async () => {
@@ -288,7 +297,7 @@ describe("GridgoTabBar", () => {
   it("navigates to a tab that is not open", async () => {
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    await fireEvent.press(screen.getByRole("tab", { name: "Notifications" }));
+    await fireEvent.press(screen.getByRole("tab", { name: "Alerts" }));
 
     expect(navigate).toHaveBeenCalledWith("notifications");
   });
@@ -306,7 +315,7 @@ describe("GridgoTabBar", () => {
 
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
-    await fireEvent.press(screen.getByRole("tab", { name: "Notifications" }));
+    await fireEvent.press(screen.getByRole("tab", { name: "Alerts" }));
 
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -337,7 +346,7 @@ describe("GridgoTabBar", () => {
 
     // Geometry regression guard: a rigid height left zero top slack for the
     // badge's -top-1 overhang, and pinned the column against label scaling.
-    const notificationsTab = screen.getByRole("tab", { name: "Notifications" });
+    const notificationsTab = screen.getByRole("tab", { name: "Alerts" });
     const style = flatten(notificationsTab.props.style);
     expect(style.minHeight).toBe(TAB_BAR_METRICS.columnHeight);
     expect(style.height).toBeUndefined();

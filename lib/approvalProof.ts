@@ -158,8 +158,10 @@ export function cartLineReview(line: CartLineRecord): ApprovalReviewItem {
   return {
     key: line.id,
     name: lineName(line),
-    quantity:
-      !line.quantityMode && line.listing?.pricingUnit === "per_package"
+    // A sample is one piece whatever the listing's unit (gridgo-api#222).
+    quantity: line.sample
+      ? "1 sample piece"
+      : !line.quantityMode && line.listing?.pricingUnit === "per_package"
         ? listingQuantityLine(line.listing, line.quantity)
         : quantityLine(line.quantity, line.quantityMode),
     specs,

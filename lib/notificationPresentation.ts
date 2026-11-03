@@ -24,6 +24,7 @@ import {
   type FulfilmentRailKind,
 } from "@/lib/orderStages";
 import { CALL_INCOMING_TYPE, isCallNotificationType } from "@/lib/orderCalls";
+import { isQuoteNotification } from "@/lib/quoteRequests";
 
 /**
  * How one inbox row should read, independent of how the server first worded it.
@@ -114,6 +115,8 @@ const NEED_YOU_TYPES = new Set([
   "supplier_assignment_final_price",
   "order_ready_for_pickup",
   "order_rate_reminder",
+  // Options are waiting for the client's choice (gridgo-api#226).
+  "quote_options_ready",
 ]);
 
 function isCollect(notification: Notification): boolean {
@@ -491,7 +494,9 @@ function calloutFor(
   if (shopRecoveryNotificationNeedsYou(notification)) {
     return /no replacement/i.test(notification.body)
       ? { ...SHOP_CHOICE_CALLOUT, title: "Choose a full refund" }
-      : SHOP_CHOICE_CALLOUT;
+      : /pay the price difference/i.test(notification.body)
+        ? { tone: "warning", icon: "wallet", title: "Pay the rest by QR", detail: "Open the order to pay." }
+        : SHOP_CHOICE_CALLOUT;
   }
   const asked = notification.type ? TYPE_CALLOUTS[notification.type] : undefined;
   if (!asked) return null;
@@ -594,7 +599,9 @@ export function presentNotification(
                   ? "Opens this job"
                   : isApplicationNotification(notification.type)
                     ? "Opens your application"
-                    : releaseNoticeHint(notification),
+                    : isQuoteNotification(notification.type)
+                      ? "Opens this quote"
+                      : releaseNoticeHint(notification),
               };
   const collectReady =
     collect && notification.orderState === "awaiting_collection" && !hold;

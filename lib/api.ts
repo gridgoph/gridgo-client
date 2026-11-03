@@ -660,6 +660,8 @@ export type Order = {
    * Read through `lib/shopRecovery.ts`.
    */
   shopRecovery?: ShopRecovery | null;
+  /** Every accepted move to another shop, with its prices (gridgo-api#225). */
+  shopMoves?: ShopMove[];
   /**
    * The shop asked for a later deadline (gridgo-api
    * `docs/ORDER_RESCHEDULE_API.md`). Read through `lib/reschedule.ts`.
@@ -674,6 +676,29 @@ export type Order = {
   basketId?: string | null;
   /** "Shop A", "Shop B" — never the shop's identity. */
   groupLabel?: string | null;
+  /**
+   * Sample First (gridgo-api#222): `["sample"]` on a paid sample,
+   * `["batch_from_sample"]` on the batch ordered from it. Read through
+   * `orderSampleLink` in `lib/sampleFirst.ts`.
+   */
+  orderTags?: string[];
+  /** The sample's batch draft, on both orders. */
+  sampleBatchDraftId?: string | null;
+  /** On a batch: the sample it was made to match. */
+  sampleOrderId?: string | null;
+  /** On a sample: the batch, once ordered. */
+  batchOrderId?: string | null;
+  /** What the client decided about the sample: the batch's standard. */
+  sampleDecision?: SampleDecision | null;
+  /** On a batch: which price it was ordered at. */
+  sampleBatchPricing?: { pricing: SampleBatchPricing; heldUntil: string | null } | null;
+  /**
+   * Which of this shop's deliveries this is, and how many it has, once the
+   * client split one shop into separate deliveries (gridgo-api#275,
+   * `docs/SHOP_DELIVERIES_API.md`). Absent for a shop delivering once.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
   /**
    * The basket's one deadline, from before each product kept its own date
    * (gridgo-client#189). A group's own date is its `deadline`.
@@ -757,6 +782,12 @@ export type PlatformSettings = {
    * stays visible either way.
    */
   physicalInvoiceRequestsEnabled?: boolean;
+  /**
+   * How many days a sampled batch keeps its price after the sample arrives
+   * (gridgo-api#222, default 14). A draft keeps the length it was ordered
+   * under, so a screen reads the draft's own `holdDays` first.
+   */
+  sampleBatchHoldDays?: number;
   /**
    * The share of the total a new order takes up front: 100 (paid in full) or
    * 75. Absent on an API that predates the setting, which still writes 75/25
@@ -1179,6 +1210,8 @@ export type Notification = {
   at: string;
   /** The wallet item a voucher notice is about (gridgo-api#204). */
   voucherId?: string;
+  /** The quote request a `quote_*` notice is about (gridgo-api#226). Never in push data. */
+  quoteRequestId?: string;
   /** The support thread a `support_message` notice is about. Never in push data. */
   threadId?: string;
   /** Organization reminders and notices (gridgo-client#165). */
@@ -2251,6 +2284,16 @@ export type CatalogItem = {
   /** Present only once the shop has five or more reviews. */
   rating?: ShopRating;
   /**
+   * The shop sells one sample piece before the batch (gridgo-api#222,
+   * `docs/SAMPLE_FIRST_API.md`). Read through `sampleOffer` in
+   * `lib/sampleFirst.ts`. Absent on an older API.
+   */
+  sampleAvailable?: boolean;
+  /** The shop's own sample price. Never drawn on its own. */
+  samplePriceMinor?: number | null;
+  /** GRIDGO's sample price, fee inside: what a client reads. */
+  clientSamplePriceMinor?: number | null;
+  /**
    * Whether the shop is open now and when it next opens (gridgo-api#219).
    * Sent on full public listings only; read through `lib/shopHours.ts`.
    */
@@ -2552,7 +2595,7 @@ export type HubRedeliveryRequest = {
 /**
  * The handover credential for one order (gridgo-api#125,
  * `docs/HUB_HANDOVER_API.md`). Delivery orders carry only the six-digit
- * `otp` the rider also sees. A hub pick-up adds the opaque `qrToken` — the
+ * `otp` the client reads to the rider. A hub pick-up adds the opaque `qrToken` — the
  * only thing ever drawn inside the QR — and the hub snapshot and unclaimed
  * count the reminders are counted from.
  */
@@ -2822,6 +2865,9 @@ export type OtherListing = Pick<
   | "optionGroups"
   | "version"
   | "shopHours"
+  | "sampleAvailable"
+  | "samplePriceMinor"
+  | "clientSamplePriceMinor"
 > &
   MatchedListingFields & { minimumTurnaroundHours?: number | null };
 
@@ -2896,6 +2942,13 @@ export type CartQuoteReason = {
 
 /** One delivery leg: a print run's lines and the zone its farthest drop falls in. */
 export type CartQuoteDeliveryLine = {
+  /** The cart group this fee belongs to, with its label (gridgo-api#275). Absent on an older API. */
+  groupId?: string;
+  label?: string;
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
+  /** The delivery's date: the earliest of its products. */
+  deadline?: string | null;
   lineIds: string[];
   distanceZone: DistanceZone | null;
   deliveryFeeMinor: number | null;
@@ -3009,6 +3062,18 @@ export type CartLineRecord = {
    * custom merchandise, one tap otherwise. Absent on an API from before.
    */
   approvalMethod?: ApprovalMethod;
+  /**
+   * A paid sample (gridgo-api#222): the line is one piece, and
+   * `batchQuantity` is the batch it stands for. Null on an ordinary line.
+   */
+  sample?: { batchQuantity: number; replacesSampleBatchId: string | null } | null;
+  /** A batch ordered from an approved sample; only its quantity can change. */
+  sampleBatch?: {
+    draftId: string;
+    pricing: SampleBatchPricing;
+    sampleOrderId: string | null;
+    heldUntil: string | null;
+  } | null;
 };
 
 /**
@@ -3042,6 +3107,17 @@ export type CartGroup = {
   readyBy?: string | null;
   /** Tight, Secured or Rush for this group (gridgo-api#292). */
   scheduling?: Scheduling | null;
+  /**
+   * Which of this shop's deliveries this is, and how many it has, once the
+   * client split one shop into separate deliveries (gridgo-api#275,
+   * `docs/SHOP_DELIVERIES_API.md`). Absent for a shop delivering once.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
+  /** True when this shop has two or more products, so it can be delivered separately. */
+  canDeliverSeparately?: boolean;
+  /** True when this shop goes out as more than one delivery. */
+  separateDelivery?: boolean;
 };
 
 export type Cart = {
@@ -3073,7 +3149,7 @@ export type Cart = {
   checkoutNotice?: CheckoutNotice | null;
   lines: CartLineRecord[];
   /**
-   * One per shop and date, in the order they were first added
+   * One per delivery (a shop by default; one per date once split, gridgo-api#275), in the order first added
    * (gridgo-client#189). Absent on older APIs.
    */
   groups?: CartGroup[];
@@ -3101,6 +3177,13 @@ export type BasketGroup = {
   totalMinor: number;
   pickupFeeMinor?: number;
   organizationDiscountMinor?: number;
+  /**
+   * Which of this shop's deliveries this is, and how many it has, once the
+   * client split one shop into separate deliveries (gridgo-api#275,
+   * `docs/SHOP_DELIVERIES_API.md`). Absent for a shop delivering once.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
 };
 
 /**
@@ -3198,6 +3281,13 @@ export type InvoiceGroup = {
   organizationDiscountMinor?: number;
   /** This group's share of the voucher, already out of `totalMinor` (gridgo-api#204). */
   voucherDiscountMinor?: number;
+  /**
+   * Which of this shop's deliveries this is, and how many it has, once the
+   * client split one shop into separate deliveries (gridgo-api#275,
+   * `docs/SHOP_DELIVERIES_API.md`). Absent for a shop delivering once.
+   */
+  deliveryNumber?: number;
+  shopDeliveryCount?: number;
 };
 
 export type Invoice = {
@@ -3321,6 +3411,98 @@ export type AccountPatch = {
 export async function getAccount(): Promise<User> {
   const result = await request<{ user: User; approvalCase?: ApprovalCaseSummary | null }>("/me");
   return withBusinessApplication(result.user, result.approvalCase);
+}
+
+// ---------------------------------------------------------------------------
+// Client Home (client#335). Contract: gridgo-api `docs/CLIENT_HOME_API.md`.
+// ---------------------------------------------------------------------------
+
+/** Light, dark, or follow the phone. Saved on the account. */
+export type AccountThemePreference = "system" | "light" | "dark";
+
+const THEME_PREFERENCES: readonly AccountThemePreference[] = ["system", "light", "dark"];
+
+function readThemePreference(value: unknown): AccountThemePreference | null {
+  return THEME_PREFERENCES.find((known) => known === value) ?? null;
+}
+
+/**
+ * The theme saved on the account, from `GET /auth/me/client`
+ * (`clientProfile.themePreference`). Null when the API does not send one.
+ */
+export async function getAccountThemePreference(): Promise<AccountThemePreference | null> {
+  const body = await request<{ clientProfile?: { themePreference?: unknown } | null }>("/auth/me/client");
+  return readThemePreference(body?.clientProfile?.themePreference);
+}
+
+/** `PATCH /me/theme`. The last write wins; repeating the current value is a no-op. */
+export async function saveAccountThemePreference(
+  themePreference: AccountThemePreference,
+): Promise<AccountThemePreference> {
+  const body = await request<{ themePreference?: unknown }>("/me/theme", {
+    method: "PATCH",
+    body: JSON.stringify({ themePreference }),
+  });
+  return readThemePreference(body?.themePreference) ?? themePreference;
+}
+
+/** The order the smart tile shows: one of four steps. */
+export type HomeActiveOrder = {
+  orderId: string;
+  state: string;
+  /** 1 placed, 2 printing, 3 on the way / ready for pickup, 4 delivered. */
+  step: number;
+  stepKey: "placed" | "printing" | "on_the_way" | "delivered" | (string & {});
+  stepCount: number;
+  fulfillmentMode: "delivery" | "pickup" | (string & {});
+  basketId: string | null;
+  awaitingPayment: boolean;
+  promisedAt: string | null;
+  statusAt: string | null;
+  time: { kind: "promised" | "since" | "delivered" | (string & {}); at: string } | null;
+};
+
+/** The client's soonest-expiring unused tester-programme voucher. */
+export type HomeTesterVoucher = {
+  voucherId: string;
+  kind: "mission" | "referral" | "bug_report" | (string & {});
+  valueMinor: number;
+  code: string;
+  expiresAt: string;
+  secondsRemaining: number;
+  daysLeft: number;
+  redeemable: boolean;
+  reserved: boolean;
+};
+
+/** `GET /me/home-summary`: everything the smart tile shows, in one call. */
+export type HomeSummary = {
+  serverTime: string;
+  tile: "missions" | "active_order" | "tester_voucher" | "invite" | (string & {});
+  missions: (FoundingTester & { total?: number }) | null;
+  activeOrder: HomeActiveOrder | null;
+  activeOrderCount: number;
+  testerVoucher: HomeTesterVoucher | null;
+  bugReport: { rewardAvailable: boolean; amountMinor: number } | null;
+};
+
+export async function getHomeSummary(): Promise<HomeSummary> {
+  return request<HomeSummary>("/me/home-summary");
+}
+
+/**
+ * File a report through `POST /issue-reports` with the client's session, so
+ * the report records its reporter — the only way a confirmed bug can earn the
+ * tester's one-time voucher (gridgo-api `docs/ISSUE_REPORTS_API.md`).
+ */
+export async function fileIssueReport(input: {
+  issue: string;
+  category?: "bug" | "feature" | "other";
+}): Promise<{ id: string; createdAt: string }> {
+  return request<{ id: string; createdAt: string }>("/issue-reports", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -3470,6 +3652,261 @@ export async function getCartGroupListings(
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Quote requests: custom signage and 3D printing (gridgo-api#226)             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A brief Operations prices by hand (gridgo-api `docs/QUOTE_REQUESTS_API.md`).
+ * The client projection carries no shop, supplier id, shop price or listing
+ * id; `clientPriceMinor` is already GRIDGO's all-in price.
+ */
+export type QuoteRequestStatus =
+  | "requested"
+  | "quoting"
+  | "published"
+  | "accepted"
+  | "ordered"
+  | "expired"
+  | "cancelled"
+  | (string & {});
+
+export type QuoteProductionTime =
+  | { mode: "same_day"; hours?: number | null }
+  | { mode: "days"; minDays?: number | null; maxDays?: number | null }
+  | { mode: string & {}; [key: string]: unknown };
+
+export type QuoteOption = {
+  label: string;
+  rank?: number;
+  clientPriceMinor: number;
+  productionTime?: QuoteProductionTime | null;
+  /** GRIDGO's client promise for this option. */
+  readyBy?: string | null;
+  eventDateFit?: "before" | "after" | null;
+  recommendedOptions?: string | null;
+  distanceZone?: DistanceZone | null;
+  rating?: ShopRating | null;
+  /** False once the request is no longer open for a choice. */
+  acceptable?: boolean;
+};
+
+export type QuoteRequest = {
+  id: string;
+  status: QuoteRequestStatus;
+  version: number;
+  productType: string;
+  productTypeName?: string | null;
+  use: string;
+  placement: "indoor" | "outdoor" | (string & {});
+  size: string;
+  quantity: number;
+  notes?: string | null;
+  budgetMinor?: number | null;
+  eventDate?: string | null;
+  referenceFiles?: { fileId: string; originalFilename: string | null }[];
+  requestFulfillment?: RequestFulfilment | null;
+  ranking?: string[];
+  options: QuoteOption[];
+  matchReason?: MatchReasonBadge | null;
+  publishedAt?: string | null;
+  validUntil?: string | null;
+  acceptedOption?: string | null;
+  acceptedAt?: string | null;
+  cartId?: string | null;
+  orderId?: string | null;
+  cancelledAt?: string | null;
+  cancelledBy?: string | null;
+  cancelReason?: string | null;
+  expiredAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type QuoteRequestInput = {
+  productType: string;
+  use: string;
+  placement: "indoor" | "outdoor";
+  size: string;
+  quantity: number;
+  referenceFileIds: string[];
+  notes?: string;
+  budgetMinor?: number;
+  eventDate?: string;
+  fulfillmentMode: FulfilmentMode;
+  dropoff?: OrderPoint;
+};
+
+export async function createQuoteRequest(input: QuoteRequestInput): Promise<QuoteRequest> {
+  const result = await request<{ quoteRequest: QuoteRequest }>("/me/quote-requests", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.quoteRequest;
+}
+
+export async function listQuoteRequests(): Promise<QuoteRequest[]> {
+  const result = await request<{ quoteRequests: QuoteRequest[] }>("/me/quote-requests");
+  return result.quoteRequests ?? [];
+}
+
+export async function getQuoteRequest(id: string): Promise<QuoteRequest> {
+  const result = await request<{ quoteRequest: QuoteRequest }>(
+    `/me/quote-requests/${encodeURIComponent(id)}`,
+  );
+  return result.quoteRequest;
+}
+
+/** Accepting opens a fresh draft cart holding the option; checkout is the ordinary one. */
+export async function acceptQuoteOption(
+  id: string,
+  option: string,
+  expectedVersion?: number,
+): Promise<{ quoteRequest: QuoteRequest; cart: Cart }> {
+  return request<{ quoteRequest: QuoteRequest; cart: Cart }>(
+    `/me/quote-requests/${encodeURIComponent(id)}/accept`,
+    { method: "POST", body: JSON.stringify({ option, expectedVersion }) },
+  );
+}
+
+export async function cancelQuoteRequest(id: string, reason?: string): Promise<QuoteRequest> {
+  const result = await request<{ quoteRequest: QuoteRequest }>(
+    `/me/quote-requests/${encodeURIComponent(id)}/cancel`,
+    { method: "POST", body: JSON.stringify(reason ? { reason } : {}) },
+  );
+  return result.quoteRequest;
+}
+
+// ---- Sample First (gridgo-api#222, docs/SAMPLE_FIRST_API.md) ----
+
+export type SampleBatchPricing = "held" | "current";
+
+export type SampleBatchStatus =
+  | "awaiting_sample"
+  | "approved"
+  | "ordered"
+  | "rejected"
+  | "cancelled"
+  | (string & {});
+
+/** The sample decision copied onto the sample and batch orders. */
+export type SampleDecision = {
+  draftId: string;
+  decision: "approved" | "rejected" | (string & {});
+  method?: string;
+  at: string;
+  samplePhotoFileId?: string | null;
+  note?: string | null;
+  reason?: string;
+  next?: "resample" | "cancel";
+};
+
+/** A batch price GRIDGO worked out: item money, before service fee and delivery. */
+export type SampleBatchPrice = { quantity: number; clientItemMinor: number };
+
+/** The batch a client meant to order, kept while the sample is made. */
+export type SampleBatch = {
+  id: string;
+  status: SampleBatchStatus;
+  tags?: string[];
+  catalogItemId: string;
+  itemName: string | null;
+  sampleOrderId: string;
+  sampleOrderState: string | null;
+  batchOrderId: string | null;
+  previousDraftId: string | null;
+  replacedByDraftId: string | null;
+  batch: {
+    quantity: number;
+    optionIds?: string[];
+    specialInstructions?: string | null;
+    [key: string]: unknown;
+  };
+  holdDays: number;
+  sampleDeliveredAt: string | null;
+  heldUntil: string | null;
+  holdActive: boolean;
+  holdExpired: boolean;
+  heldPrice: SampleBatchPrice | null;
+  currentPrice: SampleBatchPrice | null;
+  canOrderAtHeldPrice: boolean;
+  heldPriceBlocker: string | null;
+  canOrderAtCurrentPrice: boolean;
+  /** A tick today; an unknown method is approved with its own evidence. */
+  approval: {
+    version: number;
+    method: string;
+    accepted: boolean;
+    samplePhotoFileId: string | null;
+    note?: string | null;
+    at: string;
+  } | null;
+  rejection: { version: number; reason: string; next: "resample" | "cancel"; at: string } | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listSampleBatches(): Promise<SampleBatch[]> {
+  const result = await request<{ sampleBatches: SampleBatch[] }>("/me/sample-batches");
+  return result.sampleBatches ?? [];
+}
+
+/** `quantity` prices both the held and today's figure for another batch size. */
+export async function getSampleBatch(id: string, quantity?: number): Promise<SampleBatch> {
+  const query = quantity != null ? `?quantity=${encodeURIComponent(String(quantity))}` : "";
+  const result = await request<{ sampleBatch: SampleBatch }>(
+    `/me/sample-batches/${encodeURIComponent(id)}${query}`,
+  );
+  return result.sampleBatch;
+}
+
+/** Approve with a tick and a photo uploaded as `approval_sample_photo`. */
+export async function approveSampleBatch(
+  id: string,
+  input: { samplePhotoFileId: string; note?: string },
+): Promise<SampleBatch> {
+  const result = await request<{ sampleBatch: SampleBatch }>(
+    `/me/sample-batches/${encodeURIComponent(id)}/approve`,
+    {
+      method: "POST",
+      body: JSON.stringify({ accepted: true, method: "tick", ...input }),
+    },
+  );
+  return result.sampleBatch;
+}
+
+export async function rejectSampleBatch(
+  id: string,
+  input: { reason: string; next: "resample" | "cancel" },
+): Promise<SampleBatch> {
+  const result = await request<{ sampleBatch: SampleBatch }>(
+    `/me/sample-batches/${encodeURIComponent(id)}/reject`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.sampleBatch;
+}
+
+export async function cancelSampleBatch(id: string, reason?: string): Promise<SampleBatch> {
+  const result = await request<{ sampleBatch: SampleBatch }>(
+    `/me/sample-batches/${encodeURIComponent(id)}/cancel`,
+    { method: "POST", body: JSON.stringify(reason ? { reason } : {}) },
+  );
+  return result.sampleBatch;
+}
+
+/** A new basket holding the batch, at the held or today's price. */
+export async function createSampleBatchCart(
+  id: string,
+  input: { pricing: SampleBatchPricing; quantity?: number },
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/sample-batches/${encodeURIComponent(id)}/cart`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.cart;
+}
+
 export type CartFulfilment = {
   fulfillmentMode?: FulfilmentMode;
   serviceLevel?: ServiceLevel;
@@ -3518,6 +3955,25 @@ export async function setCartDropoffs(
   return result.cart;
 }
 
+/**
+ * How one shop's products travel (gridgo-api#275, `docs/SHOP_DELIVERIES_API.md`):
+ * `by_deadline` is one delivery per product date, each with its own delivery
+ * fee; `none` puts them all in one delivery by the earliest date. `groupId` is
+ * any current group of that shop. Refused with `409 deadline_not_met`
+ * (`{lineIds, deadline}`) when a delivery could not be ready by its date.
+ */
+export async function setCartDeliveries(
+  cartId: string,
+  groupId: string,
+  split: "by_deadline" | "none",
+): Promise<Cart> {
+  const result = await request<{ cart: Cart }>(
+    `/me/carts/${encodeURIComponent(cartId)}/groups/${encodeURIComponent(groupId)}/deliveries`,
+    { method: "PUT", body: JSON.stringify({ split }) },
+  );
+  return result.cart;
+}
+
 export async function addCartLine(
   cartId: string,
   input: {
@@ -3547,6 +4003,13 @@ export async function addCartLine(
     /** Up to eight exact colours; omit when the client named none. */
     colorTargets?: ColorTargetInput[];
     dropoff?: OrderPoint | null;
+    /**
+     * Order one sample piece instead (gridgo-api#222). `quantity` is then the
+     * batch the sample stands for. Only into an empty basket.
+     */
+    sample?: boolean;
+    /** With `sample`: the draft rejected for a new sample that this replaces. */
+    replacesSampleBatchId?: string;
   },
 ): Promise<Cart> {
   const result = await request<{ cart: Cart }>(
@@ -4989,12 +5452,66 @@ export async function withdrawRefund(
 export type ShopRecovery = {
   id: string;
   status: string;
+  /** `shop | gridgo | client`; absent on an API from before gridgo-api#225. */
+  fault?: string;
   createdAt: string;
   refundRequestId: string | null;
-  /** The replacement's client-ready date. Null when no shop can take it. */
-  replacement: { promiseBy: string } | null;
+  /** The best-ranked replacement. Null when no shop can take it. */
+  replacement: ShopRecoveryOption | null;
+  /** Up to three more anonymous matches, in rank order (gridgo-api#225). */
+  alternatives?: ShopRecoveryOption[];
+  /** True only when the replacement needs no extra payment. */
   canAccept: boolean;
+  canPickAlternative?: boolean;
+  canPayDifference?: boolean;
   canRefund: boolean;
+  /** Set once the client chose to pay the rest: the change request to pay. */
+  topUp?: { changeRequestId: string; amountMinor: number } | null;
+};
+
+/**
+ * One shop GRIDGO offers in place of the one that could not carry on. The shop
+ * itself is never named. `optionId` is sent back to pick an alternative.
+ */
+export type ShopRecoveryOption = {
+  optionId?: string | null;
+  /** The client-ready date with this shop. */
+  promiseBy: string;
+  /** Absent on an API from before gridgo-api#225. Read through `lib/shopRecovery.ts`. */
+  pricing?: ShopMovePricing | null;
+};
+
+/**
+ * The substitute-shop price rule (gridgo-api `docs/SHOP_RECOVERY_API.md`
+ * #substitute-shop-price-rule). `rule` is an open string: `cheaper | same |
+ * covered | above_cap`, or `not_applicable` with `ruleApplies: false` on a
+ * client-caused move. The prices are the shops' own figures, so a screen draws
+ * only the differences and its own fee-inclusive printing (`lib/shopRecovery.ts`).
+ */
+export type ShopMovePricing = {
+  ruleApplies: boolean;
+  rule: string;
+  originalPriceMinor: number;
+  newPriceMinor: number;
+  differenceMinor: number;
+  gridgoCoverMinor: number;
+  clientPaysMinor: number;
+  refundMinor: number;
+};
+
+/** One accepted move to another shop, as the owning client sees it. */
+export type ShopMove = Partial<ShopMovePricing> & {
+  recoveryId: string;
+  at: string;
+  fault?: string;
+  /** `replacement | alternative` */
+  choice?: string;
+  /** `applied | awaiting_payment | refund_requested` */
+  status: string;
+  refundRequestId?: string | null;
+  /** `reserved | reconciliation_required`, or null. */
+  refundStatus?: string | null;
+  topUpChangeRequestId?: string | null;
 };
 
 /**
@@ -5029,13 +5546,20 @@ export type RescheduleRequest = {
 };
 
 /**
- * Take the replacement shop. A `409 shop_recovery_offer_changed` carries a
- * refreshed offer in its body and is never accepted for the client.
+ * Take the replacement shop, or an alternative by its `optionId`. An offer
+ * above GRIDGO's cover needs `acceptTopUpMinor` equal to what the client pays
+ * (`409 shop_move_top_up_consent_required` otherwise). A `409
+ * shop_recovery_offer_changed` carries a refreshed offer in its body and is
+ * never accepted for the client.
  */
-export async function acceptShopRecovery(orderId: string, recoveryId: string): Promise<ShopRecovery | null> {
+export async function acceptShopRecovery(
+  orderId: string,
+  recoveryId: string,
+  choice: { optionId?: string; acceptTopUpMinor?: number } = {},
+): Promise<ShopRecovery | null> {
   const result = await request<{ recovery: ShopRecovery | null }>(
     `/orders/${encodeURIComponent(orderId)}/shop-recovery/accept`,
-    { method: "POST", body: JSON.stringify({ recoveryId }) },
+    { method: "POST", body: JSON.stringify({ recoveryId, ...choice }) },
   );
   return result.recovery;
 }

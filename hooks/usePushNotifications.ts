@@ -1,7 +1,8 @@
 import { appInstallChannel } from "@/lib/buildDistribution";
 import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
 import { accountHold } from "@/lib/accountHold";
-import { getOrder, getSupportChatThread, markNotificationRead } from "@/lib/api";
+import { getOrder, getQuoteRequest, getSupportChatThread, markNotificationRead } from "@/lib/api";
+import { isQuoteNotification, quoteNotificationRoute } from "@/lib/quoteRequests";
 import {
   useRouter,
   useRootNavigationState,
@@ -64,6 +65,19 @@ async function resolvePushDestination(data: PushData, target: string): Promise<s
       if (!thread || !threadId) return target;
       await getSupportChatThread(threadId);
       return thread;
+    } catch {
+      return target;
+    }
+  }
+  // A quote notice names its quote only on the inbox row; marking the notice
+  // read reads it back, and the quote opens once it reads as this client's.
+  if (isQuoteNotification(data.type)) {
+    if (!data.notificationId) return target;
+    try {
+      const notification = await markNotificationRead(data.notificationId);
+      if (!notification.quoteRequestId) return target;
+      await getQuoteRequest(notification.quoteRequestId);
+      return quoteNotificationRoute(notification) ?? target;
     } catch {
       return target;
     }

@@ -3,6 +3,7 @@ import { useGridgoCharges } from "@/hooks/useGridgoCharges";
 import { useLiveNotifications } from "@/hooks/useLiveNotifications";
 import { useUpdateNudge } from "@/hooks/useUpdateNudge";
 import { useSupportChatUnread } from "@/hooks/useSupportChatUnread";
+import { useAccountTheme } from "@/hooks/useAccountTheme";
 import { ClerkProvider } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import "../global.css";
@@ -125,6 +126,8 @@ function AppNavigation() {
   useLiveNotifications();
   useUpdateNudge();
   useSupportChatUnread();
+  // Light or dark, as saved on the account (client#335).
+  useAccountTheme();
 
   // GRIDGO's charges, read as soon as a session exists: every price the app
   // draws is the shop's figure plus GRIDGO's charge, from the first match row.
@@ -545,10 +548,22 @@ function AppNavigation() {
                 />
                 {/* The artwork the client chose to keep (gridgo-client#334), from Account and the Artwork step. */}
                 <Stack.Screen name="my-files" options={pushedScreenOptions("My files")} />
+                {/*
+                  Quotes for custom signage and 3D printing (gridgo-api#226),
+                  from Account, the "+" sheet, the category screens and the inbox.
+                */}
+                <Stack.Screen name="quotes/index" options={pushedScreenOptions("Quotes")} />
+                <Stack.Screen name="quotes/new" options={pushedScreenOptions("Quotes")} />
+                <Stack.Screen name="quotes/[id]" options={pushedScreenOptions("Quote")} />
+                {/* Sample First (gridgo-api#222), from Account, a sample order and a batch order. */}
+                <Stack.Screen name="samples/index" options={pushedScreenOptions("Samples")} />
+                <Stack.Screen name="samples/[id]" options={pushedScreenOptions("Sample")} />
                 {/* The voucher wallet (gridgo-api#204), from Account. */}
                 <Stack.Screen name="vouchers" options={pushedScreenOptions("Vouchers")} />
                 {/* Founding Tester invites (client#323), from the path card and Account. */}
                 <Stack.Screen name="invite" options={pushedScreenOptions("Invite a friend")} />
+                {/* The five mission steps and the voucher (client#335), from Home and the "+" sheet. */}
+                <Stack.Screen name="founding-tester" options={pushedScreenOptions("Founding Tester")} />
                 {/*
                   The two halves of the sign-in that take steps rather than
                   keystrokes. The band names the thing being changed, because

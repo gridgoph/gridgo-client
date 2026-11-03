@@ -25,6 +25,7 @@ import { ACK_RECEIPT_NOTIFICATION_TYPE, acknowledgementReceiptHref } from "@/lib
 import { receiptNoticeHref } from "@/lib/receipt";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
+import { isQuoteNotification, QUOTES_ROUTE } from "@/lib/quoteRequests";
 
 /**
  * The Android channel the server names in every message.
@@ -227,6 +228,10 @@ export function pushTargetRoute(data: PushData): string {
   // newest thread, which may be a different conversation.
   const chat = chatNotificationRoute(data);
   if (chat) return chat;
+  // A quote notice names its quote only in the inbox row, never the push
+  // (gridgo-api#226): the tap reads it back (`usePushNotifications`), and
+  // until then — or whenever it cannot — opens My quotes.
+  if (isQuoteNotification(data.type)) return QUOTES_ROUTE;
   if (!data.orderId) return "/(tabs)/notifications";
   // The post-order survey invitation opens that order's survey (report 81CA4493).
   if (isSurveyNotification(data.type)) return surveyRoute(data.orderId);

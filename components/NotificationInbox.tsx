@@ -13,6 +13,7 @@ import { businessApplicationSentBack } from "@/lib/accountProfile";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { chatNotificationRoute } from "@/lib/push";
+import { quoteNotificationRoute } from "@/lib/quoteRequests";
 import { appInstallChannel } from "@/lib/buildDistribution";
 import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
 import { RECEIPT_FROM_NOTICE } from "@/lib/receipt";
@@ -75,6 +76,8 @@ export function NotificationInbox() {
     const markGroupRead = () => void markManyRead(group.items.map((item) => item.id));
     // A message opens its conversation, as its push does (#231).
     const chatRoute = chatNotificationRoute(notification);
+    // A quote notice opens its quote (gridgo-api#226).
+    const quoteRoute = quoteNotificationRoute(notification);
     // A release notice opens this install's own store, exactly as its push does.
     const release = releaseNoticeDestination(notification, notification.title, appInstallChannel());
     return (
@@ -106,6 +109,12 @@ export function NotificationInbox() {
                 // Sent back: the application opens with what was sent filled in.
                 markGroupRead();
                 router.push(APPLICATION_ROUTE);
+              }
+            : quoteRoute
+            ? () => {
+                markGroupRead();
+                // A route this app declares, built at runtime.
+                router.push(quoteRoute as Href);
               }
             : chatRoute
             ? () => {

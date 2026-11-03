@@ -112,6 +112,44 @@ export function userFacingError(error: unknown, fallback: string): string {
     if (coverSpine) return coverSpine;
 
     switch (code) {
+      // ---- a quoted job's basket (gridgo-api#226) ----
+      case "quote_line_locked":
+        return "A quoted job keeps the product and quantity it was priced for. Cancel the quote and request a new one to change them.";
+      case "quote_expired":
+        return "This quote has expired. Ask GRIDGO to renew it in chat, or request a new quote.";
+      case "quote_not_accepted":
+        return "Choose this quote's option first, from My quotes.";
+      // ---- Sample First (gridgo-api#222) ----
+      case "sample_cart_exclusive":
+        return "A sample, or a batch made from one, is checked out on its own. Finish or empty this order first.";
+      case "sample_unavailable":
+        return "This shop no longer offers a sample of this product. You can still order the full batch.";
+      case "sample_speed_fixed":
+        return "A sample is made at the shop's standard speed. The speed you choose is kept for your batch.";
+      case "sample_batch_specs_locked":
+        return "Your batch keeps the specs of the sample you approved. Only the quantity, drop-off and date can change. To change anything else, reject the sample and order a new one.";
+      case "sample_hold_expired":
+        return "The held price has ended. You can still order this batch at today's price.";
+      case "sample_batch_not_approved":
+        return "Approve the sample before you order its batch.";
+      case "sample_shop_changed":
+        return "Another shop made your sample, so its batch price was not held. You can order at today's price.";
+      case "sample_batch_ordered":
+        return "This batch has already been ordered. Open it from Orders.";
+      case "sample_batch_not_resampleable":
+        return "This sample cannot be replaced. Open My samples to see where it stands.";
+      case "sample_batch_already_resampled":
+        return "You already ordered a new sample for this batch.";
+      case "sample_not_delivered":
+        return "You can decide once the sample has reached you.";
+      case "sample_batch_decided":
+        return "This sample has already been decided. It has been refreshed.";
+      case "sample_batch_not_found":
+        return "This sample was not found. Open My samples and pick it again.";
+      case "invalid_approval_file":
+        return "Add a photo of the sample you received, then approve it.";
+      case "catalog_item_stale":
+        return "This product is no longer listed by that shop, so the batch cannot be ordered.";
       case "hub_pickup_disabled":
         return "Hub pick-up is currently unavailable for new orders. Choose delivery, or start a new print job to change a locked pick-up choice.";
       case "invalid_credentials":
@@ -225,6 +263,8 @@ export function userFacingError(error: unknown, fallback: string): string {
         return "A shop in your order can no longer make one of your dates. Choose a later date for that item, or remove it.";
       case "cart_group_not_found":
         return "That shop group is no longer in your order. Add this as a new product instead.";
+      case "invalid_delivery_split":
+        return "GRIDGO could not change how this shop delivers. Reopen your order and try again.";
       case "basket_payment_required":
         return "This order is paid as one payment for every shop in it. Open the order and send the payment from there.";
       // ---- basket: the press's widest print ----
@@ -334,7 +374,13 @@ export function userFacingError(error: unknown, fallback: string): string {
 
       // ---- the shop could not take the order (docs/SHOP_RECOVERY_API.md) ----
       case "shop_recovery_offer_changed":
-        return "GRIDGO checked the offer again while you were deciding. Look at the date shown now, then choose again.";
+        return "GRIDGO checked the offer again while you were deciding. Look at the date and price shown now, then choose again.";
+      case "shop_move_top_up_consent_required":
+        return "The amount to pay has changed since the screen loaded. Look at the price shown now, then choose again.";
+      case "invalid_shop_recovery_option":
+        return "That shop is no longer on offer. The order below shows the shops you can choose now.";
+      case "shop_move_top_up_use_recovery":
+        return "Pay the rest or choose a full refund from the new-shop choice on this order.";
       case "shop_recovery_stale":
       case "shop_recovery_not_available":
         return "This choice has moved on since the screen loaded. The order below shows where it stands now.";

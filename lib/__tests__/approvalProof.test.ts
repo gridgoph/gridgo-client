@@ -120,6 +120,17 @@ describe("what the client is shown before approving", () => {
     );
     expect(review.quantity).toBe("2 packs · 200 pieces");
   });
+
+  it("approves a sample as one piece, not one pack (gridgo-api#222)", () => {
+    const review = cartLineReview(
+      line({
+        quantity: 1,
+        sample: { batchQuantity: 5, replacesSampleBatchId: null },
+        listing: checkoutListing({ name: "Flyers", pricingUnit: "per_package", packageQty: 100 }),
+      }),
+    );
+    expect(review.quantity).toBe("1 sample piece");
+  });
 });
 
 const RECORD: ApprovalProofRecord = {

@@ -89,7 +89,7 @@ it("leaves a season this phone has dismissed off Home", async () => {
   useSeasonWindows.setState({ dismissed: ["sea_school"] });
   await renderInSafeArea(<HomeScreen />);
 
-  expect(await screen.findByText("START YOUR FIRST PRINT")).toBeTruthy();
+  expect(await screen.findByLabelText("Search what GRIDGO prints")).toBeTruthy();
   expect(screen.queryByText("School season starts in 5 weeks")).toBeNull();
 });
 
@@ -97,7 +97,7 @@ it("holds the banner until the phone has read its dismissals back", async () => 
   useSeasonWindows.setState({ hydrated: false });
   await renderInSafeArea(<HomeScreen />);
 
-  expect(await screen.findByText("START YOUR FIRST PRINT")).toBeTruthy();
+  expect(await screen.findByLabelText("Search what GRIDGO prints")).toBeTruthy();
   expect(screen.queryByText("School season starts in 5 weeks")).toBeNull();
 });
 
@@ -108,6 +108,6 @@ it("puts the banner away when dismissed and remembers that season", async () => 
   fireEvent.press(await screen.findByLabelText("Dismiss the School season notice"));
 
   expect(useSeasonWindows.getState().dismissed).toEqual(["sea_school"]);
-  await screen.findByText("START YOUR FIRST PRINT");
+  await screen.findByLabelText("Search what GRIDGO prints");
   expect(screen.queryByText("School season starts in 5 weeks")).toBeNull();
 });

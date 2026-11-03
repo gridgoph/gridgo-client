@@ -1,25 +1,29 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { ChevronRight } from "lucide-react-native";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Text, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Pressable, Text, View } from "react-native";
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 
 import { CategoryHuntField } from "@/components/CategoryHuntField";
 import { CategorySampleCard, CategorySampleRow } from "@/components/CategorySample";
 import { CategoryViewToggle } from "@/components/CategoryViewToggle";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
+import { QuoteInvite } from "@/components/QuoteInvite";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { TourTarget } from "@/components/TourTarget";
 import { useCategoryView } from "@/hooks/useCategoryView";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
+import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { isHunting, subcategoryMatchesHunt } from "@/lib/categoryBrowse";
 import { boardListings } from "@/lib/photoLinks";
 import { userFacingError } from "@/lib/copy";
 import { findCategory, type ProductCategory, type ProductSubcategory } from "@/lib/productCategories";
+import { isQuotedProduct, newQuoteHref } from "@/lib/quoteRequests";
 import {
   loadCategoryBoards,
   orderableSubcategories,
@@ -117,6 +121,8 @@ export default function CategoryScreen() {
     subcategoryMatchesHunt(entry, null, hunt),
   );
   const hunting = isHunting(hunt);
+  // A listed signage or 3D job can still be one-off work: it can be quoted (gridgo-api#226).
+  const customOnBoards = huntedOnBoards.find((subcategory) => isQuotedProduct(subcategory.code)) ?? null;
   const split = huntedOnBoards.length > 0 && huntedQuoted.length > 0 && !hunting;
   const huntMissed = hunting && huntedOnBoards.length === 0 && huntedQuoted.length === 0;
 
@@ -249,10 +255,17 @@ export default function CategoryScreen() {
           </View>
         ) : null}
 
+        {boards && customOnBoards ? (
+          <View className="mt-6">
+            <QuoteInvite name={customOnBoards.name} onPress={() => router.push(newQuoteHref(customOnBoards.code) as Href)} />
+          </View>
+        ) : null}
+
         {huntedQuoted.length ? (
           <QuotedPanel
             items={huntedQuoted}
             split={split}
+            onRequestQuote={(code) => router.push(newQuoteHref(code) as Href)}
           />
         ) : null}
       </View>
@@ -263,10 +276,14 @@ export default function CategoryScreen() {
 function QuotedPanel({
   items,
   split,
+  onRequestQuote,
 }: {
   items: ProductSubcategory[];
   split: boolean;
+  /** Signage and 3D printing are quoted in the app (gridgo-api#226). */
+  onRequestQuote: (code: string) => void;
 }) {
+  const colors = useThemeColors();
   return (
     <View className="mt-8 gap-3">
       {split ? (
@@ -277,14 +294,34 @@ function QuotedPanel({
         today, so Operations quotes them with you directly.
       </Text>
       <View className="gg-panel gap-4">
-        {items.map((subcategory) => (
-          <View key={subcategory.code} className="gap-1">
-            <Text className="text-body-lg text-text-primary">{subcategory.name}</Text>
-            {subcategory.examples ? (
-              <Text className="text-caption text-text-muted">{subcategory.examples}</Text>
-            ) : null}
-          </View>
-        ))}
+        {items.map((subcategory) =>
+          isQuotedProduct(subcategory.code) ? (
+            <Pressable
+              key={subcategory.code}
+              onPress={() => onRequestQuote(subcategory.code)}
+              accessibilityRole="button"
+              accessibilityLabel={`${subcategory.name}. Request a quote`}
+              className="gg-touch flex-row items-center gap-3"
+              style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+            >
+              <View className="min-w-0 flex-1 gap-1">
+                <Text className="text-body-lg text-text-primary">{subcategory.name}</Text>
+                {subcategory.examples ? (
+                  <Text className="text-caption text-text-muted">{subcategory.examples}</Text>
+                ) : null}
+                <Text className="text-body font-medium text-text-primary">Request a quote</Text>
+              </View>
+              <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} aria-hidden />
+            </Pressable>
+          ) : (
+            <View key={subcategory.code} className="gap-1">
+              <Text className="text-body-lg text-text-primary">{subcategory.name}</Text>
+              {subcategory.examples ? (
+                <Text className="text-caption text-text-muted">{subcategory.examples}</Text>
+              ) : null}
+            </View>
+          ),
+        )}
       </View>
     </View>
   );

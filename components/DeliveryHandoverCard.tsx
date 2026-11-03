@@ -12,12 +12,13 @@ import { actionFor, useHandoverActions } from "@/store/handoverActions";
 
 /**
  * The door's half of the handover (gridgo-api#125): the six-digit code the
- * rider also sees, shown large enough to compare at arm's length.
+ * client reads out, the rider types into the rider app, and GRIDGO checks.
+ * The rider app no longer shows its own copy (decided 8 Oct 2026).
  *
  * The client never controls the delivery, so there is nothing to press to
- * accept it. What the card owes them is the rule — match, then accept — and
- * what to do when the codes differ: refuse, and let the rider take it to
- * Operations. Telling Operations themselves is there too, but quiet: it is a
+ * accept it. What the card owes them is the rule — read it out, accept once
+ * delivery is recorded — and what to do when GRIDGO refuses the code:
+ * refuse, and let the rider take it to Operations. Telling Operations themselves is there too, but quiet: it is a
  * report, never an override, and the rider reports it as well.
  */
 export function DeliveryHandoverCard({ orderId, handover }: { orderId: string; handover: OrderHandover }) {
@@ -36,7 +37,7 @@ export function DeliveryHandoverCard({ orderId, handover }: { orderId: string; h
       <View className="gap-2">
         <Text className="text-overline text-text-muted">WHEN YOUR RIDER ARRIVES</Text>
         <Text accessibilityRole="header" className="text-h3 text-text-primary">
-          Match this code with your rider
+          Read this code to your rider
         </Text>
         <Text className="text-body text-text-secondary">{DELIVERY_MATCH}</Text>
       </View>
@@ -61,7 +62,7 @@ export function DeliveryHandoverCard({ orderId, handover }: { orderId: string; h
           >
             <ShieldAlert size={18} color={colors.textPrimary} strokeWidth={2} aria-hidden />
             <Text className="text-button text-text-primary">
-              {report.busy ? "Sending…" : "Tell Operations the codes do not match"}
+              {report.busy ? "Sending…" : "Tell Operations the code was refused"}
             </Text>
           </Pressable>
           {report.error ? (
@@ -74,7 +75,7 @@ export function DeliveryHandoverCard({ orderId, handover }: { orderId: string; h
 
       <ConfirmDialog
         visible={confirming}
-        question="Tell Operations the codes do not match?"
+        question="Tell Operations the code was refused?"
         body="Do not accept the order. GRIDGO Operations is alerted straight away and contacts you and the rider."
         confirmLabel={report.busy ? "Sending…" : "Tell Operations"}
         cancelLabel="Not now"

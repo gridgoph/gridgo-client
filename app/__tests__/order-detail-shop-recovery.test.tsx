@@ -67,6 +67,6 @@ it("accepts the replacement it was shown and reloads the order", async () => {
   const button = await screen.findByText("Accept the new shop");
   const reads = api.getOrder.mock.calls.length;
   fireEvent.press(button);
-  await waitFor(() => expect(api.acceptShopRecovery).toHaveBeenCalledWith("ord_refund_1", "shop_event_1"));
+  await waitFor(() => expect(api.acceptShopRecovery).toHaveBeenCalledWith("ord_refund_1", "shop_event_1", {}));
   await waitFor(() => expect(api.getOrder.mock.calls.length).toBeGreaterThan(reads));
 });

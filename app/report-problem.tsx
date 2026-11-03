@@ -22,6 +22,7 @@ import {
   bugReportProblem,
   composeBugReport,
   currentDevice,
+  issueReportText,
   recentOrdersForReport,
 } from "@/lib/bugReport";
 import { SUPPORT_CHAT_IMAGE_PURPOSE, addChatPhotos } from "@/lib/chatImages";
@@ -161,11 +162,20 @@ export default function ReportProblemScreen() {
       return;
     }
     try {
+      const report = composeBugReport({ happened, expected }, device, order);
       const posted = await api.sendSupportChatMessage(
-        composeBugReport({ happened, expected }, device, order),
+        report,
         undefined,
         fileIds.length ? { newThread: true, attachmentFileIds: fileIds } : { newThread: true },
       );
+      // The same report, filed with the client's session as an issue report,
+      // is what GRIDGO's staff confirm as a real bug — and the only way a
+      // tester's one-time bug voucher can be earned (gridgo-api
+      // `docs/CLIENT_HOME_API.md`). The chat message above is the
+      // conversation; this one never stands between the client and it.
+      void api
+        .fileIssueReport({ issue: issueReportText(report, posted.thread.id, fileIds.length), category: "bug" })
+        .catch(() => {});
       setSent(true);
       setSending(false);
       // Off the prevent-remove guard first, then into the conversation the

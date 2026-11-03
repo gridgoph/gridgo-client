@@ -2,9 +2,10 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Search, X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View, type TextStyle } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 
 import { FormScreen } from "@/components/FormScreen";
+import { QuoteInvite } from "@/components/QuoteInvite";
 import { TourTarget } from "@/components/TourTarget";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -16,6 +17,7 @@ import {
   type ProductCategory,
   type ProductSubcategory,
 } from "@/lib/productCategories";
+import { isQuotedProduct, newQuoteHref } from "@/lib/quoteRequests";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 
 // A step that throws while drawing shows a way on instead of closing the app.
@@ -145,6 +147,7 @@ export default function ChooseCategoryScreen() {
             query={query.trim()}
             onPick={openSubcategory}
             onBrowse={() => setQuery("")}
+            onRequestQuote={(code) => router.push(newQuoteHref(code) as Href)}
           />
         ) : (
           <View className="mt-8 gap-3">
@@ -209,12 +212,16 @@ function SearchResults({
   query,
   onPick,
   onBrowse,
+  onRequestQuote,
 }: {
   hits: { category: ProductCategory; subcategory: ProductSubcategory }[];
   query: string;
   onPick: (category: ProductCategory, subcategory: ProductSubcategory) => void;
   onBrowse: () => void;
+  onRequestQuote: (productType: string) => void;
 }) {
+  // Signage and 3D printing have no list price: they are quoted (gridgo-api#226).
+  const quoted = hits.find(({ subcategory }) => isQuotedProduct(subcategory.code))?.subcategory ?? null;
   if (!hits.length) {
     return (
       <View className="mt-8 gg-panel gap-3 py-8">
@@ -249,6 +256,9 @@ function SearchResults({
           onPress={() => onPick(category, subcategory)}
         />
       ))}
+      {quoted ? (
+        <QuoteInvite name={quoted.name} onPress={() => onRequestQuote(quoted.code)} />
+      ) : null}
     </View>
   );
 }

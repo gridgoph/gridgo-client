@@ -11,12 +11,10 @@ import { useSession } from "@/store/session";
  * The client tab shell.
  *
  * The bar is four destinations, and a fifth — Organizations — for an
- * approved organization account. The yellow "+" floats on each of those
- * screens (`StartPrintFab`) and is the one start-a-print-request control.
- * With nothing chosen yet that is the category screen, not an empty stepper —
- * a client should never meet a form before they have said what they are
- * printing. With work already in progress it goes back to that: a basket
- * goes to checkout, and an older stepper draft opens the stepper.
+ * approved organization account, with the raised yellow "+" in the centre
+ * (client#335). The "+" opens the quick-actions sheet; its "Start a new
+ * print" keeps the old landings (`lib/startPrint.ts`): the category screen
+ * with nothing chosen, checkout for a basket, the stepper for a draft.
  *
  * The stepper stays a tab route so a draft can reopen it, but `href: null`
  * keeps it out of the bar.

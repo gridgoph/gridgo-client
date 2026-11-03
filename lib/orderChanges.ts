@@ -24,6 +24,7 @@ import type { Order, OrderChangeRequest, ProductionItem } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
 import type { OrderNextAction } from "@/lib/orderState";
 import { readyByDate } from "@/lib/readyTime";
+import { isShopMoveTopUp } from "@/lib/shopRecovery";
 
 /** The server counts Unicode characters, not UTF-16 units. */
 export const SPECIAL_INSTRUCTIONS_MAX = 300;
@@ -60,9 +61,20 @@ export type ChangeRequestView =
   /** The top-up is with Operations. Nothing to do. */
   | { kind: "checking"; change: OrderChangeRequest; itemName: string | null };
 
+type ChangeSource = Pick<Order, "changeRequests"> & Partial<Pick<Order, "shopRecovery" | "shopMoves">>;
+
+/**
+ * The shop's own requests. "Pay the rest" for a move to another shop is also
+ * a change request on the server (gridgo-api#225), but the shop-move decision
+ * owns it, so it never reads here as the shop asking for something.
+ */
+function shopChanges(order: ChangeSource): OrderChangeRequest[] {
+  return (order.changeRequests ?? []).filter((row) => !isShopMoveTopUp(order, row.id));
+}
+
 /** The one request still open on this order (the server allows one at a time). */
-export function openChangeRequest(order: Pick<Order, "changeRequests">): OrderChangeRequest | null {
-  const open = (order.changeRequests ?? []).filter((row) => OPEN.includes(row.status));
+export function openChangeRequest(order: ChangeSource): OrderChangeRequest | null {
+  const open = shopChanges(order).filter((row) => OPEN.includes(row.status));
   return open.at(-1) ?? null;
 }
 
@@ -75,7 +87,9 @@ export function changeItemName(
 }
 
 /** Which face the open change shows, or null when nothing is open. */
-export function changeRequestView(order: Pick<Order, "changeRequests" | "productionItems">): ChangeRequestView | null {
+export function changeRequestView(
+  order: ChangeSource & Pick<Order, "productionItems">,
+): ChangeRequestView | null {
   const change = openChangeRequest(order);
   if (!change) return null;
   const itemName = changeItemName(order, change.lineItemId);
@@ -85,7 +99,7 @@ export function changeRequestView(order: Pick<Order, "changeRequests" | "product
 }
 
 /** True while a change asks something of the client: Home's docket and the order's yellow. */
-export function changeNeedsClient(order: Pick<Order, "changeRequests" | "productionItems">): boolean {
+export function changeNeedsClient(order: ChangeSource & Pick<Order, "productionItems">): boolean {
   const view = changeRequestView(order);
   return view?.kind === "answer" || view?.kind === "pay";
 }
@@ -127,7 +141,7 @@ export const DECLINE_CONFIRM = {
 };
 
 /** Home's docket verb, keyed to the action (see `OrderNextAction`). */
-export function changeNextAction(order: Pick<Order, "changeRequests" | "productionItems">): OrderNextAction | null {
+export function changeNextAction(order: ChangeSource & Pick<Order, "productionItems">): OrderNextAction | null {
   const view = changeRequestView(order);
   if (view?.kind === "answer") {
     return {
@@ -152,15 +166,15 @@ export function changeNextAction(order: Pick<Order, "changeRequests" | "producti
 }
 
 /** The one-line wait while the top-up is with Operations. */
-export function changeWaitingOn(order: Pick<Order, "changeRequests" | "productionItems">): string | null {
+export function changeWaitingOn(order: ChangeSource & Pick<Order, "productionItems">): string | null {
   return changeRequestView(order)?.kind === "checking"
     ? "We are checking your payment for the change. The shop keeps printing your order as placed until Operations confirms it."
     : null;
 }
 
 /** Settled requests, newest first: the record under Specifications. */
-export function settledChanges(order: Pick<Order, "changeRequests">): OrderChangeRequest[] {
-  return (order.changeRequests ?? []).filter((row) => !OPEN.includes(row.status)).slice().reverse();
+export function settledChanges(order: ChangeSource): OrderChangeRequest[] {
+  return shopChanges(order).filter((row) => !OPEN.includes(row.status)).slice().reverse();
 }
 
 /** A settled request's outcome, in words. Unknown statuses read as closed, never as approved. */

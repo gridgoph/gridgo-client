@@ -42,6 +42,7 @@ import { PaymentProofRow } from "@/components/PaymentProofRow";
 import { FormField } from "@/components/form/FormField";
 import { TextField } from "@/components/form/TextField";
 import { SamplePhoto } from "@/components/SamplePhoto";
+import { DeliverSeparatelyChoice } from "@/components/DeliverSeparatelyChoice";
 import { ShopGroupSection } from "@/components/ShopGroupSection";
 import { ReadyTime } from "@/components/ReadyTime";
 import { ShopHoursLine } from "@/components/ShopHoursLine";
@@ -69,8 +70,10 @@ import {
 } from "@/lib/basket";
 import {
   addMoreFromLabel,
+  combinedDateLine,
+  deliveryChoice,
+  deliveryFeeRowLabel,
   groupDeliveryNote,
-  groupMoneyLabel,
   groupsHeading,
   isMultiShop,
   MULTI_SHOP_PAYMENT_TITLE,
@@ -131,10 +134,12 @@ import {
 import { zoneLine } from "@/lib/distanceZone";
 import { hubFeeLabel, hubPickupEnabled } from "@/lib/hubPickup";
 import { fulfilmentSummary } from "@/lib/requestFulfilment";
+import { SAMPLE_BASKET_NOTE, isSampleBasket, lineQuantityFixed, lineSpecsLocked, sampleLineCaption } from "@/lib/sampleFirst";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
 import { artworkRightsPayload, cartRightsScope, useArtworkRights } from "@/store/artworkRights";
 import { useCart } from "@/store/cart";
+import { useShopDeliveries } from "@/store/shopDeliveries";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
 import { useIsApprovedOrganization } from "@/store/organization";
@@ -301,7 +306,13 @@ export default function CheckoutScreen() {
   // own shop groups, each with its own delivery fee.
   const totals = useMemo(() => basketTotals({ cart, settings }), [cart, settings]);
   const multi = isMultiShop(cart);
+  // GRIDGO refuses any other line in a sample basket, so nothing offers one.
+  const sampleBasket = isSampleBasket(lines);
   const groups = useMemo(() => shopGroups(cart), [cart]);
+  // "Deliver separately" (gridgo-api#275): GRIDGO's last refusal, kept by group.
+  const deliveryError = useShopDeliveries((state) => state.error);
+  const chooseDeliveries = useShopDeliveries((state) => state.choose);
+  useEffect(() => () => useShopDeliveries.getState().reset(), []);
 
   const travel = travelChoiceOf(cart);
   // Chosen before the match (#158): read back here, never asked again.
@@ -832,6 +843,19 @@ export default function CheckoutScreen() {
       onRemove={() => setRemoving(line)}
     />
   );
+  /**
+   * One shop's delivery choice: due by its earliest date while its products
+   * travel together, and the tick that sends each date on its own.
+   */
+  const deliveryControl = (group: ShopGroupView) => (
+    <DeliverSeparatelyChoice
+      choice={deliveryChoice(group, cart)}
+      dateLine={(group.shopDeliveryCount ?? 1) > 1 ? null : combinedDateLine(group, cart)}
+      busy={busy}
+      error={deliveryError?.groupId === group.id ? deliveryError.text : null}
+      onChoose={(split) => void chooseDeliveries(group.id, split)}
+    />
+  );
   const missingShown = attempted || referenceTouched;
   // Out of hours: when GRIDGO reviews the artwork, and the estimate that
   // counts it (gridgo-api#203). Never a reason to hold the order back.
@@ -1034,6 +1058,7 @@ export default function CheckoutScreen() {
                   onAddMore={() => addToGroup(group.id, group.label, group.deadline)}
                   onChangeDate={() => changeGroupDate(group)}
                   dateError={attempted && group.deadline == null}
+                  deliveryChoice={deliveryControl(group)}
                 >
                   {group.lines.map(lineRow)}
                 </ShopGroupSection>
@@ -1061,6 +1086,9 @@ export default function CheckoutScreen() {
                 </Text>
               </View>
 
+              {/* One shop on several dates: due by the earliest, unless sent separately. */}
+              {groups.length === 1 ? deliveryControl(groups[0]) : null}
+
               {run.lines.map(lineRow)}
 
               {/*
@@ -1069,40 +1097,46 @@ export default function CheckoutScreen() {
                 two of each, and this is the moment that choice is cheap to
                 make.
               */}
-              <Pressable
-                onPress={() => addToRun(run)}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  runs.length === 1
-                    ? addMoreFromLabel(SINGLE_GROUP_LABEL)
-                    : `Add more to ${run.runLabel.toLowerCase()}`
-                }
-                className="gg-btn-secondary"
-                style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
-              >
-                <Plus size={16} color={colors.textPrimary} strokeWidth={2.5} />
-                <Text className="text-button text-text-primary">
-                  {runs.length === 1
-                    ? addMoreFromLabel(SINGLE_GROUP_LABEL)
-                    : `Add more to ${run.runLabel.toLowerCase()}`}
-                </Text>
-              </Pressable>
+              {sampleBasket ? null : (
+                <Pressable
+                  onPress={() => addToRun(run)}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    runs.length === 1
+                      ? addMoreFromLabel(SINGLE_GROUP_LABEL)
+                      : `Add more to ${run.runLabel.toLowerCase()}`
+                  }
+                  className="gg-btn-secondary"
+                  style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
+                >
+                  <Plus size={16} color={colors.textPrimary} strokeWidth={2.5} />
+                  <Text className="text-button text-text-primary">
+                    {runs.length === 1
+                      ? addMoreFromLabel(SINGLE_GROUP_LABEL)
+                      : `Add more to ${run.runLabel.toLowerCase()}`}
+                  </Text>
+                </Pressable>
+              )}
             </View>
           ))}
 
           <Text className="text-caption text-text-muted">{SWIPE_TO_DELETE_HINT}</Text>
 
-          <Pressable
-            onPress={() => router.push("/request/category")}
-            accessibilityRole="button"
-            accessibilityLabel={multi ? "Add products from any shop" : "Add something else to print"}
-            className="gg-touch items-center justify-center"
-            style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-          >
-            <Text className="text-body text-text-secondary underline">
-              {multi ? "Add products" : "Add something else to print"}
-            </Text>
-          </Pressable>
+          {sampleBasket ? (
+            <Text className="text-caption text-text-muted">{SAMPLE_BASKET_NOTE}</Text>
+          ) : (
+            <Pressable
+              onPress={() => router.push("/request/category")}
+              accessibilityRole="button"
+              accessibilityLabel={multi ? "Add products from any shop" : "Add something else to print"}
+              className="gg-touch items-center justify-center"
+              style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+            >
+              <Text className="text-body text-text-secondary underline">
+                {multi ? "Add products" : "Add something else to print"}
+              </Text>
+            </Pressable>
+          )}
         </View>
 
         {/* ---- How it travels -------------------------------------------- */}
@@ -1387,7 +1421,7 @@ export default function CheckoutScreen() {
               groups.map((group) => (
                 <SpecRow
                   key={group.id}
-                  label={`Delivery · ${groupMoneyLabel(group, groups)}`}
+                  label={deliveryFeeRowLabel(group, groups)}
                   value={group.deliveryFeeMinor == null ? "Set with your address" : formatPhp(group.deliveryFeeMinor)}
                 />
               ))
@@ -1647,14 +1681,20 @@ function LineRow({
       }
     : null;
   const unit = line.quantityMode ? quantityUnit(line.quantityMode, 1) : null;
+  // A sample is one piece, and a batch from one keeps its sample's specs (gridgo-api#222).
+  const sampleCaption = sampleLineCaption(line);
+  const fixedQuantity = lineQuantityFixed(line);
+  // GRIDGO refuses any change but quantity on a batch from a sample, so nothing offers one.
+  const specsLocked = lineSpecsLocked(line);
 
   return (
     <SwipeToRemove label={name} onRemove={onRemove} disabled={busy}>
       <View className="gg-card-flush bg-surface">
         <Pressable
           onPress={onEdit}
-          accessibilityRole="button"
-          accessibilityLabel={`${name}. Change what you picked.${readyBy ? ` Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
+          disabled={specsLocked}
+          accessibilityRole={specsLocked ? undefined : "button"}
+          accessibilityLabel={`${name}.${specsLocked ? "" : " Change what you picked."}${readyBy ? ` Ready by ${readyBy}. ${READY_TIME_EXPLANATION}` : ""}`}
           className="gg-touch"
           style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
         >
@@ -1671,6 +1711,9 @@ function LineRow({
             </View>
             <View className="min-w-0 flex-1 gap-1">
               <Text className="text-body-lg font-medium text-text-primary">{name}</Text>
+              {sampleCaption ? (
+                <Text className="text-caption text-text-secondary">{sampleCaption}</Text>
+              ) : null}
               {paused ? (
                 <View className="gap-1">
                   <ShopHoursLine view={shopHoursView(line.listing?.shopHours)} />
@@ -1738,6 +1781,11 @@ function LineRow({
         </Pressable>
 
         <View className="flex-row items-stretch border-t border-outline-subtle">
+          {fixedQuantity ? (
+            <View className="justify-center px-4">
+              <Text className="text-body font-medium text-text-primary">1 sample</Text>
+            </View>
+          ) : (
           <View className="flex-row items-center">
             <IconAction
               icon="minus"
@@ -1755,14 +1803,19 @@ function LineRow({
               onPress={() => onQuantity(line.quantity + 1)}
             />
           </View>
+          )}
 
-          <View className="w-px self-stretch bg-outline-subtle" />
-          <RowAction label="Edit" onPress={onEdit} />
-          <View className="w-px self-stretch bg-outline-subtle" />
-          <RowAction
-            label={lineHasArtwork(line) ? "Artwork" : "Add artwork"}
-            onPress={onArtwork}
-          />
+          {specsLocked ? null : (
+            <>
+              <View className="w-px self-stretch bg-outline-subtle" />
+              <RowAction label="Edit" onPress={onEdit} />
+              <View className="w-px self-stretch bg-outline-subtle" />
+              <RowAction
+                label={lineHasArtwork(line) ? "Artwork" : "Add artwork"}
+                onPress={onArtwork}
+              />
+            </>
+          )}
         </View>
       </View>
     </SwipeToRemove>

@@ -8,7 +8,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { ErrorScreenState } from "@/components/ErrorState";
-import { GridgoPrice } from "@/components/GridgoPrice";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { ListingGallery } from "@/components/ListingGallery";
 import { OptionGroupPicker } from "@/components/OptionGroupPicker";
 import { PrintLayoutChoice } from "@/components/PrintLayoutChoice";
@@ -81,12 +82,13 @@ import { type OrderStepId } from "@/lib/orderSteps";
 import { designLinkPhrase } from "@/lib/designLink";
 import { SHOP_PAUSED_LINE, SHOP_PAUSED_MESSAGE, shopHoursView, shopPaused } from "@/lib/shopHours";
 import { FULFILMENT_LOCK_MESSAGE, isFulfilmentLockRefusal, needsFreshBasket } from "@/lib/requestFulfilment";
+import { SAMPLE_OFFER_NOTE, sampleOffer } from "@/lib/sampleFirst";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useJobFulfilment } from "@/store/jobFulfilment";
 import { listingDraftKey, listingDraftNow, useListingDraft } from "@/store/listingDraft";
 import { useListingQuote } from "@/store/listingQuote";
-import { usePlatformSettings } from "@/store/platformSettings";
+import { usePlatformSettings, useServiceFeeRateBps } from "@/store/platformSettings";
 
 // A step that throws while drawing shows a way on instead of closing the app.
 export { ListingErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
@@ -118,11 +120,18 @@ function orderFloor(item: CatalogItem | null): number {
  */
 export default function ListingScreen() {
   const router = useRouter();
-  const { itemId, lineId } = useLocalSearchParams<{
+  const { itemId, lineId, sample: sampleParam, replaces, quantity: quantityParam } = useLocalSearchParams<{
     itemId?: string;
     /** Present when reopening a basket row to change it. */
     lineId?: string;
+    /** "1" when the client came to order a sample first (gridgo-api#222). */
+    sample?: string;
+    /** A rejected sample's draft that a new sample replaces. */
+    replaces?: string;
+    /** The batch size a new sample starts from. */
+    quantity?: string;
   }>();
+  const sampleFirst = sampleParam === "1" && !lineId;
 
   const cart = useCart((state) => state.cart);
   const run = useCart((state) => state.run);
@@ -144,7 +153,7 @@ export default function ListingScreen() {
   );
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<ListingSelection>(() => recovered?.selection ?? {});
-  const [quantity, setQuantity] = useState(() => recovered?.quantity ?? 1);
+  const [quantity, setQuantity] = useState(() => recovered?.quantity ?? startingQuantity(quantityParam));
   // How big it is. Only three of the six pricing units ask for this, and the
   // listing itself decides which — a client ordering flyers never sees it.
   const [measured, setMeasured] = useState<MeasurementDraft>(() => recovered?.measured ?? EMPTY_MEASUREMENT);
@@ -156,6 +165,9 @@ export default function ListingScreen() {
   const [showMissing, setShowMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // A sample is ordered on its own: a basket with things in it is asked about first.
+  const [sampleAside, setSampleAside] = useState(false);
+  const feeRate = useServiceFeeRateBps();
   const loadSettings = usePlatformSettings((state) => state.load);
   useTourScreen("listing", item != null && !error);
 
@@ -452,7 +464,10 @@ export default function ListingScreen() {
   // change it has nothing to pick.
   const picked = editing ? null : matchSelectionFor(item.id);
 
-  const lineInput = () => ({
+  const lineInput = (mode: "batch" | "sample" = "batch") => ({
+    ...(mode === "sample"
+      ? { sample: true, ...(replaces ? { replacesSampleBatchId: replaces } : {}) }
+      : {}),
     catalogItemId: item.id,
     ...(picked
       ? { matchRequestId: picked.matchRequestId, selectToken: picked.selectToken }
@@ -481,12 +496,20 @@ export default function ListingScreen() {
     return true;
   };
 
-  const add = async () => {
+  const add = async (mode: "batch" | "sample" = "batch", basketAside = false) => {
     if (busy || paused) return;
     if (!complete || !sized || layoutMissing) {
       setShowMissing(true);
       return;
     }
+    // A sample goes into a basket of its own. One already holding things is
+    // set aside only once the client says so (the same ask a quote makes).
+    const sampling = mode === "sample" && !editing;
+    if (sampling && !basketAside && (useCart.getState().cart?.lines.length ?? 0) > 0) {
+      setSampleAside(true);
+      return;
+    }
+    setSampleAside(false);
     setBusy(true);
     setSaveError(null);
     try {
@@ -520,13 +543,19 @@ export default function ListingScreen() {
         router.back();
         return;
       }
+      if (sampling && basketAside) {
+        // The basket on this phone is replaced; the old one stays on GRIDGO untouched.
+        const basket = await api.createCart();
+        leaveForArtwork(await api.addCartLine(basket.id, lineInput("sample")));
+        return;
+      }
       // An emptied basket still carries the way its old lines were travelling.
       // A job chosen another way goes into a fresh basket rather than being
       // refused (#158).
       const fresh = picked && needsFreshBasket(useCart.getState().cart, useJobFulfilment.getState().choice);
       const updated = fresh
-        ? await startOver((cartId) => api.addCartLine(cartId, lineInput()))
-        : await run((cartId) => api.addCartLine(cartId, lineInput()));
+        ? await startOver((cartId) => api.addCartLine(cartId, lineInput(mode)))
+        : await run((cartId) => api.addCartLine(cartId, lineInput(mode)));
       leaveForArtwork(updated);
     } catch (e) {
       // The basket travels another way than this job was matched for. Empty,
@@ -536,7 +565,7 @@ export default function ListingScreen() {
         await reloadCart();
         if (!(useCart.getState().cart?.lines.length ?? 0)) {
           try {
-            leaveForArtwork(await startOver((cartId) => api.addCartLine(cartId, lineInput())));
+            leaveForArtwork(await startOver((cartId) => api.addCartLine(cartId, lineInput(mode))));
           } catch (retry) {
             if (!staleMatch(retry)) {
               setSaveError(userFacingError(retry, "GRIDGO could not add this to your order. Try again."));
@@ -583,6 +612,20 @@ export default function ListingScreen() {
 
   // A job matched for pick-up is not delivered; the footer says what it is.
   const pickingUp = !editing && jobFulfilment?.fulfillmentMode === "pickup";
+
+  // "Order a sample first" (gridgo-api#222): beside the order button whenever
+  // the shop offers one, and leading when the client came for a sample.
+  const offer = editing ? null : sampleOffer(item);
+  const samplePrice = offer ? gridgoPriceLabel(offer.supplierMinor, feeRate, offer.clientMinor) : null;
+  const sampleLeads = offer != null && sampleFirst;
+  const sampleGone = sampleFirst && offer == null && !editing;
+  const primaryLabel = busy
+    ? "Saving…"
+    : editing
+      ? "Save this change"
+      : sampleLeads
+        ? `Order a sample · ${samplePrice}`
+        : "Add to my order";
 
   return (
     <Screen edges={["bottom"]}>
@@ -848,7 +891,7 @@ export default function ListingScreen() {
       <TourTarget step="listing" className="border-t border-outline bg-surface px-4 pb-2 pt-3">
         <View testID="listing-printing" className="flex-row items-baseline justify-between gap-3">
           <View className="min-w-0 flex-1 gap-1">
-            <Text className="text-body text-text-secondary">Printing</Text>
+            <Text className="text-body text-text-secondary">{sampleLeads ? "Your batch" : "Printing"}</Text>
             <Text className="text-caption text-text-muted">
               {quantityLine(item, quantity)}
               {measurement ? ` · ${measurementSummary(item, measurement)}` : ""}
@@ -870,24 +913,33 @@ export default function ListingScreen() {
         </View>
 
         <Pressable
-          onPress={() => void add()}
+          onPress={() => void add(sampleLeads ? "sample" : "batch")}
           disabled={blocked}
           accessibilityRole="button"
-          accessibilityLabel={editing ? "Save this change" : "Add to my order"}
+          accessibilityLabel={editing ? "Save this change" : sampleLeads ? "Order a sample" : "Add to my order"}
           accessibilityState={{ disabled: blocked }}
           className={blocked ? "gg-btn-primary gg-disabled mt-3" : "gg-btn-primary mt-3"}
           style={({ pressed }) => (pressed && !blocked ? { opacity: 0.9 } : undefined)}
         >
-          <Text className="text-button text-action-yellow-on">
-            {busy ? "Saving…" : editing ? "Save this change" : "Add to my order"}
-          </Text>
+          <Text className="text-button text-action-yellow-on">{primaryLabel}</Text>
         </Pressable>
+
+        {offer ? (
+          <View className="mt-2 gap-1">
+            <SecondaryButton
+              label={sampleLeads ? "Add the full batch instead" : `Order a sample first · ${samplePrice}`}
+              disabled={blocked}
+              onPress={() => void add(sampleLeads ? "batch" : "sample")}
+            />
+            <Text className="text-center text-caption text-text-muted">{SAMPLE_OFFER_NOTE}</Text>
+          </View>
+        ) : null}
 
         <Text
           className={
             saveError
               ? "mt-2 text-center text-caption text-error"
-              : paused
+              : paused || sampleGone
                 ? "mt-2 text-center text-caption text-warning"
                 : "mt-2 text-center text-caption text-text-muted"
           }
@@ -898,6 +950,8 @@ export default function ListingScreen() {
               ? editing
                 ? SHOP_PAUSED_LINE
                 : SHOP_PAUSED_MESSAGE
+            : sampleGone
+              ? "This shop no longer offers a sample of this product. You can still order the full batch."
             : showMissing && missing
               ? `Pick a ${missing.name.toLowerCase()} first.`
               : showMissing && layoutMissing
@@ -913,8 +967,29 @@ export default function ListingScreen() {
         ) : null}
       </TourTarget>
 
+      <ConfirmDialog
+        visible={sampleAside}
+        question="Set your basket aside?"
+        body={sampleAsideLine(useCart.getState().cart?.lines.length ?? 0)}
+        confirmLabel="Order the sample"
+        cancelLabel="Keep my basket"
+        busy={busy}
+        onConfirm={() => void add("sample", true)}
+        onCancel={() => setSampleAside(false)}
+      />
     </Screen>
   );
+}
+
+/** Where a fresh sheet's quantity starts: the batch a new sample carries on, else one. */
+function startingQuantity(param: string | undefined): number {
+  const value = Number(param);
+  return Number.isSafeInteger(value) && value > 0 ? value : 1;
+}
+
+function sampleAsideLine(count: number): string {
+  const items = count === 1 ? "1 item" : `${count} items`;
+  return `Your basket has ${items}. A sample is ordered on its own, so the basket on this phone is replaced.`;
 }
 
 /**
