@@ -23,7 +23,7 @@ import {
 import type { ClientOrganization } from "@/lib/api";
 import { canInvite, foundingTesterView, INVITE_ROUTE, INVITE_TITLE } from "@/lib/foundingTester";
 import { startPrintHref } from "@/lib/startPrint";
-import { officerState } from "@/lib/organization";
+import { officerState, ORGANIZATIONS_ROUTE } from "@/lib/organization";
 import { MY_FILES_ROUTE } from "@/lib/myFiles";
 import { QUOTES_ROUTE } from "@/lib/quoteRequests";
 import { SAMPLES_ROUTE } from "@/lib/sampleFirst";
@@ -182,6 +182,33 @@ export default function AccountScreen() {
           </Pressable>
 
           {/*
+            Organizations lives here, not in the tab bar: a fifth tab pushed the
+            centre "+" off the middle. Same gate the tab had — an approved
+            organization, or one mid-handover with a verified officer — and the
+            same screen behind it, so every link to it still works.
+          */}
+          {approvedOrganization ? (
+            <View className="gap-2">
+              <Text className="text-overline text-text-muted">YOUR ORGANIZATION</Text>
+              <DestinationRow
+                title="Organizations"
+                detail={`${organization?.name || user?.orgName || "Your organization"} · statements, the officer and notices from Operations`}
+                onPress={() => router.navigate(ORGANIZATIONS_ROUTE)}
+              />
+              {/*
+                The officer of record, on the account it answers for (#164).
+                The detail is the name itself, so a treasurer can check it
+                without opening anything; Organizations holds the rest.
+              */}
+              <DestinationRow
+                title="Officer of record"
+                detail={officerRowDetail(organization)}
+                onPress={() => router.navigate(ORGANIZATIONS_ROUTE)}
+              />
+            </View>
+          ) : null}
+
+          {/*
             The missions, while the account can still earn the label. Once it
             has, the chip above is all that is left of them, and the voucher
             sits in the wallet row below.
@@ -255,18 +282,7 @@ export default function AccountScreen() {
               above already says Business — leaving it up would invite a client
               to apply for what they already are.
             */}
-            {approvedOrganization ? (
-              /*
-                The officer of record, on the account it answers for (#164).
-                The detail is the name itself, so a treasurer can check it
-                without opening anything; the Organizations tab holds the rest.
-              */
-              <DestinationRow
-                title="Officer of record"
-                detail={officerRowDetail(organization)}
-                onPress={() => router.navigate("/(tabs)/organizations")}
-              />
-            ) : applicationPending ? (
+            {approvedOrganization ? null : applicationPending ? (
               <DestinationRow
                 title="Account application"
                 detail="With Operations for review. You keep ordering as you do now until they decide"

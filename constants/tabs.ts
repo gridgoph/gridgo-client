@@ -24,12 +24,17 @@ export type TabDefinition = {
   name: TabName;
   /** Tab bar label. */
   label: string;
+  /**
+   * The bar tab that reads as open while this route is open, for a route kept
+   * out of the bar. Organizations lives under Account, so Account lights.
+   */
+  parent?: TabName;
 };
 
 export const TABS: readonly TabDefinition[] = [
   { name: "home", label: "Home" },
   { name: "orders", label: "Orders" },
-  { name: "organizations", label: "Organizations" },
+  { name: "organizations", label: "Organizations", parent: "account" },
   { name: "notifications", label: "Alerts" },
   { name: "account", label: "Account" },
   { name: "new-request", label: "New request" },
@@ -45,3 +50,20 @@ export const TABS: readonly TabDefinition[] = [
  */
 export const ACTION_TAB = "new-request" satisfies TabName;
 
+
+/**
+ * Routes that stay tab routes but are never in the bar.
+ *
+ * Organizations moved into Account (Mark's option 5): with it in the bar, an
+ * approved organization had five tabs and the centre "+" landed third of six.
+ * The route stays where it was, so `/(tabs)/organizations`, the inbox and a
+ * push still open it; Account is the way in from the screen.
+ */
+export const OFF_BAR_TABS: readonly TabName[] = [ACTION_TAB, "organizations"];
+
+/** The four destinations the bar draws: Home, Orders, Alerts, Account. */
+export type BarTabName = Exclude<TabName, typeof ACTION_TAB | "organizations">;
+
+export function isBarTab(name: TabName): name is BarTabName {
+  return !OFF_BAR_TABS.includes(name);
+}

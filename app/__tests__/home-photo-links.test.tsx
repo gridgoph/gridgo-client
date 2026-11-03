@@ -4,6 +4,7 @@ import { AppState, type AppStateStatus } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import HomeScreen from "@/app/(tabs)/home";
+import { invalidate } from "@/lib/live";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useRequestDraft } from "@/store/requestDraft";
@@ -82,7 +83,9 @@ function renderInSafeArea(ui: ReactElement) {
   });
 }
 
-const photoLink = () => screen.getByTestId("sample-photo-image").props.source?.uri;
+/** expo-image hands its host view the source as a list. */
+const photoSource = () => screen.getByTestId("sample-photo-image").props.source?.[0];
+const photoLink = () => photoSource()?.uri;
 
 let now = START;
 let appStateListeners: ((state: AppStateStatus) => void)[] = [];
@@ -175,5 +178,55 @@ describe("Home sample photos and expiring links", () => {
 
     await waitFor(() => expect(api.listOrders).toHaveBeenCalled());
     expect(api.getFeaturedPrints).toHaveBeenCalledTimes(1);
+  });
+});
+
+/*
+  Mark's "Featured prints keeps reloading" report: Home re-reads the list on
+  every focus and every live refresh, and each read signs the photo links
+  afresh. The same cards must not swap in — and a photo is cached by its file,
+  so even a renewed link to it is not a new download.
+*/
+describe("Home featured prints across re-reads", () => {
+  it("caches each photo by its file id, not by its signed address", async () => {
+    api.getFeaturedPrints.mockResolvedValue(featured("https://storage.example/first", minutesFrom(START, 5)));
+
+    await renderInSafeArea(<HomeScreen />);
+
+    await waitFor(() => expect(photoLink()).toBe("https://storage.example/first"));
+    expect(photoSource()?.cacheKey).toBe("file_1");
+  });
+
+  it("keeps the held list when a live refresh returns the same cards", async () => {
+    api.getFeaturedPrints
+      .mockResolvedValueOnce(featured("https://storage.example/first", minutesFrom(START, 5)))
+      .mockResolvedValue(featured("https://storage.example/re-signed", minutesFrom(START, 5)));
+
+    await renderInSafeArea(<HomeScreen />);
+    await waitFor(() => expect(photoLink()).toBe("https://storage.example/first"));
+
+    // The 30 s reconcile while the live stream is down, or any catalogue change.
+    invalidate("catalog");
+
+    await waitFor(() => expect(api.getFeaturedPrints).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Same product, same photo file: the tile keeps what it already drew.
+    expect(photoLink()).toBe("https://storage.example/first");
+  });
+
+  it("takes the new list when the cards changed", async () => {
+    const changed = featured("https://storage.example/other", minutesFrom(START, 5));
+    changed.items[0].photos[0].fileId = "file_2";
+    api.getFeaturedPrints
+      .mockResolvedValueOnce(featured("https://storage.example/first", minutesFrom(START, 5)))
+      .mockResolvedValue(changed);
+
+    await renderInSafeArea(<HomeScreen />);
+    await waitFor(() => expect(photoLink()).toBe("https://storage.example/first"));
+
+    invalidate("catalog");
+
+    await waitFor(() => expect(photoLink()).toBe("https://storage.example/other"));
+    expect(photoSource()?.cacheKey).toBe("file_2");
   });
 });

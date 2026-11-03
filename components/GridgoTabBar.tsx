@@ -1,14 +1,13 @@
 import type { BottomTabBarProps } from "expo-router/js-tabs";
-import { Bell, Building2, FileText, House, Plus, User, type LucideIcon } from "lucide-react-native";
+import { Bell, FileText, House, Plus, User, type LucideIcon } from "lucide-react-native";
 import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BellSwing } from "@/components/BellSwing";
 import { QuickActionsSheet } from "@/components/QuickActionsSheet";
-import { ACTION_TAB, TABS, type TabName } from "@/constants/tabs";
+import { isBarTab, TABS, type BarTabName } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useUnreadCount } from "@/store/notifications";
-import { useIsApprovedOrganization } from "@/store/organization";
 import { useQuickActions } from "@/store/quickActions";
 
 /* ---------------------------------------------------------------------------
@@ -108,7 +107,10 @@ export type TabBarMetrics = {
   itemPaddingTop: number;
   itemGap: number;
   itemPaddingBottom: number;
-  /** The raised yellow "+" in the centre. Never below the 44pt touch floor. */
+  /**
+   * The raised yellow "+" in the centre. Never below the 44pt touch floor; 64
+   * since the bar went to four tabs, so the one action reads as the one action.
+   */
   actionDiameter: number;
   /**
    * How far the "+" rises through the bar's hairline (client#335). The bar's
@@ -118,8 +120,14 @@ export type TabBarMetrics = {
   actionRise: number;
 };
 
-/** How far the centre "+" stands above the painted bar. */
-const ACTION_RISE = 20;
+/**
+ * How far the centre "+" stands above the painted bar. Raised with the disc
+ * (56 → 64), so its centre still sits 8 below the hairline.
+ */
+const ACTION_RISE = 24;
+const ACTION_DIAMETER = 64;
+/** The "+" glyph, scaled with the disc. */
+const ACTION_GLYPH = 30;
 
 /** The glyph in a tab column. One size in both states, on both platforms. */
 const TAB_ICON_SIZE = 24;
@@ -140,7 +148,7 @@ export function tabBarMetrics(platformOS: string): TabBarMetrics {
       itemPaddingTop: 12,
       itemGap: 2,
       itemPaddingBottom: 3,
-      actionDiameter: 56,
+      actionDiameter: ACTION_DIAMETER,
       actionRise: ACTION_RISE,
     };
   }
@@ -150,7 +158,7 @@ export function tabBarMetrics(platformOS: string): TabBarMetrics {
     itemPaddingTop: 12,
     itemGap: 4,
     itemPaddingBottom: 16,
-    actionDiameter: 56,
+    actionDiameter: ACTION_DIAMETER,
     actionRise: ACTION_RISE,
   };
 }
@@ -237,10 +245,9 @@ export function tabScreenContentPadding(_insetBottom: number): number {
  * One Lucide glyph per tab, all outline, all the same optical weight, so the
  * row reads as one set.
  */
-const ICONS: Record<Exclude<TabName, typeof ACTION_TAB>, LucideIcon> = {
+const ICONS: Record<BarTabName, LucideIcon> = {
   home: House,
   orders: FileText,
-  organizations: Building2,
   notifications: Bell,
   account: User,
 };
@@ -249,7 +256,10 @@ const ICONS: Record<Exclude<TabName, typeof ACTION_TAB>, LucideIcon> = {
  * The GRIDGO tab bar.
  *
  * Four labelled destinations with the raised yellow "+" in the centre
- * (client#335): Home, Orders, "+", Alerts, Account. The "+" opens the quick
+ * (client#335): Home, Orders, "+", Alerts, Account — for every account. An
+ * approved organization's fifth tab put the "+" third of six columns, so
+ * Organizations now opens from Account and, while it is open, Account reads
+ * as the open tab (`parent` in `constants/tabs.ts`). The "+" opens the quick
  * actions (`QuickActionsSheet`) — it is not a destination, so it carries no
  * label and is never "selected".
  *
@@ -270,22 +280,24 @@ const ICONS: Record<Exclude<TabName, typeof ACTION_TAB>, LucideIcon> = {
 export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const unreadCount = useUnreadCount();
-  const approvedOrganization = useIsApprovedOrganization();
   const showActions = useQuickActions((s) => s.show);
+  const openName = state.routes[state.index]?.name;
+  // A route kept out of the bar lights the tab it lives under.
+  const lit = TABS.find((entry) => entry.name === openName)?.parent ?? openName;
 
   const items = state.routes.flatMap((route, index) => {
     const tab = TABS.find((entry) => entry.name === route.name);
-    if (!tab || tab.name === ACTION_TAB) return [];
-    // Only an approved organization account is offered Organizations.
-    if (tab.name === "organizations" && !approvedOrganization) return [];
-    const focused = state.index === index;
+    if (!tab || !isBarTab(tab.name)) return [];
+    const open = state.index === index;
+    const focused = tab.name === lit;
     const onPress = () => {
       const event = navigation.emit({
         type: "tabPress",
         target: route.key,
         canPreventDefault: true,
       });
-      if (!focused && !event.defaultPrevented) {
+      // Account lights while Organizations is open, and still takes you back.
+      if (!open && !event.defaultPrevented) {
         navigation.navigate(route.name);
       }
     };
@@ -300,7 +312,7 @@ export function GridgoTabBar({ state, navigation }: BottomTabBarProps) {
       />,
     ];
   });
-  // The "+" sits in the middle: after Orders on the four-tab bar.
+  // The "+" sits in the middle: two tabs either side of it.
   items.splice(Math.floor(items.length / 2), 0, <ActionColumn key="quick-actions" onPress={showActions} />);
 
   return (
@@ -360,7 +372,7 @@ function ActionColumn({ onPress }: { onPress: () => void }) {
       >
         {({ pressed }) => (
           <>
-            <Plus size={26} color={colors.actionYellowOn} strokeWidth={2.5} />
+            <Plus size={ACTION_GLYPH} color={colors.actionYellowOn} strokeWidth={2.5} />
             {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-pill" /> : null}
           </>
         )}
@@ -370,7 +382,7 @@ function ActionColumn({ onPress }: { onPress: () => void }) {
 }
 
 type TabItemProps = {
-  name: Exclude<TabName, typeof ACTION_TAB>;
+  name: BarTabName;
   label: string;
   focused: boolean;
   onPress: () => void;

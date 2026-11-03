@@ -124,6 +124,23 @@ export const claimSlip = {
 } as const;
 
 /**
+ * Words set on a photo (Home's Featured Prints tiles). A photo does not switch
+ * with the theme, so neither does the ink on it or the shade under that ink:
+ * white over a dark fade reads on a pale blueprint and a dark shirt alike.
+ */
+export const photoLabel = {
+  ink: "#FFFFFF",
+  inkMuted: "rgba(255, 255, 255, 0.82)",
+  /** How dark the shade is behind the words. */
+  shadeAlpha: 0.62,
+} as const;
+
+/** The shade at `alpha` (0–1), for the fade above a photo label. */
+export function photoShade(alpha: number): string {
+  return `rgba(0, 0, 0, ${Math.round(alpha * 1000) / 1000})`;
+}
+
+/**
  * The share story image (gridgo-client#341): GRIDGO black and yellow whatever
  * the theme, because it leaves the app as a picture. The QR sits as black
  * modules on a yellow plate, which scans; never yellow on black.
