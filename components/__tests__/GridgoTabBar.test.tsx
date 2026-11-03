@@ -143,18 +143,20 @@ describe("tabBarHeight", () => {
   it("is the painted bar plus the strip the raised \"+\" stands in", () => {
     for (const os of ["ios", "android"]) {
       for (const inset of [0, 24, 34, 48]) {
-        expect(tabBarMetrics(os).actionRise).toBe(24);
-        expect(tabBarHeight(os, inset)).toBe(tabBarPaintedHeight(os, inset) + 24);
+        expect(tabBarMetrics(os).actionRise).toBe(16);
+        expect(tabBarHeight(os, inset)).toBe(tabBarPaintedHeight(os, inset) + 16);
       }
     }
   });
 
-  it("raises the bigger \"+\" with it, so the disc's centre stays 8 under the hairline", () => {
+  it("sinks the 64 \"+\" into the bar, a quarter of it above the hairline", () => {
     for (const os of ["ios", "android"]) {
       const { actionDiameter, actionRise } = tabBarMetrics(os);
       // Mark's option 5: a bigger "+" than the 56 it was.
       expect(actionDiameter).toBe(64);
-      expect(actionDiameter / 2 - actionRise).toBe(8);
+      // Mark's position reference: most of the disc overlaps the bar.
+      expect(actionRise / actionDiameter).toBe(0.25);
+      expect(actionDiameter / 2 - actionRise).toBe(16);
     }
   });
 

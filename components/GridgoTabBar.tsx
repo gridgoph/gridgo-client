@@ -121,10 +121,12 @@ export type TabBarMetrics = {
 };
 
 /**
- * How far the centre "+" stands above the painted bar. Raised with the disc
- * (56 → 64), so its centre still sits 8 below the hairline.
+ * How far the centre "+" stands above the painted bar. A quarter of the 64
+ * disc clears the hairline and the rest sits in the bar, so its centre is 16
+ * below the hairline: Mark's reference puts 9 of a 40px disc above the bar.
+ * The disc still stays inside its own column, clear of Orders and Alerts.
  */
-const ACTION_RISE = 24;
+const ACTION_RISE = 16;
 const ACTION_DIAMETER = 64;
 /** The "+" glyph, scaled with the disc. */
 const ACTION_GLYPH = 30;
