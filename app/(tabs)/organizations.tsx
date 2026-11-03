@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from "expo-router";
-import { Megaphone } from "lucide-react-native";
+import { ChevronLeft, Megaphone } from "lucide-react-native";
 import { useCallback } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { BackHandler, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -37,8 +37,10 @@ import { requestedPeriod, useOwnStatement, useStatements } from "@/store/stateme
  * for it, the quarterly check, notices from Operations, and the spend
  * statement a treasurer takes to a meeting.
  *
- * The tab bar only offers it to approved organizations; this screen checks
- * again, because a deep link does not go through the tab bar.
+ * Account offers it to approved organizations; this screen checks again,
+ * because a deep link does not go through Account. It is a tab route kept out
+ * of the bar, so it carries its own way back to Account — the bar lights
+ * Account while it is open, and Android's Back returns there too.
  */
 export default function OrganizationsScreen() {
   const user = useSession((s) => s.user);
@@ -56,6 +58,17 @@ export default function OrganizationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // A hidden tab's Back would otherwise fall through to Home.
+      const back = BackHandler.addEventListener("hardwareBackPress", () => {
+        router.navigate(ACCOUNT_ROUTE);
+        return true;
+      });
+      return () => back.remove();
+    }, []),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
       void useOrganization.getState().load();
       // Statements answer 403 for anyone else; do not ask on their behalf.
       const { user: current } = useSession.getState();
@@ -70,12 +83,15 @@ export default function OrganizationsScreen() {
       <TabScreen>
         <ScrollView className="gg-screen">
           <View className="gg-page gap-6 pt-4" style={{ paddingBottom: tabPad }}>
-            <ScreenHeader title="Organizations" />
+            <View className="gap-1">
+              <BackToAccount />
+              <ScreenHeader title="Organizations" />
+            </View>
             <EmptyState
               title="For approved organizations"
               body="Statements, the officer of record and notices from Operations open here once Operations approves an organization account."
               actionLabel="Go to Account"
-              onAction={() => router.navigate("/(tabs)/account")}
+              onAction={() => router.navigate(ACCOUNT_ROUTE)}
             />
           </View>
         </ScrollView>
@@ -95,7 +111,10 @@ export default function OrganizationsScreen() {
       <ScrollView className="gg-screen" showsVerticalScrollIndicator={false}>
         {/* A long screen: its last row must scroll clear of the floating plus. */}
         <View className="gg-page gap-6 pt-4" style={{ paddingBottom: tabPad + FAB_CLEARANCE }}>
-          <ScreenHeader title="Organizations" />
+          <View className="gap-1">
+            <BackToAccount />
+            <ScreenHeader title="Organizations" />
+          </View>
 
           <View className="gap-1">
             <Text className="text-h2 text-text-primary" numberOfLines={2}>
@@ -218,8 +237,8 @@ export default function OrganizationsScreen() {
   );
 }
 
-/** The floating plus (56) and its gap above the bar (16). */
-const FAB_CLEARANCE = 72;
+/** The floating plus (64) and its gap above the bar (16). */
+const FAB_CLEARANCE = 80;
 
 /** Notices Operations sent this organization, newest first. They also sit in Notifications. */
 function Notices({ items }: { items: { id: string; title: string; body: string; at: string }[] }) {
@@ -251,5 +270,24 @@ function Notices({ items }: { items: { id: string; title: string; body: string; 
         ))}
       </View>
     </View>
+  );
+}
+
+const ACCOUNT_ROUTE = "/(tabs)/account" as const;
+
+/** The way back to Account, where Organizations is opened from. */
+function BackToAccount() {
+  const colors = useThemeColors();
+  return (
+    <Pressable
+      onPress={() => router.navigate(ACCOUNT_ROUTE)}
+      accessibilityRole="button"
+      accessibilityLabel="Back to Account"
+      className="gg-touch -ml-2 flex-row items-center self-start gap-1 px-2"
+      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+    >
+      <ChevronLeft size={20} color={colors.textSecondary} strokeWidth={2} />
+      <Text className="text-body text-text-secondary">Account</Text>
+    </Pressable>
   );
 }

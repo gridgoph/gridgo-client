@@ -3,7 +3,10 @@ import {
   SAMPLE_GAP,
   SAMPLE_PEEK,
   featuredPrintsFrom,
+  featuredShape,
   homeSampleCardWidth,
+  keepHeldFeatured,
+  sameFeaturedPrints,
   homeSamplePhotoHeight,
 } from "@/lib/homeSamples";
 
@@ -130,5 +133,64 @@ describe("homeSampleCardWidth", () => {
 
   it("cuts the strip's sample 4:3, so the card is a shelf and not a column", () => {
     expect(homeSamplePhotoHeight(160)).toBe(120);
+  });
+});
+
+describe("keeping the held featured list", () => {
+  const BEFORE_EXPIRY = Date.parse("2026-10-15T00:00:00.000Z");
+  const read = (link: string, extra: Record<string, unknown> = {}) =>
+    featuredPrintsFrom({
+      items: [
+        card("sci_a", extra),
+        card("sci_b", { photos: [{ fileId: "file_b", sortOrder: 0, url: "/m/file_b", downloadUrl: link, downloadUrlExpiresAt: "2026-10-15T00:05:00.000Z" }] }),
+      ],
+    });
+
+  it("reads re-signed links to the same photos as the same cards", () => {
+    expect(sameFeaturedPrints(read("https://s/one"), read("https://s/two"))).toBe(true);
+  });
+
+  it("keeps the list already on screen for the same cards", () => {
+    const held = read("https://s/one");
+    expect(keepHeldFeatured(held, read("https://s/two"), BEFORE_EXPIRY)).toBe(held);
+  });
+
+  it("takes the new read when anything a client sees changed", () => {
+    const held = read("https://s/one");
+    for (const change of [{ name: "Posters" }, { clientFromPriceMinor: 1200 }, { pricingUnit: "per_page" }]) {
+      const next = read("https://s/one", change);
+      expect(keepHeldFeatured(held, next, BEFORE_EXPIRY)).toBe(next);
+    }
+  });
+
+  it("takes the new read when a card or a photo file changed", () => {
+    const held = read("https://s/one");
+    const reordered = [...held].reverse();
+    expect(keepHeldFeatured(held, reordered, BEFORE_EXPIRY)).toBe(reordered);
+    const newPhoto = featuredPrintsFrom({ items: [card("sci_a"), card("sci_b", { photos: [{ fileId: "file_c", url: "/m/file_c" }] })] });
+    expect(keepHeldFeatured(held, newPhoto, BEFORE_EXPIRY)).toBe(newPhoto);
+    const shorter = held.slice(0, 1);
+    expect(keepHeldFeatured(held, shorter, BEFORE_EXPIRY)).toBe(shorter);
+  });
+
+  it("takes the fresh links once a held one is stale", () => {
+    const held = read("https://s/one");
+    const next = read("https://s/two");
+    expect(keepHeldFeatured(held, next, Date.parse("2026-10-15T00:04:45.000Z"))).toBe(next);
+  });
+
+  it("takes the first read whole", () => {
+    const next = read("https://s/one");
+    expect(keepHeldFeatured(null, next, BEFORE_EXPIRY)).toBe(next);
+  });
+});
+
+describe("featuredShape", () => {
+  it("fills, pairs, then makes the bento", () => {
+    expect(featuredShape(0)).toBeNull();
+    expect(featuredShape(1)).toBe("single");
+    expect(featuredShape(2)).toBe("pair");
+    expect(featuredShape(3)).toBe("bento");
+    expect(featuredShape(9)).toBe("bento");
   });
 });

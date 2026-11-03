@@ -143,9 +143,18 @@ describe("tabBarHeight", () => {
   it("is the painted bar plus the strip the raised \"+\" stands in", () => {
     for (const os of ["ios", "android"]) {
       for (const inset of [0, 24, 34, 48]) {
-        expect(tabBarMetrics(os).actionRise).toBe(20);
-        expect(tabBarHeight(os, inset)).toBe(tabBarPaintedHeight(os, inset) + 20);
+        expect(tabBarMetrics(os).actionRise).toBe(24);
+        expect(tabBarHeight(os, inset)).toBe(tabBarPaintedHeight(os, inset) + 24);
       }
+    }
+  });
+
+  it("raises the bigger \"+\" with it, so the disc's centre stays 8 under the hairline", () => {
+    for (const os of ["ios", "android"]) {
+      const { actionDiameter, actionRise } = tabBarMetrics(os);
+      // Mark's option 5: a bigger "+" than the 56 it was.
+      expect(actionDiameter).toBe(64);
+      expect(actionDiameter / 2 - actionRise).toBe(8);
     }
   });
 
@@ -260,17 +269,7 @@ describe("GridgoTabBar", () => {
     expect(at("Quick actions")).toBeLessThan(at("Alerts"));
   });
 
-  it("never offers Organizations to a personal account or an unapproved organization", async () => {
-    useSession.setState({
-      user: { id: "u1", email: "a@b.ph", name: "Ana", role: "client", accountType: "organization", approvalCase: null },
-    });
-    await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
-
-    expect(screen.queryByText("Organizations")).toBeNull();
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
-  });
-
-  it("adds Organizations, beside Orders, for an approved organization", async () => {
+  it("never offers Organizations in the bar, even to an approved organization", async () => {
     useSession.setState({
       user: {
         id: "u1",
@@ -283,8 +282,38 @@ describe("GridgoTabBar", () => {
     });
     await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
 
+    // Account is the way in now (Mark's option 5): a fifth tab put the "+"
+    // third of six columns.
     const tabs = screen.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel);
-    expect(tabs).toEqual(["Home", "Orders", "Organizations", "Alerts", "Account"]);
+    expect(tabs).toEqual(["Home", "Orders", "Alerts", "Account"]);
+  });
+
+  it("stands the \"+\" in the middle column, two tabs either side", async () => {
+    await renderInSafeArea(<GridgoTabBar {...tabBarProps(0)} />);
+
+    const plus = screen.getByRole("button", { name: "Quick actions" });
+    const row = screen.getByRole("tab", { name: "Home" }).parent;
+    const columns = row?.children ?? [];
+    expect(columns).toHaveLength(5);
+    expect(columns[2]).toContainElement(plus);
+    expect(flatten(plus.props.style)).toMatchObject({ width: 64, height: 64 });
+  });
+
+  it("lights Account while Organizations, which lives under it, is open", async () => {
+    const organizations = TABS.findIndex((tab) => tab.name === "organizations");
+    await renderInSafeArea(<GridgoTabBar {...tabBarProps(organizations)} />);
+
+    expect(screen.getByRole("tab", { name: "Account", selected: true })).toBeTruthy();
+    expect(screen.queryAllByRole("tab", { selected: true })).toHaveLength(1);
+  });
+
+  it("takes Account's tab back to Account from Organizations", async () => {
+    const organizations = TABS.findIndex((tab) => tab.name === "organizations");
+    await renderInSafeArea(<GridgoTabBar {...tabBarProps(organizations)} />);
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Account" }));
+
+    expect(navigate).toHaveBeenCalledWith("account");
   });
 
   it("marks only the open tab as selected", async () => {

@@ -17,6 +17,7 @@
 
 import { pagePadding, spacing } from "@/constants/theme";
 import type { CatalogPricingUnit, FeaturedPrint, MeasureUnit } from "@/lib/api";
+import { hasStalePhotoLink } from "@/lib/photoLinks";
 
 export type HomeSample = FeaturedPrint;
 
@@ -137,4 +138,69 @@ export function homeSampleCardWidth(screenWidth: number): number {
 /** A sample photo is cut 4:3 in the strip, so the card is a shelf, not a column. */
 export function homeSamplePhotoHeight(cardWidth: number): number {
   return Math.round((cardWidth * 3) / 4);
+}
+
+// ---------------------------------------------------------------------------
+// Keeping the held list across re-reads
+// ---------------------------------------------------------------------------
+
+/**
+ * Do two reads show the same cards? Same products in the same order, the same
+ * words and price on each, and the same photo files — the signed links may
+ * differ, because every read signs them afresh.
+ */
+export function sameFeaturedPrints(held: readonly HomeSample[], next: readonly HomeSample[]): boolean {
+  if (held.length !== next.length) return false;
+  return held.every((card, index) => {
+    const other = next[index];
+    return (
+      card.id === other.id &&
+      card.name === other.name &&
+      card.categoryCode === other.categoryCode &&
+      card.subcategoryCode === other.subcategoryCode &&
+      card.clientFromPriceMinor === other.clientFromPriceMinor &&
+      card.pricingUnit === other.pricingUnit &&
+      card.packageQty === other.packageQty &&
+      card.measureUnit === other.measureUnit &&
+      card.minimumOrderQuantity === other.minimumOrderQuantity &&
+      card.photos.length === other.photos.length &&
+      card.photos.every((photo, at) => photo.fileId === other.photos[at].fileId)
+    );
+  });
+}
+
+/**
+ * What Home holds after a routine re-read (focus, live refresh).
+ *
+ * Home re-reads on every focus and every live refresh, including the 30 s
+ * reconcile while the live stream is down, and each read signs every photo
+ * link afresh. Swapping in the new list for the same cards gave every photo a
+ * new address to download and re-laid the block out under the client's thumb:
+ * the "keeps reloading" report. So the same cards keep the list already on
+ * screen — unless a held link is stale, when the fresh links are taken (the
+ * photo is cached by its file id, so a new link to the same file does not
+ * download it again).
+ */
+export function keepHeldFeatured(
+  held: HomeSample[] | null,
+  next: HomeSample[],
+  now: number = Date.now(),
+): HomeSample[] {
+  if (!held || !sameFeaturedPrints(held, next)) return next;
+  return hasStalePhotoLink(held, now) ? next : held;
+}
+
+/**
+ * How many tiles Featured Prints draws, and in which shape: one card fills
+ * the block, two sit side by side, three or more make the bento — the first
+ * card large, the next two stacked beside it. Staff order decides which card
+ * is large; nothing past the third is drawn ("See all" is the rest).
+ */
+export type FeaturedShape = "single" | "pair" | "bento";
+
+export function featuredShape(count: number): FeaturedShape | null {
+  if (count <= 0) return null;
+  if (count === 1) return "single";
+  if (count === 2) return "pair";
+  return "bento";
 }
