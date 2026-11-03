@@ -89,6 +89,7 @@ describe("Home on one screen", () => {
     expect(await screen.findByLabelText("Marketing & promotional collateral")).toBeTruthy();
     expect(screen.getByText("Marketing")).toBeTruthy();
     expect(screen.getByText("Docs")).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Shop by category" })).toBeTruthy();
     expect(screen.queryByText("IN PROGRESS")).toBeNull();
     expect(screen.queryByText("RECENTLY FINISHED")).toBeNull();
     expect(screen.queryByText("START YOUR FIRST PRINT")).toBeNull();

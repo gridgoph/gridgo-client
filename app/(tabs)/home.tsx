@@ -230,10 +230,16 @@ export default function HomeScreen() {
 
               {categories.length ? (
                 <TourTarget step="home.categories">
-                  <HomeCategoryCircles
-                    categories={categories}
-                    onPress={(category) => router.push(`/request/${category.code}`)}
-                  />
+                  {/* Named like Featured prints above it, so Home reads as two sections. */}
+                  <View className="gap-2 pt-1">
+                    <Text className="text-h3 text-text-primary" accessibilityRole="header">
+                      Shop by category
+                    </Text>
+                    <HomeCategoryCircles
+                      categories={categories}
+                      onPress={(category) => router.push(`/request/${category.code}`)}
+                    />
+                  </View>
                 </TourTarget>
               ) : null}
 
