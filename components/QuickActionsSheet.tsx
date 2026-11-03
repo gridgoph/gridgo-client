@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Dimensions, Modal, PanResponder, Pressable, Text, View } from "react-native";
+import { Dimensions, Modal, PanResponder, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import Animated, {
   Extrapolation,
@@ -50,8 +50,29 @@ const ICONS: Record<QuickActionKey, LucideIcon> = {
   missions: Award,
 };
 
-/** The close disc: the "+" it replaces, in the same place and size. */
-export const CLOSE_DISC = 56;
+/** The sheet's side padding (`gg-page`) and the gutter between grid tiles. */
+const PAGE_PADDING = 16;
+export const GRID_GUTTER = 12;
+/** Every grid tile's floor: icon disc, a one-line title, a two-line detail. */
+export const GRID_TILE_HEIGHT = 124;
+/** The full-width Close button: over the 48dp touch floor on both platforms. */
+export const CLOSE_HEIGHT = 52;
+
+/**
+ * One grid tile's width, from the window alone: two columns inside the page
+ * padding with one gutter between them. Never a percentage or the tile's own
+ * text, which is how iOS and Android came to wrap the grid differently.
+ */
+export function gridTileWidth(windowWidth: number) {
+  return Math.max(0, (windowWidth - PAGE_PADDING * 2 - GRID_GUTTER) / 2);
+}
+
+/** Chat, Track, Reorder, Quote as rows of two, so no tile sits alone. */
+export function gridRows<T>(items: T[]): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
+  return rows;
+}
 
 /**
  * The "+" sheet (client#335). Slides up over a dimmed screen from the tab
@@ -68,6 +89,8 @@ export function QuickActionsSheet() {
   const router = useRouter();
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const tileWidth = gridTileWidth(windowWidth);
   const reducedMotion = useReducedMotion();
   const user = useSession((s) => s.user);
   const summary = useOwnHomeSummary();
@@ -235,29 +258,46 @@ export function QuickActionsSheet() {
                     onPress={() => run(start)}
                     accessibilityRole="button"
                     accessibilityLabel={`${start.title}. ${start.detail}`}
-                    className="min-h-16 flex-row items-center gap-3 rounded-card bg-action-yellow px-4 py-3"
-                    style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
                   >
-                    {/* Ink on yellow in both themes, like the yellow's own type. */}
-                    <View
-                      className="h-10 w-10 items-center justify-center rounded-field"
-                      style={{ backgroundColor: colors.actionYellowOn }}
-                    >
-                      <Plus size={22} color={colors.actionYellow} strokeWidth={2.5} />
-                    </View>
-                    <View className="min-w-0 flex-1">
-                      <Text className="text-body-lg font-bold text-action-yellow-on">{start.title}</Text>
-                      <Text className="text-caption text-action-yellow-on" numberOfLines={2}>
-                        {start.detail}
-                      </Text>
-                    </View>
-                    <ArrowRight size={20} color={colors.actionYellowOn} strokeWidth={2.25} />
+                    {({ pressed }) => (
+                      <View
+                        className="min-h-16 flex-row items-center gap-3 rounded-card bg-action-yellow px-4 py-3"
+                        style={pressed ? { opacity: 0.85 } : undefined}
+                      >
+                        {/* Ink on yellow in both themes, like the yellow's own type. */}
+                        <View
+                          className="h-10 w-10 items-center justify-center rounded-field"
+                          style={{ backgroundColor: colors.actionYellowOn }}
+                        >
+                          <Plus size={22} color={colors.actionYellow} strokeWidth={2.5} />
+                        </View>
+                        <View className="min-w-0 flex-1">
+                          <Text className="text-body-lg font-bold text-action-yellow-on">{start.title}</Text>
+                          <Text className="text-caption text-action-yellow-on" numberOfLines={2}>
+                            {start.detail}
+                          </Text>
+                        </View>
+                        <ArrowRight size={20} color={colors.actionYellowOn} strokeWidth={2.25} />
+                      </View>
+                    )}
                   </Pressable>
                 ) : null}
 
-                <View className="flex-row flex-wrap justify-between gap-y-3">
-                  {grid.map((item) => (
-                    <GridAction key={item.key} item={item} onPress={() => run(item)} />
+                {/*
+                  Explicit rows of two at a width worked out from the window.
+                  Layout never goes in a function `style` beside a `className`:
+                  react-native-css hands Pressable `[classStyle, fn]`, React
+                  Native drops the function, and each tile fell back to the
+                  width of its own text — so iOS and Android wrapped the grid
+                  in different places.
+                */}
+                <View testID="quick-actions-grid" style={{ gap: GRID_GUTTER }}>
+                  {gridRows(grid).map((row) => (
+                    <View key={row.map((item) => item.key).join("-")} className="flex-row" style={{ gap: GRID_GUTTER }}>
+                      {row.map((item) => (
+                        <GridAction key={item.key} item={item} width={tileWidth} onPress={() => run(item)} />
+                      ))}
+                    </View>
                   ))}
                 </View>
 
@@ -271,16 +311,23 @@ export function QuickActionsSheet() {
                 </View>
               </View>
 
-              <View className="items-center pt-4">
+              <View className="gg-page pt-4">
                 <Pressable
                   testID="quick-actions-close"
                   onPress={() => close()}
                   accessibilityRole="button"
                   accessibilityLabel="Close quick actions"
-                  className="items-center justify-center rounded-pill bg-accent"
-                  style={({ pressed }) => [{ width: CLOSE_DISC, height: CLOSE_DISC }, pressed ? { opacity: 0.8 } : null]}
+                  style={{ minHeight: CLOSE_HEIGHT }}
                 >
-                  <X size={24} color={colors.accentOn} strokeWidth={2.5} />
+                  {({ pressed }) => (
+                    <View
+                      className="grow flex-row items-center justify-center gap-2 rounded-card border border-outline bg-surface"
+                      style={pressed ? { opacity: 0.7 } : undefined}
+                    >
+                      <X size={18} color={colors.textPrimary} strokeWidth={2.5} />
+                      <Text className="text-button text-text-primary">Close</Text>
+                    </View>
+                  )}
                 </Pressable>
               </View>
             </Animated.View>
@@ -292,7 +339,7 @@ export function QuickActionsSheet() {
   );
 }
 
-function GridAction({ item, onPress }: { item: QuickAction; onPress: () => void }) {
+function GridAction({ item, width, onPress }: { item: QuickAction; width: number; onPress: () => void }) {
   const colors = useThemeColors();
   const Icon = ICONS[item.key];
   const disabled = item.disabledReason != null;
@@ -304,27 +351,39 @@ function GridAction({ item, onPress }: { item: QuickAction; onPress: () => void 
       accessibilityRole="button"
       accessibilityLabel={`${item.title}${item.badge ? `, ${item.badge}` : ""}. ${item.detail}`}
       accessibilityState={{ disabled }}
-      className="min-h-24 justify-between rounded-card border border-outline bg-surface p-3"
-      style={({ pressed }) => [{ width: "48.5%" }, pressed ? { opacity: 0.75 } : null]}
+      style={{ width, minHeight: GRID_TILE_HEIGHT }}
     >
-      <View className="flex-row items-center justify-between">
-        <View className={disabled ? "h-8 w-8 items-center justify-center rounded-pill bg-surface-variant gg-disabled" : "h-8 w-8 items-center justify-center rounded-pill bg-surface-variant"}>
-          <Icon size={17} color={colors.textPrimary} strokeWidth={2} />
-        </View>
-        {item.badge ? (
-          <View className="rounded-pill bg-accent px-2 py-0.5">
-            <Text className="text-caption font-bold text-accent-on">{item.badge}</Text>
+      {({ pressed }) => (
+        <View className="grow rounded-card border border-outline bg-surface p-3" style={pressed ? { opacity: 0.75 } : undefined}>
+          <View className="flex-row items-center justify-between">
+            <View
+              className={
+                disabled
+                  ? "h-8 w-8 items-center justify-center rounded-pill bg-surface-variant gg-disabled"
+                  : "h-8 w-8 items-center justify-center rounded-pill bg-surface-variant"
+              }
+            >
+              <Icon size={17} color={colors.textPrimary} strokeWidth={2} />
+            </View>
+            {item.badge ? (
+              <View className="rounded-pill bg-accent px-2 py-0.5">
+                <Text className="text-caption font-bold text-accent-on">{item.badge}</Text>
+              </View>
+            ) : null}
           </View>
-        ) : null}
-      </View>
-      <View className="mt-2">
-        <Text className={disabled ? "text-body-lg font-bold text-text-muted" : "text-body-lg font-bold text-text-primary"} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text className="text-caption text-text-secondary" numberOfLines={2}>
-          {item.detail}
-        </Text>
-      </View>
+          <View className="mt-2">
+            <Text
+              className={disabled ? "text-body-lg font-bold text-text-muted" : "text-body-lg font-bold text-text-primary"}
+              numberOfLines={1}
+            >
+              {item.title}
+            </Text>
+            <Text className="text-caption text-text-secondary" numberOfLines={2}>
+              {item.detail}
+            </Text>
+          </View>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -338,20 +397,22 @@ function RowAction({ item, onPress }: { item: QuickAction; onPress: () => void }
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${item.title}${item.tag ? `, ${item.tag}` : ""}`}
-      className="min-h-12 flex-row items-center gap-3 px-4 py-2"
-      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
     >
-      <Icon size={18} color={colors.textPrimary} strokeWidth={2} />
-      <Text className="flex-1 text-body font-medium text-text-primary" numberOfLines={1}>
-        {item.title}
-      </Text>
-      {item.tag ? (
-        <View className="rounded-pill bg-brand px-2 py-0.5">
-          <Text className="text-caption font-bold text-action-yellow-on">{item.tag}</Text>
+      {({ pressed }) => (
+        <View className="min-h-12 flex-row items-center gap-3 px-4 py-2" style={pressed ? { opacity: 0.7 } : undefined}>
+          <Icon size={18} color={colors.textPrimary} strokeWidth={2} />
+          <Text className="flex-1 text-body font-medium text-text-primary" numberOfLines={1}>
+            {item.title}
+          </Text>
+          {item.tag ? (
+            <View className="rounded-pill bg-brand px-2 py-0.5">
+              <Text className="text-caption font-bold text-action-yellow-on">{item.tag}</Text>
+            </View>
+          ) : item.key === "missions" ? (
+            <Text className="text-body font-bold text-text-primary">{item.detail}</Text>
+          ) : null}
         </View>
-      ) : item.key === "missions" ? (
-        <Text className="text-body font-bold text-text-primary">{item.detail}</Text>
-      ) : null}
+      )}
     </Pressable>
   );
 }
