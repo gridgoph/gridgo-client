@@ -21,6 +21,16 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.503 (New feature)
+
+- A new one-screen Home with a light/dark switch, a quick-actions "+" and your Founding Tester progress.
+- Home fits on one screen again, with the Featured prints cards shrinking to make room on smaller phones.
+- When your order moves to another shop, you see its price first: money back if cheaper, GRIDGO cover if dearer.
+- Items from one shop on different dates now arrive together by the earliest date, or tick Deliver separately.
+- At delivery, read your code out to the rider. They type it in and GRIDGO checks it.
+- Request a quote for custom signage and 3D printing, then choose from up to three options.
+- Order one paid sample first, approve it, then order the full batch at a price held for you.
+
 ## 1.0.491 (Improvement)
 
 - Clearer order steps, one price everywhere, and simpler artwork, payment and delivery-check screens.
