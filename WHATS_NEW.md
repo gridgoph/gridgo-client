@@ -21,6 +21,12 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.524 (Improvement)
+
+- Reorder opens your past print straight away, and replacing a draft with a reorder now works.
+- Switching between light and dark now fades smoothly, and the switch slides to the side you tap.
+- Home names its category row, and the + menu now has an even grid of four and a big Close button.
+
 ## 1.0.510 (Fix)
 
 - Featured prints on Home stay still and no longer reload. The + sits in the middle, and Organizations is in Account.
