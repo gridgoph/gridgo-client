@@ -25,7 +25,7 @@ import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useTourAutoStart, useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { foundingTesterView } from "@/lib/foundingTester";
-import { featuredPrintsFrom, type HomeSample } from "@/lib/homeSamples";
+import { featuredPrintsFrom, keepHeldFeatured, type HomeSample } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
 import { lastOrder, smartTileView } from "@/lib/homeSummary";
 import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
@@ -44,8 +44,8 @@ import { useSession } from "@/store/session";
  * as one row of round buttons; and two tiles — the smart tile and Reorder.
  *
  * Featured Prints is the one part that flexes, so on a small phone it shrinks
- * first and nothing else moves. Only it swipes. The full job list lives on
- * Orders; Home keeps a single line for a job that is waiting on the client,
+ * first and nothing else moves; nothing on it moves by itself either. The full
+ * job list lives on Orders; Home keeps a single line for a job that is waiting on the client,
  * because "is anything waiting on me" must never need a second tab to answer.
  * The yellow "+" in the tab bar opens every other action.
  */
@@ -94,7 +94,12 @@ export default function HomeScreen() {
     void api
       .getFeaturedPrints()
       .then((body) => {
-        if (sequence === loadSequence.current) setSamples(featuredPrintsFrom(body));
+        // The same cards keep the list on screen: a fresh signature on the
+        // same photos is not a reason to redraw (`keepHeldFeatured`).
+        if (sequence === loadSequence.current) {
+          const read = featuredPrintsFrom(body);
+          setSamples((held) => keepHeldFeatured(held, read));
+        }
       })
       .catch(() => {
         if (sequence === loadSequence.current) setSamples((current) => current ?? []);
