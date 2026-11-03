@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -69,15 +69,17 @@ beforeEach(() => {
 
 /**
  * The switch saves the choice on the account (`PATCH /me/theme`), so every
- * screen and every phone follows it (client#335).
+ * screen and every phone follows it (client#335). The knob moves on the tap;
+ * the theme lands under the fade a moment later (`store/themeSwitch.ts`).
  */
-it("shows the tapped theme at once and saves it on the account", async () => {
+it("moves the knob at once, then lands the tapped theme and saves it on the account", async () => {
   useThemeStore.setState({ preference: "system", unsynced: false, owner: "user_1" });
   await renderInSafeArea(<HomeScreen />);
 
   fireEvent.press(await screen.findByLabelText("Dark theme"));
 
-  expect(useThemeStore.getState().preference).toBe("dark");
-  await screen.findByLabelText("Dark theme");
+  expect(await screen.findByRole("radio", { name: "Dark theme", selected: true })).toBeTruthy();
+  expect(useThemeStore.getState().preference).toBe("system");
+  await waitFor(() => expect(useThemeStore.getState().preference).toBe("dark"));
   expect(api.saveAccountThemePreference).toHaveBeenCalledWith("dark");
 });

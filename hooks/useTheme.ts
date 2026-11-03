@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from "react";
-import { Appearance } from "react-native";
+import { Appearance, Platform } from "react-native";
 import { colorScheme as cssColorScheme } from "react-native-css";
 
 import { colors, type ThemeName } from "@/constants/theme";
+import { pinWebColorScheme } from "@/lib/webColorScheme";
 
 /**
  * Theme preference and resolved theme colours.
@@ -23,7 +24,18 @@ export type ThemePreference = "system" | "light" | "dark";
 let preference: ThemePreference = "system";
 const listeners = new Set<() => void>();
 
+/**
+ * The web build cannot override `Appearance` (React Native Web has no
+ * `setColorScheme`), so a pinned theme is kept here and the CSS layer is
+ * pinned through `lib/webColorScheme.ts`. A phone uses `Appearance` itself.
+ */
+const isWeb = Platform.OS === "web";
+
 function applyPreference(next: ThemePreference) {
+  if (isWeb) {
+    pinWebColorScheme(next === "system" ? null : next);
+    return;
+  }
   Appearance.setColorScheme(next === "system" ? "unspecified" : next);
 
   // react-native-css keeps its own colour-scheme observable, seeded from
@@ -57,18 +69,24 @@ export function useThemePreference() {
   return useSyncExternalStore(subscribe, getPreference, getPreference);
 }
 
+/** The theme on screen right now, outside React. */
+export function currentThemeName(): ThemeName {
+  if (isWeb && preference !== "system") return preference;
+  return Appearance.getColorScheme() === "dark" ? "dark" : "light";
+}
+
+function subscribeTheme(listener: () => void) {
+  const subscription = Appearance.addChangeListener(listener);
+  listeners.add(listener);
+  return () => {
+    subscription.remove();
+    listeners.delete(listener);
+  };
+}
+
 /** The theme actually in effect, after the preference is applied. */
 export function useThemeName(): ThemeName {
-  const scheme = useSyncExternalStore(
-    (listener) => {
-      const subscription = Appearance.addChangeListener(listener);
-      return () => subscription.remove();
-    },
-    () => Appearance.getColorScheme(),
-    () => Appearance.getColorScheme(),
-  );
-
-  return scheme === "dark" ? "dark" : "light";
+  return useSyncExternalStore(subscribeTheme, currentThemeName, currentThemeName);
 }
 
 /** Token values for the theme in effect. */
