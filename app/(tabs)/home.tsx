@@ -45,8 +45,9 @@ import { useSession } from "@/store/session";
  *
  * Featured Prints is the one part that flexes, so on a small phone it shrinks
  * first and nothing else moves; nothing on it moves by itself either. The full
- * job list lives on Orders; Home keeps a single line for a job that is waiting on the client,
- * because "is anything waiting on me" must never need a second tab to answer.
+ * job list lives on Orders; Home keeps a single line for a job that is waiting
+ * on the client, because "is anything waiting on me" must never need a second
+ * tab to answer.
  * The yellow "+" in the tab bar opens every other action.
  */
 export default function HomeScreen() {
