@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.510 (Fix)
+
+- Featured prints on Home stay still and no longer reload. The + sits in the middle, and Organizations is in Account.
+
 ## 1.0.503 (New feature)
 
 - A new one-screen Home with a light/dark switch, a quick-actions "+" and your Founding Tester progress.
