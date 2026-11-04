@@ -132,11 +132,11 @@ it("clears the red state on a field as soon as it is answered", async () => {
   await screen.findByText("Add to my order");
 
   await fireEvent.press(screen.getByLabelText("Add to my order"));
-  expect(within(screen.getByTestId("listing-field-group:g_size")).getByText("Pick a size first.")).toBeTruthy();
+  expect(within(screen.getByTestId("listing-field-group:g_size")).getByText("Choose an option for Size.")).toBeTruthy();
 
   await fireEvent.press(screen.getByLabelText("A5, Size"));
 
-  expect(within(screen.getByTestId("listing-field-group:g_size")).queryByText("Pick a size first.")).toBeNull();
+  expect(within(screen.getByTestId("listing-field-group:g_size")).queryByText("Choose an option for Size.")).toBeNull();
   expect(screen.getByTestId("option-group-g_size").props.className).not.toMatch(/border-error/);
-  expect(within(screen.getByTestId("listing-field-group:g_paper")).getByText("Pick a paper first.")).toBeTruthy();
+  expect(within(screen.getByTestId("listing-field-group:g_paper")).getByText("Choose an option for Paper.")).toBeTruthy();
 });

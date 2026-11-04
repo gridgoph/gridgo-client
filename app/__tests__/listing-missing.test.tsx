@@ -126,12 +126,12 @@ it("marks the first missing choice on the field after Add, not only under the bu
   await renderInSafeArea(<ListingScreen />);
   await screen.findByText("Add to my order");
 
-  expect(screen.queryByText("Pick a size first.")).toBeNull();
+  expect(screen.queryByText("Choose an option for Size.")).toBeNull();
   await fireEvent.press(screen.getByLabelText("Add to my order"));
 
   const size = screen.getByTestId("listing-field-group:g_size");
-  expect(within(size).getByText("Pick a size first.")).toBeTruthy();
+  expect(within(size).getByText("Choose an option for Size.")).toBeTruthy();
   expect(screen.getByTestId("option-group-g_size").props.className).toMatch(/border-error/);
-  expect(within(screen.getByTestId("listing-field-group:g_paper")).getByText("Pick a paper first.")).toBeTruthy();
+  expect(within(screen.getByTestId("listing-field-group:g_paper")).getByText("Choose an option for Paper.")).toBeTruthy();
   expect(screen.getByText("Delivery is added at checkout.")).toBeTruthy();
 });

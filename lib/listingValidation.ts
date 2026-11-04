@@ -60,6 +60,17 @@ function selectedInGroup(
   return group.options.some((option) => option.id === selection[group.id]);
 }
 
+/**
+ * Ask for a missing group without forcing "a/an" onto the catalogue label.
+ * Dev listings include plurals (Sides, Eyelets), vowel names (Item) and
+ * multi-word labels (Paper size, What you need); "Pick a sides first" fails
+ * all of those. The heading already carries the name, so this keeps it as written.
+ */
+export function groupChoiceMessage(name: string): string {
+  const label = name.trim();
+  return label ? `Choose an option for ${label}.` : "Choose an option.";
+}
+
 function groupProblem(
   group: CatalogItem["optionGroups"][number],
   selection: ListingSelection,
@@ -69,7 +80,7 @@ function groupProblem(
   }
   return {
     key: `group:${group.id}`,
-    message: `Pick a ${group.name.toLowerCase()} first.`,
+    message: groupChoiceMessage(group.name),
   };
 }
 

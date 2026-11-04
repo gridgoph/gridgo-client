@@ -3,6 +3,7 @@ import { EMPTY_MEASUREMENT } from "@/lib/measurement";
 import { SPECIAL_INSTRUCTIONS_MAX } from "@/lib/orderChanges";
 import {
   firstListingProblem,
+  groupChoiceMessage,
   listingProblemMessage,
   listingProblemScrollY,
   listingProblems,
@@ -120,14 +121,22 @@ describe("listingProblems", () => {
   it("names each unanswered required step, size first", () => {
     const problems = listingProblems(input());
     expect(problems.map((problem) => problem.key)).toEqual(["group:g_size", "group:g_paper"]);
-    expect(problems[0]?.message).toBe("Pick a size first.");
-    expect(listingProblemMessage(problems, "group:g_paper")).toBe("Pick a paper first.");
+    expect(problems[0]?.message).toBe("Choose an option for Size.");
+    expect(listingProblemMessage(problems, "group:g_paper")).toBe("Choose an option for Paper.");
   });
 
   it("is empty once every required step is answered", () => {
     expect(
       listingProblems(input({ selection: { g_size: "o_a5", g_paper: "o_matte" } })),
     ).toEqual([]);
+  });
+
+  it("asks for a plural Sides group and a vowel Item group in natural English", () => {
+    const sides: CatalogOptionGroup = { ...SIZE, id: "g_sides", name: "Sides" };
+    const item: CatalogOptionGroup = { ...SIZE, id: "g_item", name: "Item" };
+    const problems = listingProblems(input({ item: { ...FLYERS, optionGroups: [sides, item] } }));
+    expect(listingProblemMessage(problems, "group:g_sides")).toBe("Choose an option for Sides.");
+    expect(listingProblemMessage(problems, "group:g_item")).toBe("Choose an option for Item.");
   });
 
   it("does not ask for an optional add-on", () => {
@@ -142,7 +151,7 @@ describe("listingProblems", () => {
       firstListingProblem(
         input({ selection: { g_size: "o_a5", g_paper: "o_matte", g_addon: "removed" } }),
       ),
-    ).toEqual({ key: "group:g_addon", message: "Pick a add-ons first." });
+    ).toEqual({ key: "group:g_addon", message: "Choose an option for Add-ons." });
   });
 
   it("asks for a layout after the specs, only where the shop offers one", () => {
@@ -249,6 +258,18 @@ describe("listingProblems", () => {
     );
     expect(problem?.key).toBe("note");
     expect(problem?.message).toMatch(/300 characters/);
+  });
+});
+
+describe("groupChoiceMessage", () => {
+  it("reads naturally for a plural label and a vowel label", () => {
+    expect(groupChoiceMessage("Sides")).toBe("Choose an option for Sides.");
+    expect(groupChoiceMessage("Item")).toBe("Choose an option for Item.");
+  });
+
+  it("keeps multi-word catalogue names as written", () => {
+    expect(groupChoiceMessage("Paper size")).toBe("Choose an option for Paper size.");
+    expect(groupChoiceMessage("What you need")).toBe("Choose an option for What you need.");
   });
 });
 
