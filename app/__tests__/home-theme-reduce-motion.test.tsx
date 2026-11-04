@@ -1,13 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { AccessibilityInfo } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import HomeScreen from "@/app/(tabs)/home";
-import { ThemeTransitionHost } from "@/components/ThemeTransitionHost";
 import { useCart } from "@/store/cart";
 import { useSession } from "@/store/session";
 import { useThemeStore } from "@/store/theme";
-import { useThemeSwitch } from "@/store/themeSwitch";
 
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
@@ -41,8 +39,8 @@ beforeEach(() => {
   } as never);
 });
 
-/* Reduce motion: the tap changes the theme at once, with no wash and no slide. */
-it("switches at once, with no fade, when the phone asks for reduced motion", async () => {
+/* Reduce motion: the tap changes the theme at once, and the knob jumps instead of sliding. */
+it("switches at once when the phone asks for reduced motion", async () => {
   useThemeStore.setState({ preference: "system", unsynced: false, owner: "user_1" });
   await render(
     <SafeAreaProvider
@@ -52,14 +50,14 @@ it("switches at once, with no fade, when the phone asks for reduced motion", asy
       }}
     >
       <HomeScreen />
-      <ThemeTransitionHost />
     </SafeAreaProvider>,
   );
-  await waitFor(() => expect(useThemeSwitch.getState().animate).toBe(false));
+  // Let the reduce-motion read land before the tap.
+  await act(async () => {
+    await Promise.resolve();
+  });
 
   fireEvent.press(await screen.findByLabelText("Dark theme"));
 
   expect(useThemeStore.getState().preference).toBe("dark");
-  expect(useThemeSwitch.getState().veil).toBeNull();
-  expect(screen.queryByTestId("theme-veil")).toBeNull();
 });

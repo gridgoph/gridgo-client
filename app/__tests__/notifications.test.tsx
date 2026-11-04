@@ -283,7 +283,7 @@ describe("NotificationsScreen", () => {
     expect(screen.getByLabelText("Stage 3 of 4: To office")).toBeTruthy();
   });
 
-  it("keeps cart and chat on the header, and drops the helper line", async () => {
+  it("keeps cart and the theme switch on the header, and drops the helper line", async () => {
     api.listNotifications.mockResolvedValue({
       notifications: [],
       snapshot: null,
@@ -291,7 +291,8 @@ describe("NotificationsScreen", () => {
     await renderInSafeArea(<NotificationsScreen />);
 
     expect(await screen.findByLabelText("Your order, empty")).toBeTruthy();
-    expect(screen.getByLabelText("Chat")).toBeTruthy();
+    expect(screen.getByLabelText("Light theme")).toBeTruthy();
+    expect(screen.queryByLabelText("Chat")).toBeNull();
     expect(
       screen.queryByText("Deadlines and status changes for your print jobs."),
     ).toBeNull();

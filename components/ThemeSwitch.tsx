@@ -1,19 +1,20 @@
 import { Moon, Sun, type LucideIcon } from "lucide-react-native";
-import { useEffect, useRef, type Ref } from "react";
+import { useEffect } from "react";
 import { Pressable, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors, useThemeName } from "@/hooks/useTheme";
-import { knobTransitionName } from "@/lib/themeFade";
-import { THEME_KNOB_MS } from "@/lib/themeTransition";
 import { useSession } from "@/store/session";
-import { switchTheme, useThemeSwitch } from "@/store/themeSwitch";
+import { useThemeStore } from "@/store/theme";
 
 /** One half of the switch: a 44x44 button, so the knob travels one width. */
 const HALF = 44;
+/** The knob sliding from sun to moon. */
+const KNOB_MS = 240;
 
 /**
- * Light / dark, one tap from Home (client#335).
+ * Light / dark, one tap from the header of every tab (client#335).
  *
  * The app follows the phone until the client taps this; the tap is then saved
  * on the account (`store/theme.ts`) and every screen follows it. The lit half
@@ -23,33 +24,25 @@ const HALF = 44;
  *
  * Two real buttons, each 44x44, rather than one toggle: a toggle names the
  * theme you are not in, and a screen reader has to guess which. One knob sits
- * behind them and slides to the tapped half, at once, while the screen fades
- * to the new theme (`store/themeSwitch.ts`); under reduce motion it jumps.
+ * behind them and slides to the tapped half; under reduce motion it jumps.
+ *
+ * The tap changes the theme exactly as Settings does: `choose` lands it in
+ * place, in one frame, on every screen. Nothing is drawn over the screen and
+ * nothing cross-fades. A light/dark blend passes every colour through the same
+ * grey at the same moment, so text sinks into its background and the screen
+ * reads as fogged over; the earlier wash and snapshot fade both did that.
  */
 export function ThemeSwitch() {
-  const onScreen = useThemeName();
-  const wanted = useThemeSwitch((s) => s.wanted);
-  const animate = useThemeSwitch((s) => s.animate);
+  const theme = useThemeName();
+  const reduced = useReducedMotion();
+  const choose = useThemeStore((s) => s.choose);
   const userId = useSession((s) => s.user?.id ?? null);
-  const theme = wanted ?? onScreen;
 
-  // Where the browser draws the slide (`lib/themeFade.ts`), the knob jumps.
-  const slides = animate && !knobTransitionName;
   const x = useSharedValue(theme === "dark" ? HALF : 0);
   useEffect(() => {
     const to = theme === "dark" ? HALF : 0;
-    x.set(slides ? withTiming(to, { duration: THEME_KNOB_MS, easing: Easing.out(Easing.cubic) }) : to);
-  }, [theme, slides, x]);
-  const knobFace = useRef<View>(null);
-  const sun = useRef<View>(null);
-  const moon = useRef<View>(null);
-  useEffect(() => {
-    if (!knobTransitionName) return;
-    nameForTransition(knobFace.current, knobTransitionName);
-    // Named after the knob, so the browser draws them above it while it slides.
-    nameForTransition(sun.current, `${knobTransitionName}-sun`);
-    nameForTransition(moon.current, `${knobTransitionName}-moon`);
-  }, []);
+    x.set(reduced ? to : withTiming(to, { duration: KNOB_MS, easing: Easing.out(Easing.cubic) }));
+  }, [theme, reduced, x]);
   const knob = useAnimatedStyle(() => ({ transform: [{ translateX: x.get() }] }));
 
   return (
@@ -60,28 +53,20 @@ export function ThemeSwitch() {
     >
       {/* Placed in the pill's 2pt padding; className stays off the Animated view. */}
       <Animated.View testID="theme-knob" pointerEvents="none" style={[{ position: "absolute", left: 2, top: 2 }, knob]}>
-        <View ref={knobFace} className="h-11 w-11 rounded-pill bg-accent" />
+        <View className="h-11 w-11 rounded-pill bg-accent" />
       </Animated.View>
-      <Half ref={sun} icon={Sun} label="Light theme" selected={theme === "light"} onPress={() => void switchTheme("light", userId)} />
-      <Half ref={moon} icon={Moon} label="Dark theme" selected={theme === "dark"} onPress={() => void switchTheme("dark", userId)} />
+      <Half icon={Sun} label="Light theme" selected={theme === "light"} onPress={() => void choose("light", userId)} />
+      <Half icon={Moon} label="Dark theme" selected={theme === "dark"} onPress={() => void choose("dark", userId)} />
     </View>
   );
 }
 
-/** React Native Web hands back the DOM node; `view-transition-name` is a web-only style. */
-function nameForTransition(view: View | null, name: string) {
-  const node = view as unknown as { style?: { viewTransitionName?: string } } | null;
-  if (node?.style) node.style.viewTransitionName = name;
-}
-
 function Half({
-  ref,
   icon: Icon,
   label,
   selected,
   onPress,
 }: {
-  ref: Ref<View>;
   icon: LucideIcon;
   label: string;
   selected: boolean;
@@ -90,7 +75,6 @@ function Half({
   const colors = useThemeColors();
   return (
     <Pressable
-      ref={ref}
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityLabel={label}
