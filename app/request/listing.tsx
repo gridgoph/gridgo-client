@@ -2,7 +2,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Minus, Plus, TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Screen } from "@/components/Screen";
@@ -46,7 +46,6 @@ import {
 import {
   addOnGroups,
   boundValue,
-  firstMissingGroup,
   fileFormats,
   formatSentence,
   isSelectionComplete,
@@ -62,6 +61,14 @@ import {
   type ListingSelection,
 } from "@/lib/listing";
 import { userFacingError } from "@/lib/copy";
+import {
+  firstListingProblem,
+  isMeasureProblemKey,
+  listingProblemMessage,
+  listingProblemScrollY,
+  listingProblems,
+  type ListingProblemKey,
+} from "@/lib/listingValidation";
 import { holdSheetListing, isFullListing, listingNow, listingTrusted, rereadListing, takeListing } from "@/lib/listingCache";
 import {
   STALE_MATCH_MESSAGE,
@@ -70,7 +77,6 @@ import {
   matchSelectionFor,
 } from "@/lib/matchSelection";
 import { orderFlowNow } from "@/lib/orderFlow";
-import { specialInstructionsProblem } from "@/lib/orderChanges";
 import {
   printerCapFeet,
   printerCapLine,
@@ -173,6 +179,16 @@ export default function ListingScreen() {
 
   const loadSequence = useRef(0);
   const viewedListing = useRef<string | null>(null);
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  const pageOffset = useRef(0);
+  const fieldLocalY = useRef<Partial<Record<ListingProblemKey, number>>>({});
+  const measureInputRefs = useRef<Partial<Record<ListingProblemKey, TextInput | null>>>({});
+  const registerMeasureInput = useCallback(
+    (key: "measure:width" | "measure:height" | "measure:length", node: TextInput | null) => {
+      measureInputRefs.current[key] = node;
+    },
+    [],
+  );
   const load = useCallback(() => {
     const sequence = ++loadSequence.current;
     if (!itemId) return;
@@ -411,8 +427,6 @@ export default function ListingScreen() {
   const specs = specGroups(item);
   const addOns = addOnGroups(item);
   const complete = isSelectionComplete(item, selection);
-  const missing = firstMissingGroup(item, selection);
-  const layoutMissing = offered.length > 0 && !offered.some((code) => code === layout);
   const paperGroup = paperGroupId(item);
   const advice = layoutAdvice(layoutCheck, {
     layout,
@@ -432,7 +446,6 @@ export default function ListingScreen() {
   const shopTotal =
     quoteStatus === "unsupported" ? lineTotalMinor(item, quantity, measurement, shopUnit) : null;
   const estimate = complete ? null : clientLineEstimateMinor(item, quantity, measurement, selection);
-  const sized = kind === "pages" || isMeasurementComplete(item, measured);
   const atMinimum = minimumApplies(item, measurement);
   const runMinimum = belowMinimumOrder(item, quantity);
   const uploads = fileFormats(item);
@@ -458,6 +471,19 @@ export default function ListingScreen() {
     requestedWidthFeet(item, typedSize, selection, sizeValue),
     typedSize,
   );
+  const problems = listingProblems({
+    item,
+    selection,
+    layout,
+    measured,
+    quantity,
+    note,
+    offeredLayouts: offered,
+    tooWide,
+  });
+  const shownProblems = showMissing ? problems : [];
+  const groupError = (groupId: string) =>
+    listingProblemMessage(shownProblems, `group:${groupId}`);
 
   // A listing picked on the match goes in by its pick token, so GRIDGO keeps
   // the job's date on the line through checkout. A basket row reopened to
@@ -498,8 +524,29 @@ export default function ListingScreen() {
 
   const add = async (mode: "batch" | "sample" = "batch", basketAside = false) => {
     if (busy || paused) return;
-    if (!complete || !sized || layoutMissing) {
+    const blocking = firstListingProblem({
+      item,
+      selection,
+      layout,
+      measured,
+      quantity,
+      note,
+      offeredLayouts: offered,
+      tooWide,
+    });
+    if (blocking) {
       setShowMissing(true);
+      setSaveError(null);
+      const local = fieldLocalY.current[blocking.key];
+      if (local != null) {
+        scrollRef.current?.scrollTo?.({
+          y: listingProblemScrollY(pageOffset.current + local),
+          animated: true,
+        });
+      }
+      if (isMeasureProblemKey(blocking.key)) {
+        measureInputRefs.current[blocking.key]?.focus();
+      }
       return;
     }
     // A sample goes into a basket of its own. One already holding things is
@@ -513,21 +560,6 @@ export default function ListingScreen() {
     setBusy(true);
     setSaveError(null);
     try {
-      // A line reopened after the shop raised its minimum can still sit under
-      // it. GRIDGO would refuse the save; say so here, in the same words.
-      if (runMinimum) {
-        setSaveError(`This shop takes orders of ${runMinimum} and up. Change the quantity first.`);
-        return;
-      }
-      if (tooWide) {
-        setSaveError(tooWide.short);
-        return;
-      }
-      const noteProblem = specialInstructionsProblem(note);
-      if (noteProblem) {
-        setSaveError(noteProblem);
-        return;
-      }
       const { optionIds, structuredSpec } = lineInput();
       if (editing) {
         // Empty clears a note the line had; a line that never had one is left alone.
@@ -640,6 +672,7 @@ export default function ListingScreen() {
         is being filled in, and inside the scroll it would leave with it.
       */}
       <KeyboardAwareScrollView
+        ref={scrollRef}
         className="gg-screen"
         contentContainerClassName="pb-8"
         bottomOffset={KEYBOARD_CARET_GAP}
@@ -647,7 +680,13 @@ export default function ListingScreen() {
       >
         <ListingGallery photos={item.photos} name={item.name} onStale={onStalePhoto} />
 
-        <View className="gg-page pt-6">
+        <View
+          className="gg-page pt-6"
+          testID="listing-page"
+          onLayout={(event) => {
+            pageOffset.current = event.nativeEvent.layout.y;
+          }}
+        >
           {/* The storefront this sheet belongs to. Never the press behind it. */}
           <Text className="text-caption text-text-muted">GRIDGO</Text>
           <Text className="mt-1 text-h2 text-text-primary">{item.name}</Text>
@@ -707,12 +746,21 @@ export default function ListingScreen() {
           ) : null}
 
           {specs.map((group, position) => (
-            <View key={group.id} className="mt-8">
+            <View
+              key={group.id}
+              className="mt-8"
+              testID={`listing-field-group:${group.id}`}
+              collapsable={false}
+              onLayout={(event) => {
+                fieldLocalY.current[`group:${group.id}`] = event.nativeEvent.layout.y;
+              }}
+            >
               <OptionGroupPicker
                 group={group}
                 priceUnit={unitLine(item)}
                 step={position + 1}
                 selectedId={selection[group.id]}
+                error={groupError(group.id)}
                 onSelect={(optionId) =>
                   setSelection((current) => {
                     const next = { ...current };
@@ -727,7 +775,14 @@ export default function ListingScreen() {
 
           {/* How the file sits on the paper: only where the shop offers the choice. */}
           {offered.length ? (
-            <View className="mt-8 gap-3">
+            <View
+              className="mt-8 gap-3"
+              testID="listing-field-layout"
+              collapsable={false}
+              onLayout={(event) => {
+                fieldLocalY.current.layout = event.nativeEvent.layout.y;
+              }}
+            >
               <PrintLayoutChoice
                 layouts={offered}
                 selected={layout}
@@ -735,6 +790,7 @@ export default function ListingScreen() {
                 step={specs.length + 1}
                 disabled={busy}
                 scaleNote={advice.scale}
+                error={listingProblemMessage(shownProblems, "layout")}
               />
               {editing && layoutFileIds.length ? (
                 <PrintLayoutPreview
@@ -754,8 +810,20 @@ export default function ListingScreen() {
           ) : null}
 
           {/* Right under the choices it explains: what the options cannot say. */}
-          <View className="mt-8">
-            <SpecialInstructionsField value={note} onChange={setNote} disabled={busy} />
+          <View
+            className="mt-8"
+            testID="listing-field-note"
+            collapsable={false}
+            onLayout={(event) => {
+              fieldLocalY.current.note = event.nativeEvent.layout.y;
+            }}
+          >
+            <SpecialInstructionsField
+              value={note}
+              onChange={setNote}
+              disabled={busy}
+              invalid={Boolean(listingProblemMessage(shownProblems, "note"))}
+            />
           </View>
 
           {/* A width read from a size option rather than typed. A measured
@@ -770,21 +838,30 @@ export default function ListingScreen() {
             <View className="mt-10 gap-6">
               <Text className="text-overline text-text-muted">ADD ANYTHING ELSE</Text>
               {addOns.map((group) => (
-                <OptionGroupPicker
+                <View
                   key={group.id}
-                  group={group}
-                  priceUnit={unitLine(item)}
-                  step={null}
-                  selectedId={selection[group.id]}
-                  onSelect={(optionId) =>
-                    setSelection((current) => {
-                      const next = { ...current };
-                      if (optionId) next[group.id] = optionId;
-                      else delete next[group.id];
-                      return next;
-                    })
-                  }
-                />
+                  testID={`listing-field-group:${group.id}`}
+                  collapsable={false}
+                  onLayout={(event) => {
+                    fieldLocalY.current[`group:${group.id}`] = event.nativeEvent.layout.y;
+                  }}
+                >
+                  <OptionGroupPicker
+                    group={group}
+                    priceUnit={unitLine(item)}
+                    step={null}
+                    selectedId={selection[group.id]}
+                    error={groupError(group.id)}
+                    onSelect={(optionId) =>
+                      setSelection((current) => {
+                        const next = { ...current };
+                        if (optionId) next[group.id] = optionId;
+                        else delete next[group.id];
+                        return next;
+                      })
+                    }
+                  />
+                </View>
               ))}
             </View>
           ) : null}
@@ -797,7 +874,17 @@ export default function ListingScreen() {
             feet buys fifteen banners.
           */}
           {kind !== "none" && kind !== "pages" ? (
-            <View className="mt-10 gap-3">
+            <View
+              className="mt-10 gap-3"
+              testID="listing-field-measure"
+              collapsable={false}
+              onLayout={(event) => {
+                const y = event.nativeEvent.layout.y;
+                fieldLocalY.current["measure:width"] = y;
+                fieldLocalY.current["measure:height"] = y;
+                fieldLocalY.current["measure:length"] = y;
+              }}
+            >
               <Text className="text-overline text-text-muted">
                 HOW BIG
               </Text>
@@ -806,6 +893,12 @@ export default function ListingScreen() {
                 unit={item.measureUnit}
                 draft={measured}
                 onChange={setMeasured}
+                errors={{
+                  width: listingProblemMessage(shownProblems, "measure:width"),
+                  height: listingProblemMessage(shownProblems, "measure:height"),
+                  length: listingProblemMessage(shownProblems, "measure:length"),
+                }}
+                onInputRef={registerMeasureInput}
               />
               {measurement ? (
                 <Text className="text-body text-text-secondary">
@@ -836,15 +929,23 @@ export default function ListingScreen() {
             </View>
           ) : null}
 
-          <View className="mt-10 gap-3">
+          <View
+            className="mt-10 gap-3"
+            testID="listing-field-quantity"
+            collapsable={false}
+            onLayout={(event) => {
+              fieldLocalY.current.quantity = event.nativeEvent.layout.y;
+            }}
+          >
             <Text className="text-overline text-text-muted">HOW MANY</Text>
             <Stepper
               value={quantity}
               min={orderFloor(item)}
               onChange={setQuantity}
               caption={quantityLine(item, quantity)}
+              error={listingProblemMessage(shownProblems, "quantity")}
             />
-            {orderFloor(item) > 1 ? (
+            {orderFloor(item) > 1 && !listingProblemMessage(shownProblems, "quantity") ? (
               <Text
                 className={
                   runMinimum ? "text-caption text-warning" : "text-caption text-text-muted"
@@ -952,11 +1053,7 @@ export default function ListingScreen() {
                 : SHOP_PAUSED_MESSAGE
             : sampleGone
               ? "This shop no longer offers a sample of this product. You can still order the full batch."
-            : showMissing && missing
-              ? `Pick a ${missing.name.toLowerCase()} first.`
-              : showMissing && layoutMissing
-                ? "Pick a layout first."
-              : pickingUp
+            : pickingUp
                 ? "You collect at GRIDGO Office. Checkout shows any pick-up fee."
                 : "Delivery is added at checkout."}
         </Text>
@@ -1019,13 +1116,6 @@ function PrinterWidthWarning({ problem }: { problem: PrinterWidthProblem }) {
 }
 
 /**
- * How many.
- *
- * Its own control rather than the catalog stepper, because a listing's unit is
- * the shop's — a pack of 100, a piece, a square metre it named itself — and the
- * caption under the buttons is what turns "3" into something a client can check.
- */
-/**
  * The one or two numbers a measured listing needs.
  *
  * Plain numeric fields rather than a stepper: a banner is 3.5 feet as readily
@@ -1039,11 +1129,18 @@ function MeasurementFields({
   unit,
   draft,
   onChange,
+  errors,
+  onInputRef,
 }: {
   kind: MeasurementKind;
   unit: MeasureUnit | null;
   draft: MeasurementDraft;
   onChange: (next: MeasurementDraft) => void;
+  errors?: Partial<Record<"width" | "height" | "length", string | null>>;
+  onInputRef?: (
+    key: "measure:width" | "measure:height" | "measure:length",
+    node: TextInput | null,
+  ) => void;
 }) {
   if (kind === "length") {
     return (
@@ -1052,26 +1149,32 @@ function MeasurementFields({
         onChange={(length) => onChange({ ...draft, length })}
         suffix={unitWord(unit)}
         label="How long it is"
+        error={errors?.length}
+        inputRef={(node) => onInputRef?.("measure:length", node)}
       />
     );
   }
   return (
-    <View className="flex-row items-center gap-3">
+    <View className="flex-row items-start gap-3">
       <View className="min-w-0 flex-1">
         <MeasureInput
           value={draft.width}
           onChange={(width) => onChange({ ...draft, width })}
           suffix={unitWord(unit)}
           label="How wide it is"
+          error={errors?.width}
+          inputRef={(node) => onInputRef?.("measure:width", node)}
         />
       </View>
-      <Text className="text-body-lg text-text-muted">×</Text>
+      <Text className="pt-3 text-body-lg text-text-muted">×</Text>
       <View className="min-w-0 flex-1">
         <MeasureInput
           value={draft.height}
           onChange={(height) => onChange({ ...draft, height })}
           suffix={unitWord(unit)}
           label="How tall it is"
+          error={errors?.height}
+          inputRef={(node) => onInputRef?.("measure:height", node)}
         />
       </View>
     </View>
@@ -1084,29 +1187,41 @@ function MeasureInput({
   suffix,
   label,
   wholeNumbers = false,
+  error,
+  inputRef,
 }: {
   value: string;
   onChange: (next: string) => void;
   suffix: string;
   label: string;
   wholeNumbers?: boolean;
+  error?: string | null;
+  inputRef?: (node: TextInput | null) => void;
 }) {
   return (
-    <View className="gg-field flex-row items-center">
-      <TextInput
-        value={value}
-        onChangeText={(text) =>
-          // Only what a measurement can be made of. A stray letter here is a
-          // field that silently reads as no size at all.
-          onChange(text.replace(wholeNumbers ? /[^0-9]/g : /[^0-9.]/g, ""))
-        }
-        keyboardType={wholeNumbers ? "number-pad" : "decimal-pad"}
-        placeholder="0"
-        accessibilityLabel={label}
-        className="min-w-0 flex-1 text-body-lg text-text-primary"
-        style={{ paddingStart: 16, paddingEnd: 8, includeFontPadding: false }}
-      />
-      <Text className="pe-4 text-body text-text-muted">{suffix}</Text>
+    <View className="gap-2">
+      <View className={error ? "gg-field flex-row items-center border-error" : "gg-field flex-row items-center"}>
+        <TextInput
+          ref={inputRef}
+          value={value}
+          onChangeText={(text) =>
+            // Only what a measurement can be made of. A stray letter here is a
+            // field that silently reads as no size at all.
+            onChange(text.replace(wholeNumbers ? /[^0-9]/g : /[^0-9.]/g, ""))
+          }
+          keyboardType={wholeNumbers ? "number-pad" : "decimal-pad"}
+          placeholder="0"
+          accessibilityLabel={label}
+          className="min-w-0 flex-1 text-body-lg text-text-primary"
+          style={{ paddingStart: 16, paddingEnd: 8, includeFontPadding: false }}
+        />
+        <Text className="pe-4 text-body text-text-muted">{suffix}</Text>
+      </View>
+      {error ? (
+        <Text accessibilityRole="alert" className="text-caption text-error">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -1116,18 +1231,20 @@ function Stepper({
   min = 1,
   onChange,
   caption,
+  error,
 }: {
   value: number;
   /** The least the shop will run; the minus stops here. */
   min?: number;
   onChange: (next: number) => void;
   caption: string;
+  error?: string | null;
 }) {
   const atMin = value <= min;
   const atMax = value >= MAX_QUANTITY;
 
   return (
-    <View className="gap-2">
+    <View className={error ? "gap-2 rounded-field border border-error p-3" : "gap-2"}>
       <View className="flex-row items-center gap-4">
         <StepButton
           icon="minus"
@@ -1147,6 +1264,11 @@ function Stepper({
         {caption}
         {atMax ? ` · ${MAX_QUANTITY} is the most you can order in one line` : ""}
       </Text>
+      {error ? (
+        <Text accessibilityRole="alert" className="text-caption text-error">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }

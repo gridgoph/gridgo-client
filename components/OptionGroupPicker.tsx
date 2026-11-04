@@ -15,6 +15,8 @@ type Props = {
   step: number | null;
   selectedId: string | undefined;
   onSelect: (optionId: string | null) => void;
+  /** After a continue tap: what this group still needs. */
+  error?: string | null;
 };
 
 /**
@@ -33,7 +35,7 @@ type Props = {
  * can be unticked by tapping it again, because "no lamination" is a real answer
  * and there is nowhere else to give it.
  */
-export function OptionGroupPicker({ group, priceUnit, step, selectedId, onSelect }: Props) {
+export function OptionGroupPicker({ group, priceUnit, step, selectedId, onSelect, error }: Props) {
   const unavailable = Boolean(selectedId) && !group.options.some((option) => option.id === selectedId);
   const heading =
     step != null ? `STEP ${step} · ${group.name.toUpperCase()}` : group.name.toUpperCase();
@@ -62,7 +64,10 @@ export function OptionGroupPicker({ group, priceUnit, step, selectedId, onSelect
         </View>
       ) : null}
 
-      <View className="gg-card-flush">
+      <View
+        className={error ? "gg-card-flush border border-error" : "gg-card-flush"}
+        testID={`option-group-${group.id}`}
+      >
         {group.options.map((option, index) => (
           <OptionRow
             key={option.id}
@@ -78,6 +83,11 @@ export function OptionGroupPicker({ group, priceUnit, step, selectedId, onSelect
           />
         ))}
       </View>
+      {error ? (
+        <Text accessibilityRole="alert" className="text-caption text-error">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }

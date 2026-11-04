@@ -12,7 +12,7 @@ type Props = {
 
 /**
  * The row at the top of every client tab: identity on the left, cart and
- * chat on the right.
+ * the light/dark switch on the right.
  *
  * Home supplies the GRIDGO lockup as `children`. The other tabs pass a
  * title. The actions never change, so a client who learns the pair on

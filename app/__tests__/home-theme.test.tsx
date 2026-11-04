@@ -69,17 +69,15 @@ beforeEach(() => {
 
 /**
  * The switch saves the choice on the account (`PATCH /me/theme`), so every
- * screen and every phone follows it (client#335). The knob moves on the tap;
- * the theme lands under the fade a moment later (`store/themeSwitch.ts`).
+ * screen and every phone follows it (client#335). The theme lands on the tap,
+ * in place, exactly as the Settings choice does; nothing is drawn over it.
  */
-it("moves the knob at once, then lands the tapped theme and saves it on the account", async () => {
+it("lands the tapped theme at once, in place, and saves it on the account", async () => {
   useThemeStore.setState({ preference: "system", unsynced: false, owner: "user_1" });
   await renderInSafeArea(<HomeScreen />);
 
   fireEvent.press(await screen.findByLabelText("Dark theme"));
 
-  expect(await screen.findByRole("radio", { name: "Dark theme", selected: true })).toBeTruthy();
-  expect(useThemeStore.getState().preference).toBe("system");
-  await waitFor(() => expect(useThemeStore.getState().preference).toBe("dark"));
-  expect(api.saveAccountThemePreference).toHaveBeenCalledWith("dark");
+  expect(useThemeStore.getState().preference).toBe("dark");
+  await waitFor(() => expect(api.saveAccountThemePreference).toHaveBeenCalledWith("dark"));
 });

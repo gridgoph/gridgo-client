@@ -12,6 +12,8 @@ type Props = {
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
+  /** Red outline after a continue tap while the note is still too long. */
+  invalid?: boolean;
 };
 
 /**
@@ -23,7 +25,7 @@ type Props = {
  * No `maxLength`: a pasted note longer than the limit would be cut silently.
  * The count turns to an error instead, and saving waits until it fits.
  */
-export function SpecialInstructionsField({ value, onChange, disabled }: Props) {
+export function SpecialInstructionsField({ value, onChange, disabled, invalid }: Props) {
   const problem = specialInstructionsProblem(value);
   const over = problem != null;
   return (
@@ -40,6 +42,7 @@ export function SpecialInstructionsField({ value, onChange, disabled }: Props) {
         editable={disabled ? false : undefined}
         accessibilityLabel="Special instructions for this item"
         placeholder="For example: names to print on each shirt size, or a staple on the left"
+        invalid={invalid || over}
       />
       <View className="flex-row items-start justify-between gap-3">
         <Text className={over ? "min-w-0 flex-1 text-caption text-error" : "min-w-0 flex-1 text-caption font-medium text-text-secondary"}>

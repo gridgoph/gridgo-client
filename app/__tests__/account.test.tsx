@@ -102,7 +102,8 @@ describe("the identity card", () => {
     // named apart, so a screen reader is not offered one destination twice.
     expect(screen.getByLabelText("Your account")).toBeTruthy();
     expect(screen.getByLabelText("Your order, empty")).toBeTruthy();
-    expect(screen.getByLabelText("Chat")).toBeTruthy();
+    expect(screen.getByLabelText("Dark theme")).toBeTruthy();
+    expect(screen.queryByLabelText("Chat")).toBeNull();
     expect(screen.getByLabelText("Your details")).toBeTruthy();
     expect(screen.getByLabelText("Register an organization or business")).toBeTruthy();
     expect(screen.getByLabelText("What GRIDGO matches on")).toBeTruthy();

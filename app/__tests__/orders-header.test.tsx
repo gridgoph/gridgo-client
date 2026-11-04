@@ -45,12 +45,15 @@ beforeEach(() => {
 });
 
 describe("Orders header", () => {
-  it("carries cart and chat, and drops the helper line", async () => {
+  // Chat lives in the "+" sheet; the header carries Home's light/dark switch instead.
+  it("carries cart and the theme switch, no chat, and drops the helper line", async () => {
     await renderInSafeArea(<OrdersScreen />);
 
     expect(await screen.findByText("Orders")).toBeTruthy();
     expect(screen.getByLabelText("Your order, empty")).toBeTruthy();
-    expect(screen.getByLabelText("Chat")).toBeTruthy();
+    expect(screen.getByLabelText("Light theme")).toBeTruthy();
+    expect(screen.getByLabelText("Dark theme")).toBeTruthy();
+    expect(screen.queryByLabelText("Chat")).toBeNull();
     expect(
       screen.queryByText("Open a job to approve your artwork, pay, or follow the delivery."),
     ).toBeNull();
