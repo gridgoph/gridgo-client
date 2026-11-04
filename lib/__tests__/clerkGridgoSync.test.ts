@@ -114,7 +114,7 @@ describe("clerkGridgoSync", () => {
     expect(mockActivate).not.toHaveBeenCalled();
     const message = useSession.getState().error ?? "";
     expect(message).not.toMatch(/expired/i);
-    expect(message).toMatch(/never received an identity token/i);
+    expect(message).toMatch(/could not finish signing you in/i);
     expect(signOut).not.toHaveBeenCalled();
   });
 

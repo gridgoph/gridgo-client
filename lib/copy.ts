@@ -6,6 +6,7 @@
  */
 
 import { ApiError } from "@/lib/api";
+import { safeErrorText } from "@/lib/connectionError";
 import { coverSpineErrorMessage } from "@/lib/coverSpine";
 import { MIN_PASSWORD_LENGTH } from "@/lib/signup";
 
@@ -454,23 +455,15 @@ export function userFacingError(error: unknown, fallback: string): string {
         if (error.status === 0 || error.status >= 400) {
           // Prefer fallback over raw code when we have no map entry
           if (/^[a-z0-9_]+$/i.test(code)) return fallback;
-          return code || fallback;
+          return code ? safeErrorText(code, fallback) : fallback;
         }
         return fallback;
     }
   }
 
   if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    if (
-      msg.includes("network") ||
-      msg.includes("failed to fetch") ||
-      msg.includes("load failed")
-    ) {
-      return "Cannot reach the server. Check that you are on the same network as the demo API, then try again.";
-    }
     if (/^[a-z0-9_]+$/i.test(error.message)) return fallback;
-    return error.message;
+    return safeErrorText(error.message, fallback);
   }
 
   return fallback;

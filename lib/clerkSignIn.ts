@@ -7,6 +7,7 @@
  * credentials just typed.
  */
 
+import { CONNECTION_ERROR_MESSAGE } from "@/lib/connectionError";
 import { clientEmailUnavailableMessage } from "@/lib/copy";
 
 export type ClerkGetToken = (options?: { skipCache?: boolean }) => Promise<string | null | undefined>;
@@ -28,7 +29,7 @@ export type AdoptOrClearClerkSessionResult =
   | { status: "cleanup_failed"; message: string };
 
 export const clerkSignOutRecoveryMessage =
-  "GRIDGO could not sign you out of Clerk. Check your connection and try again.";
+  "GRIDGO could not sign you out. Check your connection and try again.";
 
 /**
  * The password form's "Sign out and try again" control is only for a live
@@ -99,6 +100,12 @@ export function continuationAfterPassword(
   }
   if (status === "needs_new_password") {
     return { kind: "blocked", message: clerkNeedsNewPasswordMessage };
+  }
+  // The attempt never landed. When Clerk believes the device is offline it
+  // answers a failed request with no error and leaves the attempt where it was,
+  // and "another verification step" would send the person looking for one.
+  if (!status || status === "needs_identifier") {
+    return { kind: "blocked", message: CONNECTION_ERROR_MESSAGE };
   }
   return { kind: "blocked", message: clerkPasswordIncompleteMessage };
 }

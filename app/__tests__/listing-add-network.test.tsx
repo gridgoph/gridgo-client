@@ -62,14 +62,14 @@ beforeEach(() => {
 });
 
 describe("a tap that never reaches GRIDGO", () => {
-  it("still says the server could not be reached, and offers no basket choice", async () => {
+  it("still says GRIDGO could not be reached, and offers no basket choice", async () => {
     api.addCartLine.mockReset();
     api.addCartLine.mockRejectedValue(new TypeError("Network request failed"));
     await renderScreen(<ListingScreen />);
 
     await fireEvent.press(await screen.findByLabelText("Add to my order"));
 
-    expect(await screen.findByText(/Cannot reach the server/)).toBeTruthy();
+    expect(await screen.findByText(/Cannot reach GRIDGO/)).toBeTruthy();
     expect(screen.queryByText("This needs an order of its own")).toBeNull();
     expect(screen.getByLabelText("Add to my order")).toBeTruthy();
   });

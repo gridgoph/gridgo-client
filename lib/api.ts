@@ -1,3 +1,4 @@
+import { ConnectionError, isConnectionFailure, noteForDevelopers } from "@/lib/connectionError";
 import { withRequestDeadline } from "@/lib/requestDeadline";
 import { liveGeneration, assertLiveGeneration } from "@/lib/live";
 import Constants from "expo-constants";
@@ -1490,14 +1491,26 @@ export function isNetworkFailure(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();
   return (
+    isConnectionFailure(error) ||
     error.name === "TypeError" ||
-    msg.includes("network request failed") ||
-    msg.includes("failed to fetch") ||
-    msg.includes("network error") ||
-    msg.includes("load failed") ||
+    error.name === "TimeoutError" ||
     msg.includes("aborted") ||
     error.name === "AbortError"
   );
+}
+
+/** A fetch whose failure reads the same to a client however the platform words it. */
+async function reachApi(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(`${getApiBase()}${path}`, init);
+  } catch (error) {
+    throw connectionFailure(path, init, error);
+  }
+}
+
+function connectionFailure(path: string, init: RequestInit, error: unknown): ConnectionError {
+  noteForDevelopers(`${init.method ?? "GET"} ${path}`, error);
+  return new ConnectionError(error);
 }
 
 export function setToken(token: string | null): void {
@@ -1587,8 +1600,16 @@ async function request<T>(
     if (path !== "/auth/clerk/activate") headers["X-GRIDGO-Role"] = "client";
   }
 
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
-  const text = await res.text();
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+    text = await res.text();
+  } catch (error) {
+    // The deadline or the caller already settled this request; let theirs stand.
+    if (signal.aborted) throw error;
+    throw connectionFailure(path, init, error);
+  }
   if (signal.aborted) throw new Error("Request cancelled");
   assertLiveGeneration(generation);
   let data: unknown = null;
@@ -1759,7 +1780,7 @@ export async function registerDeviceUnclaimed(
   tokenProvider: PushTokenProvider = "fcm",
   installChannel: InstallChannel | null = null,
 ): Promise<void> {
-  const res = await fetch(`${getApiBase()}/devices`, {
+  const res = await reachApi("/devices", {
     method: "POST",
     signal,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
@@ -1835,7 +1856,7 @@ function withBusinessApplication(
  * fail open for real clients.
  */
 export async function clientEmailAvailable(email: string): Promise<boolean> {
-  const res = await fetch(`${getApiBase()}/auth/clerk/client-available`, {
+  const res = await reachApi("/auth/clerk/client-available", {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ email: email.trim().toLowerCase() }),
@@ -5067,8 +5088,8 @@ export function uploadFile(
         resolve({ status: request.status, data });
       };
 
-      request.onerror = () => reject(new Error("Network request failed"));
-      request.ontimeout = () => reject(new Error("Upload timeout"));
+      request.onerror = () => reject(new ConnectionError("upload: network error"));
+      request.ontimeout = () => reject(new ConnectionError("upload: timeout"));
       request.onabort = () => reject(new ApiError(0, { error: "upload_cancelled" }));
 
       request.send(form);
