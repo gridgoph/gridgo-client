@@ -8,6 +8,7 @@ import {
   safeErrorText,
 } from "@/lib/connectionError";
 import { userFacingError } from "@/lib/copy";
+import { useNotifications } from "@/store/notifications";
 
 const FALLBACK = "Could not load this. Try again.";
 const API_HOST = new URL(api.getApiBase()).hostname;
@@ -170,5 +171,18 @@ describe("sign-in copy", () => {
       kind: "blocked",
       message: clerkPasswordIncompleteMessage,
     });
+  });
+});
+
+describe("the inbox store", () => {
+  it("shows the one message, not the raw text, when its read cannot connect", async () => {
+    const raw = `fetch failed: Unable to resolve host "${API_HOST}"`;
+    jest.spyOn(global, "fetch").mockRejectedValue(new Error(raw));
+    useNotifications.getState().setOwner("user_1");
+
+    await useNotifications.getState().refresh();
+
+    expectFriendly(useNotifications.getState().error ?? "", raw);
+    jest.restoreAllMocks();
   });
 });

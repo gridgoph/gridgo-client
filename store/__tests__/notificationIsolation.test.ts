@@ -2,7 +2,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNotifications } from "../notifications";
 import * as api from "@/lib/api";
 jest.mock("@/lib/api", () => ({
-  ApiError: class ApiError extends Error {},
   listNotifications: jest.fn(),
   markNotificationRead: jest.fn(),
   markAllNotificationsRead: jest.fn(),
