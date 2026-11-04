@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.536 (Improvement)
+
+- Light and dark mode now switch instantly with no flash, and the switch sits in every tab header where the chat icon was.
+- Missing print details now light up in red with a short note, and the sheet jumps to the first one.
+
 ## 1.0.524 (Improvement)
 
 - Reorder opens your past print straight away, and replacing a draft with a reorder now works.
