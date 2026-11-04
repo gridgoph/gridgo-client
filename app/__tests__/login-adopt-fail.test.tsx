@@ -156,7 +156,7 @@ describe("LoginScreen leftover Clerk session that GRIDGO cannot adopt", () => {
       fireEvent.press(screen.getByRole("button", { name: "Sign out and try again" }));
     });
 
-    expect(screen.getByText(/could not sign you out of Clerk/i)).toBeTruthy();
+    expect(screen.getByText(/could not sign you out\./i)).toBeTruthy();
     expect(useSession.getState().loading).toBe(false);
     expect(screen.getByRole("button", { name: "Sign out and try again" })).toBeTruthy();
   });

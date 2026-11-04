@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import * as api from "@/lib/api";
+import { userFacingError } from "@/lib/copy";
 import { liveGeneration } from "@/lib/live";
 import { travelChoiceOf } from "@/lib/checkout";
 import { groupSavedPlaces } from "@/lib/savedPlaces";
@@ -135,10 +136,7 @@ export const useCart = create<CartState>()(
             set({ cartId: null, cart: null, error: null });
             return;
           }
-          set({
-            error:
-              error instanceof Error ? error.message : "GRIDGO could not read your order.",
-          });
+          set({ error: userFacingError(error, "GRIDGO could not read your order.") });
         } finally {
           if (sequence === loadSequence) set({ loading: false });
         }

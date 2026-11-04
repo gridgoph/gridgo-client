@@ -148,7 +148,7 @@ describe("LoginScreen when Clerk finishes but never issues a JWT", () => {
     expect(mockMe).not.toHaveBeenCalled();
     expect(mockActivate).not.toHaveBeenCalled();
     expect(screen.queryByText(/session expired/i)).toBeNull();
-    expect(screen.getByText(/never received an identity token/i)).toBeTruthy();
+    expect(screen.getByText(/could not finish signing you in/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign out and try again" })).toBeTruthy();
   });
 });

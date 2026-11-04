@@ -202,7 +202,7 @@ describe("adoptGoogleSsoClient", () => {
       .fn()
       .mockResolvedValueOnce({
         kind: "error",
-        message: "Clerk signed you in, but GRIDGO never received an identity token for that session. Sign out and try again.",
+        message: "GRIDGO could not finish signing you in. Sign out and try again.",
         signOut: false,
       })
       .mockResolvedValueOnce({ kind: "adopt", user: client, provisioned: false });

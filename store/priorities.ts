@@ -76,10 +76,7 @@ export const usePriorities = create<PrioritiesState>()((set, get) => ({
       // fails too.
       set({
         loaded: true,
-        error:
-          error instanceof Error
-            ? error.message
-            : "GRIDGO could not read your matching preference.",
+        error: userFacingError(error, "GRIDGO could not read your matching preference."),
       });
     } finally {
       set({ loading: false });

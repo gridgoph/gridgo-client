@@ -178,7 +178,7 @@ describe("LoginScreen password already-signed-in refusal", () => {
 
     fireEvent.press(screen.getByRole("button", { name: "Sign In" }));
 
-    await waitFor(() => expect(screen.getByText(/could not sign you out of Clerk/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/could not sign you out\./i)).toBeTruthy());
     expect(mockPassword).toHaveBeenCalledTimes(1);
     expect(useSession.getState().loading).toBe(false);
     expect(screen.getByRole("button", { name: "Sign out and try again" })).toBeTruthy();

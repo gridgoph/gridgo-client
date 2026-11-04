@@ -1,3 +1,4 @@
+import { CONNECTION_ERROR_MESSAGE } from "@/lib/connectionError";
 import { prefetchMatch } from "@/lib/matchPrefetch";
 import { usePriorities, hasRanked } from "@/store/priorities";
 
@@ -71,7 +72,7 @@ describe("loading this account's ranking", () => {
 
     expect(usePriorities.getState().loaded).toBe(true);
     expect(usePriorities.getState().ranking).toBeNull();
-    expect(usePriorities.getState().error).toContain("Network request failed");
+    expect(usePriorities.getState().error).toBe(CONNECTION_ERROR_MESSAGE);
   });
 
   it("does not stampede GRIDGO when two screens ask at once", async () => {
@@ -129,7 +130,7 @@ describe("saving", () => {
 
     expect(kept).toBe(false);
     expect(usePriorities.getState().saving).toBe(false);
-    expect(usePriorities.getState().saveError).toBe("The request timed out. Try again.");
+    expect(usePriorities.getState().saveError).toBe(CONNECTION_ERROR_MESSAGE);
     // What GRIDGO holds is still the old order, and the app says so.
     expect(usePriorities.getState().ranking).toEqual(["quality", "speed", "cost", "distance"]);
   });
