@@ -15,6 +15,8 @@ type Props = {
   disabled?: boolean;
   /** Under Fit to paper once it is picked: the drawing scale changes. */
   scaleNote?: string | null;
+  /** After a continue tap: the shop needs a layout before it can print. */
+  error?: string | null;
 };
 
 /**
@@ -29,7 +31,7 @@ type Props = {
  * the paper, sitting in its middle, or starting from its corner. The words
  * say the same thing, so the picture is never the only way to tell them apart.
  */
-export function PrintLayoutChoice({ layouts, selected, onSelect, step, disabled = false, scaleNote }: Props) {
+export function PrintLayoutChoice({ layouts, selected, onSelect, step, disabled = false, scaleNote, error }: Props) {
   const colors = useThemeColors();
   const heading = step != null ? `STEP ${step} · LAYOUT` : "LAYOUT";
   return (
@@ -41,7 +43,12 @@ export function PrintLayoutChoice({ layouts, selected, onSelect, step, disabled 
         </View>
       </View>
       <Text className="text-caption text-text-muted">How your file sits on the paper.</Text>
-      <View className="gg-card-flush" accessibilityRole="radiogroup" accessibilityLabel="Layout">
+      <View
+        className={error ? "gg-card-flush border border-error" : "gg-card-flush"}
+        accessibilityRole="radiogroup"
+        accessibilityLabel="Layout"
+        testID="print-layout-choice"
+      >
         {layouts.map((layout, index) => {
           const chosen = layout === selected;
           return (
@@ -85,6 +92,11 @@ export function PrintLayoutChoice({ layouts, selected, onSelect, step, disabled 
           );
         })}
       </View>
+      {error ? (
+        <Text accessibilityRole="alert" className="text-caption text-error">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
