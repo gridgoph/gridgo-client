@@ -14,7 +14,7 @@
 export const CONNECTION_ERROR_MESSAGE =
   "Cannot reach GRIDGO right now. Check your internet connection and try again.";
 
-/** The request never got an answer. `message` is safe to show; `cause` is not. */
+/** The request never got an answer. `message` is safe to show; `detail` is not. */
 export class ConnectionError extends Error {
   readonly detail: unknown;
   constructor(detail?: unknown) {
@@ -90,9 +90,10 @@ export function isConnectionFailureText(text: string): boolean {
   return CONNECTION_TEXT.test(withoutEmails(text));
 }
 
+/** Includes a request deadline, which already carries the one message. */
 export function isConnectionFailure(error: unknown): boolean {
-  if (error instanceof ConnectionError) return true;
-  return error instanceof Error && isConnectionFailureText(error.message);
+  if (!(error instanceof Error)) return false;
+  return error.message === CONNECTION_ERROR_MESSAGE || isConnectionFailureText(error.message);
 }
 
 /**

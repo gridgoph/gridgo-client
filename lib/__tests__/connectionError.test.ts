@@ -185,4 +185,27 @@ describe("the inbox store", () => {
     expectFriendly(useNotifications.getState().error ?? "", raw);
     jest.restoreAllMocks();
   });
+
+  it("shows the one message when a read hits its deadline", async () => {
+    const timeout = new Error(CONNECTION_ERROR_MESSAGE);
+    timeout.name = "TimeoutError";
+    jest.spyOn(api, "listNotifications").mockRejectedValue(timeout);
+    useNotifications.getState().setOwner("user_2");
+
+    await useNotifications.getState().refresh();
+
+    expect(useNotifications.getState().error).toBe(CONNECTION_ERROR_MESSAGE);
+    jest.restoreAllMocks();
+  });
+
+  it("never shows a sentence from the server", async () => {
+    const written = "Replica db-3 is read only";
+    jest.spyOn(api, "listNotifications").mockRejectedValue(new api.ApiError(500, { error: written }));
+    useNotifications.getState().setOwner("user_3");
+
+    await useNotifications.getState().refresh();
+
+    expect(useNotifications.getState().error).toBe("Could not load notifications");
+    jest.restoreAllMocks();
+  });
 });
