@@ -23,6 +23,8 @@ type Props = {
   onSubmitEditing?: TextInputProps["onSubmitEditing"];
   /** So a form can hold its reason back until the field is left. */
   onBlur?: TextInputProps["onBlur"];
+  /** Red outline while the value is missing or invalid. */
+  invalid?: boolean;
 };
 
 /**
@@ -47,11 +49,13 @@ export function TextField({
   autoCorrect,
   onSubmitEditing,
   onBlur,
+  invalid = false,
 }: Props) {
   const colors = useThemeColors();
+  const shell = multiline ? "gg-field h-auto py-3" : "gg-field";
   return (
     <TextInput
-      className={multiline ? "gg-field h-auto py-3" : "gg-field"}
+      className={invalid ? `${shell} border-error` : shell}
       style={{
         paddingStart: 16,
         paddingEnd: 16,
