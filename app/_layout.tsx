@@ -34,7 +34,6 @@ import { OverlayErrorBoundary } from "@/components/OverlayErrorBoundary";
 import { PromotionClaimSheet } from "@/components/PromotionClaimSheet";
 import { PushExplainerSheet } from "@/components/PushExplainerSheet";
 import { SessionShell } from "@/components/SessionShell";
-import { ThemeTransitionHost } from "@/components/ThemeTransitionHost";
 import { TourOverlay } from "@/components/TourOverlay";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
@@ -644,8 +643,6 @@ function AppNavigation() {
             </OverlayErrorBoundary>
           </SessionShell>
             <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-            {/* The light/dark switch's wash, over every screen and prompt; it never takes a touch. */}
-            <ThemeTransitionHost />
             {introPlaying ? <BrandIntro onDone={() => setIntroPlaying(false)} /> : null}
         </ThemeProvider>
       </KeyboardProvider>

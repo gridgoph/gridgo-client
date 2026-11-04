@@ -6,7 +6,7 @@ import { HeaderThemeButton } from "@/components/HeaderThemeButton";
 /**
  * Android's pushed-header controls: the notification bell, then the theme
  * control that was already there. One row, so the two read as one object the
- * way Cart and Chat do on a tab header.
+ * way Cart and the light/dark switch do on a tab header.
  */
 export function PushedHeaderActions() {
   return (

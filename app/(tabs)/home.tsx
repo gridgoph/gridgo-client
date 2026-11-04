@@ -5,7 +5,6 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 
 import { TabScreen } from "@/components/TabScreen";
-import { CartButton } from "@/components/CartButton";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { HomeCategoryCircles } from "@/components/HomeCategoryCircles";
@@ -15,8 +14,8 @@ import { HomeSearch } from "@/components/HomeSearch";
 import { HomeActionRow } from "@/components/HomeRow";
 import { HomeSmartTile } from "@/components/HomeSmartTile";
 import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { SeasonBanner } from "@/components/SeasonBanner";
-import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { TourTarget } from "@/components/TourTarget";
 import { LegalNoticeBanner } from "@/components/legal/LegalNoticeBanner";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
@@ -31,7 +30,7 @@ import { lastOrder, smartTileView } from "@/lib/homeSummary";
 import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
 import { type ProductCategory } from "@/lib/productCategories";
 import { useBasketGroupTarget } from "@/store/basketGroup";
-import { cartLineCount, useCart } from "@/store/cart";
+import { useCart } from "@/store/cart";
 import { useHomeSummary, useOwnHomeSummary } from "@/store/homeSummary";
 import { useNotifications } from "@/store/notifications";
 import { useSeasonWindows } from "@/store/seasonWindows";
@@ -57,7 +56,6 @@ export default function HomeScreen() {
   const refreshAccount = useSession((s) => s.refresh);
   const startJob = useStartPrintJob();
   const loadCart = useCart((s) => s.load);
-  const cartCount = useCart(cartLineCount);
   const seasons = useSeasonWindows((s) => s.seasons);
   const dismissedSeasons = useSeasonWindows((s) => s.dismissed);
   const seasonsHydrated = useSeasonWindows((s) => s.hydrated);
@@ -173,13 +171,9 @@ export default function HomeScreen() {
         keyboardDismissMode={KEYBOARD_DISMISS}
       >
         <View className="gg-page flex-1 gap-3 pb-3 pt-2">
-          <View className="flex-row items-center justify-between gap-3">
-            <View className="min-w-0 flex-1">
-              <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
-            </View>
-            <CartButton count={cartCount} onPress={() => router.push("/checkout")} />
-            <ThemeSwitch />
-          </View>
+          <ScreenHeader>
+            <GridgoLogo role={logoRoleForClientAccount(user?.accountType)} />
+          </ScreenHeader>
 
           <TourTarget step="home.search">
             <HomeSearch

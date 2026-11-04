@@ -2,12 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import HomeScreen from "@/app/(tabs)/home";
-import { ThemeTransitionHost } from "@/components/ThemeTransitionHost";
 import { useCart } from "@/store/cart";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useSession } from "@/store/session";
 import { useThemeStore } from "@/store/theme";
-import { useThemeSwitch } from "@/store/themeSwitch";
 
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
@@ -107,23 +105,15 @@ it("keeps Home's Featured photo mounted across a theme switch", async () => {
       }}
     >
       <HomeScreen />
-      <ThemeTransitionHost />
     </SafeAreaProvider>,
   );
   await screen.findByTestId("sample-photo-image");
   expect(mockPhotoMounts).toEqual([LINK]);
 
-  const veils: unknown[] = [];
-  const stop = useThemeSwitch.subscribe((state, previous) => {
-    if (state.veil !== previous.veil) veils.push(state.veil);
-  });
   fireEvent.press(await screen.findByLabelText("Dark theme"));
 
-  // The wash rises over Home, the theme lands behind it, and it clears.
+  // The theme lands in place: Home repaints, nothing is drawn over it.
   await waitFor(() => expect(useThemeStore.getState().preference).toBe("dark"));
-  await waitFor(() => expect(useThemeSwitch.getState().wanted).toBeNull());
-  stop();
-  expect(veils).toEqual([{ to: "dark", phase: "in" }, { to: "dark", phase: "out" }, null]);
 
   expect(mockPhotoMounts).toEqual([LINK]);
   expect(api.getFeaturedPrints).toHaveBeenCalledTimes(1);
