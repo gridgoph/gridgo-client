@@ -148,7 +148,7 @@ describe("LoginScreen when the API cannot verify a just-issued Clerk token", () 
     expect(mockActivate).toHaveBeenCalled();
     expect(screen.queryByText(/session expired/i)).toBeNull();
     expect(screen.queryByText(/sign in again to continue/i)).toBeNull();
-    expect(screen.getByText(/could not verify that identity/i)).toBeTruthy();
+    expect(screen.getByText(/could not verify your sign-in/i)).toBeTruthy();
 
     // Clerk is still signed in, so the recovery has to be able to leave it.
     const recovery = screen.getByRole("button", { name: "Sign out and try again" });

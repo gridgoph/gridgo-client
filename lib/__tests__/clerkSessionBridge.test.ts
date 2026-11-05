@@ -181,7 +181,7 @@ describe("bridgeClerkToGridgo", () => {
     expect(result.kind).toBe("error");
     if (result.kind !== "error") return;
     expect(result.signOut).toBe(false);
-    expect(result.message).toMatch(/cannot create a client profile/i);
+    expect(result.message).toMatch(/cannot set up your account/i);
   });
 });
 

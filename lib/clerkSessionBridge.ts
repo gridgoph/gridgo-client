@@ -9,10 +9,10 @@ import {
   ApiError,
   type ClerkActivateInput,
   type EnrollmentConsentBody,
-  getApiBase,
   isNetworkFailure,
   type User,
 } from "@/lib/api";
+import { CONNECTION_ERROR_MESSAGE, noteForDevelopers } from "@/lib/connectionError";
 import { clientEmailUnavailableMessage, userFacingError } from "@/lib/copy";
 import { isLegalRefusal } from "@/lib/legal";
 import { needsClientProfile } from "@/lib/signup";
@@ -48,6 +48,9 @@ export type ClerkBridgeDeps = {
 /** Which call failed. A 401 means opposite things on each. */
 type BridgeStage = "me" | "activate";
 
+const PROFILE_UNAVAILABLE =
+  "Your sign-in worked, but GRIDGO could not load your account. Try again.";
+
 export function isUnmappedAuthError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401;
 }
@@ -79,22 +82,19 @@ function isProfileRequiredError(error: unknown): boolean {
   );
 }
 
-function unreachableMessage(): string {
-  return `Your identity is verified, but GRIDGO cannot reach ${getApiBase()}. Check the API connection and try again.`;
-}
-
 function activateUnavailableMessage(): string {
-  return "Your identity is verified, but this GRIDGO API cannot create a client profile from Google yet. Try again when the Clerk link is live, or sign in with email.";
+  return "Your sign-in worked, but GRIDGO cannot set up your account right now. Try again later, or sign in with email.";
 }
 
 /**
  * Clerk finished but never handed GRIDGO a token to send.
  *
  * Not an expiry: Clerk is signed in this second. Signing out of Clerk is the
- * only thing the person can do that changes the outcome, so say that.
+ * only thing the person can do that changes the outcome, so say that. A client
+ * has never heard of Clerk or an identity token, so neither is named.
  */
 export const clerkTokenUnavailableMessage =
-  "Clerk signed you in, but GRIDGO never received an identity token for that session. Sign out and try again.";
+  "GRIDGO could not finish signing you in. Sign out and try again.";
 
 /**
  * Both `/auth/me` and activate refused a token that Clerk had just issued, so
@@ -103,12 +103,13 @@ export const clerkTokenUnavailableMessage =
  * "sign in again" is advice the person cannot follow.
  */
 export function clerkVerificationRejectedMessage(): string {
-  return `Clerk signed you in, but GRIDGO could not verify that identity at ${getApiBase()}. Sign out and try again.`;
+  return "GRIDGO could not verify your sign-in. Sign out and try again.";
 }
 
 function mapFailure(error: unknown, stage: BridgeStage): ClerkBridgeResult {
   if (isNetworkFailure(error)) {
-    return { kind: "error", message: unreachableMessage(), signOut: false };
+    noteForDevelopers(`bridge ${stage}`, error);
+    return { kind: "error", message: CONNECTION_ERROR_MESSAGE, signOut: false };
   }
   // GRIDGO refused the agreement itself (a version changed, a box missing).
   // Enrollment did not commit, so ask for it again on Finish signing up.
@@ -129,10 +130,7 @@ function mapFailure(error: unknown, stage: BridgeStage): ClerkBridgeResult {
   }
   return {
     kind: "error",
-    message:
-      error instanceof Error
-        ? userFacingError(error, error.message)
-        : "Your identity is verified, but GRIDGO could not load your client profile.",
+    message: userFacingError(error, PROFILE_UNAVAILABLE),
     signOut: false,
   };
 }
@@ -188,7 +186,7 @@ export async function bridgeClerkToGridgo(deps: ClerkBridgeDeps): Promise<ClerkB
   if (!user) {
     return {
       kind: "error",
-      message: "Your identity is verified, but GRIDGO could not load your client profile.",
+      message: PROFILE_UNAVAILABLE,
       signOut: false,
     };
   }

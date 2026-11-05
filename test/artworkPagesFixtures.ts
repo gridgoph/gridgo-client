@@ -217,7 +217,7 @@ export const pickerModule = {
   }),
 };
 
-/** Record the picker filter the screen hands over when "Choose files" is pressed. */
+/** Record the picker filter the screen hands over when "Upload from phone" is pressed. */
 export function captureGuards(into: (FormatGuard | undefined)[]): void {
   useArtworkAttachments.setState({
     pick: async (_lineId: string, guard?: FormatGuard) => {

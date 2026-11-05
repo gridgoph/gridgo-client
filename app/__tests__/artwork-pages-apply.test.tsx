@@ -62,7 +62,7 @@ beforeEach(() => {
 
 it("writes a 30-page PDF onto a per-page line without tapping Use 30 pages", async () => {
   await renderInSafeArea(<ArtworkScreen />);
-  fireEvent.press(screen.getByLabelText("Choose files"));
+  fireEvent.press(screen.getByLabelText("Upload from phone"));
 
   await waitFor(() => {
     expect(api.updateCartLine).toHaveBeenCalledWith(

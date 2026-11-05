@@ -194,7 +194,7 @@ describe("clearClerkSessionForNewAttempt", () => {
       clearClerkSessionForNewAttempt({ isSignedIn: true, signOut }),
     ).resolves.toEqual({
       status: "cleanup_failed",
-      message: "GRIDGO could not sign you out of Clerk. Check your connection and try again.",
+      message: "GRIDGO could not sign you out. Check your connection and try again.",
     });
   });
 });
@@ -308,7 +308,7 @@ describe("adoptOrClearClerkSession", () => {
       }),
     ).resolves.toEqual({
       status: "cleanup_failed",
-      message: "GRIDGO could not sign you out of Clerk. Check your connection and try again.",
+      message: "GRIDGO could not sign you out. Check your connection and try again.",
     });
   });
 });

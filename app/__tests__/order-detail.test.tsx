@@ -924,7 +924,7 @@ describe("OrderDetailScreen", () => {
     api.getOrder.mockRejectedValue(new Error("Network request failed"));
     await renderInSafeArea(<OrderDetailScreen />);
 
-    expect(await screen.findByText(/Cannot reach the server/i)).toBeTruthy();
+    expect(await screen.findByText(/Cannot reach GRIDGO/)).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
   });
 

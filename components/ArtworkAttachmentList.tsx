@@ -245,7 +245,7 @@ export function ArtworkAttachmentList({
             onPress={onPick}
             disabled={full}
             accessibilityRole="button"
-            accessibilityLabel={empty ? "Choose files" : "Add more files"}
+            accessibilityLabel={empty ? "Upload from phone" : "Upload more from phone"}
             accessibilityHint={`${acceptLine}. ${wordNote ? `${wordNote} ` : ""}${attachmentLimitLine(used)}`}
             accessibilityState={{ disabled: full }}
             className={
@@ -263,7 +263,7 @@ export function ArtworkAttachmentList({
               <Plus size={16} color={colors.textPrimary} strokeWidth={2.5} aria-hidden />
             )}
             <Text className={empty ? "text-button text-action-yellow-on" : "text-button text-text-primary"}>
-              {empty ? "Choose files" : "Add more files"}
+              {empty ? "Upload from phone" : "Upload more from phone"}
             </Text>
           </Pressable>
         ) : null}
@@ -272,8 +272,8 @@ export function ArtworkAttachmentList({
             onPress={onChooseSaved}
             disabled={full}
             accessibilityRole="button"
-            accessibilityLabel="Choose from My files"
-            accessibilityHint="Adds a file you saved before, without uploading it again"
+            accessibilityLabel="Choose from My files on GRIDGO"
+            accessibilityHint="Adds a file you saved on GRIDGO, without uploading it again"
             accessibilityState={{ disabled: full }}
             className={
               full
@@ -283,7 +283,7 @@ export function ArtworkAttachmentList({
             style={({ pressed }) => (pressed && !full ? { opacity: 0.7 } : undefined)}
           >
             <FolderOpen size={16} color={colors.textPrimary} strokeWidth={2} aria-hidden />
-            <Text className="text-button text-text-primary underline">Choose from My files</Text>
+            <Text className="shrink text-center text-button text-text-primary underline">Choose from My files on GRIDGO</Text>
           </Pressable>
         ) : null}
         {notice ? (

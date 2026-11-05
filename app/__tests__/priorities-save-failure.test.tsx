@@ -67,7 +67,7 @@ describe("a save GRIDGO does not keep", () => {
     fireEvent.press(screen.getByLabelText("Save this order"));
 
     expect(await screen.findByText("Not saved")).toBeTruthy();
-    expect(screen.getByText("The request timed out. Try again.")).toBeTruthy();
+    expect(screen.getByText(/Cannot reach GRIDGO/)).toBeTruthy();
     // Never left reading "Saving…", and the saved order is still the old one.
     expect(screen.queryByText("Saving…")).toBeNull();
     expect(usePriorities.getState().ranking).toEqual(["quality", "speed", "cost", "distance"]);

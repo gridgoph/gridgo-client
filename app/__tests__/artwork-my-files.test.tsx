@@ -35,7 +35,7 @@ it("offers Save to My files under each uploaded file, off until the client ticks
   const tick = screen.getByRole("checkbox", { name: "Save to My files" });
   expect(tick.props.accessibilityState).toMatchObject({ checked: false });
   expect(screen.getByText(SAVE_TO_MY_FILES_HINT)).toBeTruthy();
-  expect(screen.getByLabelText("Choose from My files")).toBeTruthy();
+  expect(screen.getByLabelText("Choose from My files on GRIDGO")).toBeTruthy();
 });
 
 it("draws no tick on an API without My files", async () => {

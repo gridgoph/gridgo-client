@@ -164,7 +164,7 @@ describe("NewRequestScreen", () => {
     api.getTaxonomy.mockRejectedValue(new Error("Network request failed"));
     await renderInSafeArea(<NewRequestScreen />);
 
-    expect(await screen.findByText(/Cannot reach the server/i)).toBeTruthy();
+    expect(await screen.findByText(/Cannot reach GRIDGO/)).toBeTruthy();
   });
 
   it("makes choosing a file the one yellow action on the artwork step", async () => {

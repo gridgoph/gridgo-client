@@ -1,3 +1,4 @@
+import { CONNECTION_ERROR_MESSAGE } from "@/lib/connectionError";
 import { ApiError, type Cart } from "@/lib/api";
 import { cartHasContent, useCart } from "@/store/cart";
 
@@ -74,7 +75,7 @@ describe("holding a basket", () => {
     await useCart.getState().load();
 
     expect(useCart.getState().cartId).toBe("cart_1");
-    expect(useCart.getState().error).toContain("Network request failed");
+    expect(useCart.getState().error).toBe(CONNECTION_ERROR_MESSAGE);
   });
 
   it("has nothing to read before anything has been added", async () => {

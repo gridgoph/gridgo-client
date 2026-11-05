@@ -1,7 +1,9 @@
+import { CONNECTION_ERROR_MESSAGE } from "@/lib/connectionError";
+
 /** One deadline covers token resolution, fetch, and response body consumption. */
 export async function withRequestDeadline<T>(caller: AbortSignal | null | undefined, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
-  const timeout = new Error("The request timed out. Try again.");
+  const timeout = new Error(CONNECTION_ERROR_MESSAGE);
   timeout.name = "TimeoutError";
   const cancellation = new Error("Request cancelled");
   cancellation.name = "AbortError";

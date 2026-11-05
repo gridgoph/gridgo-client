@@ -9,6 +9,7 @@
  */
 
 import { ApiError, type ArtworkFileCheck, type DetectedArtwork, type StoredFile } from "@/lib/api";
+import { isConnectionFailure } from "@/lib/connectionError";
 
 export type ArtworkPhase =
   | "empty"
@@ -226,16 +227,8 @@ export function artworkErrorMessage(error: unknown): string {
     }
   }
 
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    if (
-      message.includes("network") ||
-      message.includes("failed to fetch") ||
-      message.includes("load failed") ||
-      message.includes("timeout")
-    ) {
-      return "The connection dropped before the file finished sending. Check your signal and try again.";
-    }
+  if (isConnectionFailure(error) || (error instanceof Error && /timeout/i.test(error.message))) {
+    return "The connection dropped before the file finished sending. Check your signal and try again.";
   }
 
   return "The upload did not finish. Pick the file and try again.";

@@ -264,16 +264,10 @@ export const useSession = create<SessionState>((set) => ({
       }
       set({ user, source: "legacy", loading: false, sessionWait: null });
     } catch (e) {
-      let message: string;
-      if (e instanceof api.ApiError && e.status === 401) {
-        message = "Wrong email or password.";
-      } else if (api.isNetworkFailure(e)) {
-        message = `Cannot reach the backend at ${api.getApiBase()}. Is gridgo-api running on the LAN?`;
-      } else if (e instanceof Error) {
-        message = e.message;
-      } else {
-        message = "Could not sign in. Check your connection and try again.";
-      }
+      const message =
+        e instanceof api.ApiError && e.status === 401
+          ? "Wrong email or password."
+          : userFacingError(e, "Could not sign in. Check your connection and try again.");
       set({ loading: false, error: message, sessionWait: null });
     }
   },
@@ -289,12 +283,10 @@ export const useSession = create<SessionState>((set) => ({
       set({
         loading: false,
         sessionWait: null,
-        error: api.isNetworkFailure(e)
-          ? `Cannot reach the backend at ${api.getApiBase()}. Check your connection and try again.`
-          : userFacingError(
-              e,
-              "Could not create the account. Check your details and try again.",
-            ),
+        error: userFacingError(
+          e,
+          "Could not create the account. Check your details and try again.",
+        ),
       });
     }
   },

@@ -1,3 +1,5 @@
+import { safeErrorText } from "@/lib/connectionError";
+
 const GRIDGO_ROLES = [
   "client",
   "supplier",
@@ -51,14 +53,19 @@ export function passwordConfirmationError(
   return password === confirmation ? null : "Passwords do not match.";
 }
 
-/** Clerk errors are structured; keep the most specific safe copy available. */
+/**
+ * Clerk errors are structured; keep the most specific safe copy available.
+ *
+ * A request Clerk could not send is not structured: its message is
+ * `Network error at "<Clerk URL and query>"`, so everything goes through the
+ * same filter as the API's errors.
+ */
 export function clerkErrorMessage(error: unknown, fallback: string): string {
   const clerkError = error as ClerkErrorShape | null;
   const first = clerkError?.errors?.[0];
-  if (first?.longMessage) return first.longMessage;
-  if (first?.message) return first.message;
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
+  const text =
+    first?.longMessage || first?.message || (error instanceof Error ? error.message : "");
+  return text ? safeErrorText(text, fallback) : fallback;
 }
 
 /**

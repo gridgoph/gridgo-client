@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type { Notification } from "@/lib/api";
 import * as api from "@/lib/api";
 import { appInstallChannel } from "@/lib/buildDistribution";
+import { CONNECTION_ERROR_MESSAGE, isConnectionFailure } from "@/lib/connectionError";
 import { groupInbox, isGroupUnread } from "@/lib/notificationPresentation";
 import { freshUnread, nextBaseline, nudgeAnnouncement } from "@/lib/notificationNudge";
 import { showsOnInstall } from "@/lib/releasePush";
@@ -182,10 +183,8 @@ export const useNotifications = create<NotificationsState>()((set, get) => ({
       if (generation !== currentGeneration || sequence !== readSequence) return;
       set({
         loading: false,
-        error:
-          e instanceof Error && !/^[a-z0-9_]+$/i.test(e.message)
-            ? e.message
-            : "Could not load notifications",
+        // Fixed copy only: nothing a server or a platform wrote reaches the inbox.
+        error: isConnectionFailure(e) ? CONNECTION_ERROR_MESSAGE : "Could not load notifications",
       });
     }
   },
