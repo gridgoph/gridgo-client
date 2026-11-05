@@ -10,7 +10,7 @@
  * hints at who is behind a date — the same rule the match card follows.
  */
 
-import type { CatalogSpeedTier, DeadlineDay, DeadlineDayReason } from "@/lib/api";
+import type { CatalogSpeedTier, DeadlineDay, DeadlineDayReason, SameDayOrderBy } from "@/lib/api";
 import { MAX_LEAD_DAYS, parseDeadline } from "@/lib/deadline";
 import { busiestLevel, seasonsOn, type DemandLevel, type SeasonWindow } from "@/lib/seasonWindows";
 
@@ -291,9 +291,17 @@ export function choiceLabel(choice: DayChoice): string {
   }
 }
 
-/** Davao's day number of an instant; Davao keeps +08:00 all year. */
+/** Davao keeps +08:00 all year. */
+const DAVAO_OFFSET_MS = 8 * 3_600_000;
+
+/** Davao's day number of an instant. */
 function davaoDayNumber(at: number): number {
-  return Math.floor((at + 8 * 3_600_000) / 86_400_000);
+  return Math.floor((at + DAVAO_OFFSET_MS) / 86_400_000);
+}
+
+/** `YYYY-MM-DD` of an instant on Davao's calendar. */
+function davaoDayKey(at: number): string {
+  return new Date(at + DAVAO_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 /** "3:00 PM" in Davao. */
@@ -432,6 +440,56 @@ export function earliestReadyLine(earliest: string | null, reviewHours?: string 
   return reviewHours ? `${line} Our team reviews artwork ${reviewHours}.` : line;
 }
 
+/**
+ * Today's last order time, said only where it agrees with the days on screen
+ * (gridgo-api#352, report 04A153AD). A one-hour job needs review, printing and
+ * the delivery allowance done before the cutoff, so today closes hours before
+ * the cutoff does, and a grey today says nothing about why.
+ *
+ * "Before" is the API's word too: `at` is exclusive. The clock is cut to the
+ * minute, so "order before" drops at the minute it names rather than reading
+ * as a time already gone. Null covers everything else: no time at all, GRIDGO
+ * not open yet, and a screen still open after midnight, whose answer was about
+ * yesterday. An instant this phone has reached is closed whatever `passed` said
+ * when the answer was written: pass the days through `closeReachedDay` first.
+ */
+export function sameDayOrderByLine(
+  orderBy: SameDayOrderBy | null | undefined,
+  days: readonly DeadlineDay[],
+  now: Date = new Date(),
+): string | null {
+  const at = parseDeadline(orderBy?.at);
+  if (!orderBy || !at) return null;
+  if (orderBy.passed !== true && orderBy.passed !== false) return null;
+  if (davaoDayNumber(at.getTime()) !== davaoDayNumber(now.getTime())) return null;
+
+  const clock = cutoffClock(Math.floor((at.getTime() + DAVAO_OFFSET_MS) / 60_000) % 1440);
+  const today = davaoDayKey(now.getTime());
+  const todayOpen = days.some((entry) => entry.day === today && isPossibleDay(entry));
+
+  if (orderBy.passed || now.getTime() >= at.getTime()) {
+    return todayOpen ? null : `Same-day orders closed at ${clock} today.`;
+  }
+  return todayOpen && now.getTime() < Math.floor(at.getTime() / 60_000) * 60_000
+    ? `Order before ${clock} to get it today.`
+    : null;
+}
+
+/**
+ * The days with the last order time's own day shut, for an answer whose `at`
+ * the clock has reached. It holds whether or not GRIDGO can be asked again, so
+ * a failed read cannot leave an expired today on offer. Every other day stands.
+ */
+export function closeReachedDay(days: DeadlineDay[], at: string): DeadlineDay[] {
+  const date = parseDeadline(at);
+  if (!date) return days;
+  const day = davaoDayKey(date.getTime());
+  return days.map((entry) =>
+    entry.day === day
+      ? { day, state: "cannot", status: "not_possible", reason: null, readyBy: null, rushTier: null }
+      : entry,
+  );
+}
 
 /**
  * Every future day of a month offered, for when GRIDGO has not answered yet.
