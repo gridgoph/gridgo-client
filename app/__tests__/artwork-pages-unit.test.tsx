@@ -73,7 +73,7 @@ beforeEach(() => {
 
 it("does not write pages from a PDF onto a per-unit line", async () => {
   await renderInSafeArea(<ArtworkScreen />);
-  fireEvent.press(screen.getByLabelText("Choose files"));
+  fireEvent.press(screen.getByLabelText("Upload from phone"));
 
   await waitFor(() => {
     expect(api.updateCartLine).toHaveBeenCalled();

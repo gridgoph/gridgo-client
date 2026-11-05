@@ -63,7 +63,7 @@ describe("ArtworkScreen with several files and links", () => {
     // The limit, as a meter and in words.
     expect(screen.getByLabelText("4 of 10 files and links used")).toBeTruthy();
     expect(screen.getByText("6 more files or links can go on this item.")).toBeTruthy();
-    expect(screen.getByLabelText("Add more files")).toBeTruthy();
+    expect(screen.getByLabelText("Upload more from phone")).toBeTruthy();
     expect(screen.getByText("Add a design link")).toBeTruthy();
     expect(screen.getByLabelText("Go to checkout").props.accessibilityState).toMatchObject({ disabled: false });
   });
@@ -77,7 +77,7 @@ describe("ArtworkScreen with several files and links", () => {
     expect(
       screen.getByText("This item has 10 files and links, the most it can take. Remove one to add another."),
     ).toBeTruthy();
-    expect(screen.getByLabelText("Add more files").props.accessibilityState).toMatchObject({ disabled: true });
+    expect(screen.getByLabelText("Upload more from phone").props.accessibilityState).toMatchObject({ disabled: true });
     expect(screen.queryByLabelText("Design link")).toBeNull();
   });
 

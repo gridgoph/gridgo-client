@@ -197,9 +197,9 @@ describe("ArtworkScreen", () => {
     await renderInSafeArea(<ArtworkScreen />);
 
     expect(screen.getByLabelText("Go to checkout")).toBeTruthy();
-    // And choosing files stops being the screen's yellow: it is "Add more files" now.
-    expect(screen.queryByLabelText("Choose files")).toBeNull();
-    expect(screen.getByLabelText("Add more files")).toBeTruthy();
+    // And choosing files stops being the screen's yellow: it is "Upload more from phone" now.
+    expect(screen.queryByLabelText("Upload from phone")).toBeNull();
+    expect(screen.getByLabelText("Upload more from phone")).toBeTruthy();
   });
 
   // Adding another product is checkout's, beside the whole basket. Here it
@@ -335,7 +335,7 @@ describe("ArtworkScreen", () => {
   it("opens the picker from the list itself", async () => {
     await renderInSafeArea(<ArtworkScreen />);
 
-    fireEvent.press(screen.getByLabelText("Choose files"));
+    fireEvent.press(screen.getByLabelText("Upload from phone"));
     expect(mockPick).toHaveBeenCalledTimes(1);
   });
 });

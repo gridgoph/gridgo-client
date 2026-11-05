@@ -53,7 +53,7 @@ beforeEach(() => {
 it("narrows the picker to PDF and Word, and says so on the card", async () => {
   await renderInSafeArea(<ArtworkScreen />);
 
-  fireEvent.press(screen.getByLabelText("Choose files"));
+  fireEvent.press(screen.getByLabelText("Upload from phone"));
   const guard = mockGuards.at(-1);
   expect(guard?.accept).toEqual(["application/pdf", DOCX_TYPE]);
   expect(guard?.check("thesis.docx", DOCX_TYPE)).toBe(true);
@@ -62,7 +62,7 @@ it("narrows the picker to PDF and Word, and says so on the card", async () => {
   expect(guard?.rejection("photo.jpg")).toBe(
     "Mark Document Printing takes PDF or Word document. photo.jpg is none of those — export it and pick it again.",
   );
-  expect(screen.getByLabelText("Choose files").props.accessibilityHint).toBe(
+  expect(screen.getByLabelText("Upload from phone").props.accessibilityHint).toBe(
     "PDF or Word document, up to 200 MB (Word documents up to 16 MB). " +
       "Word documents are printed as you send them, not converted to PDF. GRIDGO checks every file before it prints. " +
       "Add up to 10 files and design links to this item.",

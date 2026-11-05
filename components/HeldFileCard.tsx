@@ -19,7 +19,7 @@ type Props = {
  * Artwork step the client reaches. Asked, never done for them: the item they
  * opened may not be the one they meant it for.
  *
- * Monochrome — "Choose files" or "Go to checkout" keeps the screen's yellow.
+ * Monochrome — "Upload from phone" or "Go to checkout" keeps the screen's yellow.
  */
 export function HeldFileCard({ name, refusal, busy, onAdd, onDismiss }: Props) {
   const colors = useThemeColors();
