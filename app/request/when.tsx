@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { DeadlineCalendar, DeadlineCalendarSkeleton } from "@/components/DeadlineCalendar";
 import { MatchPrepNote } from "@/components/MatchPrepNote";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { SameDayOrderByNote } from "@/components/SameDayOrderByNote";
 import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { TourTarget } from "@/components/TourTarget";
@@ -130,6 +131,11 @@ export default function WhenScreen() {
   const [earliest, setEarliest] = useState<string | null>(null);
   const [operatingStatus, setOperatingStatus] = useState<api.OperatingStatus | null>(null);
   const [availabilityFailed, setAvailabilityFailed] = useState(false);
+  const [sameDayOrderBy, setSameDayOrderBy] = useState<api.SameDayOrderBy | null>(null);
+  // Bumped when the clock crosses today's last order time, so the dates and
+  // the line change together. The one read this screen makes after its first.
+  const [availabilityRead, setAvailabilityRead] = useState(0);
+  const askAgain = useCallback(() => setAvailabilityRead((read) => read + 1), []);
   const [month, setMonth] = useState(() => new Date());
   // Opened on a month that has something in it. A job whose soonest date is
   // next month otherwise opens on a page of struck days, which reads as
@@ -155,6 +161,11 @@ export default function WhenScreen() {
         setAvailability(answer.days);
         setEarliest(answer.earliest);
         setOperatingStatus(answer.operatingStatus ?? null);
+        setSameDayOrderBy(answer.sameDayOrderBy ?? null);
+        setAvailabilityFailed(false);
+        // A day picked a moment ago can be gone from this answer; the button
+        // must not carry on with a date the calendar no longer offers.
+        setChosen((day) => (day && !answer.days.some((entry) => entry.day === day && isPossibleDay(entry)) ? null : day));
         if (!monthPinned) setMonth(openingMonth(answer.days, new Date()));
       })
       .catch(() => {
@@ -167,7 +178,7 @@ export default function WhenScreen() {
     // answer, not whether to ask for one, and including it would re-fetch
     // availability every time the client turned a page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subcategory, locked]);
+  }, [subcategory, locked, availabilityRead]);
 
   // Built per month rather than once, because the calendar draws the month
   // either side of this one as well: a drag has to reveal a real neighbour,
@@ -208,7 +219,7 @@ export default function WhenScreen() {
     const found = findCategory(api.productCategoriesNow(), category ?? "")?.subcategories.find(
       (entry) => entry.code === subcategory,
     );
-    return (found?.name ?? "this").toLowerCase();
+    return found ? inSentence(found.name) : "this";
   }, [category, subcategory]);
 
   /** A day the availability answer allows; any day while there is no answer. */
@@ -335,6 +346,9 @@ export default function WhenScreen() {
             Only the days a printer can actually make.
           </Text>
         )}
+        {availability && !availabilityFailed && sameDayOrderBy ? (
+          <SameDayOrderByNote orderBy={sameDayOrderBy} days={availability} onCrossed={askAgain} />
+        ) : null}
         {/*
           Why the earliest is later than a client expects at 9 PM: nothing is
           reviewed until GRIDGO opens, and every date here already counts it
@@ -430,6 +444,14 @@ export default function WhenScreen() {
       </View>
     </Screen>
   );
+}
+
+/** "Blueprint & CAD Plotting" mid-sentence: lower case, but CAD stays CAD. */
+function inSentence(name: string): string {
+  return name
+    .split(" ")
+    .map((word) => (word.length > 1 && word === word.toUpperCase() ? word : word.toLowerCase()))
+    .join(" ");
 }
 
 /**
