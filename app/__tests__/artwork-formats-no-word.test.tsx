@@ -70,7 +70,7 @@ it("lists the accepted types and says Word is not one of them before the picker 
     screen.getByText("Flyers does not take Word files. Save your document as a PDF first, then choose the PDF."),
   ).toBeTruthy();
 
-  fireEvent.press(screen.getByLabelText("Choose files"));
+  fireEvent.press(screen.getByLabelText("Upload from phone"));
   const guard = mockGuards.at(-1);
   expect(guard?.accept).toEqual(["image/jpeg", "application/pdf", "image/png"]);
   expect(guard?.check("thesis.docx", DOCX_TYPE)).toBe(false);

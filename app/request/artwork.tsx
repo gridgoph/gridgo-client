@@ -709,7 +709,7 @@ export default function ArtworkScreen() {
         {takesFiles || links.length ? (
           <TourTarget step="artwork" className="mt-6">
             {/*
-              Until there is artwork the list's "Choose files" is the one thing
+              Until there is artwork the list's "Upload from phone" is the one thing
               on the screen a client can act on, so it carries the screen's
               yellow. Once anything is on the item it goes quiet and the yellow
               moves to "Go to checkout" below.

@@ -163,7 +163,7 @@ describe("ArtworkScreen design link", () => {
     await renderInSafeArea(<ArtworkScreen />);
 
     expect(screen.getByLabelText("Design link")).toBeTruthy();
-    expect(screen.getByLabelText("Choose files")).toBeTruthy();
+    expect(screen.getByLabelText("Upload from phone")).toBeTruthy();
     expect(screen.getByText(/upload files, paste a Canva link, or both\./)).toBeTruthy();
     expect(screen.getByLabelText("How to share from Canva")).toBeTruthy();
     expect(screen.getByText("GRIDGO needs at least one file or design link before it can print this.")).toBeTruthy();
