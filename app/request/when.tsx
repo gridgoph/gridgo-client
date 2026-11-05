@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -25,6 +25,7 @@ import { userFacingError } from "@/lib/copy";
 import { closedNowLine } from "@/lib/operatingHours";
 import { needsDropoffFirst } from "@/hooks/useStartPrintJob";
 import { useReviewCalendar } from "@/hooks/useReviewCalendar";
+import { useTimeReached } from "@/hooks/useTimeReached";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
@@ -34,6 +35,7 @@ import { useSeasonWindows } from "@/store/seasonWindows";
 import { withJobRanking } from "@/store/orderRanking";
 import {
   canStep,
+  closeReachedDay,
   deadlineFor,
   earliestReadyLine,
   isPossibleDay,
@@ -44,6 +46,13 @@ import {
   openingMonth,
   shiftMonth,
 } from "@/lib/deadlineCalendar";
+
+/**
+ * Reads one visit may spend by itself on a last order time being reached. One
+ * is the ordinary case. Reaching a new time asks again, so this is what stops a
+ * phone with a fast clock asking for ever while the queues keep moving the time.
+ */
+const MAX_CUTOFF_READS = 3;
 
 // A step that throws while drawing shows a way on instead of closing the app.
 export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowErrorBoundary";
@@ -116,7 +125,7 @@ export default function WhenScreen() {
     return basketDates({ ...cart, lines: others });
   }, [cart, groupMode, lineIds]);
 
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
   // Season windows shade the month as a heads-up. They never decide which
   // days can be picked — that is `availability` alone.
   const seasons = useSeasonWindows((state) => state.seasons.windows);
@@ -127,15 +136,35 @@ export default function WhenScreen() {
   useTourScreen("when");
   // Review hours and the cutoff, for the header and a too-late today.
   const { reviewHours, cutoffMinute } = useReviewCalendar();
-  const [availability, setAvailability] = useState<api.DeadlineDay[] | null>(null);
+  const [answeredDays, setAnsweredDays] = useState<api.DeadlineDay[] | null>(null);
   const [earliest, setEarliest] = useState<string | null>(null);
   const [operatingStatus, setOperatingStatus] = useState<api.OperatingStatus | null>(null);
   const [availabilityFailed, setAvailabilityFailed] = useState(false);
   const [sameDayOrderBy, setSameDayOrderBy] = useState<api.SameDayOrderBy | null>(null);
-  // Bumped when the clock crosses today's last order time, so the dates and
-  // the line change together. The one read this screen makes after its first.
+  // Bumped to read availability again: today's last order time reached, or
+  // Try again after a read failed. This screen has no other reason to re-read.
   const [availabilityRead, setAvailabilityRead] = useState(0);
-  const askAgain = useCallback(() => setAvailabilityRead((read) => read + 1), []);
+  /*
+    An answer that says today is open stops being true at its own `at`, whether
+    the clock crossed it here or the answer was already late when it landed. So
+    today shuts now and stays shut however the read below goes.
+  */
+  const lastOrderAt = sameDayOrderBy?.passed === false ? sameDayOrderBy.at : null;
+  const cutoffReached = useTimeReached(lastOrderAt);
+  const availability = useMemo(
+    () => (answeredDays && cutoffReached && lastOrderAt ? closeReachedDay(answeredDays, lastOrderAt) : answeredDays),
+    [answeredDays, cutoffReached, lastOrderAt],
+  );
+  const cutoffReads = useRef(0);
+  useEffect(() => {
+    if (!cutoffReached || cutoffReads.current >= MAX_CUTOFF_READS) return;
+    cutoffReads.current += 1;
+    setAvailabilityRead((read) => read + 1);
+  }, [cutoffReached, lastOrderAt]);
+  const readAgain = () => {
+    setAvailabilityFailed(false);
+    setAvailabilityRead((read) => read + 1);
+  };
   const [month, setMonth] = useState(() => new Date());
   // Opened on a month that has something in it. A job whose soonest date is
   // next month otherwise opens on a page of struck days, which reads as
@@ -158,14 +187,11 @@ export default function WhenScreen() {
       .deadlineDays(subcategory)
       .then((answer) => {
         if (!alive) return;
-        setAvailability(answer.days);
+        setAnsweredDays(answer.days);
         setEarliest(answer.earliest);
         setOperatingStatus(answer.operatingStatus ?? null);
         setSameDayOrderBy(answer.sameDayOrderBy ?? null);
         setAvailabilityFailed(false);
-        // A day picked a moment ago can be gone from this answer; the button
-        // must not carry on with a date the calendar no longer offers.
-        setChosen((day) => (day && !answer.days.some((entry) => entry.day === day && isPossibleDay(entry)) ? null : day));
         if (!monthPinned) setMonth(openingMonth(answer.days, new Date()));
       })
       .catch(() => {
@@ -207,7 +233,7 @@ export default function WhenScreen() {
   }, []);
 
   const selectDay = useCallback((day: { dayKey: string; selectable: boolean }) => {
-    if (day.selectable) setChosen(day.dayKey);
+    if (day.selectable) setPicked(day.dayKey);
   }, []);
 
   const jumpTo = useMemo(
@@ -226,9 +252,13 @@ export default function WhenScreen() {
   const pickable = (dayKey: string) =>
     !availability || availability.some((entry) => entry.day === dayKey && isPossibleDay(entry));
 
+  // A day picked a moment ago can be gone from the days now on offer, and the
+  // button must not carry on with a date the calendar no longer offers.
+  const chosen = picked && pickable(picked) ? picked : null;
+
   /** A date already in the order: chosen, and its month brought into view. */
   const pickInOrder = (entry: BasketDate) => {
-    setChosen(entry.dayKey);
+    setPicked(entry.dayKey);
     setMonthPinned(true);
     setMonth(new Date(`${entry.dayKey}T12:00:00`));
   };
@@ -337,7 +367,7 @@ export default function WhenScreen() {
           can first be ready, to the minute, and when GRIDGO reviews artwork
           (gridgo-api#292).
         */}
-        {availability && !availabilityFailed ? (
+        {availability && !availabilityFailed && !cutoffReached ? (
           <Text className="mt-1 text-body text-text-secondary">
             {earliestReadyLine(earliest, reviewHours)}
           </Text>
@@ -346,8 +376,8 @@ export default function WhenScreen() {
             Only the days a printer can actually make.
           </Text>
         )}
-        {availability && !availabilityFailed && sameDayOrderBy ? (
-          <SameDayOrderByNote orderBy={sameDayOrderBy} days={availability} onCrossed={askAgain} />
+        {availability && sameDayOrderBy ? (
+          <SameDayOrderByNote orderBy={sameDayOrderBy} days={availability} />
         ) : null}
         {/*
           Why the earliest is later than a client expects at 9 PM: nothing is
@@ -360,6 +390,23 @@ export default function WhenScreen() {
 
         {inOrder.length > 0 ? (
           <DatesInOrder dates={inOrder} chosen={chosen} pickable={pickable} onPick={pickInOrder} />
+        ) : null}
+
+        {availabilityFailed ? (
+          <View className="gg-panel mt-4 flex-row items-center justify-between gap-3 p-3">
+            <Text className="min-w-0 flex-1 text-caption text-text-muted">
+              GRIDGO could not check which dates are possible just now. Pick the date you
+              want and we will tell you if nobody can make it.
+            </Text>
+            <Pressable
+              onPress={readAgain}
+              accessibilityRole="button"
+              className="gg-touch items-center justify-center"
+              style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+            >
+              <Text className="text-body font-medium text-text-primary">Try again</Text>
+            </Pressable>
+          </View>
         ) : null}
 
         <TourTarget step="when" className="mt-4">
@@ -378,7 +425,7 @@ export default function WhenScreen() {
             canStepBack={canStep(month, -1, availability ?? [], new Date())}
             canStepForward={canStep(month, 1, availability ?? [], new Date())}
             seasons={seasons}
-            earliest={availability ? earliest : null}
+            earliest={availability && !cutoffReached ? earliest : null}
             cutoffMinute={cutoffMinute}
           />
           ) : (
@@ -409,14 +456,6 @@ export default function WhenScreen() {
             <Text className="text-body font-medium text-text-primary">Go there</Text>
           </Pressable>
         ) : null}
-
-        {availabilityFailed ? (
-          <Text className="mt-4 text-caption text-text-muted">
-            GRIDGO could not check which dates are possible just now. Pick the date you
-            want and we will tell you if nobody can make it.
-          </Text>
-        ) : null}
-
       </ScrollView>
 
       <View className="gg-page gap-3 pb-2 pt-2">

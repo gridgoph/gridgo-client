@@ -299,6 +299,11 @@ function davaoDayNumber(at: number): number {
   return Math.floor((at + DAVAO_OFFSET_MS) / 86_400_000);
 }
 
+/** `YYYY-MM-DD` of an instant on Davao's calendar. */
+function davaoDayKey(at: number): string {
+  return new Date(at + DAVAO_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 /** "3:00 PM" in Davao. */
 function davaoClock(at: Date): string {
   return at.toLocaleTimeString("en-PH", {
@@ -442,10 +447,11 @@ export function earliestReadyLine(earliest: string | null, reviewHours?: string 
  * the cutoff does, and a grey today says nothing about why.
  *
  * "Before" is the API's word too: `at` is exclusive. The clock is cut to the
- * minute, so the line drops at the minute it names rather than reading as a
- * time already gone. Null covers everything else: no time at all, GRIDGO not
- * open yet, the moment between crossing `at` and GRIDGO's next answer, and a
- * screen still open after midnight, whose answer was about yesterday.
+ * minute, so "order before" drops at the minute it names rather than reading
+ * as a time already gone. Null covers everything else: no time at all, GRIDGO
+ * not open yet, and a screen still open after midnight, whose answer was about
+ * yesterday. An instant this phone has reached is closed whatever `passed` said
+ * when the answer was written: pass the days through `closeReachedDay` first.
  */
 export function sameDayOrderByLine(
   orderBy: SameDayOrderBy | null | undefined,
@@ -454,32 +460,35 @@ export function sameDayOrderByLine(
 ): string | null {
   const at = parseDeadline(orderBy?.at);
   if (!orderBy || !at) return null;
+  if (orderBy.passed !== true && orderBy.passed !== false) return null;
   if (davaoDayNumber(at.getTime()) !== davaoDayNumber(now.getTime())) return null;
 
   const clock = cutoffClock(Math.floor((at.getTime() + DAVAO_OFFSET_MS) / 60_000) % 1440);
-  const today = new Date(now.getTime() + DAVAO_OFFSET_MS).toISOString().slice(0, 10);
+  const today = davaoDayKey(now.getTime());
   const todayOpen = days.some((entry) => entry.day === today && isPossibleDay(entry));
 
-  if (orderBy.passed === true) return todayOpen ? null : `Same-day orders closed at ${clock} today.`;
-  if (orderBy.passed !== false || !todayOpen) return null;
-  return now.getTime() < Math.floor(at.getTime() / 60_000) * 60_000
+  if (orderBy.passed || now.getTime() >= at.getTime()) {
+    return todayOpen ? null : `Same-day orders closed at ${clock} today.`;
+  }
+  return todayOpen && now.getTime() < Math.floor(at.getTime() / 60_000) * 60_000
     ? `Order before ${clock} to get it today.`
     : null;
 }
 
 /**
- * Whether the clock moved across a last order time still ahead, between two
- * ticks. An answer already behind the phone's clock never crosses, so a phone
- * running fast asks GRIDGO once and cannot keep asking.
+ * The days with the last order time's own day shut, for an answer whose `at`
+ * the clock has reached. It holds whether or not GRIDGO can be asked again, so
+ * a failed read cannot leave an expired today on offer. Every other day stands.
  */
-export function crossedSameDayOrderBy(
-  orderBy: SameDayOrderBy,
-  fromMs: number,
-  toMs: number,
-): boolean {
-  if (orderBy.passed !== false) return false;
-  const at = parseDeadline(orderBy.at)?.getTime();
-  return at != null && fromMs < at && at <= toMs;
+export function closeReachedDay(days: DeadlineDay[], at: string): DeadlineDay[] {
+  const date = parseDeadline(at);
+  if (!date) return days;
+  const day = davaoDayKey(date.getTime());
+  return days.map((entry) =>
+    entry.day === day
+      ? { day, state: "cannot", status: "not_possible", reason: null, readyBy: null, rushTier: null }
+      : entry,
+  );
 }
 
 /**

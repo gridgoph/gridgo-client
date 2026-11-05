@@ -145,18 +145,73 @@ describe("today's last order time on the date screen", () => {
     expect(api.deadlineDays).toHaveBeenCalledTimes(2);
   });
 
-  it("does not loop when GRIDGO still says the time is ahead of its own clock", async () => {
-    // A phone running fast crosses first. The same answer comes back and the
-    // screen must not keep asking; it stays quiet rather than naming a past time.
-    api.deadlineDays.mockResolvedValue({ days: TODAY_OPEN, earliest, sameDayOrderBy: { at: AT, passed: false } });
+  it("shuts today the moment the time is reached, before GRIDGO has answered again", async () => {
+    api.deadlineDays
+      .mockResolvedValueOnce({ days: TODAY_OPEN, earliest, sameDayOrderBy: { at: AT, passed: false } })
+      .mockImplementation(() => new Promise(() => {}));
     await openAt("12:29:59");
-    await tick(30_000);
+    await tick(1_000);
     expect(api.deadlineDays).toHaveBeenCalledTimes(2);
-    expect(screen.queryByText(ORDER_BEFORE)).toBeNull();
-    expect(screen.queryByText(CLOSED)).toBeNull();
+    expect(screen.getByLabelText(/^6: Not possible\. No printer can finish/)).toBeTruthy();
+    expect(screen.getByLabelText(/^7: Secured/)).toBeTruthy();
+    expect(screen.getByText(CLOSED)).toBeTruthy();
+    expect(screen.queryByText(/^Earliest ready: Fri 6 Nov/)).toBeNull();
   });
 
-  it("says GRIDGO could not check when the read after the crossing fails, once", async () => {
+  it("asks again once when the first answer lands after its own time", async () => {
+    // Asked at 12:29:59, GRIDGO truly had today open, and the answer took two
+    // seconds to arrive. No skew, just ordinary transit across the boundary.
+    let land!: (value: unknown) => void;
+    api.deadlineDays
+      .mockImplementationOnce(() => new Promise((resolve) => (land = resolve)))
+      .mockResolvedValue({
+        days: TODAY_GONE,
+        earliest: "2026-11-07T08:00:00+08:00",
+        sameDayOrderBy: { at: AT, passed: true },
+      });
+    await openAt("12:29:59");
+    await tick(2_000);
+    await act(async () => {
+      land({ days: TODAY_OPEN, earliest, sameDayOrderBy: { at: AT, passed: false } });
+      for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+    });
+    await tick(0);
+    expect(api.deadlineDays).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(CLOSED)).toBeTruthy();
+    expect(screen.getByText(/^Earliest ready: Sat 7 Nov/)).toBeTruthy();
+
+    await tick(30_000);
+    expect(api.deadlineDays).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps today shut and asks once when GRIDGO still says the time is ahead of its own clock", async () => {
+    // A phone running fast reaches the time first. The same answer comes back
+    // and the screen must not keep asking, nor reopen a day it has closed.
+    api.deadlineDays.mockResolvedValue({ days: TODAY_OPEN, earliest, sameDayOrderBy: { at: AT, passed: false } });
+    await openAt("12:30:05");
+    await tick(30_000);
+    expect(api.deadlineDays).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText(/^6: Not possible\. No printer can finish/)).toBeTruthy();
+    expect(screen.getByText(CLOSED)).toBeTruthy();
+  });
+
+  it("stops asking on a fast phone even if every answer names a new time", async () => {
+    let minute = 0;
+    api.deadlineDays.mockImplementation(async () => {
+      minute += 1;
+      return {
+        days: TODAY_OPEN,
+        earliest,
+        sameDayOrderBy: { at: davao(`12:${String(minute).padStart(2, "0")}:00`).toISOString(), passed: false },
+      };
+    });
+    await openAt("13:00:00");
+    for (let round = 0; round < 8; round += 1) await tick(1_000);
+    // The first read, and three spent on times reached.
+    expect(api.deadlineDays).toHaveBeenCalledTimes(4);
+  });
+
+  it("says GRIDGO could not check when the read after the time fails, and does not retry by itself", async () => {
     api.deadlineDays
       .mockResolvedValueOnce({ days: TODAY_OPEN, earliest, sameDayOrderBy: { at: AT, passed: false } })
       .mockRejectedValue(new Error("offline"));
@@ -164,7 +219,11 @@ describe("today's last order time on the date screen", () => {
     await tick(30_000);
     expect(api.deadlineDays).toHaveBeenCalledTimes(2);
     expect(screen.queryByText(ORDER_BEFORE)).toBeNull();
+    expect(screen.getByText(CLOSED)).toBeTruthy();
     expect(screen.getByText(/could not check which dates are possible/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.getByLabelText(/^6: Not possible\. No printer can finish/)).toBeTruthy();
+    expect(screen.getByLabelText(/^7: Secured/)).toBeTruthy();
   });
 
   it("keeps CAD in capitals in the question", async () => {

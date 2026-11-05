@@ -3,7 +3,7 @@ import {
   canStep,
   chosenLabel,
   choiceLabel,
-  crossedSameDayOrderBy,
+  closeReachedDay,
   deadlineFor,
   earliestReadyLine,
   firstAvailable,
@@ -328,7 +328,7 @@ describe("today's last order time", () => {
   it("never contradicts the days on screen", () => {
     // GRIDGO says closed, the days still offer today.
     expect(sameDayOrderByLine({ at: AT, passed: true }, open, davao("12:30:00"))).toBeNull();
-    // Crossed on this phone, GRIDGO's next answer is on its way.
+    // Reached on this phone, in the moment before the days are shut.
     expect(sameDayOrderByLine({ at: AT, passed: false }, open, davao("12:30:00"))).toBeNull();
     // No entry for today at all.
     expect(sameDayOrderByLine({ at: AT, passed: false }, [], davao("12:00:00"))).toBeNull();
@@ -354,22 +354,38 @@ describe("today's last order time", () => {
     );
   });
 
-  describe("crossing", () => {
-    const orderBy = { at: AT, passed: false };
-    const ms = (time: string) => davao(time).getTime();
+  it("says closed once this phone reaches the time and today is shut, whatever passed said", () => {
+    expect(sameDayOrderByLine({ at: AT, passed: false }, shut, davao("12:30:00"))).toBe(
+      "Same-day orders closed at 12:30 PM today.",
+    );
+  });
 
-    it("fires on the tick that reaches the time, and no earlier", () => {
-      expect(crossedSameDayOrderBy(orderBy, ms("12:29:58"), ms("12:29:59"))).toBe(false);
-      expect(crossedSameDayOrderBy(orderBy, ms("12:29:59"), ms("12:30:00"))).toBe(true);
-      expect(crossedSameDayOrderBy(orderBy, ms("12:30:00"), ms("12:30:01"))).toBe(false);
+  it("stays quiet on anything but a real passed", () => {
+    const odd = { at: AT, passed: "false" } as unknown as { at: string; passed: boolean };
+    expect(sameDayOrderByLine(odd, shut, davao("13:00:00"))).toBeNull();
+    expect(sameDayOrderByLine(odd, open, davao("12:00:00"))).toBeNull();
+  });
+
+  describe("closeReachedDay", () => {
+    const days: DeadlineDay[] = [
+      { day: DAY, state: "open", status: "secured", readyBy: "2026-11-05T15:59:00+08:00" },
+      { day: "2026-11-06", state: "tight", status: "tight" },
+    ];
+
+    it("shuts the day of the last order time and leaves the others alone", () => {
+      const [today, tomorrow] = closeReachedDay(days, AT);
+      expect(today).toMatchObject({ day: DAY, state: "cannot", status: "not_possible", readyBy: null });
+      expect(tomorrow).toBe(days[1]);
     });
 
-    it("fires when the app comes back from the background past the time", () => {
-      expect(crossedSameDayOrderBy(orderBy, ms("12:00:00"), ms("15:00:00"))).toBe(true);
+    it("finds the day on Davao's calendar, not UTC's", () => {
+      // 12:30 AM on the 5th in Davao is still the 4th in UTC.
+      const early = davao("00:30:00").toISOString();
+      expect(closeReachedDay(days, early)[0].state).toBe("cannot");
     });
 
-    it("does not fire for a time GRIDGO already says has passed", () => {
-      expect(crossedSameDayOrderBy({ at: AT, passed: true }, ms("12:29:59"), ms("12:30:01"))).toBe(false);
+    it("leaves the days alone when the time cannot be read", () => {
+      expect(closeReachedDay(days, "not a time")).toBe(days);
     });
   });
 });
