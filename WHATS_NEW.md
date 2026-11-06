@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.552 (New feature)
+
+- The date screen now shows the last order time to get your print today, and says when same-day orders have closed.
+
 ## 1.0.546 (Improvement)
 
 - When your connection drops, the app shows a simple message instead of technical details.
