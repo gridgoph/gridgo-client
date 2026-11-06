@@ -4192,12 +4192,25 @@ export type Scheduling = {
   expressListing?: boolean;
 };
 
+/**
+ * Today's last order time (gridgo-api#352, `docs/SCHEDULING_API.md`). `at` is
+ * exclusive: at that instant today stops being selectable. A hint about now,
+ * not a reservation, and `passed: false` does not mean today is open: GRIDGO
+ * may not have opened yet, so read it with `days`.
+ */
+export type SameDayOrderBy = {
+  at: string;
+  passed: boolean;
+};
+
 export type DeadlineDays = {
   days: DeadlineDay[];
   /** The earliest ready instant, whatever the display horizon. */
   earliest: string | null;
   /** Artwork review timing the days were counted from. */
   operatingStatus?: OperatingStatus | null;
+  /** Null when no order time today could reach today; absent on an older API. */
+  sameDayOrderBy?: SameDayOrderBy | null;
 };
 
 /**

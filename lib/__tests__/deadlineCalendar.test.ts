@@ -3,6 +3,7 @@ import {
   canStep,
   chosenLabel,
   choiceLabel,
+  closeReachedDay,
   deadlineFor,
   earliestReadyLine,
   firstAvailable,
@@ -14,6 +15,7 @@ import {
   nextMonthWithADay,
   openMonth,
   openingMonth,
+  sameDayOrderByLine,
   shiftMonth,
   shopClock,
 } from "@/lib/deadlineCalendar";
@@ -276,5 +278,114 @@ describe("season windows on the month", () => {
     expect(fourteenth?.windows.map((w) => w.id)).toEqual(["sea_busy", "sea_peak"]);
     expect(fourteenth).toMatchObject({ joinsPrevious: false, joinsNext: false });
     expect(dayOf(days, "2026-03-13").season).toMatchObject({ level: "Busy", joinsNext: false });
+  });
+});
+
+describe("today's last order time", () => {
+  const DAY = "2026-11-05";
+  const davao = (time: string, day = DAY) => new Date(`${day}T${time}+08:00`);
+  const AT = davao("12:30:00").toISOString();
+  const open: DeadlineDay[] = [{ day: DAY, state: "open", status: "secured" }];
+  const shut: DeadlineDay[] = [{ day: DAY, state: "cannot", status: "not_possible" }];
+
+  it("says the time while it is ahead and today can be picked", () => {
+    expect(sameDayOrderByLine({ at: AT, passed: false }, open, davao("12:29:59"))).toBe(
+      "Order before 12:30 PM to get it today.",
+    );
+  });
+
+  it("counts Tight and Rush as today still being on offer", () => {
+    const rush: DeadlineDay[] = [{ day: DAY, state: "cannot", status: "rush" }];
+    const tight: DeadlineDay[] = [{ day: DAY, state: "tight", status: "tight" }];
+    const line = "Order before 12:30 PM to get it today.";
+    expect(sameDayOrderByLine({ at: AT, passed: false }, rush, davao("12:00:00"))).toBe(line);
+    expect(sameDayOrderByLine({ at: AT, passed: false }, tight, davao("12:00:00"))).toBe(line);
+  });
+
+  it("says plainly that today closed once GRIDGO says it has", () => {
+    expect(sameDayOrderByLine({ at: AT, passed: true }, shut, davao("12:30:00"))).toBe(
+      "Same-day orders closed at 12:30 PM today.",
+    );
+    // The reported moment, and after hours: still true, still said.
+    expect(sameDayOrderByLine({ at: AT, passed: true }, shut, davao("13:35:00"))).toBe(
+      "Same-day orders closed at 12:30 PM today.",
+    );
+    expect(sameDayOrderByLine({ at: AT, passed: true }, shut, davao("21:00:00"))).toBe(
+      "Same-day orders closed at 12:30 PM today.",
+    );
+  });
+
+  it("offers no time before GRIDGO opens, when today cannot be picked yet", () => {
+    expect(sameDayOrderByLine({ at: AT, passed: false }, shut, davao("07:30:00"))).toBeNull();
+  });
+
+  it("says nothing when no time applies, or on an older API", () => {
+    expect(sameDayOrderByLine(null, open, davao("12:00:00"))).toBeNull();
+    expect(sameDayOrderByLine(undefined, open, davao("12:00:00"))).toBeNull();
+    expect(sameDayOrderByLine({ at: "not a time", passed: false }, open, davao("12:00:00"))).toBeNull();
+  });
+
+  it("never contradicts the days on screen", () => {
+    // GRIDGO says closed, the days still offer today.
+    expect(sameDayOrderByLine({ at: AT, passed: true }, open, davao("12:30:00"))).toBeNull();
+    // Reached on this phone, in the moment before the days are shut.
+    expect(sameDayOrderByLine({ at: AT, passed: false }, open, davao("12:30:00"))).toBeNull();
+    // No entry for today at all.
+    expect(sameDayOrderByLine({ at: AT, passed: false }, [], davao("12:00:00"))).toBeNull();
+  });
+
+  it("drops an answer about yesterday from a screen left open past midnight", () => {
+    const tomorrow = "2026-11-06";
+    expect(sameDayOrderByLine({ at: AT, passed: true }, shut, davao("00:00:01", tomorrow))).toBeNull();
+  });
+
+  it("names the minute and drops at that minute when the instant carries seconds", () => {
+    const at = davao("12:30:27").toISOString();
+    expect(sameDayOrderByLine({ at, passed: false }, open, davao("12:29:59"))).toBe(
+      "Order before 12:30 PM to get it today.",
+    );
+    expect(sameDayOrderByLine({ at, passed: false }, open, davao("12:30:00"))).toBeNull();
+  });
+
+  it("reads in Davao time wherever the phone is", () => {
+    // 12:30 PM in Davao is 04:30 UTC, and the zone of the runner does not matter.
+    expect(sameDayOrderByLine({ at: "2026-11-05T04:30:00.000Z", passed: true }, shut, davao("13:35:00"))).toContain(
+      "12:30 PM",
+    );
+  });
+
+  it("says closed once this phone reaches the time and today is shut, whatever passed said", () => {
+    expect(sameDayOrderByLine({ at: AT, passed: false }, shut, davao("12:30:00"))).toBe(
+      "Same-day orders closed at 12:30 PM today.",
+    );
+  });
+
+  it("stays quiet on anything but a real passed", () => {
+    const odd = { at: AT, passed: "false" } as unknown as { at: string; passed: boolean };
+    expect(sameDayOrderByLine(odd, shut, davao("13:00:00"))).toBeNull();
+    expect(sameDayOrderByLine(odd, open, davao("12:00:00"))).toBeNull();
+  });
+
+  describe("closeReachedDay", () => {
+    const days: DeadlineDay[] = [
+      { day: DAY, state: "open", status: "secured", readyBy: "2026-11-05T15:59:00+08:00" },
+      { day: "2026-11-06", state: "tight", status: "tight" },
+    ];
+
+    it("shuts the day of the last order time and leaves the others alone", () => {
+      const [today, tomorrow] = closeReachedDay(days, AT);
+      expect(today).toMatchObject({ day: DAY, state: "cannot", status: "not_possible", readyBy: null });
+      expect(tomorrow).toBe(days[1]);
+    });
+
+    it("finds the day on Davao's calendar, not UTC's", () => {
+      // 12:30 AM on the 5th in Davao is still the 4th in UTC.
+      const early = davao("00:30:00").toISOString();
+      expect(closeReachedDay(days, early)[0].state).toBe("cannot");
+    });
+
+    it("leaves the days alone when the time cannot be read", () => {
+      expect(closeReachedDay(days, "not a time")).toBe(days);
+    });
   });
 });
