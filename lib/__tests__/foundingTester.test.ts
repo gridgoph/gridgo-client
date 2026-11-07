@@ -149,7 +149,7 @@ describe("nothing new for an account the path is not for", () => {
 });
 
 describe("where the next step leads", () => {
-  const start = { cartOpen: false, startHref: "/request/category" };
+  const start = { cartOpen: false, startHref: "/request/category" as const };
   const unpaid = refundOrder({
     id: "ord_unpaid",
     state: "awaiting_initial_payment",
@@ -162,7 +162,7 @@ describe("where the next step leads", () => {
 
   it("starts a print for the cart step, wherever the yellow + would", () => {
     expect(stepAction("added", start)).toEqual({ label: "Choose something to print", href: "/request/category" });
-    expect(stepAction("added", { ...start, startHref: "/(tabs)/new-request" })?.href).toBe("/(tabs)/new-request");
+    expect(stepAction("added", { ...start, startHref: "/checkout" })?.href).toBe("/checkout");
   });
 
   it("opens the order waiting on its payment, else checkout, else a new print", () => {

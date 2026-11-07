@@ -300,6 +300,8 @@ export type ColourListingSize = {
 };
 
 export type ProductionItem = {
+  /** The product it is, kept with the line; null or absent on an order from before. */
+  subcategoryCode?: string | null;
   documentPages?: DocumentPages | null;
   /** Copies or sets, snapshotted at checkout; null on other products. */
   quantityMode?: QuantityMode | null;

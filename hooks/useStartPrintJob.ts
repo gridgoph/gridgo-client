@@ -6,6 +6,7 @@ import { clearMatchSelections } from "@/lib/matchSelection";
 import { useJobDeadline } from "@/store/jobDeadline";
 import { useJobFulfilment } from "@/store/jobFulfilment";
 import { jobRankingNow, useOrderRanking } from "@/store/orderRanking";
+import { useReorderJob } from "@/store/reorderJob";
 
 /**
  * Leaving the "what am I printing?" screens for the match.
@@ -34,6 +35,7 @@ export function useStartPrintJob() {
       useJobDeadline.getState().clear();
       useJobFulfilment.getState().clear();
       useOrderRanking.getState().clear();
+      useReorderJob.getState().clear();
       clearMatchSelections();
       void api.recordFunnel({ kind: "product_viewed", productCode: subcategoryCode });
       router.push({

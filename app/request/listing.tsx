@@ -88,11 +88,13 @@ import { type OrderStepId } from "@/lib/orderSteps";
 import { designLinkPhrase } from "@/lib/designLink";
 import { SHOP_PAUSED_LINE, SHOP_PAUSED_MESSAGE, shopHoursView, shopPaused } from "@/lib/shopHours";
 import { FULFILMENT_LOCK_MESSAGE, isFulfilmentLockRefusal, needsFreshBasket } from "@/lib/requestFulfilment";
+import { REORDER_SHEET_NOTE, reorderApplies, reorderSheet } from "@/lib/reorder";
 import { SAMPLE_OFFER_NOTE, sampleOffer } from "@/lib/sampleFirst";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useJobFulfilment } from "@/store/jobFulfilment";
 import { listingDraftKey, listingDraftNow, useListingDraft } from "@/store/listingDraft";
+import { useReorderJob } from "@/store/reorderJob";
 import { useListingQuote } from "@/store/listingQuote";
 import { usePlatformSettings, useServiceFeeRateBps } from "@/store/platformSettings";
 
@@ -119,7 +121,9 @@ function orderFloor(item: CatalogItem | null): number {
  *
  * Nothing is pre-ticked. A sheet that opens with A5 already chosen shows a
  * price the client has not agreed to, and the whole point of the steps is that
- * the shop needs each answer before it can print.
+ * the shop needs each answer before it can print. A reorder is the one
+ * exception: the client gave those answers on the job they asked to repeat, and
+ * the sheet says they are carried.
  *
  * The one yellow control in the whole match-and-configure flow is at the bottom
  * of this screen, because this is where a client commits to something.
@@ -252,6 +256,9 @@ export default function ListingScreen() {
     warmCart();
   }, [warmCart]);
 
+  const reorderJob = useReorderJob((state) => state.job);
+  const [carriedFromOrder, setCarriedFromOrder] = useState(false);
+
   // Reopening a basket row starts from what was already answered on it, so a
   // client changing the paper does not have to pick the size again.
   const [restoredFrom, setRestoredFrom] = useState<{
@@ -276,10 +283,18 @@ export default function ListingScreen() {
       setNote(editing.specialInstructions ?? "");
       setLayout(editing.printLayout ?? null);
     } else if (item) {
+      // A reorder starts from what still applies on this listing, and asks for
+      // the rest the usual way (`lib/reorder.ts`).
+      const carried = !sampleFirst && reorderJob && reorderApplies(reorderJob, item) ? reorderSheet(reorderJob.answers, item) : null;
+      if (carried) {
+        setSelection(carried.selection);
+        if (carried.measured) setMeasured(carried.measured);
+        if (carried.quantity != null || Object.keys(carried.selection).length) setCarriedFromOrder(true);
+      }
       // A fresh sheet opens at the least the shop will run. Opening at one
       // with a note underneath let a quantity GRIDGO cannot price into the
       // basket, where it showed as "—" and a total of delivery alone.
-      setQuantity((current) => Math.max(current, orderFloor(item)));
+      setQuantity((current) => Math.max(carried?.quantity ?? current, orderFloor(item)));
     }
   }
 
@@ -639,6 +654,10 @@ export default function ListingScreen() {
     dropDraft();
     // Added: an "add more from Shop A" errand is done.
     useBasketGroupTarget.getState().clear();
+    // A repeated job's artwork goes onto the line it just became.
+    if (!editing && !sampleFirst && item && reorderApplies(reorderJob, item)) {
+      useReorderJob.getState().update({ lineId: added.id });
+    }
     router.replace({ pathname: "/request/artwork", params: { lineId: added.id } });
   };
 
@@ -743,6 +762,10 @@ export default function ListingScreen() {
                 ))}
               </View>
             </View>
+          ) : null}
+
+          {carriedFromOrder ? (
+            <Text className="mt-6 text-body text-text-secondary">{REORDER_SHEET_NOTE}</Text>
           ) : null}
 
           {specs.map((group, position) => (

@@ -9,7 +9,7 @@ const mockPush = jest.fn();
 jest.mock("expo-router", () => ({ router: { push: (...args: unknown[]) => mockPush(...args) } }));
 
 const NONE = { added: false, placed: false, tracked: false, received: false, rated: false };
-const CONTEXT = { orders: [], cartOpen: true, startHref: "/request/category" };
+const CONTEXT = { orders: [], cartOpen: true, startHref: "/request/category" as const };
 
 function path(missions: FoundingTester["missions"], rewardStatus = "pending") {
   const view = foundingTesterView({

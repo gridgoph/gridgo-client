@@ -10,10 +10,10 @@ import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { HomeCategoryCircles } from "@/components/HomeCategoryCircles";
 import { HomeFeaturedPrints } from "@/components/HomeFeaturedPrints";
 import { HomeReorderTile } from "@/components/HomeReorderTile";
+import { RetiredDraftNotice } from "@/components/RetiredDraftNotice";
 import { HomeSearch } from "@/components/HomeSearch";
 import { HomeActionRow } from "@/components/HomeRow";
 import { HomeSmartTile } from "@/components/HomeSmartTile";
-import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SeasonBanner } from "@/components/SeasonBanner";
 import { TourTarget } from "@/components/TourTarget";
@@ -33,6 +33,7 @@ import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useHomeSummary, useOwnHomeSummary } from "@/store/homeSummary";
 import { useNotifications } from "@/store/notifications";
+import { useRequestDraft } from "@/store/requestDraft";
 import { useSeasonWindows } from "@/store/seasonWindows";
 import { useFoundingTester } from "@/store/foundingTester";
 import { useSession } from "@/store/session";
@@ -63,7 +64,9 @@ export default function HomeScreen() {
   const dismissSeason = useSeasonWindows((s) => s.dismiss);
   const summary = useOwnHomeSummary();
   const summaryFailed = useHomeSummary((s) => s.failed);
-  const { reorder, pendingLabel, confirmReplace, cancelReplace } = useReorder();
+  const { reorder } = useReorder();
+  const retiredDraft = useRequestDraft((s) => s.retiredNotice);
+  const dismissRetiredDraft = useRequestDraft((s) => s.dismissRetiredNotice);
 
   const [orders, setOrders] = useState<api.Order[] | null>(null);
   const [categories, setCategories] = useState<ProductCategory[]>(() => api.productCategoriesNow());
@@ -189,7 +192,9 @@ export default function HomeScreen() {
 
           {searchOpen ? null : (
             <>
-              {waiting ? (
+              {retiredDraft ? (
+                <RetiredDraftNotice onDismiss={dismissRetiredDraft} />
+              ) : waiting ? (
                 <View className="gg-card-flush">
                   <HomeActionRow order={waiting} onPress={() => router.push(`/order/${waiting.id}`)} />
                   {jobs.needsYou.length > 1 ? (
@@ -246,7 +251,6 @@ export default function HomeScreen() {
         </View>
       </KeyboardAwareScrollView>
 
-      <ReplaceDraftDialog label={pendingLabel} onConfirm={confirmReplace} onCancel={cancelReplace} />
     </TabScreen>
   );
 }

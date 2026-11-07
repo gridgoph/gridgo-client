@@ -24,7 +24,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useReorder } from "@/hooks/useReorder";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -96,7 +95,7 @@ export function QuickActionsSheet() {
   const summary = useOwnHomeSummary();
   const chatUnread = useSupportChatStore((s) => s.unreadCount);
   const schedule = usePlatformSettings((s) => s.settings?.operatingHours?.schedule ?? null);
-  const { reorder, pendingLabel, confirmReplace, cancelReplace } = useReorder();
+  const { reorder } = useReorder();
   const [orders, setOrders] = useState<api.Order[] | null>(null);
 
   // Fresh facts each time it opens: the order on the way and the last print
@@ -334,7 +333,6 @@ export function QuickActionsSheet() {
           </View>
         </Modal>
       ) : null}
-      <ReplaceDraftDialog label={pendingLabel} onConfirm={confirmReplace} onCancel={cancelReplace} />
     </>
   );
 }

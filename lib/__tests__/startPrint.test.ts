@@ -37,20 +37,11 @@ describe("startPrintHref", () => {
     expect(startPrintHref()).toBe("/request/category");
   });
 
-  it("opens the stepper when a request is already in progress", () => {
+  // The retired form is reached by nothing, whatever a phone still remembers.
+  it("never opens the retired form", () => {
     useRequestDraft.setState({ productId: "prod_flyers" });
-    expect(startPrintHref()).toBe("/(tabs)/new-request");
-  });
-
-  it("opens the stepper over an empty remembered basket", () => {
-    useCart.setState({ cartId: "cart_1", cart: checkoutCart({ lines: [] }) });
-    useRequestDraft.setState({ productId: "prod_flyers" });
-    expect(startPrintHref()).toBe("/(tabs)/new-request");
-  });
-
-  it("prefers the basket over a leftover stepper draft", () => {
+    expect(startPrintHref()).toBe("/request/category");
     useCart.setState({ cartId: "cart_1", cart: checkoutCart() });
-    useRequestDraft.setState({ productId: "prod_flyers" });
     expect(startPrintHref()).toBe("/checkout");
   });
 });

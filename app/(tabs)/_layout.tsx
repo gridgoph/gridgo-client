@@ -13,12 +13,12 @@ import { useSession } from "@/store/session";
  * The bar is four destinations — Home, Orders, Alerts, Account — with the
  * raised yellow "+" in the centre (client#335). Organizations stays a tab
  * route, out of the bar: an approved organization opens it from Account.
- * The "+" opens the quick-actions sheet; its "Start a new print" keeps the
- * old landings (`lib/startPrint.ts`): the category screen with nothing
- * chosen, checkout for a basket, the stepper for a draft.
+ * The "+" opens the quick-actions sheet; its "Start a new print" lands on
+ * checkout for a basket, else the category screen (`lib/startPrint.ts`).
  *
- * The stepper stays a tab route so a draft can reopen it, and Organizations
- * keeps every link that reaches it; `href: null` keeps both out of the bar.
+ * The retired request form stays a route with nothing leading to it, and
+ * Organizations keeps every link that reaches it; `href: null` keeps both out
+ * of the bar.
  */
 export default function TabsLayout() {
   const colors = useThemeColors();
