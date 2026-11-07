@@ -243,7 +243,7 @@ it("withholds a survey it read before once a refresh fails, without saying none 
   await useFoundingTester.getState().loadOpenSurveys();
   const openSurveys = useFoundingTester.getState().openSurveys;
   expect(openSurveys).toBeNull();
-  const context = { cartOpen: false, startHref: "/request/category", openSurveyOrderIds: openSurveys ?? undefined };
+  const context = { cartOpen: false, startHref: "/request/category" as const, openSurveyOrderIds: openSurveys ?? undefined };
   // Not the old survey, and not "no survey is open" either: the Orders tab.
   expect(stepAction("rated", context)).toEqual({ label: "Open your orders", href: "/(tabs)/orders" });
 });

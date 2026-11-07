@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api";
+import { setLiveOwner } from "@/lib/live";
 import { useCart } from "@/store/cart";
 import { basket, basketLine, freshBasketWithFlyers } from "@/test/otherShopFixtures";
 
@@ -54,6 +55,24 @@ describe("starting a new order for a job that travels another way", () => {
 
     expect(useCart.getState().cartId).toBe("cart_held");
     expect(useCart.getState().cart?.lines).toHaveLength(2);
+    expect(api.removeCartLine).not.toHaveBeenCalled();
+    expect(useCart.getState().busy).toBe(false);
+  });
+
+  it("leaves the next account's basket alone when it lands after a change of account", async () => {
+    let land!: (cart: ReturnType<typeof freshBasketWithFlyers>) => void;
+    api.addCartLine.mockReturnValue(new Promise((resolve) => (land = resolve)));
+    setLiveOwner("user_1");
+
+    const started = useCart.getState().startOver((cartId) => api.addCartLine(cartId, { catalogItemId: "sci_flyers" }));
+    await new Promise(setImmediate);
+    setLiveOwner("user_2");
+    useCart.setState({ cartId: "cart_second_account", cart: basket({ id: "cart_second_account", lines: [] }) });
+    land(freshBasketWithFlyers());
+    await started;
+
+    expect(useCart.getState().cartId).toBe("cart_second_account");
+    expect(useCart.getState().cart?.lines).toEqual([]);
     expect(api.removeCartLine).not.toHaveBeenCalled();
     expect(useCart.getState().busy).toBe(false);
   });

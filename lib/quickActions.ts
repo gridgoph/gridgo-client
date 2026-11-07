@@ -21,7 +21,7 @@ export type QuickAction = {
   title: string;
   /** The line under the title — or, when disabled, why. */
   detail: string;
-  /** Where a tap goes. Reorder has none: it seeds a request first. */
+  /** Where a tap goes. Reorder has none: it reads the past order first. */
   href: string | null;
   /** Null when the action can be used now. */
   disabledReason: string | null;

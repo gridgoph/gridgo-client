@@ -28,23 +28,6 @@ type ProductMeta = {
   family: string;
 };
 
-/** The parts of a past order a reorder copies. */
-export type ReorderSource = {
-  productId: string;
-  title: string;
-  quantity: number;
-  size: string;
-  material: string;
-  finish?: string | null;
-  address: string;
-  zone: string;
-  artworkName: string | null;
-  artworkFileIds?: string[];
-  deadline: string | null;
-};
-
-type ReorderMeta = Partial<ProductMeta> & { name?: string };
-
 export type RequestDraftState = RequestDraftFields &
   ProductMeta & {
     stepIndex: number;
@@ -61,8 +44,9 @@ export type RequestDraftState = RequestDraftFields &
       unit: string;
       family: string;
     }) => void;
-    /** One-tap reorder: copy specs, and the artwork, from a previous order. */
-    seedFromOrder: (order: ReorderSource, productMeta?: ReorderMeta) => void;
+    /** True for the launch that discarded a draft saved on the retired form. */
+    retiredNotice: boolean;
+    dismissRetiredNotice: () => void;
     reset: () => void;
     currentStepId: () => RequestStepId;
   };
@@ -173,8 +157,8 @@ export const useRequestDraft = create<RequestDraftState>()(
           finish: "",
           quantity: clampQuantity(1, product.unit),
         }),
-      seedFromOrder: (order, productMeta) =>
-        set({ stepIndex: 0, ...orderDraftFields(order, productMeta) }),
+      retiredNotice: false,
+      dismissRetiredNotice: () => set({ retiredNotice: false }),
       reset: () => set({ ...emptyFields }),
       currentStepId: () => REQUEST_STEPS[get().stepIndex]?.id ?? "details",
     }),
@@ -187,7 +171,15 @@ export const useRequestDraft = create<RequestDraftState>()(
         Object.fromEntries(
           PERSISTED_KEYS.map((key) => [key, state[key]]),
         ) as unknown as RequestDraftState,
+      // Nothing leads to the retired form any more, so a draft saved on it can
+      // never be finished. It is discarded here and Home says so, once.
+      merge: (persisted, current) =>
+        draftHasContent({ ...emptyFields, ...(persisted as Partial<PersistedDraft>) })
+          ? { ...current, ...emptyFields, retiredNotice: true }
+          : current,
       onRehydrateStorage: () => () => {
+        // `merge` changed the store only: this write takes it off the phone too.
+        if (useRequestDraft.getState().retiredNotice) useRequestDraft.getState().reset();
         useRequestDraft.setState({ hydrated: true });
       },
     },
@@ -213,49 +205,10 @@ export function draftFieldsFromStore(state: RequestDraftState): RequestDraftFiel
   };
 }
 
-/** What a reorder writes into the draft: the past order's specs and artwork. */
-export function orderDraftFields(
-  order: ReorderSource,
-  productMeta?: ReorderMeta,
-): RequestDraftFields & ProductMeta {
-  const address = parseAddress(order.address);
-  const unit = productMeta?.unit ?? "";
-  const fileIds = order.artworkFileIds ?? [];
-  return {
-    productId: order.productId,
-    productName: productMeta?.name ?? productMeta?.productName ?? order.title,
-    basePriceMinor: productMeta?.basePriceMinor ?? 0,
-    unit,
-    family: productMeta?.family ?? "",
-    title: order.title,
-    size: order.size,
-    material: order.material,
-    finish: order.finish ?? "",
-    quantity: clampQuantity(order.quantity, unit),
-    // A past deadline cannot be reused; the client picks a new one.
-    deadline: "",
-    addressLine1: address.line1,
-    barangay: address.barangay,
-    landmark: address.landmark,
-    zone: order.zone || DEFAULT_ZONE_CODE,
-    artworkFileId: fileIds[fileIds.length - 1] ?? "",
-    artworkName: order.artworkName ?? "",
-  };
-}
-
-/**
- * True when the draft already is this request, field for field, so replacing
- * it would lose nothing. A reorder the client opened and left untouched is not
- * a draft to protect from the same reorder.
- */
-export function draftHolds(state: RequestDraftState, fields: RequestDraftFields): boolean {
-  const held = draftFieldsFromStore(state);
-  const keys = Object.keys(held) as (keyof RequestDraftFields)[];
-  return keys.every((key) => (held[key] ?? "") === (fields[key] ?? ""));
-}
-
 /** True when the client has put anything into this draft worth keeping. */
-export function draftHasContent(state: RequestDraftState): boolean {
+export function draftHasContent(
+  state: Pick<RequestDraftFields, "productId" | "artworkFileId" | "title" | "addressLine1">,
+): boolean {
   return Boolean(
     state.productId ||
       state.artworkFileId ||

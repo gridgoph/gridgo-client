@@ -51,6 +51,7 @@ import { measuredSizeLabel, measuredSizeMilli, physicalSizeMilli } from "@/lib/p
 import { useThemeColors } from "@/hooks/useTheme";
 import { useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
+import { reorderArtworkNote } from "@/lib/reorder";
 import { documentPagesSummary, pageRangeError, pageTotalError } from "@/lib/documentPages";
 import { userFacingError } from "@/lib/copy";
 import { isFullListing, listingTrusted, takeListing } from "@/lib/listingCache";
@@ -78,6 +79,7 @@ import { cartRightsScope, useArtworkRights } from "@/store/artworkRights";
 import { useArtworkAttachments, type PendingUpload } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
 import { useMyFiles } from "@/store/myFiles";
+import { useReorderJob } from "@/store/reorderJob";
 import { MY_FILES_ROUTE, listingTakes } from "@/lib/myFiles";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { checkKey, currentProblem, useDesignLink } from "@/store/designLink";
@@ -255,6 +257,29 @@ export default function ArtworkScreen() {
   const listError = useArtworkAttachments((state) => (line ? state.saveError[line.id] ?? null : null));
   const notice = useArtworkAttachments((state) => (line ? state.notice[line.id] ?? null : null));
   const attachments = useArtworkAttachments.getState();
+
+  // A repeated job's artwork comes onto its line unasked: the client chose it,
+  // on the job they asked to repeat. Spent once, so removing it is final.
+  const reorderJob = useReorderJob((state) => state.job);
+  const carriedFiles = reorderJob?.lineId === lineId ? reorderJob?.files : null;
+  const carriedJobId = reorderJob?.id;
+  useEffect(() => {
+    if (carriedJobId == null || !carriedFiles?.length || !line || !item) return;
+    const jobs = useReorderJob.getState();
+    jobs.update(carriedJobId, { files: [] });
+    void (async () => {
+      const carried: string[] = [];
+      const refused: string[] = [];
+      for (const file of carriedFiles) {
+        // Replaced part way, a new job or another account: the rest stays off.
+        if (useReorderJob.getState().job?.id !== carriedJobId) return;
+        const fits = listingTakes(item, file.name, file.contentType);
+        if (fits && (await useArtworkAttachments.getState().attachSaved(line.id, file.fileId)).ok) carried.push(file.name);
+        else if (!fits) refused.push(file.name);
+      }
+      jobs.update(carriedJobId, { artworkNote: reorderArtworkNote(item.name, carried, refused) });
+    })();
+  }, [carriedJobId, carriedFiles, line, item]);
   // "Save to My files" on each file, and a file held from My files for a new order.
   const savePending = useMyFiles((state) => state.pendingSave);
   const saveErrors = useMyFiles((state) => state.saveError);
@@ -582,6 +607,7 @@ export default function ArtworkScreen() {
   const uploadFormats = item ? fileFormats(item) : [];
   // A listing that names no formats at all still takes a file; the server judges it.
   const takesFiles = uploadFormats.length > 0 || !links.length;
+  const reorderNote = reorderJob?.lineId === line.id ? reorderJob.artworkNote : null;
   const verdict = linkVerdict(linkState, { canUpload: uploadFormats.length > 0 });
   const hasArtwork = entries.length > 0;
   const inFlight = uploads.filter((entry) => entry.phase !== "failed").length;
@@ -687,6 +713,8 @@ export default function ArtworkScreen() {
         <View className="mt-3">
           <ProhibitedItemsNote compact onOpen={(href) => router.push(href)} />
         </View>
+
+        {reorderNote ? <Text className="mt-3 text-body text-text-secondary">{reorderNote}</Text> : null}
 
         {held && takesFiles && !fileIds.includes(held.fileId) && roomLeft > 0 ? (
           <View className="mt-6">

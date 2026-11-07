@@ -15,6 +15,7 @@ import { useSurvey } from "@/store/survey";
 import { useOrderShare } from "@/store/orderShare";
 import { useCheckoutExit } from "@/store/checkoutExit";
 import { useFoundingTester } from "@/store/foundingTester";
+import { useReorderJob } from "@/store/reorderJob";
 import { useOrderRanking } from "@/store/orderRanking";
 import { setLiveOwner } from "@/lib/live";
 import { clearBoardCache } from "@/lib/shopBoards";
@@ -478,6 +479,7 @@ useSession.subscribe((state, previous) => {
   clearMatchPrefetch();
   clearMatchSelections();
   useOrderRanking.getState().clear();
+  useReorderJob.getState().clear();
   useNotifications.getState().setOwner(id);
   useVouchers.getState().reset();
   useQuotes.getState().reset();

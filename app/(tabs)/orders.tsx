@@ -11,10 +11,9 @@ import { ErrorState } from "@/components/ErrorState";
 import { OrderCard } from "@/components/OrderCard";
 import { OrderFilterBar } from "@/components/OrderFilterBar";
 import { ScreenHeader } from "@/components/ScreenHeader";
-import { ReplaceDraftDialog } from "@/components/ReplaceDraftDialog";
 import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { SkeletonOrderList } from "@/components/Skeleton";
-import { useStartRequest } from "@/hooks/useStartRequest";
+import { useReorder } from "@/hooks/useReorder";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -28,7 +27,6 @@ import {
   type OrderSort,
 } from "@/lib/orderList";
 import { orderNeedsClient } from "@/lib/orderState";
-import { orderDraftFields, useRequestDraft } from "@/store/requestDraft";
 
 /**
  * Every job the client has sent.
@@ -45,11 +43,9 @@ import { orderDraftFields, useRequestDraft } from "@/store/requestDraft";
 export default function OrdersScreen() {
   const router = useRouter();
   const tabPad = tabScreenContentPadding(useSafeAreaInsets().bottom);
-  const seedFromOrder = useRequestDraft((s) => s.seedFromOrder);
-  const { start, pendingLabel, confirmReplace, cancelReplace } = useStartRequest();
+  const { reorder } = useReorder();
 
   const [orders, setOrders] = useState<api.Order[]>([]);
-  const [catalog, setCatalog] = useState<api.CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -60,13 +56,9 @@ export default function OrdersScreen() {
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     try {
-      const [list, products] = await Promise.all([
-        api.listOrders(),
-        api.listCatalog().catch(() => [] as api.CatalogProduct[]),
-      ]);
+      const list = await api.listOrders();
       if (sequence !== loadSequence.current) return;
       setOrders(list);
-      setCatalog(products);
       setError(null);
     } catch (e) {
       if (sequence !== loadSequence.current) return;
@@ -86,7 +78,6 @@ export default function OrdersScreen() {
     }, [load]),
   );
 
-  const productById = new Map(catalog.map((p) => [p.id, p]));
   const counts = useMemo(() => filterCounts(orders), [orders]);
   const visible = useMemo(
     () => visibleOrders(orders, { filter, sort, query }),
@@ -102,17 +93,6 @@ export default function OrdersScreen() {
   const needsClient = splitByOwner ? visible.filter(orderNeedsClient) : [];
   const everythingElse = splitByOwner ? visible.filter((o) => !orderNeedsClient(o)) : visible;
   const showControls = orders.length >= ORDER_CONTROLS_MIN;
-
-  const reorder = (order: api.Order) => {
-    const meta = productById.get(order.productId);
-    const productMeta = {
-      name: meta?.name,
-      basePriceMinor: meta?.basePriceMinor,
-      unit: meta?.unit,
-      family: meta?.family,
-    };
-    start(order.title, () => seedFromOrder(order, productMeta), orderDraftFields(order, productMeta));
-  };
 
   return (
     <TabScreen>
@@ -175,7 +155,7 @@ export default function OrdersScreen() {
                   key={o.id}
                   order={o}
                   onPress={() => router.push(`/order/${o.id}`)}
-                  onReorder={() => reorder(o)}
+                  onReorder={() => void reorder(o)}
                 />
               ))}
             </View>
@@ -209,12 +189,6 @@ export default function OrdersScreen() {
           ) : null}
         </View>
       </KeyboardAwareScrollView>
-
-      <ReplaceDraftDialog
-        label={pendingLabel}
-        onConfirm={confirmReplace}
-        onCancel={cancelReplace}
-      />
     </TabScreen>
   );
 }
