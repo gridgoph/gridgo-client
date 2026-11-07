@@ -1,15 +1,13 @@
-import { render, screen } from "@testing-library/react-native";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { act, renderHook, screen } from "@testing-library/react-native";
 
-import ListingScreen from "@/app/request/listing";
-import type { CatalogItem } from "@/lib/api";
+import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { clearListingCache, rememberListing } from "@/lib/listingCache";
-import { REORDER_SHEET_NOTE, reorderAnswers } from "@/lib/reorder";
+import { REORDER_SHEET_NOTE } from "@/lib/reorder";
 import { useCart } from "@/store/cart";
 import { useListingDraft } from "@/store/listingDraft";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useReorderJob } from "@/store/reorderJob";
-import { CURRENT_FLOW_ORDER } from "@/test/reorderFixtures";
+import { renderSheet, reorderFlyers as flyers, startReorderJob as startJob } from "@/test/reorderListing";
 
 let mockParams: Record<string, string> = { itemId: "sci_flyers" };
 
@@ -28,81 +26,8 @@ jest.mock("@/lib/api", () => ({
   getCatalogItem: jest.fn(() => new Promise(() => {})),
   catalogQuote: jest.fn(() => new Promise(() => {})),
   createCart: jest.fn(() => new Promise(() => {})),
+  recordFunnel: jest.fn(async () => undefined),
 }));
-
-function flyers(overrides: Partial<CatalogItem> = {}): CatalogItem {
-  return {
-    id: "sci_flyers",
-    supplierId: "user_shop",
-    supplierServiceId: "svc",
-    categoryCode: "marketing_collateral",
-    subcategoryCode: "flyers",
-    name: "Flyers",
-    description: "",
-    basePriceMinor: 2200,
-    fromPriceMinor: 2200,
-    effectivePriceMinor: null,
-    pricingUnit: "per_package",
-    packageQty: 100,
-    measurementKind: "none",
-    measureUnit: null,
-    minimumWidthMilli: null,
-    minimumHeightMilli: null,
-    minimumLengthMilli: null,
-    minimumOrderQuantity: null,
-    priceTiers: [],
-    speedTiers: [],
-    pricingBasis: "per_unit",
-    turnaroundMode: "override",
-    turnaroundHours: 12,
-    rush: null,
-    acceptedFormats: [],
-    photos: [],
-    prepSteps: [],
-    optionGroups: [
-      {
-        id: "grp_paper",
-        name: "Paper",
-        kind: "spec",
-        helpText: null,
-        required: true,
-        selectionMode: "single",
-        sortOrder: 0,
-        version: 1,
-        options: [
-          { id: "opt_gloss", label: "Gloss", priceModifierMinor: 0, specBinding: null, sortOrder: 0 },
-          { id: "opt_matte", label: "Matte", priceModifierMinor: 0, specBinding: null, sortOrder: 1 },
-        ],
-      },
-    ],
-    version: 1,
-    serviceVersion: 1,
-    ...overrides,
-  } as CatalogItem;
-}
-
-function renderSheet() {
-  return render(
-    <SafeAreaProvider
-      initialMetrics={{
-        frame: { x: 0, y: 0, width: 390, height: 844 },
-        insets: { top: 47, left: 0, right: 0, bottom: 34 },
-      }}
-    >
-      <ListingScreen />
-    </SafeAreaProvider>,
-  );
-}
-
-function startJob(lineId: string | null = null) {
-  useReorderJob.getState().start({
-    subcategory: "flyers",
-    answers: reorderAnswers(CURRENT_FLOW_ORDER),
-    files: null,
-    lineId,
-    artworkNote: null,
-  });
-}
 
 /** The option's radio or checkbox, whichever the picker draws, read by its label. */
 function isChosen(label: RegExp) {
@@ -154,7 +79,7 @@ it("starts empty for another product, and once the job has its line", async () =
 
 it("starts empty once the job already has its line", async () => {
   rememberListing(flyers());
-  startJob("cline_1");
+  startJob({ lineId: "cline_1" });
   await renderSheet();
   expect(screen.queryByText(REORDER_SHEET_NOTE)).toBeNull();
 });
@@ -165,4 +90,71 @@ it("never pre-answers a sample", async () => {
   startJob();
   await renderSheet();
   expect(screen.queryByText(REORDER_SHEET_NOTE)).toBeNull();
+});
+
+/* What a step away keeps, and what it must not hand to the next job. */
+describe("the draft a carried sheet leaves behind", () => {
+  async function leaveCarriedSheet() {
+    rememberListing(flyers());
+    startJob();
+    const sheet = await renderSheet();
+    expect(isChosen(/^Gloss/)).toBe(true);
+    await sheet.unmount();
+  }
+
+  it("does not reach an ordinary new print of the same listing", async () => {
+    await leaveCarriedSheet();
+    const { result } = await renderHook(() => useStartPrintJob());
+    await act(async () => result.current("marketing_collateral", "flyers"));
+
+    await renderSheet();
+
+    expect(isChosen(/^Gloss/)).toBe(false);
+    expect(screen.queryByText(REORDER_SHEET_NOTE)).toBeNull();
+    expect(useListingDraft.getState().drafts["item:sci_flyers"].selection).toEqual({});
+    expect(useListingDraft.getState().drafts["item:sci_flyers"].reorderJobId).toBeNull();
+  });
+
+  it("does not reach another repeated job's sheet", async () => {
+    await leaveCarriedSheet();
+    const nextJob = startJob({ quantity: 5 });
+
+    await renderSheet();
+
+    expect(screen.getByText("5")).toBeTruthy();
+    expect(useListingDraft.getState().drafts["item:sci_flyers"].reorderJobId).toBe(nextJob);
+  });
+
+  it("comes back to the same unfinished sheet, the client's changes and the note with it", async () => {
+    await leaveCarriedSheet();
+    const key = "item:sci_flyers";
+    useListingDraft.getState().keep(key, {
+      ...useListingDraft.getState().drafts[key],
+      selection: { grp_paper: "opt_matte" },
+      quantity: 9,
+    });
+
+    await renderSheet();
+
+    expect(isChosen(/^Matte/)).toBe(true);
+    expect(screen.getByText("9")).toBeTruthy();
+    expect(screen.getByText(REORDER_SHEET_NOTE)).toBeTruthy();
+  });
+
+  it("leaves an ordinary unfinished sheet to come back as it always did", async () => {
+    rememberListing(flyers());
+    useListingDraft.getState().keep("item:sci_flyers", {
+      selection: { grp_paper: "opt_matte" },
+      quantity: 4,
+      measured: { width: "", height: "", length: "", pages: "" },
+      note: "",
+      layout: null,
+    });
+
+    await renderSheet();
+
+    expect(isChosen(/^Matte/)).toBe(true);
+    expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.queryByText(REORDER_SHEET_NOTE)).toBeNull();
+  });
 });

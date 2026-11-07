@@ -262,20 +262,24 @@ export default function ArtworkScreen() {
   // on the job they asked to repeat. Spent once, so removing it is final.
   const reorderJob = useReorderJob((state) => state.job);
   const carriedFiles = reorderJob?.lineId === lineId ? reorderJob?.files : null;
+  const carriedJobId = reorderJob?.id;
   useEffect(() => {
-    if (!carriedFiles?.length || !line || !item) return;
-    useReorderJob.getState().update({ files: [] });
+    if (carriedJobId == null || !carriedFiles?.length || !line || !item) return;
+    const jobs = useReorderJob.getState();
+    jobs.update(carriedJobId, { files: [] });
     void (async () => {
       const carried: string[] = [];
       const refused: string[] = [];
       for (const file of carriedFiles) {
+        // Replaced part way, a new job or another account: the rest stays off.
+        if (useReorderJob.getState().job?.id !== carriedJobId) return;
         const fits = listingTakes(item, file.name, file.contentType);
         if (fits && (await useArtworkAttachments.getState().attachSaved(line.id, file.fileId)).ok) carried.push(file.name);
         else if (!fits) refused.push(file.name);
       }
-      useReorderJob.getState().update({ artworkNote: reorderArtworkNote(item.name, carried, refused) });
+      jobs.update(carriedJobId, { artworkNote: reorderArtworkNote(item.name, carried, refused) });
     })();
-  }, [carriedFiles, line, item]);
+  }, [carriedJobId, carriedFiles, line, item]);
   // "Save to My files" on each file, and a file held from My files for a new order.
   const savePending = useMyFiles((state) => state.pendingSave);
   const saveErrors = useMyFiles((state) => state.saveError);

@@ -76,17 +76,6 @@ describe("useReorder", () => {
     await waitFor(() => expect(useReorderJob.getState().job?.files).toEqual([]));
   });
 
-  it("does not hand a slow file read to a later job", async () => {
-    let answer: (file: unknown) => void = () => undefined;
-    api.getFile.mockReturnValue(new Promise((resolve) => (answer = resolve)));
-
-    await reorder(CURRENT_FLOW_ORDER);
-    useReorderJob.getState().clear();
-    await act(async () => answer(KEPT_FILE));
-
-    expect(useReorderJob.getState().job).toBeNull();
-  });
-
   it("clears answers an earlier job left on a sheet", async () => {
     useListingDraft.getState().keep("sci_flyers", {
       selection: { grp: "opt" },

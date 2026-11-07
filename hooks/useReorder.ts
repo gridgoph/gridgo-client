@@ -1,9 +1,10 @@
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { useRouter } from "expo-router";
 
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import * as api from "@/lib/api";
 import { artworkCheckFailure } from "@/lib/artworkUpload";
+import { newJobTicket, ticketIsCurrent } from "@/lib/jobTicket";
 import {
   reorderAnswers,
   reorderArtworkFileIds,
@@ -52,39 +53,31 @@ async function keptArtwork(order: api.Order): Promise<ReorderFile[]> {
 export function useReorder() {
   const router = useRouter();
   const startJob = useStartPrintJob();
-  const running = useRef(false);
 
   const reorder = useCallback(
     async (order: api.Order) => {
-      if (running.current) return;
-      running.current = true;
-      try {
-        const target = await findTarget(order);
-        if (!target) {
-          router.push("/request/category");
-          return;
-        }
-        useBasketGroupTarget.getState().clear();
-        // Answers left on a sheet by an earlier job must not outrank this order's.
-        useListingDraft.getState().clear();
-        startJob(target.category, target.subcategory);
-        useJobFulfilment.getState().set(reorderFulfilment(order));
-        const jobs = useReorderJob.getState();
-        jobs.start({
-          subcategory: target.subcategory,
-          answers: reorderAnswers(order),
-          files: null,
-          lineId: null,
-          artworkNote: null,
-        });
-        const job = useReorderJob.getState().job;
-        void keptArtwork(order).then((files) => {
-          // The client may be on another job by the time this lands.
-          if (useReorderJob.getState().job === job) jobs.update({ files });
-        });
-      } finally {
-        running.current = false;
+      // The newest tap wins, a double tap included. The hook's screen may be
+      // gone when the lookup lands, so the launch answers to its ticket.
+      const ticket = newJobTicket();
+      const target = await findTarget(order);
+      if (!ticketIsCurrent(ticket)) return;
+      if (!target) {
+        router.push("/request/category");
+        return;
       }
+      useBasketGroupTarget.getState().clear();
+      // Answers left on a sheet by an earlier job must not outrank this order's.
+      useListingDraft.getState().clear();
+      startJob(target.category, target.subcategory);
+      useJobFulfilment.getState().set(reorderFulfilment(order));
+      const jobId = useReorderJob.getState().start({
+        subcategory: target.subcategory,
+        answers: reorderAnswers(order),
+        files: null,
+        lineId: null,
+        artworkNote: null,
+      });
+      void keptArtwork(order).then((files) => useReorderJob.getState().update(jobId, { files }));
     },
     [router, startJob],
   );

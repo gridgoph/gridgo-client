@@ -11,6 +11,8 @@ export type ListingDraft = {
   measured: MeasurementDraft;
   note: string;
   layout: PrintLayoutCode | null;
+  /** The repeated job these answers were carried from, when they were. */
+  reorderJobId?: number | null;
 };
 
 /**
@@ -23,7 +25,8 @@ export type ListingDraft = {
  *
  * Keyed to the basket row being changed, or else to the listing. Gone once
  * the line is added or saved, and on a change of account. Not persisted:
- * a draft is about this sitting, and the basket is what lasts.
+ * a draft is about this sitting, and the basket is what lasts. Answers carried
+ * from a past order come back only to that repeated job, never to a new print.
  */
 type ListingDraftState = {
   drafts: Record<string, ListingDraft>;
@@ -51,6 +54,8 @@ export const useListingDraft = create<ListingDraftState>((set) => ({
   clear: () => set({ drafts: {} }),
 }));
 
-export function listingDraftNow(key: string | null): ListingDraft | null {
-  return key ? (useListingDraft.getState().drafts[key] ?? null) : null;
+export function listingDraftNow(key: string | null, reorderJobId?: number | null): ListingDraft | null {
+  const draft = key ? (useListingDraft.getState().drafts[key] ?? null) : null;
+  if (draft?.reorderJobId != null && draft.reorderJobId !== reorderJobId) return null;
+  return draft;
 }

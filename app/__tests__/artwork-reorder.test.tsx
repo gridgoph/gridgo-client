@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react-native";
+import { act, screen, waitFor } from "@testing-library/react-native";
 import { Image } from "react-native";
 
 import ArtworkScreen from "@/app/request/artwork";
@@ -75,4 +75,38 @@ it("leaves a line that is not the job's alone", async () => {
 
   expect(api.updateCartLine).not.toHaveBeenCalled();
   expect(useReorderJob.getState().job?.files).toEqual([KEPT]);
+});
+
+it("takes up a file read that lands after the line was added", async () => {
+  const jobId = useReorderJob.getState().start({
+    subcategory: "flyers",
+    answers: reorderAnswers(CURRENT_FLOW_ORDER),
+    files: null,
+    lineId: "cline_1",
+    artworkNote: null,
+  });
+  await renderInSafeArea(<ArtworkScreen />);
+
+  await act(async () => useReorderJob.getState().update(jobId, { files: [KEPT] }));
+
+  await waitFor(() =>
+    expect(api.updateCartLine).toHaveBeenCalledWith("cart_1", "cline_1", {
+      artworkAttachments: [FRONT, { kind: "file", fileId: "file_banner" }],
+    }),
+  );
+});
+
+it("stops carrying files, and says nothing, once a newer job has replaced this one", async () => {
+  let land!: (cart: ReturnType<typeof documentCart>) => void;
+  api.updateCartLine.mockImplementationOnce(() => new Promise((resolve) => (land = resolve)));
+  startJob("cline_1", [KEPT, { ...KEPT, fileId: "file_second", name: "second.png" }]);
+  await renderInSafeArea(<ArtworkScreen />);
+  await waitFor(() => expect(api.updateCartLine).toHaveBeenCalledTimes(1));
+
+  startJob(null, null);
+  await act(async () => land(documentCart()));
+  await act(async () => new Promise(setImmediate));
+
+  expect(api.updateCartLine).toHaveBeenCalledTimes(1);
+  expect(useReorderJob.getState().job?.artworkNote).toBeNull();
 });

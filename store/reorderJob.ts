@@ -6,6 +6,8 @@ import type { ReorderAnswers } from "@/lib/reorder";
 export type ReorderFile = { fileId: string; name: string; contentType: string };
 
 export type ReorderJob = {
+  /** Never reused, and unchanged by `update`: what a late answer checks it is writing to. */
+  id: number;
   /** The product this job is. A sheet for anything else starts empty. */
   subcategory: string;
   answers: ReorderAnswers;
@@ -22,17 +24,36 @@ export type ReorderJob = {
  *
  * Not persisted, like the date and delivery beside it: it belongs to this
  * errand. `useStartPrintJob` clears it, so no other job can inherit it.
+ *
+ * `generation` moves on every start and clear, a new print and a change of
+ * account included, so work still in the air can tell it has been overtaken
+ * (`lib/jobTicket.ts`). Clearing a store cannot cancel a pending writer.
  */
 type ReorderJobState = {
+  generation: number;
   job: ReorderJob | null;
-  start: (job: ReorderJob) => void;
-  update: (fields: Partial<Pick<ReorderJob, "files" | "lineId" | "artworkNote">>) => void;
+  /** Overtakes whatever is in the air, before there is a job to hold. */
+  advance: () => number;
+  start: (job: Omit<ReorderJob, "id">) => number;
+  /** Writes to that job only; one that has been replaced takes nothing. */
+  update: (id: number, fields: Partial<Pick<ReorderJob, "files" | "lineId" | "artworkNote">>) => void;
   clear: () => void;
 };
 
-export const useReorderJob = create<ReorderJobState>((set) => ({
+export const useReorderJob = create<ReorderJobState>((set, get) => ({
+  generation: 0,
   job: null,
-  start: (job) => set({ job }),
-  update: (fields) => set((state) => (state.job ? { job: { ...state.job, ...fields } } : state)),
-  clear: () => set({ job: null }),
+  advance: () => {
+    const generation = get().generation + 1;
+    set({ generation });
+    return generation;
+  },
+  start: (job) => {
+    const id = get().generation + 1;
+    set({ generation: id, job: { ...job, id } });
+    return id;
+  },
+  update: (id, fields) =>
+    set((state) => (state.job?.id === id ? { job: { ...state.job, ...fields } } : state)),
+  clear: () => set((state) => ({ generation: state.generation + 1, job: null })),
 }));
