@@ -21,6 +21,13 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.570 (New feature)
+
+- Reorder now opens the current order flow with your past job filled in, instead of the old request form.
+- The receipt after checkout prints at a readable pace, and the panel under it no longer covers it.
+- Google Play testers see a daily check-in on Home, with a 7 PM reminder.
+- Tester reminders stop for good once you leave the tester program, even if you tap Check in.
+
 ## 1.0.552 (New feature)
 
 - The date screen now shows the last order time to get your print today, and says when same-day orders have closed.
