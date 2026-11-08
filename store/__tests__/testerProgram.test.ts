@@ -310,3 +310,60 @@ describe("an accepted Check in answer", () => {
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 });
+
+describe("Check in answered 404 not_enrolled", () => {
+  let now: jest.SpyInstance;
+  beforeEach(() => {
+    now = jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-09T02:00:00Z"));
+  });
+  afterEach(() => now.mockRestore());
+
+  // GRIDGO's check-in contract for an account no longer enrolled is a 404, not `{enrolled:false}`.
+  const notEnrolled = () => new api.ApiError(404, { error: "not_enrolled" });
+
+  it.each(["automatic-open answer", "read"])("ends the run, and an older %s cannot bring it back", async (held) => {
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    let release!: (state: TesterProgramState) => void;
+    if (held === "read") {
+      // The foreground refresh goes out first and is held.
+      api.getTesterProgram.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    } else {
+      // Home's read lands active; its automatic check-in answer is held.
+      api.getTesterProgram.mockResolvedValueOnce(enrolled());
+      api.testerCheckIn.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    }
+    const read = useTesterProgram.getState().load("u1");
+    await flush();
+    // Operations removed the enrolment before the tap.
+    api.testerCheckIn.mockRejectedValueOnce(notEnrolled());
+    await useTesterProgram.getState().checkIn();
+    expect(useTesterProgram.getState().program).toEqual({ enrolled: false });
+    expect(useTesterProgram.getState().checkInFailed).toBe(false);
+    await syncTesterReminders([]);
+    mockNotifications.scheduleNotificationAsync.mockClear();
+    // GRIDGO, asked again, still says not enrolled.
+    api.getTesterProgram.mockResolvedValue({ enrolled: false });
+    api.testerCheckIn.mockResolvedValue(enrolled({ checkedInToday: true }));
+    // The older answer, from before the removal, lands last.
+    release(enrolled({ checkedInToday: held !== "read" }));
+    await read;
+    await flush();
+    await flush();
+    await flush();
+    expect(useTesterProgram.getState().program).toEqual({ enrolled: false });
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    // The stale answer was reconciled with GRIDGO rather than trusted.
+    expect(api.getTesterProgram).toHaveBeenCalledTimes(2);
+  });
+
+  it("on the automatic check-in ends the run instead of planning from the earlier read", async () => {
+    api.getTesterProgram.mockResolvedValue(enrolled());
+    api.testerCheckIn.mockRejectedValueOnce(notEnrolled());
+    await useTesterProgram.getState().load("u1");
+    await flush();
+    await flush();
+    expect(useTesterProgram.getState().program).toEqual({ enrolled: false });
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});

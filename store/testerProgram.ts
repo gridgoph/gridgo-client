@@ -50,6 +50,11 @@ let applied = 0;
 /** The read generation an accepted Check in answer moved to; reads older than it are stale. */
 let buttonGeneration = 0;
 
+/** GRIDGO's check-in answer for an account that is no longer a tester (`404 not_enrolled`). */
+function notEnrolled(error: unknown): boolean {
+  return error instanceof api.ApiError && error.status === 404;
+}
+
 /** What the check-in records as this build: `1.0.552`, or the platform for a dev build. */
 export function testerAppVersion(): string {
   const version = Constants.expoConfig?.version?.trim();
@@ -101,8 +106,11 @@ export const useTesterProgram = create<TesterProgramStore>()(
           if (program.enrolled && !program.checkedInToday && !program.stopped) {
             try {
               program = await api.testerCheckIn(testerAppVersion(), "open");
-            } catch {
-              // The card offers Check in; the reminders still follow the read.
+            } catch (error) {
+              // No longer enrolled: the run is over, whatever the read said.
+              // Anything else: the card offers Check in; the reminders still
+              // follow the read.
+              if (notEnrolled(error)) program = { enrolled: false };
             }
             if (mine !== sequence) return reconcile(userId);
             applied++;
@@ -125,23 +133,39 @@ export const useTesterProgram = create<TesterProgramStore>()(
           // this call can say — so this answer then yields and GRIDGO is re-read.
           const readGeneration = sequence;
           const appliedAtTap = applied;
-          set({ checkingIn: true, checkInFailed: false });
-          try {
-            const program = await api.testerCheckIn(testerAppVersion(), "button");
-            if (attempt !== checkInAttempt || get().owner !== owner) return;
-            if (readGeneration !== sequence || appliedAtTap !== applied) {
-              // Overtaken: ask GRIDGO again rather than trust either snapshot.
-              void get().load(owner);
-              return;
-            }
-            // Accepted: any read or automatic check-in still in flight is older
-            // than this answer and must not be drawn or scheduled over it.
+          const stillMine = () => attempt === checkInAttempt && get().owner === owner;
+          const overtaken = () => readGeneration !== sequence || appliedAtTap !== applied;
+          // Accepted: any read or automatic check-in still in flight is older
+          // than this answer and must not be drawn or scheduled over it.
+          const accept = (program: api.TesterProgramState) => {
             buttonGeneration = ++sequence;
             applied++;
             set({ program, readAt: Date.now() });
             void syncTesterReminders(reminderPlan(program, Date.now()));
-          } catch {
-            if (attempt === checkInAttempt && get().owner === owner) set({ checkInFailed: true });
+          };
+          set({ checkingIn: true, checkInFailed: false });
+          try {
+            const program = await api.testerCheckIn(testerAppVersion(), "button");
+            if (!stillMine()) return;
+            if (overtaken()) {
+              // Ask GRIDGO again rather than trust either snapshot.
+              void get().load(owner);
+              return;
+            }
+            accept(program);
+          } catch (error) {
+            if (!stillMine()) return;
+            if (!notEnrolled(error)) {
+              set({ checkInFailed: true });
+              return;
+            }
+            // GRIDGO's own word that the run is over: as authoritative as a
+            // successful answer, so it is accepted (or reconciled) the same way.
+            if (overtaken()) {
+              void get().load(owner);
+              return;
+            }
+            accept({ enrolled: false });
           } finally {
             // Requests time out after 20 s, so this always runs.
             if (attempt === checkInAttempt) set({ checkingIn: false });
