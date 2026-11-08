@@ -26,6 +26,7 @@ import { receiptNoticeHref } from "@/lib/receipt";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { isQuoteNotification, QUOTES_ROUTE } from "@/lib/quoteRequests";
+import { TESTER_REMINDER_TYPE } from "@/lib/testerProgram";
 
 /**
  * The Android channel the server names in every message.
@@ -215,6 +216,8 @@ export function pushTargetRoute(data: PushData): string {
   // A season heads-up names no job and no window (`season_window`, gridgo-api
   // `docs/SEASON_WINDOWS_API.md`). Home is where its banner lives.
   if (data.type === SEASON_PUSH_TYPE) return "/(tabs)/home";
+  // A tester's daily reminder is local; Home holds the check-in card.
+  if (data.type === TESTER_REMINDER_TYPE) return "/(tabs)/home";
   // The officer check and Operations' notices belong to the organization,
   // and its tab is where they are answered (gridgo-client#165).
   if (data.type && ORGANIZATION_PUSH_TYPES.has(data.type)) return "/(tabs)/organizations";
