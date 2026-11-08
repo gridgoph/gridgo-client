@@ -97,3 +97,15 @@ export function thanksFitsFooter(screenHeight: number, footerHeight: number): bo
   if (screenHeight <= 0 || footerHeight <= 0) return true;
   return footerHeight <= screenHeight * RECEIPT_FOOTER_MAX_SHARE;
 }
+
+/**
+ * Below this window height the slip is set compact (Sol's review of #403):
+ * tighter header and section spacing and the invoice id as small metadata,
+ * so the total is in view at rest on a 360 x 640 phone. The figures keep
+ * their size, and a taller phone (390 x 844) keeps the slip as it was.
+ */
+export const COMPACT_SLIP_MAX_HEIGHT = 720;
+
+export function slipIsCompact(screenHeight: number): boolean {
+  return screenHeight > 0 && screenHeight < COMPACT_SLIP_MAX_HEIGHT;
+}

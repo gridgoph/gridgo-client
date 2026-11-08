@@ -24,6 +24,7 @@ import {
   PRINT_OVERSHOOT_PX,
   PRINT_SETTLE_MS,
   printStartFrame,
+  slipIsCompact,
   slipFeedFrom,
   THANKS_DELAY_MS,
   THANKS_FADE_MS,
@@ -190,7 +191,7 @@ export function PrintedReceipt({
       <ScrollView
         testID="receipt-print"
         className="gg-screen"
-        contentContainerClassName="gg-page pb-10 pt-4"
+        contentContainerClassName={slipIsCompact(screenHeight) ? "gg-page pb-10 pt-2" : "gg-page pb-10 pt-4"}
         onTouchStart={finish}
       >
         <View
@@ -203,7 +204,11 @@ export function PrintedReceipt({
         {view ? (
           <View className="-mt-2.5 mx-4 overflow-hidden pt-2.5">
             <Animated.View testID="receipt-slip-feed" style={slipStyle} onLayout={onSlipLayout}>
-              <ReceiptSlip view={view} showServiceFee={showServiceFee} />
+              <ReceiptSlip
+                view={view}
+                showServiceFee={showServiceFee}
+                compact={slipIsCompact(screenHeight)}
+              />
             </Animated.View>
             {/* The slot's shadow on the paper, so the slip reads as coming out of it. */}
             <View pointerEvents="none" className="absolute inset-x-0 top-0 h-6" aria-hidden>

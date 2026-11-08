@@ -26,6 +26,12 @@ type Props = {
   view: ReceiptView;
   /** Draw the tap-to-explain fee row; off when the platform hides the fee. */
   showServiceFee: boolean;
+  /**
+   * A short phone: tighter header and section spacing, and the invoice id as
+   * one line of small metadata, so the total is in view at rest. Figures keep
+   * their size.
+   */
+  compact?: boolean;
 };
 
 /** Figures line up down the slip, the way a till prints them. */
@@ -49,7 +55,7 @@ const TOOTH_DEPTH = 6;
  *
  * Static on purpose: `PrintedReceipt` moves it; this only draws it.
  */
-export function ReceiptSlip({ view, showServiceFee }: Props) {
+export function ReceiptSlip({ view, showServiceFee, compact = false }: Props) {
   const colors = useThemeColors();
   const date = receiptDateLabel(view.issuedAt);
   const reference = orderReference(view.orderId);
@@ -58,10 +64,16 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
 
   return (
     <View testID="receipt-slip">
-      <View className="gap-4 border-x border-t border-outline bg-surface px-5 pb-5 pt-6">
-        <View className="items-center gap-3">
+      <View
+        className={
+          compact
+            ? "gap-3 border-x border-t border-outline bg-surface px-5 pb-4 pt-4"
+            : "gap-4 border-x border-t border-outline bg-surface px-5 pb-5 pt-6"
+        }
+      >
+        <View className={compact ? "items-center gap-2" : "items-center gap-3"}>
           <SlipMark />
-          <View className="items-center gap-1">
+          <View className={compact ? "items-center" : "items-center gap-1"}>
             <Text className="text-h3 text-text-primary">Order summary</Text>
             <Text className="text-caption text-text-muted">GRIDGO, Davao City</Text>
           </View>
@@ -69,10 +81,16 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
 
         <Perforation />
 
-        <View className="gap-1.5">
+        <View className={compact ? "gap-1" : "gap-1.5"}>
           {reference ? <SlipRow label="Order" value={`#${reference}`} /> : null}
           {date ? <SlipRow label="Date" value={date} /> : null}
-          {view.invoiceNumber ? <SlipRow label="Invoice" value={view.invoiceNumber} /> : null}
+          {view.invoiceNumber ? (
+            compact ? (
+              <InvoiceMeta value={view.invoiceNumber} />
+            ) : (
+              <SlipRow label="Invoice" value={view.invoiceNumber} />
+            )
+          ) : null}
         </View>
 
         {view.groups ? (
@@ -82,7 +100,7 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
             client saw at checkout. The figures below add them up.
           */
           view.groups.map((group) => (
-            <View key={group.orderId} className="gap-4">
+            <View key={group.orderId} className={compact ? "gap-3" : "gap-4"}>
               <Perforation />
               <SlipGroup group={group} />
             </View>
@@ -90,7 +108,7 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
         ) : view.lines.length ? (
           <>
             <Perforation />
-            <View className="gap-3">
+            <View className={compact ? "gap-2" : "gap-3"}>
               {view.lines.map((line) => (
                 <SlipLine key={line.id} line={line} />
               ))}
@@ -100,7 +118,7 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
 
         <Perforation />
 
-        <View className="gap-1.5">
+        <View className={compact ? "gap-1" : "gap-1.5"}>
           <SlipRow label="Printing" value={formatPhp(view.money.printingMinor)} />
           {view.money.organizationDiscountMinor ? (
             <SlipRow
@@ -117,7 +135,13 @@ export function ReceiptSlip({ view, showServiceFee }: Props) {
           ) : null}
         </View>
 
-        <View className="gap-2 border-t-2 border-text-primary pt-3">
+        <View
+          className={
+            compact
+              ? "gap-1.5 border-t-2 border-text-primary pt-2"
+              : "gap-2 border-t-2 border-text-primary pt-3"
+          }
+        >
           <View className="flex-row items-baseline justify-between gap-4">
             <Text className="text-body-lg font-bold text-text-primary">Total</Text>
             <Text className="text-h2 font-bold text-text-primary" style={FIGURES}>
@@ -205,6 +229,26 @@ function SlipGroup({ group }: { group: ReceiptGroup }) {
       {group.voucherDiscountMinor ? (
         <SlipRow label={VOUCHER_SHARE_LABEL} value={voucherAmount(group.voucherDiscountMinor)} />
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * The invoice id on a compact slip: small metadata on one line. It is a
+ * reference to quote, not a figure to read, and at body size it wrapped.
+ */
+function InvoiceMeta({ value }: { value: string }) {
+  return (
+    <View className="flex-row items-baseline justify-between gap-3" accessible accessibilityLabel={`Invoice ${value}`}>
+      <Text className="text-caption text-text-muted">Invoice</Text>
+      <Text
+        className="shrink text-right text-caption text-text-secondary"
+        style={FIGURES}
+        numberOfLines={1}
+        ellipsizeMode="middle"
+      >
+        {value}
+      </Text>
     </View>
   );
 }

@@ -3,6 +3,7 @@ import {
   PRINT_FEED_MS,
   RECEIPT_FOOTER_MAX_SHARE,
   RECEIPT_PRINT_BUDGET_MS,
+  slipIsCompact,
   thanksFitsFooter,
   printStartFrame,
   RECEIPT_PRINT_TOTAL_MS,
@@ -52,5 +53,13 @@ describe("the pinned panel under the slip", () => {
   it("keeps it pinned until it has been measured", () => {
     expect(thanksFitsFooter(0, 300)).toBe(true);
     expect(thanksFitsFooter(640, 0)).toBe(true);
+  });
+});
+
+describe("the compact slip", () => {
+  it("is compact on a 360 x 640 phone and full size on a 390 x 844 one", () => {
+    expect(slipIsCompact(640)).toBe(true);
+    expect(slipIsCompact(844)).toBe(false);
+    expect(slipIsCompact(0)).toBe(false);
   });
 });
