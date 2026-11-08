@@ -183,9 +183,12 @@ describe("the Check in button always leaves its pending state", () => {
     api.getTesterProgram.mockResolvedValue(enrolled());
     const button = useTesterProgram.getState().checkIn();
     await useTesterProgram.getState().load("u1");
+    api.getTesterProgram.mockResolvedValue(enrolled({ checkedInToday: true, streak: 4 }));
     resolveButton(enrolled({ checkedInToday: true, streak: 4 }));
     await button;
+    await flush();
     expect(useTesterProgram.getState().checkingIn).toBe(false);
+    // The overtaken answer is not drawn; a fresh read is, which agrees.
     expect(useTesterProgram.getState().program).toMatchObject({ checkedInToday: true });
   });
 
@@ -198,5 +201,41 @@ describe("the Check in button always leaves its pending state", () => {
     resolveButton(enrolled({ checkedInToday: true }));
     await button;
     expect(useTesterProgram.getState()).toMatchObject({ owner: null, program: null, checkingIn: false });
+  });
+});
+
+describe("a delayed Check in answer cannot undo a newer read", () => {
+  let now: jest.SpyInstance;
+  beforeEach(() => {
+    now = jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-07T02:00:00Z"));
+  });
+  afterEach(() => now.mockRestore());
+
+  async function overtakenBy(newer: TesterProgramState) {
+    let resolveButton!: (value: TesterProgramState) => void;
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    api.testerCheckIn.mockImplementationOnce(() => new Promise((resolve) => { resolveButton = resolve; }));
+    api.getTesterProgram.mockResolvedValue(newer);
+    const button = useTesterProgram.getState().checkIn();
+    await useTesterProgram.getState().load("u1");
+    await flush();
+    mockNotifications.scheduleNotificationAsync.mockClear();
+    resolveButton(enrolled({ checkedInToday: true }));
+    await button;
+    await flush();
+    await flush();
+  }
+
+  it("after production approval", async () => {
+    await overtakenBy(enrolled({ checkedInToday: true, stopped: true }));
+    expect(useTesterProgram.getState().program).toMatchObject({ stopped: true });
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it("after unenrolment", async () => {
+    await overtakenBy({ enrolled: false });
+    expect(useTesterProgram.getState().program).toEqual({ enrolled: false });
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 });

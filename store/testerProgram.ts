@@ -103,10 +103,19 @@ export const useTesterProgram = create<TesterProgramStore>()(
         // that overtakes it must not leave it spinning (`finally`).
         const attempt = ++checkInAttempt;
         const owner = get().owner;
+        // The read generation when the tap went out. A read started since may
+        // know more (production approval, unenrolment), so this answer must
+        // not be drawn or scheduled over it.
+        const readGeneration = sequence;
         set({ checkingIn: true, checkInFailed: false });
         try {
           const program = await api.testerCheckIn(testerAppVersion(), "button");
           if (attempt !== checkInAttempt || get().owner !== owner) return;
+          if (readGeneration !== sequence) {
+            // Overtaken: ask GRIDGO again rather than trust either snapshot.
+            void get().load(owner);
+            return;
+          }
           set({ program, readAt: Date.now() });
           void syncTesterReminders(reminderPlan(program, Date.now()));
         } catch {
