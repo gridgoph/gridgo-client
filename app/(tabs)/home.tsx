@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { useCallback, useRef, useState } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, Platform, Pressable, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 
@@ -14,6 +14,7 @@ import { RetiredDraftNotice } from "@/components/RetiredDraftNotice";
 import { HomeSearch } from "@/components/HomeSearch";
 import { HomeActionRow } from "@/components/HomeRow";
 import { HomeSmartTile } from "@/components/HomeSmartTile";
+import { HomeTesterSlot } from "@/components/HomeTesterSlot";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SeasonBanner } from "@/components/SeasonBanner";
 import { TourTarget } from "@/components/TourTarget";
@@ -37,6 +38,7 @@ import { useRequestDraft } from "@/store/requestDraft";
 import { useSeasonWindows } from "@/store/seasonWindows";
 import { useFoundingTester } from "@/store/foundingTester";
 import { useSession } from "@/store/session";
+import { useTesterProgram } from "@/store/testerProgram";
 
 /**
  * Home is one phone screen with no scrolling (client#335): the mark, cart and
@@ -116,6 +118,8 @@ export default function HomeScreen() {
         // Seed already on screen.
       });
     void useHomeSummary.getState().load(useSession.getState().user?.id ?? null);
+    // A Google Play tester's open is the day's check-in (nothing for anyone else).
+    void useTesterProgram.getState().load(useSession.getState().user?.id ?? null);
     void refreshNotifications();
     // The basket lives on GRIDGO, so the count on the cart control is only
     // honest if it is re-read. Coming back from checkout is exactly when it
@@ -142,6 +146,14 @@ export default function HomeScreen() {
       };
     }, [load]),
   );
+
+  // Coming back to the app on a new day is an open too.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next === "active") void useTesterProgram.getState().load(useSession.getState().user?.id ?? null);
+    });
+    return () => subscription.remove();
+  }, []);
 
   const jobs = homeJobs(orders ?? []);
   const waiting = jobs.needsYou[0] ?? null;
@@ -214,6 +226,8 @@ export default function HomeScreen() {
               ) : (
                 <LegalNoticeBanner />
               )}
+
+              <HomeTesterSlot />
 
               {showFeatured ? (
                 <HomeFeaturedPrints
