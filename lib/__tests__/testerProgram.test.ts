@@ -121,6 +121,16 @@ describe("reminderPlan", () => {
     expect(wallClock("Europe/London")).toBe("11");
   });
 
+  it("never reminds on an evening already checked in", () => {
+    // Opened at 10 AM Manila and checked in: tonight stays quiet, tomorrow is Day 4.
+    const plan = reminderPlan(tester({ day: 3, streak: 3, checkedInToday: true }), at("2026-11-07T02:00:00Z"));
+    expect(plan.some((r) => r.at === at("2026-11-07T11:00:00Z"))).toBe(false);
+    expect(plan.every((r) => manilaDateOf(r.at) !== "2026-11-07")).toBe(true);
+    expect(plan[0]).toMatchObject({ at: at("2026-11-08T11:00:00Z"), title: "Day 4 of 14" });
+    // One-shot instants only, so nothing can repeat into an evening already kept.
+    expect(new Set(plan.map((r) => r.at)).size).toBe(plan.length);
+  });
+
   it("keeps reminding past the first week of an unfinished run", () => {
     // Checked in on 7 Nov, then the app is never opened again.
     const plan = reminderPlan(tester({ day: 1, streak: 1, checkedInToday: true }), at("2026-11-07T02:00:00Z"));

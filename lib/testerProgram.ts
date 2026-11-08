@@ -29,10 +29,12 @@ const EVENING_UTC_HOUR = 11;
 /** 8 AM in Manila is 00:00 UTC. */
 const MORNING_UTC_HOUR = 0;
 /**
- * Evenings planned ahead, re-planned (rolling) on every open. A local
- * reminder cannot repeat at a fixed Manila time — a repeating trigger follows
- * the phone's clock — so the run's reminders are one-shot instants. Thirty
- * evenings and one catch-up stay well inside iOS's 64 pending notifications.
+ * Evenings planned ahead, re-planned (rolling) on every open. One-shot
+ * instants on purpose: a repeating daily trigger cannot start tomorrow, so it
+ * would ping testers who already checked in before 7 PM, and it cannot carry
+ * a correct "Day N". Thirty evenings and one catch-up stay inside iOS's 64
+ * pending notifications; a tester unseen that long has shown as "stopped
+ * checking in" on the Ops page for weeks (decided on PR #404's review).
  */
 export const PLAN_DAYS = 30;
 
