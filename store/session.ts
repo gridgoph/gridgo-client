@@ -447,8 +447,10 @@ useSession.subscribe((state, previous) => {
   // (`claim`). An empty `user` alone is neither: every launch starts with one
   // while the session restores, and forgetting the basket then is #150.
   if (state.signingOut && !previous.signingOut) useCart.getState().reset();
-  // Tester reminders are for the person signed in; signing out stops them.
-  if (state.signingOut && !previous.signingOut) useTesterProgram.getState().forget();
+  // Tester reminders are for the person signed in: a sign-out, or Clerk
+  // reporting the session gone, cancels them.
+  if ((state.signingOut && !previous.signingOut) || (previous.source && !state.source))
+    useTesterProgram.getState().forget();
   // Apple's held code and result belong to the identity: a sign-out, or Clerk
   // reporting the session gone, ends it. A mid-session 401 keeps `source`, so
   // the same person signing in again still finds them.

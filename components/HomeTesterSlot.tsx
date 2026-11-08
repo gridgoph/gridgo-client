@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 import { TesterCheckInCard } from "@/components/TesterCheckInCard";
 import { TesterFeedbackCard } from "@/components/TesterFeedbackCard";
-import { feedbackToShow, testerCardView } from "@/lib/testerProgram";
+import { feedbackAllowed, feedbackToShow, testerCardView } from "@/lib/testerProgram";
 import { useSession } from "@/store/session";
 import { useTesterProgram } from "@/store/testerProgram";
 
@@ -21,11 +21,8 @@ export function HomeTesterSlot() {
   const readAt = useTesterProgram((s) => s.readAt);
 
   const view = testerCardView(program);
-  const enrolled = program?.enrolled ? program : null;
   const feedback =
-    enrolled && (enrolled.checkedInToday || enrolled.stopped)
-      ? feedbackToShow(enrolled.nudge, held, userId, readAt)
-      : null;
+    program?.enrolled && feedbackAllowed(program) ? feedbackToShow(program.nudge, held, userId, readAt) : null;
   const freshTrigger = feedback?.fresh ? feedback.trigger : null;
 
   // A card GRIDGO offered is "shown" the moment it is drawn, and held from then on.

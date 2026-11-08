@@ -79,3 +79,12 @@ it("keeps a dismissed card closed and shows the check-in again", async () => {
   expect(screen.queryByText("Help us launch")).toBeNull();
   expect(screen.getByText("Day 3 of 14")).toBeTruthy();
 });
+
+it("hides a held feedback card once the app is production approved", async () => {
+  signedInWith(enrolled({ stopped: true, runComplete: false, nudge: null }), {
+    held: { userId: "u1", trigger: "streak_3", shownAt: Date.parse("2026-11-07T11:00:00Z"), closed: false },
+  });
+  await render(<HomeTesterSlot />);
+  expect(screen.queryByText("Help us launch")).toBeNull();
+  expect(screen.toJSON()).toBeNull();
+});

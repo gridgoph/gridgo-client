@@ -105,3 +105,98 @@ it("reports a shown card, then holds it closed once dismissed", () => {
   expect(api.reportTesterFeedback).toHaveBeenCalledWith("dismissed", "streak_3");
   expect(useTesterProgram.getState().held).toEqual({ userId: "u1", trigger: "streak_3", shownAt: 1_000, closed: true });
 });
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe("reminders cannot outlive a sign-out or a stop", () => {
+  let now: jest.SpyInstance;
+  beforeEach(() => {
+    now = jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-07T02:00:00Z"));
+  });
+  afterEach(() => now.mockRestore());
+
+  it("sign-out wins over a plan still waiting on the OS", async () => {
+    let releasePermission!: (value: { granted: boolean }) => void;
+    mockNotifications.getPermissionsAsync.mockImplementationOnce(
+      () => new Promise((resolve) => { releasePermission = resolve; }),
+    );
+    api.getTesterProgram.mockResolvedValue(enrolled({ checkedInToday: true }));
+    await useTesterProgram.getState().load("u1");
+    await flush();
+    useTesterProgram.getState().forget();
+    await flush();
+    releasePermission({ granted: true });
+    await flush();
+    await flush();
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it("a stop read overtaking a pending plan leaves nothing scheduled", async () => {
+    let releasePermission!: (value: { granted: boolean }) => void;
+    mockNotifications.getPermissionsAsync.mockImplementationOnce(
+      () => new Promise((resolve) => { releasePermission = resolve; }),
+    );
+    api.getTesterProgram
+      .mockResolvedValueOnce(enrolled({ checkedInToday: true }))
+      .mockResolvedValueOnce(enrolled({ checkedInToday: true, stopped: true }));
+    await useTesterProgram.getState().load("u1");
+    await flush();
+    await useTesterProgram.getState().load("u1");
+    releasePermission({ granted: true });
+    await flush();
+    await flush();
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it("schedules an unfinished run's reminders well past one week", async () => {
+    api.getTesterProgram.mockResolvedValue(enrolled({ day: 1, streak: 1, checkedInToday: true }));
+    await useTesterProgram.getState().load("u1");
+    await flush();
+    await flush();
+    const dates = mockNotifications.scheduleNotificationAsync.mock.calls.map((call) => call[0].trigger.date.getTime());
+    expect(dates.some((at: number) => at >= Date.parse("2026-11-15T00:00:00Z"))).toBe(true);
+  });
+});
+
+describe("the Check in button always leaves its pending state", () => {
+  it("after a refresh overtakes a failing tap", async () => {
+    let rejectButton!: (error: Error) => void;
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    api.testerCheckIn
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectButton = reject; }))
+      .mockRejectedValue(new Error("offline"));
+    api.getTesterProgram.mockResolvedValue(enrolled());
+    const button = useTesterProgram.getState().checkIn();
+    await useTesterProgram.getState().load("u1");
+    rejectButton(new Error("offline"));
+    await button;
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(useTesterProgram.getState().checkInFailed).toBe(true);
+  });
+
+  it("after a refresh overtakes a successful tap", async () => {
+    let resolveButton!: (value: TesterProgramState) => void;
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    api.testerCheckIn
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveButton = resolve; }))
+      .mockRejectedValue(new Error("offline"));
+    api.getTesterProgram.mockResolvedValue(enrolled());
+    const button = useTesterProgram.getState().checkIn();
+    await useTesterProgram.getState().load("u1");
+    resolveButton(enrolled({ checkedInToday: true, streak: 4 }));
+    await button;
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(useTesterProgram.getState().program).toMatchObject({ checkedInToday: true });
+  });
+
+  it("and a sign-out mid-tap cannot write to the next person", async () => {
+    let resolveButton!: (value: TesterProgramState) => void;
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    api.testerCheckIn.mockImplementationOnce(() => new Promise((resolve) => { resolveButton = resolve; }));
+    const button = useTesterProgram.getState().checkIn();
+    useTesterProgram.getState().forget();
+    resolveButton(enrolled({ checkedInToday: true }));
+    await button;
+    expect(useTesterProgram.getState()).toMatchObject({ owner: null, program: null, checkingIn: false });
+  });
+});

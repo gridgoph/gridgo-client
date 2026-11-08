@@ -28,8 +28,13 @@ const MANILA_OFFSET_MS = 8 * 3_600_000;
 const EVENING_UTC_HOUR = 11;
 /** 8 AM in Manila is 00:00 UTC. */
 const MORNING_UTC_HOUR = 0;
-/** Reminders are planned a week ahead and re-planned on every open. */
-const PLAN_DAYS = 7;
+/**
+ * Evenings planned ahead, re-planned (rolling) on every open. A local
+ * reminder cannot repeat at a fixed Manila time — a repeating trigger follows
+ * the phone's clock — so the run's reminders are one-shot instants. Thirty
+ * evenings and one catch-up stay well inside iOS's 64 pending notifications.
+ */
+export const PLAN_DAYS = 30;
 
 type Enrolled = Extract<TesterProgramState, { enrolled: true }>;
 
@@ -101,8 +106,9 @@ export type TesterReminder = {
  * 7 PM Manila on the next day that still needs a check-in ("Day N of 14"),
  * then — because a reminder cannot know whether its day was kept — the days
  * after assume it was missed: one catch-up the next morning at 8 AM, and
- * "Day 1" each evening for the rest of the week. Every open re-plans from the
- * server, so a kept day replaces all of them. Nothing once the program stops.
+ * "Day 1" each evening after that for `PLAN_DAYS`. Every open re-plans from
+ * the server, so a kept day replaces all of them. Nothing once the program
+ * stops (fourteen straight days or production approval).
  */
 export function reminderPlan(state: TesterProgramState | null, now: number): TesterReminder[] {
   if (!state?.enrolled || state.stopped || state.runComplete) return [];
@@ -134,6 +140,18 @@ function evening(date: string, day: number): TesterReminder {
     title: `Day ${day} of ${TESTER_RUN_DAYS}`,
     body: "Open GRIDGO for 1 minute.",
   };
+}
+
+/**
+ * Whether the feedback card may be drawn at all. Once today is in, while the
+ * program runs; and on a completed run (its day-14 card). Never after
+ * production approval — that is `stopped` without `runComplete` — even for a
+ * card this phone is still holding.
+ */
+export function feedbackAllowed(state: TesterProgramState | null): boolean {
+  if (!state?.enrolled) return false;
+  if (state.runComplete) return true;
+  return !state.stopped && state.checkedInToday;
 }
 
 /** A feedback card this phone has put on screen, per account. */
