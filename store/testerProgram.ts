@@ -45,6 +45,8 @@ type TesterProgramStore = {
 
 let sequence = 0;
 let checkInAttempt = 0;
+/** Counts every answer a read has applied, so a pending button answer can tell it is older. */
+let applied = 0;
 
 /** What the check-in records as this build: `1.0.552`, or the platform for a dev build. */
 export function testerAppVersion(): string {
@@ -80,6 +82,7 @@ export const useTesterProgram = create<TesterProgramStore>()(
           return;
         }
         if (mine !== sequence) return;
+        applied++;
         set({ program, readAt: Date.now() });
         // Opening the app is the check-in; the button is only the way back
         // when this call could not land.
@@ -90,6 +93,7 @@ export const useTesterProgram = create<TesterProgramStore>()(
             // The card offers Check in; the reminders still follow the read.
           }
           if (mine !== sequence) return;
+          applied++;
           set({ program, readAt: Date.now() });
         }
         // Every read reconciles this phone's reminders with GRIDGO: replanned
@@ -103,15 +107,17 @@ export const useTesterProgram = create<TesterProgramStore>()(
         // that overtakes it must not leave it spinning (`finally`).
         const attempt = ++checkInAttempt;
         const owner = get().owner;
-        // The read generation when the tap went out. A read started since may
-        // know more (production approval, unenrolment), so this answer must
-        // not be drawn or scheduled over it.
+        // The state this tap was made against. A read that starts after the
+        // tap, or one already pending that lands before this answer, may carry
+        // production approval or the end of enrolment — newer than anything
+        // this call can say — so this answer then yields and GRIDGO is re-read.
         const readGeneration = sequence;
+        const appliedAtTap = applied;
         set({ checkingIn: true, checkInFailed: false });
         try {
           const program = await api.testerCheckIn(testerAppVersion(), "button");
           if (attempt !== checkInAttempt || get().owner !== owner) return;
-          if (readGeneration !== sequence) {
+          if (readGeneration !== sequence || appliedAtTap !== applied) {
             // Overtaken: ask GRIDGO again rather than trust either snapshot.
             void get().load(owner);
             return;
@@ -151,6 +157,7 @@ export const useTesterProgram = create<TesterProgramStore>()(
       reset: () => {
         sequence++;
         checkInAttempt++;
+        applied++;
         set({ owner: null, program: null, checkingIn: false, checkInFailed: false });
       },
       forget: () => {

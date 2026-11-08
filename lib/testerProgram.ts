@@ -147,11 +147,14 @@ function evening(date: string, day: number): TesterReminder {
 /**
  * Whether the feedback card may be drawn at all. Once today is in, while the
  * program runs; and on a completed run (its day-14 card). Never after
- * production approval — that is `stopped` without `runComplete` — even for a
- * card this phone is still holding.
+ * production approval, even for a card this phone is still holding.
+ * `productionApproved` is the only signal on a completed run (`stopped` is
+ * true either way); a GRIDGO without the field reads as not approved.
  */
 export function feedbackAllowed(state: TesterProgramState | null): boolean {
   if (!state?.enrolled) return false;
+  // Approval ends every ask, a completed run's day-14 card included.
+  if (state.productionApproved === true) return false;
   if (state.runComplete) return true;
   return !state.stopped && state.checkedInToday;
 }

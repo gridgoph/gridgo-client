@@ -239,3 +239,39 @@ describe("a delayed Check in answer cannot undo a newer read", () => {
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 });
+
+describe("a read already pending at the tap", () => {
+  let now: jest.SpyInstance;
+  beforeEach(() => {
+    now = jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-09T02:00:00Z"));
+  });
+  afterEach(() => now.mockRestore());
+
+  it.each([
+    ["production approval", enrolled({ checkedInToday: false, stopped: true })],
+    ["the end of enrolment", { enrolled: false } as TesterProgramState],
+  ])("that lands %s still beats the older button answer", async (_label, newer) => {
+    useTesterProgram.setState({ owner: "u1", program: enrolled() });
+    let resolveRead!: (state: TesterProgramState) => void;
+    let resolveButton!: (state: TesterProgramState) => void;
+    api.getTesterProgram.mockImplementationOnce(() => new Promise((resolve) => { resolveRead = resolve; }));
+    // The foreground refresh starts first; Home still offers Check in.
+    const read = useTesterProgram.getState().load("u1");
+    api.testerCheckIn.mockImplementationOnce(() => new Promise((resolve) => { resolveButton = resolve; }));
+    const button = useTesterProgram.getState().checkIn();
+    // The refresh lands first, carrying the newer state.
+    resolveRead(newer);
+    await read;
+    await syncTesterReminders([]);
+    mockNotifications.scheduleNotificationAsync.mockClear();
+    // The re-read GRIDGO is asked for still says the newer state.
+    api.getTesterProgram.mockResolvedValue(newer);
+    resolveButton(enrolled({ checkedInToday: true, streak: 1 }));
+    await button;
+    await flush();
+    await flush();
+    expect(useTesterProgram.getState().checkingIn).toBe(false);
+    expect(useTesterProgram.getState().program).toEqual(newer);
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
