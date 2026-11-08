@@ -232,6 +232,8 @@ describe("OrderDetailScreen, paid in full", () => {
     expect(screen.getAllByText("Pay in full").length).toBeGreaterThan(0);
     expect(screen.getAllByText("₱1,125.00").length).toBeGreaterThan(0);
     expect(screen.getByText("Show payment QR")).toBeTruthy();
+    // Nothing paid yet, so no receipt to open from the heading.
+    expect(screen.queryByLabelText("View receipt")).toBeNull();
     expectNoSplit();
   });
 
@@ -243,6 +245,8 @@ describe("OrderDetailScreen, paid in full", () => {
     expect(screen.getByText("GCASH-FULL1")).toBeTruthy();
     // Submitting is not paying.
     expect(screen.queryByText(/paid in full/i)).toBeNull();
+    // Paid and waiting on Operations: the receipt is already one tap away (B2911823).
+    expect(screen.getByLabelText("View receipt")).toBeTruthy();
     expectNoSplit();
   });
 
@@ -262,6 +266,7 @@ describe("OrderDetailScreen, paid in full", () => {
     // Out for delivery with nothing owed: no payment panel at all.
     expect(screen.queryByText("Show payment QR")).toBeNull();
     expect(screen.queryByText(/not needed/i)).toBeNull();
+    expect(screen.getByLabelText("View receipt")).toBeTruthy();
     expectNoSplit();
   });
 

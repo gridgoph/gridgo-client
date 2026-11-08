@@ -4,23 +4,34 @@
  * The slip feeds out of a printer slot at the top of the screen, its torn edge
  * first, eases to rest a hair past its mark and settles back — the small
  * jolt of a slip being torn off. The thank-you under it fades in as the paper
- * stops. The whole thing stays inside ~1.5 s and never gates anything: the
+ * stops. The feed is slow enough to follow with the eye — at 1 s the slip
+ * flew past before anyone could read it (B2911823) — and the whole moment
+ * still ends under the ~2 s budget of #229. It never gates anything: the
  * actions are on screen from the first frame, and any touch finishes it.
  *
  * Reduce motion starts the slip where it ends, with the thank-you shown.
  */
 
 /** How long the paper feeds out of the slot. */
-export const PRINT_FEED_MS = 1000;
+export const PRINT_FEED_MS = 1500;
 /** The settle back after the tear-off overshoot. */
-export const PRINT_SETTLE_MS = 160;
+export const PRINT_SETTLE_MS = 200;
+/**
+ * The feed's cubic-bezier: close to a printer's even pace, easing only at the
+ * ends. A strong ease-out moved most of the slip in its first third, which is
+ * the "too fast" the report saw.
+ */
+export const PRINT_FEED_CURVE = [0.35, 0.1, 0.3, 1] as const;
 /** How far past its rest the slip travels before it settles, in px. */
 export const PRINT_OVERSHOOT_PX = 6;
 /** When the thank-you starts to fade in: as the paper comes to rest. */
-export const THANKS_DELAY_MS = 1000;
+export const THANKS_DELAY_MS = PRINT_FEED_MS;
 export const THANKS_FADE_MS = 240;
 /** How far the thank-you rises as it fades in, in px. */
 export const THANKS_RISE_PX = 8;
+
+/** The longest the moment may run: past it, it delays the client (#229). */
+export const RECEIPT_PRINT_BUDGET_MS = 2000;
 
 /** The whole moment, first frame to last. */
 export const RECEIPT_PRINT_TOTAL_MS = Math.max(
@@ -70,4 +81,31 @@ export function printStartFrame(reducedMotion: boolean): PrintFrame {
 /** The offset a measured slip feeds from: its whole height, tucked in the slot. */
 export function slipFeedFrom(slipHeight: number): number {
   return slipHeight > 0 ? -Math.ceil(slipHeight) : 0;
+}
+
+/**
+ * The most of the screen the pinned panel under the slip may take (B2911823).
+ * The thank-you, two lines of next steps and two stacked buttons took about a
+ * third of a 390 x 844 phone and two fifths of a 360 x 640 one, and cut the
+ * slip off above its total. Past this share the thank-you leaves the panel
+ * for the scroll, under the slip, so only the actions stay pinned.
+ */
+export const RECEIPT_FOOTER_MAX_SHARE = 0.25;
+
+/** Whether the thank-you can stay pinned with the actions, from measured heights. */
+export function thanksFitsFooter(screenHeight: number, footerHeight: number): boolean {
+  if (screenHeight <= 0 || footerHeight <= 0) return true;
+  return footerHeight <= screenHeight * RECEIPT_FOOTER_MAX_SHARE;
+}
+
+/**
+ * Below this window height the slip is set compact (Sol's review of #403):
+ * tighter header and section spacing and the invoice id as small metadata,
+ * so the total is in view at rest on a 360 x 640 phone. The figures keep
+ * their size, and a taller phone (390 x 844) keeps the slip as it was.
+ */
+export const COMPACT_SLIP_MAX_HEIGHT = 720;
+
+export function slipIsCompact(screenHeight: number): boolean {
+  return screenHeight > 0 && screenHeight < COMPACT_SLIP_MAX_HEIGHT;
 }

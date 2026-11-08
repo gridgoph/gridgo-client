@@ -182,6 +182,15 @@ export function paymentStatusOf(
   return initial.reference?.trim() || initial.status === "pending_confirmation" ? "checking" : "none";
 }
 
+/**
+ * Whether the order screen offers its receipt (B2911823). GRIDGO writes the
+ * invoice at checkout, so from payment on — at every later status, cancelled
+ * and refunded included — the receipt is one tap from the order's heading.
+ */
+export function receiptEntryShown(order: Pick<Order, "invoiceNumber" | "payments">): boolean {
+  return Boolean(order.invoiceNumber?.trim()) || paymentStatusOf(order.payments) !== "none";
+}
+
 function invoicePaidInFull(invoice: Invoice): boolean {
   return invoice.paymentPlan?.balanceMinor === 0;
 }

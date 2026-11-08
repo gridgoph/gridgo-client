@@ -1,5 +1,5 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { ChevronLeft, ChevronRight, LifeBuoy, MessageCircle, ScrollText, Share2, Star } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, LifeBuoy, MessageCircle, ReceiptText, ScrollText, Share2, Star } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
@@ -85,6 +85,7 @@ import {
 import { physicalInvoiceEntry, physicalInvoiceRequestsEnabled } from "@/lib/physicalInvoice";
 import { cleanLabel, lineAttachments } from "@/lib/artworkAttachments";
 import { orderArtwork } from "@/lib/orderArtwork";
+import { receiptEntryShown } from "@/lib/receipt";
 import { orderReference } from "@/lib/orderReference";
 import {
   artworkSummary,
@@ -480,12 +481,33 @@ export default function OrderDetailScreen() {
     </Pressable>
   ) : null;
 
+  /* The receipt, one tap from the heading at every status after payment (B2911823). */
+  const receiptButton = receiptEntryShown(order) ? (
+    <Pressable
+      onPress={() => router.push({ pathname: "/order/receipt", params: { orderId: order.id } })}
+      accessibilityRole="button"
+      accessibilityLabel="View receipt"
+      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+      testID="order-receipt"
+      className="gg-chip bg-surface"
+      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+    >
+      <ReceiptText size={14} color={colors.textPrimary} strokeWidth={2.25} aria-hidden />
+      <Text className="text-caption font-medium text-text-primary">Receipt</Text>
+    </Pressable>
+  ) : null;
+
   const heading = (
     <View className="gap-2">
       <Text className="text-h1 text-text-primary">{order.title}</Text>
       <View className="flex-row items-center justify-between gap-3">
         <OrderReference id={order.id} />
-        {shareButton}
+        {receiptButton || shareButton ? (
+          <View className="flex-row items-center gap-2">
+            {receiptButton}
+            {shareButton}
+          </View>
+        ) : null}
       </View>
     </View>
   );
