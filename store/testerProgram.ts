@@ -47,6 +47,8 @@ let sequence = 0;
 let checkInAttempt = 0;
 /** Counts every answer a read has applied, so a pending button answer can tell it is older. */
 let applied = 0;
+/** The read generation an accepted Check in answer moved to; reads older than it are stale. */
+let buttonGeneration = 0;
 
 /** What the check-in records as this build: `1.0.552`, or the platform for a dev build. */
 export function testerAppVersion(): string {
@@ -61,110 +63,125 @@ export function testerAppVersion(): string {
  */
 export const useTesterProgram = create<TesterProgramStore>()(
   persist(
-    (set, get) => ({
-      owner: null,
-      program: null,
-      readAt: 0,
-      checkingIn: false,
-      checkInFailed: false,
-      held: null,
-      load: async (userId) => {
-        if (!userId) {
-          get().reset();
-          return;
-        }
-        const mine = ++sequence;
-        if (get().owner !== userId) set({ owner: userId, program: null, checkInFailed: false });
-        let program: api.TesterProgramState;
-        try {
-          program = await api.getTesterProgram();
-        } catch {
-          return;
-        }
-        if (mine !== sequence) return;
-        applied++;
-        set({ program, readAt: Date.now() });
-        // Opening the app is the check-in; the button is only the way back
-        // when this call could not land.
-        if (program.enrolled && !program.checkedInToday && !program.stopped) {
-          try {
-            program = await api.testerCheckIn(testerAppVersion(), "open");
-          } catch {
-            // The card offers Check in; the reminders still follow the read.
-          }
-          if (mine !== sequence) return;
-          applied++;
-          set({ program, readAt: Date.now() });
-        }
-        // Every read reconciles this phone's reminders with GRIDGO: replanned
-        // while the run is open, cancelled once it stops or the account is
-        // not (or no longer) enrolled.
-        void syncTesterReminders(reminderPlan(program, Date.now()));
-      },
-      checkIn: async () => {
-        if (get().checkingIn) return;
-        // The button's own attempt, apart from the read generation: a refresh
-        // that overtakes it must not leave it spinning (`finally`).
-        const attempt = ++checkInAttempt;
-        const owner = get().owner;
-        // The state this tap was made against. A read that starts after the
-        // tap, or one already pending that lands before this answer, may carry
-        // production approval or the end of enrolment — newer than anything
-        // this call can say — so this answer then yields and GRIDGO is re-read.
-        const readGeneration = sequence;
-        const appliedAtTap = applied;
-        set({ checkingIn: true, checkInFailed: false });
-        try {
-          const program = await api.testerCheckIn(testerAppVersion(), "button");
-          if (attempt !== checkInAttempt || get().owner !== owner) return;
-          if (readGeneration !== sequence || appliedAtTap !== applied) {
-            // Overtaken: ask GRIDGO again rather than trust either snapshot.
-            void get().load(owner);
+    (set, get) => {
+      /**
+       * A read made stale only by an accepted Check in answer (no newer read
+       * since) may still know something newer than that answer, so ask GRIDGO
+       * again rather than trust either snapshot. A newer read or another
+       * account owns the answer otherwise.
+       */
+      const reconcile = (userId: string) => {
+        if (sequence === buttonGeneration && get().owner === userId) void get().load(userId);
+      };
+      return {
+        owner: null,
+        program: null,
+        readAt: 0,
+        checkingIn: false,
+        checkInFailed: false,
+        held: null,
+        load: async (userId) => {
+          if (!userId) {
+            get().reset();
             return;
           }
+          const mine = ++sequence;
+          if (get().owner !== userId) set({ owner: userId, program: null, checkInFailed: false });
+          let program: api.TesterProgramState;
+          try {
+            program = await api.getTesterProgram();
+          } catch {
+            return;
+          }
+          if (mine !== sequence) return reconcile(userId);
+          applied++;
           set({ program, readAt: Date.now() });
+          // Opening the app is the check-in; the button is only the way back
+          // when this call could not land.
+          if (program.enrolled && !program.checkedInToday && !program.stopped) {
+            try {
+              program = await api.testerCheckIn(testerAppVersion(), "open");
+            } catch {
+              // The card offers Check in; the reminders still follow the read.
+            }
+            if (mine !== sequence) return reconcile(userId);
+            applied++;
+            set({ program, readAt: Date.now() });
+          }
+          // Every read reconciles this phone's reminders with GRIDGO: replanned
+          // while the run is open, cancelled once it stops or the account is
+          // not (or no longer) enrolled.
           void syncTesterReminders(reminderPlan(program, Date.now()));
-        } catch {
-          if (attempt === checkInAttempt && get().owner === owner) set({ checkInFailed: true });
-        } finally {
-          // Requests time out after 20 s, so this always runs.
-          if (attempt === checkInAttempt) set({ checkingIn: false });
-        }
-      },
-      feedbackShown: (trigger, now = Date.now()) => {
-        const owner = get().owner;
-        if (!owner) return;
-        set({ held: { userId: owner, trigger, shownAt: now, closed: false } });
-        void api.reportTesterFeedback("shown", trigger).catch(() => undefined);
-      },
-      feedbackTapped: async () => {
-        const held = get().held;
-        if (!held) return;
-        set({ held: { ...held, closed: true } });
-        void api.reportTesterFeedback("tapped", held.trigger).catch(() => undefined);
-        try {
-          await Linking.openURL(PLAY_FEEDBACK_URL);
-        } catch {
-          // Nothing to open it with; the card has done what it can.
-        }
-      },
-      feedbackDismissed: () => {
-        const held = get().held;
-        if (!held) return;
-        set({ held: { ...held, closed: true } });
-        void api.reportTesterFeedback("dismissed", held.trigger).catch(() => undefined);
-      },
-      reset: () => {
-        sequence++;
-        checkInAttempt++;
-        applied++;
-        set({ owner: null, program: null, checkingIn: false, checkInFailed: false });
-      },
-      forget: () => {
-        get().reset();
-        void syncTesterReminders([]);
-      },
-    }),
+        },
+        checkIn: async () => {
+          if (get().checkingIn) return;
+          // The button's own attempt, apart from the read generation: a refresh
+          // that overtakes it must not leave it spinning (`finally`).
+          const attempt = ++checkInAttempt;
+          const owner = get().owner;
+          // The state this tap was made against. A read that starts after the
+          // tap, or one already pending that lands before this answer, may carry
+          // production approval or the end of enrolment — newer than anything
+          // this call can say — so this answer then yields and GRIDGO is re-read.
+          const readGeneration = sequence;
+          const appliedAtTap = applied;
+          set({ checkingIn: true, checkInFailed: false });
+          try {
+            const program = await api.testerCheckIn(testerAppVersion(), "button");
+            if (attempt !== checkInAttempt || get().owner !== owner) return;
+            if (readGeneration !== sequence || appliedAtTap !== applied) {
+              // Overtaken: ask GRIDGO again rather than trust either snapshot.
+              void get().load(owner);
+              return;
+            }
+            // Accepted: any read or automatic check-in still in flight is older
+            // than this answer and must not be drawn or scheduled over it.
+            buttonGeneration = ++sequence;
+            applied++;
+            set({ program, readAt: Date.now() });
+            void syncTesterReminders(reminderPlan(program, Date.now()));
+          } catch {
+            if (attempt === checkInAttempt && get().owner === owner) set({ checkInFailed: true });
+          } finally {
+            // Requests time out after 20 s, so this always runs.
+            if (attempt === checkInAttempt) set({ checkingIn: false });
+          }
+        },
+        feedbackShown: (trigger, now = Date.now()) => {
+          const owner = get().owner;
+          if (!owner) return;
+          set({ held: { userId: owner, trigger, shownAt: now, closed: false } });
+          void api.reportTesterFeedback("shown", trigger).catch(() => undefined);
+        },
+        feedbackTapped: async () => {
+          const held = get().held;
+          if (!held) return;
+          set({ held: { ...held, closed: true } });
+          void api.reportTesterFeedback("tapped", held.trigger).catch(() => undefined);
+          try {
+            await Linking.openURL(PLAY_FEEDBACK_URL);
+          } catch {
+            // Nothing to open it with; the card has done what it can.
+          }
+        },
+        feedbackDismissed: () => {
+          const held = get().held;
+          if (!held) return;
+          set({ held: { ...held, closed: true } });
+          void api.reportTesterFeedback("dismissed", held.trigger).catch(() => undefined);
+        },
+        reset: () => {
+          sequence++;
+          checkInAttempt++;
+          applied++;
+          set({ owner: null, program: null, checkingIn: false, checkInFailed: false });
+        },
+        forget: () => {
+          get().reset();
+          void syncTesterReminders([]);
+        },
+      };
+    },
     {
       name: STORAGE_KEY,
       storage: createPersistStorage(),
