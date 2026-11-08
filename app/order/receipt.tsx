@@ -182,22 +182,31 @@ export default function OrderReceiptScreen() {
           shown={shown}
           onPrint={playPrintSound}
           thanks={fromCheckout ? <OrderPlacedThanks /> : null}
+          note={fromCheckout ? <OrderPlacedNext /> : null}
           actions={
             fromCheckout ? (
               <>
-                <PrimaryButton label="View order" onPress={openOrder} />
-                <SecondaryButton label="Back to Home" onPress={() => setLeaving(HOME_TAB)} />
+                <View className="flex-1">
+                  <PrimaryButton label="View order" onPress={openOrder} />
+                </View>
+                <View className="flex-1">
+                  <SecondaryButton label="Back to Home" onPress={() => setLeaving(HOME_TAB)} />
+                </View>
               </>
             ) : (
               <>
-                <PrimaryButton label="View order" onPress={openOrder} />
+                <View className="flex-1">
+                  <PrimaryButton label="View order" onPress={openOrder} />
+                </View>
                 {orderId && physicalInvoice ? (
-                  <SecondaryButton
-                    label={physicalInvoice.label}
-                    onPress={() =>
-                      router.push({ pathname: "/order/physical-invoice", params: { orderId } })
-                    }
-                  />
+                  <View className="flex-1">
+                    <SecondaryButton
+                      label={physicalInvoice.label}
+                      onPress={() =>
+                        router.push({ pathname: "/order/physical-invoice", params: { orderId } })
+                      }
+                    />
+                  </View>
                 ) : null}
               </>
             )
@@ -361,24 +370,23 @@ function withFeeRate(view: ReceiptView | null, rateBps: number | null | undefine
 }
 
 /**
- * The calm close to the print: the order is in, and what happens next.
- * Placed, not paid — the slip says where the payment stands.
+ * The calm close to the print, in one line so the slip keeps the screen
+ * (B2911823). Placed, not paid — the slip's own payment line says where the
+ * payment stands, so the thank-you does not say it again.
  */
 function OrderPlacedThanks() {
   const colors = useThemeColors();
   return (
-    <View className="flex-row items-center gap-3">
-      <View className="h-11 w-11 items-center justify-center rounded-pill bg-surface-variant">
-        <CircleCheck size={24} color={colors.success} strokeWidth={2} aria-hidden />
-      </View>
-      <View className="min-w-0 flex-1 gap-0.5" accessible accessibilityRole="header">
-        <Text className="text-h3 text-text-primary">Thank you for ordering</Text>
-        <Text className="text-body text-text-secondary">
-          Your order is placed. GRIDGO checks your payment next.
-        </Text>
-        {/* The shop hears of the job only once the file passes (#122). */}
-        <Text className="text-body text-text-secondary">{FILE_CHECK_AFTER_PAYMENT}</Text>
-      </View>
+    <View className="flex-row items-center gap-2" accessible accessibilityRole="header">
+      <CircleCheck size={22} color={colors.success} strokeWidth={2} aria-hidden />
+      <Text className="min-w-0 flex-1 text-body-lg font-medium text-text-primary">
+        Thank you for ordering
+      </Text>
     </View>
   );
+}
+
+/** What happens next, under the slip. The shop hears of the job only once the file passes (#122). */
+function OrderPlacedNext() {
+  return <Text className="text-body text-text-secondary">{FILE_CHECK_AFTER_PAYMENT}</Text>;
 }
