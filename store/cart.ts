@@ -245,10 +245,13 @@ export const useCart = create<CartState>()(
 
       startOver: async (work) => {
         const previous = get().cart;
+        const owner = liveGeneration();
         set({ busy: true, error: null });
         try {
           const fresh = await api.createCart();
           const filled = await work(fresh.id);
+          // Another account signed in meanwhile: this store is theirs now.
+          if (owner !== liveGeneration()) return filled;
           dropoffSequence++;
           loadSequence++;
           creating = null;

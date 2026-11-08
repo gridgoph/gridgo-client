@@ -29,7 +29,7 @@ export { OrderFlowErrorBoundary as ErrorBoundary } from "@/components/OrderFlowE
  * This sits *ahead* of the four-step stepper rather than inside it. The stepper
  * specifies a job the client has already decided to make — product, size,
  * material, deadline, address. Deciding what to make is a different act, it is
- * the one place a client browses rather than fills in, and a reorder skips it
+ * the one place a client browses rather than fills in, and a reorder that knows its product skips it
  * entirely. Folding it in as a fifth pill would put five labels across a phone
  * and would make Details unreachable for someone who only wants to look.
  *

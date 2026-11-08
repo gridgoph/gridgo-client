@@ -1,4 +1,6 @@
-import { migrateDraft } from "@/store/requestDraft";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { migrateDraft, useRequestDraft } from "@/store/requestDraft";
 
 /**
  * A half-finished request has to survive an app kill — and an app update.
@@ -71,5 +73,51 @@ describe("migrateDraft", () => {
     const migrated = migrateDraft(undefined, 1);
     expect(migrated.productId).toBe("");
     expect(migrated.quantity).toBe(1);
+  });
+});
+
+/**
+ * A draft saved on the retired form can never be finished, so the launch that
+ * finds one discards it and Home says so once.
+ */
+describe("a draft saved on the retired form", () => {
+  const KEY = "gridgo.client.requestDraft.v1";
+  const stored = (state: Record<string, unknown>) => JSON.stringify({ state, version: 2 });
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    useRequestDraft.getState().reset();
+    useRequestDraft.getState().dismissRetiredNotice();
+  });
+
+  it("is discarded at launch, on the phone too, with one notice", async () => {
+    await AsyncStorage.setItem(KEY, stored({ productId: "prod_flyer", title: "Flyers", addressLine1: "12 Laurel" }));
+
+    await useRequestDraft.persist.rehydrate();
+
+    expect(useRequestDraft.getState()).toEqual(
+      expect.objectContaining({ retiredNotice: true, productId: "", title: "", addressLine1: "", hydrated: true }),
+    );
+    const left = await AsyncStorage.getItem(KEY);
+    expect(left).not.toContain("prod_flyer");
+    expect(left).not.toContain("retiredNotice");
+  });
+
+  it("says nothing on the next launch", async () => {
+    await AsyncStorage.setItem(KEY, stored({ productId: "prod_flyer", title: "Flyers" }));
+    await useRequestDraft.persist.rehydrate();
+    useRequestDraft.getState().dismissRetiredNotice();
+
+    await useRequestDraft.persist.rehydrate();
+
+    expect(useRequestDraft.getState().retiredNotice).toBe(false);
+  });
+
+  it("says nothing to a phone with no draft", async () => {
+    await AsyncStorage.setItem(KEY, stored({ title: " ", productId: "" }));
+
+    await useRequestDraft.persist.rehydrate();
+
+    expect(useRequestDraft.getState().retiredNotice).toBe(false);
   });
 });

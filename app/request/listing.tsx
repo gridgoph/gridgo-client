@@ -88,11 +88,14 @@ import { type OrderStepId } from "@/lib/orderSteps";
 import { designLinkPhrase } from "@/lib/designLink";
 import { SHOP_PAUSED_LINE, SHOP_PAUSED_MESSAGE, shopHoursView, shopPaused } from "@/lib/shopHours";
 import { FULFILMENT_LOCK_MESSAGE, isFulfilmentLockRefusal, needsFreshBasket } from "@/lib/requestFulfilment";
+import { jobTicket, ticketIsCurrent, ticketIsThisAccount, type JobTicket } from "@/lib/jobTicket";
+import { REORDER_SHEET_NOTE, reorderApplies, reorderSheet } from "@/lib/reorder";
 import { SAMPLE_OFFER_NOTE, sampleOffer } from "@/lib/sampleFirst";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useJobFulfilment } from "@/store/jobFulfilment";
 import { listingDraftKey, listingDraftNow, useListingDraft } from "@/store/listingDraft";
+import { useReorderJob } from "@/store/reorderJob";
 import { useListingQuote } from "@/store/listingQuote";
 import { usePlatformSettings, useServiceFeeRateBps } from "@/store/platformSettings";
 
@@ -119,7 +122,9 @@ function orderFloor(item: CatalogItem | null): number {
  *
  * Nothing is pre-ticked. A sheet that opens with A5 already chosen shows a
  * price the client has not agreed to, and the whole point of the steps is that
- * the shop needs each answer before it can print.
+ * the shop needs each answer before it can print. A reorder is the one
+ * exception: the client gave those answers on the job they asked to repeat, and
+ * the sheet says they are carried.
  *
  * The one yellow control in the whole match-and-configure flow is at the bottom
  * of this screen, because this is where a client commits to something.
@@ -150,7 +155,7 @@ export default function ListingScreen() {
   // Answers given and not yet added come back after a crash's "Try again" or
   // a step away (`store/listingDraft.ts`). Read once: it is where this visit starts.
   const draftKey = listingDraftKey(itemId, lineId);
-  const [recovered] = useState(() => listingDraftNow(draftKey));
+  const [recovered] = useState(() => listingDraftNow(draftKey, useReorderJob.getState().job?.id));
 
   const [item, setItem] = useState<CatalogItem | null>(
     () =>
@@ -252,6 +257,20 @@ export default function ListingScreen() {
     warmCart();
   }, [warmCart]);
 
+  const reorderJob = useReorderJob((state) => state.job);
+  // Backed out while an add was in the air: the line still lands, but going to
+  // its Artwork step from here would replace whatever the client is on now.
+  const sheetGone = useRef(false);
+  useEffect(() => {
+    sheetGone.current = false;
+    return () => {
+      sheetGone.current = true;
+    };
+  }, []);
+
+  // The repeated job this sheet's answers came from, kept with its draft.
+  const [carriedJobId, setCarriedJobId] = useState<number | null>(() => recovered?.reorderJobId ?? null);
+
   // Reopening a basket row starts from what was already answered on it, so a
   // client changing the paper does not have to pick the size again.
   const [restoredFrom, setRestoredFrom] = useState<{
@@ -276,10 +295,18 @@ export default function ListingScreen() {
       setNote(editing.specialInstructions ?? "");
       setLayout(editing.printLayout ?? null);
     } else if (item) {
+      // A reorder starts from what still applies on this listing, and asks for
+      // the rest the usual way (`lib/reorder.ts`).
+      const carried = !sampleFirst && reorderJob && reorderApplies(reorderJob, item) ? reorderSheet(reorderJob.answers, item) : null;
+      if (carried && reorderJob) {
+        setSelection(carried.selection);
+        if (carried.measured) setMeasured(carried.measured);
+        if (carried.quantity != null || Object.keys(carried.selection).length) setCarriedJobId(reorderJob.id);
+      }
       // A fresh sheet opens at the least the shop will run. Opening at one
       // with a note underneath let a quantity GRIDGO cannot price into the
       // basket, where it showed as "—" and a total of delivery alone.
-      setQuantity((current) => Math.max(current, orderFloor(item)));
+      setQuantity((current) => Math.max(carried?.quantity ?? current, orderFloor(item)));
     }
   }
 
@@ -288,8 +315,10 @@ export default function ListingScreen() {
   const keepDraft = useListingDraft((state) => state.keep);
   const started = item != null && restoredFrom.itemId === item.id && (!lineId || editing != null);
   useEffect(() => {
-    if (draftKey && started) keepDraft(draftKey, { selection, quantity, measured, note, layout });
-  }, [draftKey, started, keepDraft, selection, quantity, measured, note, layout]);
+    if (draftKey && started) {
+      keepDraft(draftKey, { selection, quantity, measured, note, layout, reorderJobId: carriedJobId });
+    }
+  }, [draftKey, started, keepDraft, selection, quantity, measured, note, layout, carriedJobId]);
   const dropDraft = () => {
     if (draftKey) useListingDraft.getState().drop(draftKey);
   };
@@ -559,6 +588,7 @@ export default function ListingScreen() {
     setSampleAside(false);
     setBusy(true);
     setSaveError(null);
+    const ticket = jobTicket();
     try {
       const { optionIds, structuredSpec } = lineInput();
       if (editing) {
@@ -570,15 +600,16 @@ export default function ListingScreen() {
           api.updateCartLine(cartId, editing.id, { optionIds, quantity, structuredSpec, measurement, ...noteChange, ...layoutChange }),
         );
         setBusy(false);
+        if (!stillThisJob(updated, ticket)) return;
         adopt(updated);
         dropDraft();
-        router.back();
+        if (!sheetGone.current) router.back();
         return;
       }
       if (sampling && basketAside) {
         // The basket on this phone is replaced; the old one stays on GRIDGO untouched.
         const basket = await api.createCart();
-        leaveForArtwork(await api.addCartLine(basket.id, lineInput("sample")));
+        leaveForArtwork(await api.addCartLine(basket.id, lineInput("sample")), ticket);
         return;
       }
       // An emptied basket still carries the way its old lines were travelling.
@@ -588,16 +619,19 @@ export default function ListingScreen() {
       const updated = fresh
         ? await startOver((cartId) => api.addCartLine(cartId, lineInput(mode)))
         : await run((cartId) => api.addCartLine(cartId, lineInput(mode)));
-      leaveForArtwork(updated);
+      leaveForArtwork(updated, ticket);
     } catch (e) {
+      // Refused after the client moved on: nothing to tell them, nothing to retry.
+      if (!ticketIsCurrent(ticket)) return;
       // The basket travels another way than this job was matched for. Empty,
       // it simply gives way to a new one; with something in it, everything in
       // one order travels together, so the client is told how to go on.
       if (!editing && isFulfilmentLockRefusal(e)) {
         await reloadCart();
+        if (!ticketIsCurrent(ticket)) return;
         if (!(useCart.getState().cart?.lines.length ?? 0)) {
           try {
-            leaveForArtwork(await startOver((cartId) => api.addCartLine(cartId, lineInput(mode))));
+            leaveForArtwork(await startOver((cartId) => api.addCartLine(cartId, lineInput(mode))), ticket);
           } catch (retry) {
             if (!staleMatch(retry)) {
               setSaveError(userFacingError(retry, "GRIDGO could not add this to your order. Try again."));
@@ -624,14 +658,25 @@ export default function ListingScreen() {
     }
   };
 
+  // The client can leave while this is in the air. A line added for this account
+  // is still in its basket, but the screens and the job have moved on, so nothing
+  // here may navigate or write to them. Another account's basket is not adopted.
+  const stillThisJob = (updated: api.Cart, ticket: JobTicket): boolean => {
+    if (ticketIsCurrent(ticket)) return true;
+    const held = useCart.getState().cartId;
+    if (ticketIsThisAccount(ticket) && (!held || held === updated.id)) adopt(updated);
+    return false;
+  };
+
   // Leave as soon as the line exists. Compact add is the basket; a fat
   // re-hydrate or photo signing is what kept the control on "Saving…".
-  const leaveForArtwork = (updated: api.Cart) => {
+  const leaveForArtwork = (updated: api.Cart, ticket: JobTicket) => {
     const added = updated.lines.at(-1);
     if (!added?.id) {
       throw new Error("GRIDGO did not return the new line.");
     }
     setBusy(false);
+    if (!stillThisJob(updated, ticket)) return;
     // The add answers with a compact listing stub; hold this sheet so the
     // line is drawn from it, whatever emptied the cache while the add ran.
     if (item) holdSheetListing(item);
@@ -639,7 +684,12 @@ export default function ListingScreen() {
     dropDraft();
     // Added: an "add more from Shop A" errand is done.
     useBasketGroupTarget.getState().clear();
-    router.replace({ pathname: "/request/artwork", params: { lineId: added.id } });
+    // A repeated job's artwork goes onto the line it just became.
+    const job = useReorderJob.getState().job;
+    if (job && !editing && !sampleFirst && item && reorderApplies(job, item)) {
+      useReorderJob.getState().update(job.id, { lineId: added.id });
+    }
+    if (!sheetGone.current) router.replace({ pathname: "/request/artwork", params: { lineId: added.id } });
   };
 
   // A job matched for pick-up is not delivered; the footer says what it is.
@@ -743,6 +793,10 @@ export default function ListingScreen() {
                 ))}
               </View>
             </View>
+          ) : null}
+
+          {carriedJobId != null ? (
+            <Text className="mt-6 text-body text-text-secondary">{REORDER_SHEET_NOTE}</Text>
           ) : null}
 
           {specs.map((group, position) => (

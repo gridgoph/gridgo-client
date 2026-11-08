@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import { ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ScrollView, Text, useWindowDimensions, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -19,14 +19,17 @@ import { useThemeColors, useThemeName } from "@/hooks/useTheme";
 import type { ReceiptView } from "@/lib/receipt";
 import {
   PRINT_END_FRAME,
+  PRINT_FEED_CURVE,
   PRINT_FEED_MS,
   PRINT_OVERSHOOT_PX,
   PRINT_SETTLE_MS,
   printStartFrame,
+  slipIsCompact,
   slipFeedFrom,
   THANKS_DELAY_MS,
   THANKS_FADE_MS,
   THANKS_RISE_PX,
+  thanksFitsFooter,
 } from "@/lib/receiptPrint";
 
 type Props = {
@@ -35,6 +38,8 @@ type Props = {
   showServiceFee: boolean;
   /** The thank-you, which fades in as the slip comes to rest. */
   thanks: ReactNode;
+  /** What happens next, read under the slip rather than pinned over it. */
+  note?: ReactNode;
   /** The screen's actions. On screen from the first frame and never animated. */
   actions: ReactNode;
   /**
@@ -49,8 +54,8 @@ type Props = {
   onPrint?: () => void;
 };
 
-/** A paper feed: quick out of the slot, slowing as the slip comes free. */
-const FEED_EASING = Easing.bezier(0.22, 0.61, 0.36, 1);
+/** A paper feed: an even pace out of the slot, easing only at the ends. */
+const FEED_EASING = Easing.bezier(...PRINT_FEED_CURVE);
 
 /**
  * The order-placed moment: the order summary printing out of a slot.
@@ -63,7 +68,10 @@ const FEED_EASING = Easing.bezier(0.22, 0.61, 0.36, 1);
  *
  * The thank-you sits in the pinned footer, over the actions, rather than under
  * the slip: a slip with a few lines is taller than a phone, and a thank-you
- * below the fold is a moment that never visibly ends.
+ * below the fold is a moment that never visibly ends. It is one line, so the
+ * footer leaves the slip most of the screen (B2911823); should the footer
+ * still outgrow `RECEIPT_FOOTER_MAX_SHARE` — large text, a short phone — the
+ * thank-you moves under the slip and only the actions stay pinned.
  *
  * It starts once the slip has been measured and the screen has finished
  * sliding in (`shown`): started on mount, the feed ran under the push and a
@@ -79,6 +87,7 @@ export function PrintedReceipt({
   view,
   showServiceFee,
   thanks,
+  note,
   actions,
   shown = true,
   onPrint,
@@ -86,6 +95,15 @@ export function PrintedReceipt({
   const reducedMotion = useReducedMotion();
   const colors = useThemeColors();
   const theme = useThemeName();
+  const { height: screenHeight } = useWindowDimensions();
+  // Once the thank-you has left the footer it stays out, so the footer it
+  // leaves behind cannot measure small enough to pull it back and flicker.
+  const [thanksInline, setThanksInline] = useState(false);
+  const onFooterLayout = (event: LayoutChangeEvent) => {
+    if (!thanksInline && !thanksFitsFooter(screenHeight, event.nativeEvent.layout.height)) {
+      setThanksInline(true);
+    }
+  };
 
   const start = printStartFrame(reducedMotion);
   const slipOffset = useSharedValue(start.slipOffset);
@@ -159,6 +177,12 @@ export function PrintedReceipt({
     transform: [{ translateY: (1 - thanksOpacity.value) * THANKS_RISE_PX }],
   }));
 
+  const thanksView = (
+    <Animated.View testID="receipt-thanks" style={thanksStyle}>
+      {view ? thanks : null}
+    </Animated.View>
+  );
+
   // The mouth of the slot is the darkest thing near it in either theme.
   const mouth = theme === "dark" ? colors.canvas : colors.accent;
 
@@ -167,7 +191,7 @@ export function PrintedReceipt({
       <ScrollView
         testID="receipt-print"
         className="gg-screen"
-        contentContainerClassName="gg-page pb-10 pt-4"
+        contentContainerClassName={slipIsCompact(screenHeight) ? "gg-page pb-10 pt-2" : "gg-page pb-10 pt-4"}
         onTouchStart={finish}
       >
         <View
@@ -180,7 +204,11 @@ export function PrintedReceipt({
         {view ? (
           <View className="-mt-2.5 mx-4 overflow-hidden pt-2.5">
             <Animated.View testID="receipt-slip-feed" style={slipStyle} onLayout={onSlipLayout}>
-              <ReceiptSlip view={view} showServiceFee={showServiceFee} />
+              <ReceiptSlip
+                view={view}
+                showServiceFee={showServiceFee}
+                compact={slipIsCompact(screenHeight)}
+              />
             </Animated.View>
             {/* The slot's shadow on the paper, so the slip reads as coming out of it. */}
             <View pointerEvents="none" className="absolute inset-x-0 top-0 h-6" aria-hidden>
@@ -200,13 +228,20 @@ export function PrintedReceipt({
             Printing your order summary…
           </Text>
         )}
+
+        {view && thanks && thanksInline ? (
+          <View className="mx-4 pt-6">{thanksView}</View>
+        ) : null}
+        {view && note ? <View className="mx-4 pt-4">{note}</View> : null}
       </ScrollView>
 
-      <View className="gap-4 border-t border-outline bg-surface px-4 pb-2 pt-4">
-        <Animated.View testID="receipt-thanks" style={thanksStyle}>
-          {view ? thanks : null}
-        </Animated.View>
-        <View className="gap-2">{actions}</View>
+      <View
+        testID="receipt-footer"
+        className="gap-3 border-t border-outline bg-surface px-4 pb-2 pt-3"
+        onLayout={onFooterLayout}
+      >
+        {thanks && !thanksInline ? thanksView : null}
+        <View className="flex-row gap-2">{actions}</View>
       </View>
     </>
   );

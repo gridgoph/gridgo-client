@@ -1,41 +1,27 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import HomeScreen from "@/app/(tabs)/home";
-import { REQUEST_STEPPER_HREF } from "@/hooks/useStartRequest";
-import { useRequestDraft } from "@/store/requestDraft";
-import { REPLACE_QUESTION, resetHomeReorder } from "@/test/homeReorder";
+import { expectCurrentFlowFlyers, resetReorder } from "@/test/reorderFixtures";
 import { renderScreen } from "@/test/renderScreen";
 
-const mockNavigate = jest.fn();
-const mockDismissTo = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock("expo-router", () =>
-  jest.requireActual("@/test/homeReorder").homeReorderRouter(
-    (href: string) => mockNavigate(href),
-    (href: string) => mockDismissTo(href),
-  ),
+  jest.requireActual("@/test/reorderFixtures").reorderRouter((href: unknown) => mockPush(href)),
 );
-jest.mock("@/lib/api", () => jest.requireActual("@/test/homeReorder").homeReorderApiMock());
+jest.mock("@/lib/api", () => jest.requireActual("@/test/reorderFixtures").reorderApiMock());
 
 beforeEach(() => {
-  mockNavigate.mockClear();
-  mockDismissTo.mockClear();
-  resetHomeReorder();
+  mockPush.mockClear();
+  resetReorder();
 });
 
-/*
- * The reported bug, on a phone with no draft: the tap filled the draft but
- * `dismissTo` never left Home, and the next tap asked to replace that draft.
- */
-it("opens the reorder straight away when there is no draft", async () => {
+/* The reported bug: Home's tile opened the retired form, seeded with the order. */
+it("takes Home's Reorder tile into the current flow with the job carried", async () => {
   await renderScreen(<HomeScreen />);
 
   fireEvent.press(await screen.findByLabelText("Reorder Flyers"));
 
-  await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(REQUEST_STEPPER_HREF));
-  expect(mockDismissTo).not.toHaveBeenCalled();
-  expect(screen.queryByText(REPLACE_QUESTION)).toBeNull();
-  expect(useRequestDraft.getState()).toEqual(
-    expect.objectContaining({ title: "Flyers", addressLine1: "Sample drop-off", artworkFileId: "file_flyer" }),
-  );
+  await waitFor(() => expect(mockPush).toHaveBeenCalled());
+  expectCurrentFlowFlyers(mockPush);
 });

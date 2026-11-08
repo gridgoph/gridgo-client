@@ -1,37 +1,86 @@
 import { useCallback } from "react";
+import { useRouter } from "expo-router";
 
-import { useStartRequest } from "@/hooks/useStartRequest";
+import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import * as api from "@/lib/api";
-import { orderDraftFields, useRequestDraft } from "@/store/requestDraft";
+import { artworkCheckFailure } from "@/lib/artworkUpload";
+import { newJobTicket, ticketIsCurrent } from "@/lib/jobTicket";
+import {
+  reorderAnswers,
+  reorderArtworkFileIds,
+  reorderFulfilment,
+  reorderTarget,
+  type ReorderTarget,
+} from "@/lib/reorder";
+import { useBasketGroupTarget } from "@/store/basketGroup";
+import { useJobFulfilment } from "@/store/jobFulfilment";
+import { useListingDraft } from "@/store/listingDraft";
+import { useReorderJob, type ReorderFile } from "@/store/reorderJob";
 
 /**
- * Reorder a past job: a request filled in from it, exactly as the Orders tab
- * does, without silently replacing a request already in progress
- * (`useStartRequest` asks first). The catalogue is read on the tap, so a
- * screen that only offers the one reorder does not pay for it on every load.
+ * The catalogue is read only for an old-shape order, and the tree comes through
+ * GRIDGO's read so a code newer than the phone's copy is still found.
+ */
+async function findTarget(order: api.Order): Promise<ReorderTarget | null> {
+  const catalog = order.productId ? await api.listCatalog().catch(() => []) : [];
+  const tree = await api.getProductCategories().catch(() => api.productCategoriesNow());
+  return reorderTarget(order, tree, catalog);
+}
+
+/**
+ * The artwork comes along only while GRIDGO still keeps it: a file past its
+ * retention, deleted, or one that failed its check is left off, and the Artwork
+ * step asks for it as it does on any job. Read behind the navigation, so a tap
+ * never waits on it.
+ */
+async function keptArtwork(order: api.Order): Promise<ReorderFile[]> {
+  const files = await Promise.all(reorderArtworkFileIds(order).map((id) => api.getFile(id).catch(() => null)));
+  return files.flatMap((file) =>
+    file && file.state === "ready" && file.purpose === "artwork" && !artworkCheckFailure(file.artworkCheck)
+      ? [{ fileId: file.fileId, name: file.originalFilename, contentType: file.detectedContentType }]
+      : [],
+  );
+}
+
+/**
+ * Repeat a past job: the current order flow, started the way any new print
+ * starts (`useStartPrintJob`), with the product known and what still applies
+ * carried along (`lib/reorder.ts`). It joins an open basket like a new print
+ * does, and when nothing says which product it was, the client chooses.
+ *
+ * Home's tile, the "+" sheet and the Orders tab all reorder through here.
  */
 export function useReorder() {
-  const seedFromOrder = useRequestDraft((s) => s.seedFromOrder);
-  const { start, pendingLabel, confirmReplace, cancelReplace } = useStartRequest();
+  const router = useRouter();
+  const startJob = useStartPrintJob();
 
   const reorder = useCallback(
     async (order: api.Order) => {
-      const catalog = await api.listCatalog().catch(() => [] as api.CatalogProduct[]);
-      const meta = catalog.find((product) => product.id === order.productId);
-      const productMeta = {
-        name: meta?.name,
-        basePriceMinor: meta?.basePriceMinor,
-        unit: meta?.unit,
-        family: meta?.family,
-      };
-      start(
-        order.title,
-        () => seedFromOrder(order, productMeta),
-        orderDraftFields(order, productMeta),
-      );
+      // The newest tap wins, a double tap included. The hook's screen may be
+      // gone when the lookup lands, so the launch answers to its ticket.
+      const ticket = newJobTicket();
+      const target = await findTarget(order);
+      if (!ticketIsCurrent(ticket)) return;
+      if (!target) {
+        router.push("/request/category");
+        return;
+      }
+      useBasketGroupTarget.getState().clear();
+      // Answers left on a sheet by an earlier job must not outrank this order's.
+      useListingDraft.getState().clear();
+      startJob(target.category, target.subcategory);
+      useJobFulfilment.getState().set(reorderFulfilment(order));
+      const jobId = useReorderJob.getState().start({
+        subcategory: target.subcategory,
+        answers: reorderAnswers(order),
+        files: null,
+        lineId: null,
+        artworkNote: null,
+      });
+      void keptArtwork(order).then((files) => useReorderJob.getState().update(jobId, { files }));
     },
-    [seedFromOrder, start],
+    [router, startJob],
   );
 
-  return { reorder, pendingLabel, confirmReplace, cancelReplace };
+  return { reorder };
 }

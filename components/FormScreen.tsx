@@ -26,7 +26,7 @@ type Props = {
   /**
    * Anything that belongs beside the scroll rather than inside it — the
    * dialogs and waits drawn over the screen (`ConfirmDialog`,
-   * `LoadingOverlay`, `ReplaceDraftDialog`), and the `Stack.Screen` a
+   * `LoadingOverlay`, `ConfirmDialog`), and the `Stack.Screen` a
    * deep-linked route declares to give itself a way back.
    */
   overlay?: ReactNode;

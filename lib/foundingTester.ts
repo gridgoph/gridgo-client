@@ -20,6 +20,7 @@
 
 import type { FoundingTester, Order, OrderSurvey, TesterInvites, User } from "@/lib/api";
 import { isFinishedOrderState } from "@/lib/homeJobs";
+import type { StartPrintHref } from "@/lib/startPrint";
 import { installmentUnderReview, isInstallmentConfirmed, paymentInstallment, payableInstallment } from "@/lib/payment";
 import { canHaveSurvey, isSurveyOpen, surveyRoute } from "@/lib/survey";
 import { exactTime, stubAmount } from "@/lib/vouchers";
@@ -178,7 +179,7 @@ export type StepContext = {
   /** Whether a basket with something in it is open (`cartIsOpen`). */
   cartOpen: boolean;
   /** Where the yellow "+" would start a print (`startPrintHref`). */
-  startHref: string;
+  startHref: StartPrintHref;
 };
 
 const ORDERS_TAB = "/(tabs)/orders";

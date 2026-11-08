@@ -3,6 +3,7 @@ import {
   openReceiptAfterCheckout,
   paymentReferenceOf,
   receiptFromInvoice,
+  receiptEntryShown,
   receiptFromOrder,
 } from "@/lib/receipt";
 
@@ -133,5 +134,24 @@ describe("receiptFromOrder", () => {
     expect(view?.money.printingMinor).toBe(4400);
     expect(view?.money.totalMinor).toBe(6900);
     expect(view?.lines[0]?.amountLabel).toBe("₱44.00");
+  });
+});
+
+describe("receiptEntryShown", () => {
+  const paid = (status: string, reference: string | null = "GCASH-1") => ({
+    initial: { amountMinor: 100, method: "qr_manual", status, reference, submittedAt: null, confirmedAt: null },
+  });
+
+  it("offers the receipt at every status once the order is paid for", () => {
+    expect(receiptEntryShown({ invoiceNumber: "GG-1", payments: undefined })).toBe(true);
+    expect(receiptEntryShown({ invoiceNumber: null, payments: paid("pending_confirmation") })).toBe(true);
+    expect(receiptEntryShown({ invoiceNumber: null, payments: paid("confirmed") })).toBe(true);
+    // A rejected reference is still a receipt GRIDGO issued at checkout.
+    expect(receiptEntryShown({ invoiceNumber: "GG-1", payments: paid("rejected", null) })).toBe(true);
+  });
+
+  it("offers nothing before any payment or invoice", () => {
+    expect(receiptEntryShown({ invoiceNumber: null, payments: paid("not_submitted", null) })).toBe(false);
+    expect(receiptEntryShown({ invoiceNumber: "  ", payments: undefined })).toBe(false);
   });
 });

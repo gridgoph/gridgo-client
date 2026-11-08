@@ -1,125 +1,127 @@
-import { act, renderHook } from "@testing-library/react-native";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
 
 import { useReorder } from "@/hooks/useReorder";
-import { REQUEST_STEPPER_HREF } from "@/hooks/useStartRequest";
-import type * as api from "@/lib/api";
+import { useJobFulfilment } from "@/store/jobFulfilment";
+import { useListingDraft } from "@/store/listingDraft";
+import { useReorderJob } from "@/store/reorderJob";
 import { useRequestDraft } from "@/store/requestDraft";
+import {
+  CURRENT_FLOW_ORDER,
+  expectCurrentFlowFlyers,
+  KEPT_FILE,
+  NO_CODE_ORDER,
+  OLD_SHAPE_ORDER,
+  resetReorder,
+} from "@/test/reorderFixtures";
 
-const mockNavigate = jest.fn();
-const mockDismissTo = jest.fn();
+const mockPush = jest.fn();
 
-jest.mock("expo-router", () => ({
-  useRouter: () => ({ navigate: mockNavigate, dismissTo: mockDismissTo, push: jest.fn() }),
-}));
+jest.mock("expo-router", () =>
+  jest.requireActual("@/test/reorderFixtures").reorderRouter((href: unknown) => mockPush(href)),
+);
+jest.mock("@/lib/api", () => jest.requireActual("@/test/reorderFixtures").reorderApiMock());
 
-jest.mock("@/lib/api", () => ({
-  ...jest.requireActual("@/lib/api"),
-  listCatalog: jest.fn(async () => []),
-}));
-
-/** A past marketplace job: no catalogue product, artwork and a drop-off. */
-const PAST = {
-  id: "ord_flyers",
-  productId: null,
-  title: "Flyers",
-  quantity: 200,
-  size: "",
-  material: "",
-  finish: null,
-  address: "Sample drop-off",
-  zone: "",
-  artworkName: "flyer.pdf",
-  artworkFileIds: ["file_flyer"],
-  deadline: "2026-11-30T02:00:00.000Z",
-  state: "completed",
-} as unknown as api.Order;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const api = require("@/lib/api");
 
 beforeEach(() => {
-  mockNavigate.mockClear();
-  mockDismissTo.mockClear();
-  useRequestDraft.getState().reset();
+  mockPush.mockClear();
+  api.getFile.mockReset();
+  api.getFile.mockResolvedValue(KEPT_FILE);
+  api.listCatalog.mockClear();
+  resetReorder();
 });
 
-/*
- * The reported bug: tapping Reorder with no draft showed "Replace your draft
- * request with …?" and confirming did nothing. The first tap had already filled
- * the draft and asked the router to `dismissTo` the stepper, a POP_TO the tab
- * navigator ignores — so the client stayed on Home, and every later tap asked
- * to replace a draft they had never seen.
- */
+async function reorder(order: Parameters<ReturnType<typeof useReorder>["reorder"]>[0]) {
+  const { result } = await renderHook(() => useReorder());
+  await act(() => result.current.reorder(order));
+}
+
 describe("useReorder", () => {
-  it("opens the reorder straight away when there is no draft", async () => {
-    const { result } = await renderHook(() => useReorder());
+  it("starts the current flow on GRIDGO's product code, and writes nothing to the old form", async () => {
+    await reorder(CURRENT_FLOW_ORDER);
 
-    await act(() => result.current.reorder(PAST));
+    expectCurrentFlowFlyers(mockPush);
+    expect(api.listCatalog).not.toHaveBeenCalled();
+  });
 
-    expect(result.current.pendingLabel).toBeNull();
-    expect(mockNavigate).toHaveBeenCalledWith(REQUEST_STEPPER_HREF);
-    expect(mockDismissTo).not.toHaveBeenCalled();
-    expect(useRequestDraft.getState()).toEqual(
-      expect.objectContaining({ title: "Flyers", addressLine1: "Sample drop-off", artworkFileId: "file_flyer" }),
+  it("brings the artwork along while GRIDGO keeps it", async () => {
+    await reorder(CURRENT_FLOW_ORDER);
+
+    await waitFor(() =>
+      expect(useReorderJob.getState().job?.files).toEqual([
+        { fileId: "file_flyer", name: "flyer.pdf", contentType: "application/pdf" },
+      ]),
     );
   });
 
-  it("asks first when the client has a draft of their own, and changes nothing yet", async () => {
-    useRequestDraft.getState().patch({ title: "Birthday tarpaulin" });
-    const { result } = await renderHook(() => useReorder());
+  it.each([
+    ["deleted", { ...KEPT_FILE, state: "deleted" }],
+    ["another kind of file", { ...KEPT_FILE, purpose: "payment_proof" }],
+    ["failed its check", { ...KEPT_FILE, artworkCheck: { status: "failed", code: "image_too_small" } }],
+  ])("leaves a file off when it is %s", async (_label, file) => {
+    api.getFile.mockResolvedValue(file);
 
-    await act(() => result.current.reorder(PAST));
+    await reorder(CURRENT_FLOW_ORDER);
 
-    expect(result.current.pendingLabel).toBe("Flyers");
-    expect(mockNavigate).not.toHaveBeenCalled();
-    expect(useRequestDraft.getState().title).toBe("Birthday tarpaulin");
+    await waitFor(() => expect(useReorderJob.getState().job?.files).toEqual([]));
   });
 
-  it("replaces the draft and opens the reorder when the client confirms", async () => {
-    useRequestDraft.getState().patch({ title: "Birthday tarpaulin" });
-    const { result } = await renderHook(() => useReorder());
-    await act(() => result.current.reorder(PAST));
+  it("leaves the file off when it cannot be read, and the job still starts", async () => {
+    api.getFile.mockRejectedValue(new Error("gone"));
 
-    await act(async () => result.current.confirmReplace());
+    await reorder(CURRENT_FLOW_ORDER);
 
-    expect(result.current.pendingLabel).toBeNull();
-    expect(mockNavigate).toHaveBeenCalledWith(REQUEST_STEPPER_HREF);
-    expect(useRequestDraft.getState()).toEqual(
-      expect.objectContaining({ title: "Flyers", artworkFileId: "file_flyer" }),
+    expectCurrentFlowFlyers(mockPush);
+    await waitFor(() => expect(useReorderJob.getState().job?.files).toEqual([]));
+  });
+
+  it("clears answers an earlier job left on a sheet", async () => {
+    useListingDraft.getState().keep("sci_flyers", {
+      selection: { grp: "opt" },
+      quantity: 9,
+      measured: { width: "", height: "", length: "", pages: "" },
+      note: "",
+      layout: null,
+    });
+
+    await reorder(CURRENT_FLOW_ORDER);
+
+    expect(useListingDraft.getState().drafts).toEqual({});
+  });
+
+  it("maps an order with no product code by its product family, keeping the rest", async () => {
+    await reorder(OLD_SHAPE_ORDER);
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/request/when",
+      params: { subcategory: "tarpaulin", category: "signage" },
+    });
+    expect(useReorderJob.getState().job?.answers).toEqual(
+      expect.objectContaining({ quantity: 3, options: [
+        { groupName: null, label: "3x6 ft" },
+        { groupName: null, label: "13oz tarpaulin" },
+      ] }),
     );
+    expect(useJobFulfilment.getState().choice).toBeNull();
+    expect(useRequestDraft.getState().title).toBe("");
   });
 
-  it("keeps the draft and stays put when the client cancels", async () => {
-    useRequestDraft.getState().patch({ title: "Birthday tarpaulin" });
-    const { result } = await renderHook(() => useReorder());
-    await act(() => result.current.reorder(PAST));
+  it("lets the client choose when nothing says which product it was", async () => {
+    await reorder(NO_CODE_ORDER);
 
-    await act(async () => result.current.cancelReplace());
-
-    expect(result.current.pendingLabel).toBeNull();
-    expect(mockNavigate).not.toHaveBeenCalled();
-    expect(useRequestDraft.getState().title).toBe("Birthday tarpaulin");
+    expect(mockPush).toHaveBeenCalledWith("/request/category");
+    expect(useReorderJob.getState().job).toBeNull();
+    expect(useRequestDraft.getState().title).toBe("");
   });
 
-  it("does not ask to replace an untouched reorder with the same reorder", async () => {
+  it("starts one job from a double tap", async () => {
     const { result } = await renderHook(() => useReorder());
-    await act(() => result.current.reorder(PAST));
-    useRequestDraft.getState().setStepIndex(1);
-    mockNavigate.mockClear();
 
-    await act(() => result.current.reorder(PAST));
+    await act(async () => {
+      await Promise.all([result.current.reorder(CURRENT_FLOW_ORDER), result.current.reorder(CURRENT_FLOW_ORDER)]);
+    });
 
-    expect(result.current.pendingLabel).toBeNull();
-    expect(mockNavigate).toHaveBeenCalledWith(REQUEST_STEPPER_HREF);
-    // Opened where the client left it, not re-seeded back to the first step.
-    expect(useRequestDraft.getState().stepIndex).toBe(1);
-  });
-
-  it("still asks once the client has changed the reorder", async () => {
-    const { result } = await renderHook(() => useReorder());
-    await act(() => result.current.reorder(PAST));
-    useRequestDraft.getState().patch({ quantity: 500 });
-
-    await act(() => result.current.reorder(PAST));
-
-    expect(result.current.pendingLabel).toBe("Flyers");
-    expect(useRequestDraft.getState().quantity).toBe(500);
+    expect(mockPush).toHaveBeenCalledTimes(1);
   });
 });
