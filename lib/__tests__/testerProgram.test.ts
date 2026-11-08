@@ -155,6 +155,10 @@ describe("feedbackAllowed", () => {
     expect(feedbackAllowed(tester())).toBe(true);
     expect(feedbackAllowed(tester({ checkedInToday: false }))).toBe(false);
     expect(feedbackAllowed(tester({ day: 14, streak: 14, runComplete: true, stopped: true }))).toBe(true);
+    // Approval wins over completion; a GRIDGO without the field reads as not approved.
+    expect(feedbackAllowed(tester({ day: 14, streak: 14, runComplete: true, stopped: true, productionApproved: true }))).toBe(false);
+    expect(feedbackAllowed(tester({ day: 14, streak: 14, runComplete: true, stopped: true, productionApproved: false }))).toBe(true);
+    expect(feedbackAllowed(tester({ stopped: true, productionApproved: true }))).toBe(false);
   });
 
   it("never after production approval, nor for a non-tester", () => {

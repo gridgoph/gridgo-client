@@ -30,6 +30,9 @@ jest.mock("@/lib/api", () => {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require("@/lib/api");
 
+/** GRIDGO's clock for this file, before the fixtures' Founding 30 ends, so the voucher is still live. */
+const SERVER_TIME = "2026-11-07T02:00:00.000Z";
+
 afterEach(async () => {
   await cleanup();
 });
@@ -38,7 +41,7 @@ beforeEach(() => {
   useVouchers.getState().reset();
   usePromotions.getState().reset();
   useCart.setState({ cartId: null, cart: null, hydrated: true });
-  api.listVouchers.mockResolvedValue({ serverTime: new Date().toISOString(), vouchers: [] });
+  api.listVouchers.mockResolvedValue({ serverTime: SERVER_TIME, vouchers: [] });
 });
 
 it("leads with a Redeem card while the Founding 30 is claimable", async () => {
@@ -52,7 +55,7 @@ it("leads with a Redeem card while the Founding 30 is claimable", async () => {
 
 it("shows a Founder the friend they invited and where that pass stands", async () => {
   const sent = invite({ status: "claimed" });
-  api.listVouchers.mockResolvedValue({ serverTime: new Date().toISOString(), vouchers: [foundingVoucher] });
+  api.listVouchers.mockResolvedValue({ serverTime: SERVER_TIME, vouchers: [foundingVoucher] });
   api.getPromotions.mockResolvedValue(
     promotions({ founding: { claimable: false, voucher: foundingVoucher }, friendPass: { invite: sent, invites: [sent] } }),
   );
