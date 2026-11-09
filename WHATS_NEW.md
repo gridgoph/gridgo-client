@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.576 (Improvement)
+
+- Google Play installs can now offer an update in the app, with a restart when you are ready.
+
 ## 1.0.570 (New feature)
 
 - Reorder now opens the current order flow with your past job filled in, instead of the old request form.
