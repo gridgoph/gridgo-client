@@ -38,6 +38,7 @@ import { TourOverlay } from "@/components/TourOverlay";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
+import { usePlayUpdateCheck } from "@/hooks/usePlayUpdateCheck";
 import { useClerkApiSession } from "@/hooks/useClerkApiSession";
 import { useClientPreferences } from "@/hooks/useClientPreferences";
 import { useLegalGate } from "@/hooks/useLegalGate";
@@ -156,6 +157,7 @@ function AppNavigation() {
   // once, so the flag is the whole gate — no route, no back-stack entry, and
   // nothing about where the launch lands is decided here.
   const [introPlaying, setIntroPlaying] = useState(true);
+  usePlayUpdateCheck(!introPlaying && fontsReady);
 
   return (
     /*
