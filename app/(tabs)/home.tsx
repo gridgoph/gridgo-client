@@ -86,7 +86,7 @@ export default function HomeScreen() {
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
-    void api
+    const ordersRead = api
       .listOrders()
       .then((list) => {
         if (sequence === loadSequence.current) setOrders(list);
@@ -95,7 +95,7 @@ export default function HomeScreen() {
         // Home still starts a print; the waiting line and Reorder wait.
         if (sequence === loadSequence.current) setOrders((current) => current ?? []);
       });
-    void api
+    const featuredRead = api
       .getFeaturedPrints()
       .then((body) => {
         // The same cards keep the list on screen: a fresh signature on the
@@ -108,7 +108,7 @@ export default function HomeScreen() {
       .catch(() => {
         if (sequence === loadSequence.current) setSamples((current) => current ?? []);
       });
-    void api
+    const categoriesRead = api
       .getProductCategories()
       .then((tree) => {
         // An empty payload must not blank the seed already on screen.
@@ -117,34 +117,41 @@ export default function HomeScreen() {
       .catch(() => {
         // Seed already on screen.
       });
-    void useHomeSummary.getState().load(useSession.getState().user?.id ?? null);
-    // A Google Play tester's open is the day's check-in (nothing for anyone else).
-    void useTesterProgram.getState().load(useSession.getState().user?.id ?? null);
-    void refreshNotifications();
-    // The basket lives on GRIDGO, so the count on the cart control is only
-    // honest if it is re-read. Coming back from checkout is exactly when it
-    // has changed.
-    void loadCart();
-    void loadSeasons();
-    // The Founding Tester missions ride on the account.
-    void refreshAccount();
+    const userId = useSession.getState().user?.id ?? null;
+    const reads = [
+      ordersRead,
+      featuredRead,
+      categoriesRead,
+      useHomeSummary.getState().load(userId),
+      // A Google Play tester's open is the day's check-in (nothing for anyone else).
+      useTesterProgram.getState().load(userId),
+      refreshNotifications(),
+      // Coming back from checkout must re-read GRIDGO's basket count.
+      loadCart(),
+      loadSeasons(),
+      // The Founding Tester missions ride on the account.
+      refreshAccount(),
+    ];
     const tester = foundingTesterView(useSession.getState().user);
     if (tester?.kind === "missions" && tester.steps.some((step) => step.key === "rated" && step.status === "next")) {
-      void useFoundingTester.getState().loadOpenSurveys();
+      reads.push(useFoundingTester.getState().loadOpenSurveys());
     }
+    // Each panel applies its own answer above; refresh stays busy until every
+    // read settles, even if one fails, so invalidations queue one follow-up.
+    await Promise.allSettled(reads);
   }, [refreshNotifications, loadCart, loadSeasons, refreshAccount]);
 
-  useLiveRefresh(["orders", "catalog", "identity", "settings", "credits"], load, { refreshOnFocus: false });
+  useLiveRefresh(["orders", "catalog", "identity", "settings", "credits"], load);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      // Focus loading belongs to useLiveRefresh, alongside invalidations.
       // Back on Home, any "add more from Shop A" errand is over.
       useBasketGroupTarget.getState().clear();
       return () => {
         loadSequence.current++;
       };
-    }, [load]),
+    }, []),
   );
 
   // Coming back to the app on a new day is an open too.
