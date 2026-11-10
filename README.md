@@ -174,10 +174,18 @@ on a push to `main`, `scripts/announce-release.mjs` broadcasts the released vers
 Firstmate configures the repository secret `RELEASE_ANNOUNCE_TOKEN` with the same
 value as the API environment variable. Deploy the API release-announcement route
 and migration first. Missing configuration skips with a notice; delivery failures
-warn in the job summary without failing the published release. Manual dispatches
+warn in the job summary without failing the published release. Manual APK dispatches
 never broadcast. `lib/releasePush.ts` recognizes the fixed public release copy and
 opens this app's existing download URL on a push tap, including while signed out.
 A Google Play build ignores that tap's download and leaves the push in the inbox.
+
+Play and TestFlight uploads queue a pending notice rather than broadcasting. A
+scheduled workflow checks store availability every 30 minutes, expires pending
+records after seven days, and uses the API's existing de-duplication. Play requires
+the same build published and fully rolled out on both internal and closed tracks;
+TestFlight requires processing, beta review, and access for all tester groups. See
+[store release notices](docs/STORE_RELEASE_NOTICES.md) for the signals, conservative
+trade-offs, dry runs, and exact Supplier/Rider porting instructions.
 
 ### Google Play bundle
 

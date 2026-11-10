@@ -211,18 +211,17 @@ it("never commits the iPhone Firebase file", () => {
   expect(ignored).toContain("GoogleService-Info.plist");
 });
 
-it("tells TestFlight testers only after the upload, without failing the run", () => {
-  const broadcast = step("Broadcast the TestFlight release");
-  expect(broadcast).toMatch(/if: inputs\.submit_to_testflight && steps\.build\.outputs\.announce_version != ''/);
-  expect(broadcast).not.toMatch(/always\(\)|failure\(\)|!cancelled\(\)/);
-  expect(broadcast).toContain("continue-on-error: true");
-  expect(broadcast).toContain("RELEASE_CHANNEL: ios");
-  expect(broadcast).toContain("RELEASE_APP: client");
-  expect(broadcast).toContain("secrets.RELEASE_ANNOUNCE_TOKEN");
-  expect(broadcast).toContain("node scripts/announce-release.mjs");
-  expect(workflow.indexOf("- name: Upload to TestFlight")).toBeLessThan(
-    workflow.indexOf("- name: Broadcast the TestFlight release"),
-  );
-  // Every iPhone build shares app.json's version; the build number tells them apart.
+it("queues TestFlight metadata after upload and never announces immediately", () => {
+  const queue = step("Queue the TestFlight release notice");
+  expect(queue).toContain("github.ref == 'refs/heads/main'");
+  expect(queue).toContain("inputs.submit_to_testflight && steps.build.outputs.announce_version != ''");
+  expect(queue).toContain("RELEASE_BUILD_NUMBER: ${{ steps.build.outputs.build_number }}");
+  expect(queue).toContain("RELEASE_STORE_VERSION: ${{ steps.build.outputs.version }}");
+  expect(queue).toContain("node scripts/queue-store-release.mjs");
+  expect(queue).not.toContain("RELEASE_ANNOUNCE_TOKEN");
+  expect(workflow.indexOf("- name: Upload to TestFlight")).toBeLessThan(workflow.indexOf("- name: Queue the TestFlight release notice"));
+  expect(step("Save the pending TestFlight notice")).toContain("steps.queue_ios.outcome == 'success'");
+  expect(step("Save the pending TestFlight notice")).toContain("retention-days: 7");
+  expect(workflow).not.toContain("scripts/announce-release.mjs");
   expect(step("Read the build")).toContain("announce_version=");
 });

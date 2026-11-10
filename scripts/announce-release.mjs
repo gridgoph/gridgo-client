@@ -13,11 +13,12 @@ const PUBLISHED = {
  *
  * RELEASE_CHANNEL names the install channel the notice is for (gridgo-api
  * docs/RELEASE_ANNOUNCEMENTS_API.md): unset is the APK notice, sent exactly as
- * before with no `channel`; `play` and `ios` follow a store upload.
+ * before with no `channel`; `play` and `ios` require a store availability check.
  */
-export async function announceRelease(env = process.env, fetchImpl = fetch) {
+export async function announceRelease(env = process.env, fetchImpl = fetch, { availabilityConfirmed = false } = {}) {
   const channel = env.RELEASE_CHANNEL || 'apk';
   if (!Object.hasOwn(PUBLISHED, channel)) return { level: 'warning', message: 'Release push skipped: RELEASE_CHANNEL must be apk, play or ios.' };
+  if (channel !== 'apk' && !availabilityConfirmed) return { level: 'notice', message: 'Release push skipped: store availability has not been confirmed.' };
   if (!env.RELEASE_ANNOUNCE_TOKEN) return { level: 'notice', message: 'Release push skipped: RELEASE_ANNOUNCE_TOKEN is not set.' };
   const body = { app: env.RELEASE_APP, version: env.RELEASE_VERSION };
   if (channel !== 'apk') body.channel = channel;
@@ -29,7 +30,7 @@ export async function announceRelease(env = process.env, fetchImpl = fetch) {
       signal: AbortSignal.timeout(15000),
       redirect: 'error',
     });
-    if (response.ok) return { level: 'notice', message: 'Release push accepted (repeated versions do not send again).' };
+    if (response.ok) return { level: 'notice', accepted: true, message: 'Release push accepted (repeated versions do not send again).' };
     return { level: 'warning', message: `Release push failed (HTTP ${response.status}). ${PUBLISHED[channel]}; retry the announcement through firstmate.` };
   } catch {
     // Do not print request headers, response bodies, or transport exceptions.

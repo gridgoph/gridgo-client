@@ -49,11 +49,13 @@ on:
           - internal
           - closed
 
-# A release build takes ~20 minutes; never run two for the same ref.
-# A Play bundle run gets its own group, so it never cancels a main release.
+# APK builds keep their per-ref cancellation. Play uploads and the availability
+# checker share one lock across all refs: Google invalidates an existing edit
+# when the same service account opens another one. Never interrupt a Play edit.
 concurrency:
-  group: android-apk-${{ github.ref }}${{ github.event.inputs.play_bundle == 'true' && '-play' || '' }}
-  cancel-in-progress: true
+  group: ${{ github.event.inputs.play_bundle == 'true' && 'play-store-access' || format('android-apk-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event.inputs.play_bundle != 'true' }}
+  queue: ${{ github.event.inputs.play_bundle == 'true' && 'max' || 'single' }}
 
 permissions:
   contents: read
@@ -75,6 +77,9 @@ jobs:
 
       - name: Check release announcement delivery
         run: node --test scripts/announce-release.test.mjs
+
+      - name: Check store availability gates and scheduled delivery
+        run: node --test scripts/store-availability.test.mjs scripts/check-store-releases.test.mjs
 
       - name: Check the Play release notes
         run: node --test scripts/play-release-notes.test.mjs
@@ -635,19 +640,30 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Play testers hear about this version only now that Play has it; an APK
-      # install is never sent this notice, and the APK notice above never
-      # reaches a Play install. Advisory: the bundle is already uploaded, so a
-      # failed announcement must not fail the run.
-      - name: Broadcast the Play release
-        if: github.event.inputs.play_bundle == 'true' && github.event.inputs.submit_to_play == 'true'
+      # Upload is not publication. Persist only metadata; the scheduled checker
+      # proves availability before it can announce. Only trusted main runs queue.
+      - name: Queue the Play release notice
+        id: queue_play
+        if: github.ref == 'refs/heads/main' && github.event.inputs.play_bundle == 'true' && github.event.inputs.submit_to_play == 'true'
         continue-on-error: true
         env:
-          RELEASE_ANNOUNCE_TOKEN: ${{ secrets.RELEASE_ANNOUNCE_TOKEN }}
           RELEASE_APP: client
           RELEASE_CHANNEL: play
           RELEASE_VERSION: ${{ steps.config.outputs.version }}
-        run: node scripts/announce-release.mjs
+          RELEASE_BUILD_NUMBER: ${{ steps.config.outputs.code }}
+          PLAY_PACKAGE: ${{ steps.config.outputs.package }}
+        run: node scripts/queue-store-release.mjs "$RUNNER_TEMP/pending-release/release.json"
+
+      - name: Save the pending Play notice
+        if: steps.queue_play.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: pending-store-release-play
+          path: ${{ runner.temp }}/pending-release/release.json
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
 
       # The notes this release carried now belong to its version: they move
       # under "## <version>" in WHATS_NEW.md and leave whats-new/, so the next

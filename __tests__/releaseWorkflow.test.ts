@@ -307,20 +307,20 @@ describe("a pull request never produces a signed release build", () => {
 });
 
 
-describe("the Play release push follows a successful Play upload", () => {
-  const broadcast = () => apkSteps.find((step) => step.includes("RELEASE_CHANNEL: play")) as string;
-
-  it("announces the play channel only after the bundle was submitted", () => {
-    const step = broadcast();
-    expect(step).toBeDefined();
-    expect(step).toMatch(/if: github\.event\.inputs\.play_bundle == 'true' && github\.event\.inputs\.submit_to_play == 'true'\n/);
-    expect(step).not.toMatch(/always\(\)|failure\(\)|!cancelled\(\)/);
-    expect(step).toContain("continue-on-error: true");
-    expect(step).toContain("node scripts/announce-release.mjs");
-    expect(step).toContain("secrets.RELEASE_ANNOUNCE_TOKEN");
-    expect(step).toContain("steps.config.outputs.version");
-    expect(step).toContain("RELEASE_APP: client");
-    expect(apkSteps.indexOf(step)).toBeGreaterThan(apkSteps.findIndex((s) => s.includes("PLAY_BUNDLE_PATH=")));
+describe("the Play release notice waits for store availability", () => {
+  it("queues metadata only after upload and never announces immediately", () => {
+    const queue = apkSteps.find((step) => step.includes("id: queue_play")) as string;
+    expect(queue).toContain("github.ref == 'refs/heads/main'");
+    expect(queue).toContain("github.event.inputs.play_bundle == 'true'");
+    expect(queue).toContain("github.event.inputs.submit_to_play == 'true'");
+    expect(queue).toContain("node scripts/queue-store-release.mjs");
+    expect(queue).toContain("RELEASE_BUILD_NUMBER: ${{ steps.config.outputs.code }}");
+    expect(queue).not.toContain("RELEASE_ANNOUNCE_TOKEN");
+    expect(apkSteps.indexOf(queue)).toBeGreaterThan(apkSteps.findIndex((s) => s.includes("PLAY_BUNDLE_PATH=")));
+    const saved = apkSteps.find((step) => step.includes("name: pending-store-release-play")) as string;
+    expect(saved).toContain("steps.queue_play.outcome == 'success'");
+    expect(saved).toContain("retention-days: 7");
+    expect(workflow).not.toContain("Broadcast the Play release");
   });
 
   it("leaves the APK announcement on its default channel", () => {
@@ -418,10 +418,9 @@ describe("a manual play_bundle run builds a Google Play bundle and publishes not
     expect(release).toMatch(/&& github\.event\.inputs\.play_bundle != 'true'/);
   });
 
-  it("runs in its own concurrency group, so it never cancels a main release", () => {
-    expect(workflow).toMatch(
-      /group: android-apk-\$\{\{ github\.ref \}\}\$\{\{ github\.event\.inputs\.play_bundle == 'true' && '-play' \|\| '' \}\}/,
-    );
+  it("serializes all Play edits with the checker without cancelling an APK build", () => {
+    expect(workflow).toContain("github.event.inputs.play_bundle == 'true' && 'play-store-access' || format('android-apk-{0}', github.ref)");
+    expect(workflow).toContain("cancel-in-progress: ${{ github.event.inputs.play_bundle != 'true' }}");
   });
 
   it("keeps the signing key cleanup for the Play run too", () => {
