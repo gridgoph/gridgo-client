@@ -1,4 +1,4 @@
-import { ArrowUpRight, Handshake, Megaphone, Store } from "lucide-react-native";
+import { ArrowRight, ArrowUpRight, Handshake, Megaphone, Store } from "lucide-react-native";
 import { useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 
@@ -19,7 +19,8 @@ const TAG_ICONS: Record<PromotionTag, typeof Handshake> = {
 
 /**
  * One partner page of Home's lower-right tile. Built like Reorder — a round
- * mark top-left, one big line and a caption at the foot — so the rotation
+ * mark top-left with the tag beside it, the name and the promo's own link
+ * line ("Plan your commute →", none when Operations wrote none) at the foot — so the rotation
  * swaps content, never layout. Light sits on the surface; yellow is the
  * Operations-chosen highlight, with ink on it in both themes.
  */
@@ -28,6 +29,7 @@ export function HomePromoTile({ promo, onPress }: Props) {
   const yellow = promo.style === "yellow";
   const ink = yellow ? colors.actionYellowOn : colors.textPrimary;
   const quiet = yellow ? colors.actionYellowOnMuted : colors.textSecondary;
+  const accent = yellow ? colors.actionYellowOn : colors.brand;
   const TagIcon = TAG_ICONS[promo.tag];
   const tag = promotionTagLabel(promo.tag);
   return (
@@ -52,18 +54,30 @@ export function HomePromoTile({ promo, onPress }: Props) {
           style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "45%", opacity: 0.9 }}
         />
       ) : null}
-      <PromoLogo uri={promo.logoUrl} name={promo.name} size={36} />
-      <View>
-        <Text className="text-h3" style={{ color: ink }} numberOfLines={1}>
-          {promo.name}
-        </Text>
-        <View className="flex-row items-center gap-1">
-          <TagIcon size={14} color={quiet} strokeWidth={2} />
-          <Text className="flex-1 text-caption" style={{ color: quiet }} numberOfLines={1}>
+      <View className="flex-row items-start justify-between gap-2">
+        <PromoLogo uri={promo.logoUrl} name={promo.name} size={36} />
+        <View className="shrink flex-row items-center gap-1">
+          <TagIcon size={12} color={quiet} strokeWidth={2} />
+          <Text className="shrink text-caption" style={{ color: quiet }} numberOfLines={1}>
             {tag}
+          </Text>
+        </View>
+      </View>
+      <View>
+        <View className="flex-row items-center gap-1">
+          <Text className="flex-1 text-h3" style={{ color: ink }} numberOfLines={1}>
+            {promo.name}
           </Text>
           {promo.tapAction === "link" ? <ArrowUpRight size={16} color={ink} strokeWidth={2} /> : null}
         </View>
+        {promo.linkText ? (
+          <View testID="promo-tile-link" className="flex-row items-center gap-1">
+            <Text className="shrink text-caption font-medium" style={{ color: accent }} numberOfLines={1} ellipsizeMode="tail">
+              {promo.linkText}
+            </Text>
+            <ArrowRight size={12} color={accent} strokeWidth={2.25} />
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );

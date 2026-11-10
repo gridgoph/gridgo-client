@@ -4,7 +4,7 @@ import { Image, Pressable, Text, View } from "react-native";
 import { PromoLogo } from "@/components/HomePromoTile";
 import { Sheet } from "@/components/Sheet";
 import { useThemeColors } from "@/hooks/useTheme";
-import { promotionTagLabel, type HomePromotion } from "@/lib/homePromos";
+import { promoLinkLabel, promotionTagLabel, type HomePromotion } from "@/lib/homePromos";
 
 type Props = {
   promo: HomePromotion | null;
@@ -46,13 +46,13 @@ export function PromoSheet({ promo, onClose, onOpenLink }: Props) {
             testID="promo-sheet-link"
             onPress={() => onOpenLink(promo)}
             accessibilityRole="link"
-            accessibilityLabel={promo.linkText}
+            accessibilityLabel={promoLinkLabel(promo)}
             accessibilityHint="Opens in your browser"
             className="gg-btn-primary h-12"
           >
             {({ pressed }) => (
               <>
-                <Text className="text-button text-action-yellow-on">{promo.linkText}</Text>
+                <Text className="text-button text-action-yellow-on">{promoLinkLabel(promo)}</Text>
                 <ExternalLink size={18} color={colors.actionYellowOn} strokeWidth={2} />
                 {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0 rounded-field" /> : null}
               </>

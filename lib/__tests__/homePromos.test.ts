@@ -1,4 +1,5 @@
 import {
+  promoLinkLabel,
   claimPromotionView,
   homeSlides,
   nextSlideIndex,
@@ -67,7 +68,8 @@ describe("promotionsFrom", () => {
     expect(promo.tag).toBe("partner");
     expect(promo.tapAction).toBe("sheet");
     expect(promo.style).toBe("light");
-    expect(promo.linkText).toBe("Visit DavaoGo");
+    expect(promo.linkText).toBe("");
+    expect(promoLinkLabel(promo)).toBe("Visit DavaoGo");
   });
 
   it("reads nothing from a missing or malformed body", () => {
