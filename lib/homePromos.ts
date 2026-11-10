@@ -20,11 +20,14 @@ export type HomePromotion = {
   imageUrl: string | null;
   description: string;
   tag: PromotionTag;
+  /** Operations' words for the link; empty when none was written. */
   linkText: string;
   /** Always https: anything else is dropped from the feed. */
   linkUrl: string;
   tapAction: PromotionTapAction;
   style: PromotionStyle;
+  /** Operations' card colour, `#RRGGBB`; null from an API before it (then `style` decides). */
+  color: string | null;
 };
 
 /** One page of the rotating tile: Reorder always, then each live promo. */
@@ -110,10 +113,11 @@ export function promotionsFrom(body: unknown): HomePromotion[] {
       imageUrl: fileUrl(item, "image"),
       description: text(item.description),
       tag: oneOf(item.tag, ["partner", "sponsored", "featured_shop"] as const, "partner"),
-      linkText: text(item.linkText) || `Visit ${name}`,
+      linkText: text(item.linkText),
       linkUrl,
       tapAction: oneOf(item.tapAction, ["sheet", "link"] as const, "sheet"),
       style: oneOf(item.style, ["light", "yellow"] as const, "light"),
+      color: typeof item.color === "string" && /^#[0-9A-Fa-f]{6}$/.test(item.color) ? item.color.toUpperCase() : null,
     });
   }
   return out;
@@ -149,4 +153,9 @@ export function claimPromotionView(promoId: string): boolean {
 export function resetPromotionSession(): void {
   sessionId = null;
   viewed.clear();
+}
+
+/** The sheet's button: Operations' link text, else "Visit <name>". */
+export function promoLinkLabel(promo: Pick<HomePromotion, "linkText" | "name">): string {
+  return promo.linkText || `Visit ${promo.name}`;
 }

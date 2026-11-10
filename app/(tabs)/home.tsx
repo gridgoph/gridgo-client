@@ -297,9 +297,17 @@ export default function HomeScreen() {
               ) : null}
 
               <View className="flex-row gap-3">
-                <HomeSmartTile view={tile} onPress={(href) => router.push(href as Href)} />
+                {/* A bare column: flex-basis counts a tile's own padding and border, and only the left tile carries them. */}
+                <View className="flex-1" style={{ minWidth: 0, flexBasis: 0 }}>
+                  <HomeSmartTile view={tile} onPress={(href) => router.push(href as Href)} />
+                </View>
                 <HomeRotatingTile
-                  reorder={<HomeReorderTile title={previous?.title ?? null} onPress={() => previous && void reorder(previous)} />}
+                  reorder={
+                    <HomeReorderTile
+                      title={previous?.title ?? null}
+                      onPress={() => previous && void reorder(previous)}
+                    />
+                  }
                   promos={promos}
                   onPromoPress={pressPromo}
                   onPromoShown={showPromo}
