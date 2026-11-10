@@ -68,6 +68,41 @@ it("draws nothing after a close in this session", async () => {
   expect(screen.toJSON()).toBeNull();
 });
 
+it("puts the opt-in ahead of an enrolled APK tester's check-in and feedback cards", async () => {
+  signedInWith(state());
+  useTesterProgram.setState({
+    program: {
+      enrolled: true,
+      app: "client",
+      day: 3,
+      streak: 3,
+      checkedInToday: true,
+      runComplete: false,
+      stopped: false,
+      manilaDate: "2026-11-10",
+      nudge: { trigger: "streak_3" },
+    },
+    readAt: Date.parse("2026-11-10T12:00:00Z"),
+  });
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
+  expect(screen.getByRole("button", { name: PLAY_OPTIN_COPY })).toBeTruthy();
+  expect(screen.queryByText("Day 3 of 14")).toBeNull();
+  expect(screen.queryByText("Leave feedback on Google Play")).toBeNull();
+  // The feedback ask it hides is not counted as seen.
+  expect(useTesterProgram.getState().held).toBeNull();
+  expect(api.reportTesterFeedback).not.toHaveBeenCalled();
+});
+
+it("hands the slot back to the check-in once opted in", async () => {
+  signedInWith(state({ show: false, optedIn: true, step: "opted_in" }));
+  useTesterProgram.setState({
+    program: { enrolled: true, app: "client", day: 1, streak: 1, checkedInToday: true, runComplete: false, stopped: false, manilaDate: "2026-11-10", nudge: null },
+  });
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
+  expect(screen.getByText("Day 1 of 14")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: PLAY_OPTIN_COPY })).toBeNull();
+});
+
 it("reports the tap and opens the steps", async () => {
   signedInWith(state());
   const open = jest.fn();
