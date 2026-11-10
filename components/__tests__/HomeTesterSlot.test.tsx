@@ -39,13 +39,13 @@ afterEach(() => {
 
 it("draws nothing for an account that is not enrolled", async () => {
   signedInWith({ enrolled: false });
-  await render(<HomeTesterSlot />);
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
   expect(screen.toJSON()).toBeNull();
 });
 
 it("shows Day N of 14, the streak and the done state once today is in", async () => {
   signedInWith(enrolled());
-  await render(<HomeTesterSlot />);
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
   expect(screen.getByText("Day 3 of 14")).toBeTruthy();
   expect(screen.getByText("3-day streak")).toBeTruthy();
   expect(screen.getByText("Done for today")).toBeTruthy();
@@ -55,7 +55,7 @@ it("shows Day N of 14, the streak and the done state once today is in", async ()
 
 it("offers Check in with today's square open when the open could not check in", async () => {
   signedInWith(enrolled({ day: 4, checkedInToday: false }));
-  await render(<HomeTesterSlot />);
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
   expect(screen.getByText("Day 4 of 14")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Check in" })).toBeTruthy();
   expect(screen.getAllByTestId("tester-cell-today")).toHaveLength(1);
@@ -63,7 +63,7 @@ it("offers Check in with today's square open when the open could not check in", 
 
 it("puts GRIDGO's feedback ask in the card's place and reports it shown", async () => {
   signedInWith(enrolled({ nudge: { trigger: "streak_3" } }));
-  await render(<HomeTesterSlot />);
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
   expect(screen.getByText("Help us launch")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Dismiss the feedback request" })).toBeTruthy();
   expect(screen.queryByText("Day 3 of 14")).toBeNull();
@@ -75,7 +75,7 @@ it("keeps a dismissed card closed and shows the check-in again", async () => {
   signedInWith(enrolled({ nudge: { trigger: "completed_order" } }), {
     held: { userId: "u1", trigger: "streak_3", shownAt, closed: true },
   });
-  await render(<HomeTesterSlot />);
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
   expect(screen.queryByText("Help us launch")).toBeNull();
   expect(screen.getByText("Day 3 of 14")).toBeTruthy();
 });
@@ -84,7 +84,7 @@ it("hides a held feedback card once the app is production approved", async () =>
   signedInWith(enrolled({ stopped: true, runComplete: false, nudge: null }), {
     held: { userId: "u1", trigger: "streak_3", shownAt: Date.parse("2026-11-07T11:00:00Z"), closed: false },
   });
-  await render(<HomeTesterSlot />);
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
   expect(screen.queryByText("Help us launch")).toBeNull();
   expect(screen.toJSON()).toBeNull();
 });
@@ -93,16 +93,16 @@ it("drops a held day-14 feedback card once a completed run is production approve
   signedInWith(enrolled({ day: 14, streak: 14, runComplete: true, stopped: true, productionApproved: true, nudge: null }), {
     held: { userId: "u1", trigger: "streak_14", shownAt: Date.parse("2026-11-07T11:00:00Z"), closed: false },
   });
-  await render(<HomeTesterSlot />);
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
   expect(screen.queryByText("Help us launch")).toBeNull();
 });
 
 it("keeps a held day-14 card on a completed run that is not approved, or from a GRIDGO without the field", async () => {
   const held = { userId: "u1", trigger: "streak_14" as const, shownAt: Date.parse("2026-11-07T11:00:00Z"), closed: false };
   signedInWith(enrolled({ day: 14, streak: 14, runComplete: true, stopped: true, productionApproved: false, nudge: null }), { held });
-  await render(<HomeTesterSlot />);
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
   expect(screen.getByText("Help us launch")).toBeTruthy();
   signedInWith(enrolled({ day: 14, streak: 14, runComplete: true, stopped: true, nudge: null }), { held });
-  await render(<HomeTesterSlot />);
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
   expect(screen.getByText("Help us launch")).toBeTruthy();
 });

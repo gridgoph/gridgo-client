@@ -19,6 +19,7 @@ import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releaseP
 import { RECEIPT_FROM_NOTICE } from "@/lib/receipt";
 import { ACK_RECEIPT_NOTIFICATION_TYPE } from "@/lib/acknowledgementReceipt";
 import { userFacingError } from "@/lib/copy";
+import { PLAY_OPTIN_PUSH_TYPE, PLAY_OPTIN_ROUTE } from "@/lib/playOptin";
 import {
   APPLICATION_ROUTE,
   isApplicationNotification,
@@ -109,6 +110,12 @@ export function NotificationInbox() {
                 // Sent back: the application opens with what was sent filled in.
                 markGroupRead();
                 router.push(APPLICATION_ROUTE);
+              }
+            : notification.type === PLAY_OPTIN_PUSH_TYPE
+            ? () => {
+                // The Play tester broadcast opens its steps, as its push does.
+                markGroupRead();
+                router.push(PLAY_OPTIN_ROUTE);
               }
             : quoteRoute
             ? () => {
