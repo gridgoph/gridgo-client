@@ -39,12 +39,12 @@ test('a store channel is sent as channel; the APK notice keeps its old body', as
       assert.equal(body.channel, expected);
       if (!expected) assert.deepEqual(body, { app: 'client', version: '1.0.123' });
       return { ok: true, status: 201 };
-    });
+    }, { availabilityConfirmed: true });
     assert.equal(result.level, 'notice');
   }
 });
 test('a store channel failure names the store, not the APK', async () => {
-  const result = await announceRelease({ ...env, RELEASE_CHANNEL: 'play' }, async () => ({ ok: false, status: 500 }));
+  const result = await announceRelease({ ...env, RELEASE_CHANNEL: 'play' }, async () => ({ ok: false, status: 500 }), { availabilityConfirmed: true });
   assert.equal(result.level, 'warning');
   assert.match(result.message, /Google Play/);
   assert.ok(!/APK/.test(result.message));
@@ -53,4 +53,13 @@ test('an unknown channel is refused without a request', async () => {
   const result = await announceRelease({ ...env, RELEASE_CHANNEL: 'huawei' }, () => { throw new Error('must not call'); });
   assert.equal(result.level, 'warning');
   assert.match(result.message, /RELEASE_CHANNEL/);
+});
+
+test('direct store announcement calls cannot bypass the availability gate', async () => {
+  for (const channel of ['play', 'ios']) {
+    const result = await announceRelease({ ...env, RELEASE_CHANNEL: channel }, () => { throw new Error('must not call'); });
+    assert.equal(result.level, 'notice');
+    assert.equal(result.accepted, undefined);
+    assert.match(result.message, /availability has not been confirmed/);
+  }
 });
