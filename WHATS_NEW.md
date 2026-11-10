@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.585 (New feature)
+
+- Home now shows partner offers beside Reorder. Swipe to browse, or tap one to learn more.
+
 ## 1.0.576 (Improvement)
 
 - Google Play installs can now offer an update in the app, with a restart when you are ready.
