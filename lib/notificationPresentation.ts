@@ -1,4 +1,5 @@
 import { formatPhp, type Notification } from "@/lib/api";
+import { PLAY_OPTIN_PUSH_TYPE } from "@/lib/playOptin";
 import { deliveryPinNotificationCopy, isDeliveryPinAsk } from "@/lib/deliveryPin";
 import { CHANGE_WINDOW_STATES, changeNotificationCopy, isChangeAsk } from "@/lib/orderChanges";
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
@@ -601,7 +602,9 @@ export function presentNotification(
                     ? "Opens your application"
                     : isQuoteNotification(notification.type)
                       ? "Opens this quote"
-                      : releaseNoticeHint(notification),
+                      : notification.type === PLAY_OPTIN_PUSH_TYPE
+                        ? "Opens the tester steps"
+                        : releaseNoticeHint(notification),
               };
   const collectReady =
     collect && notification.orderState === "awaiting_collection" && !hold;

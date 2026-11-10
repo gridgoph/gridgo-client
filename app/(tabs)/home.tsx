@@ -27,6 +27,7 @@ import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useTourAutoStart, useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { foundingTesterView } from "@/lib/foundingTester";
+import { PLAY_OPTIN_ROUTE } from "@/lib/playOptin";
 import { featuredPrintsFrom, keepHeldFeatured, type HomeSample } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
 import { lastOrder, smartTileView } from "@/lib/homeSummary";
@@ -43,6 +44,7 @@ import { useRequestDraft } from "@/store/requestDraft";
 import { useSeasonWindows } from "@/store/seasonWindows";
 import { useFoundingTester } from "@/store/foundingTester";
 import { useSession } from "@/store/session";
+import { usePlayOptin } from "@/store/playOptin";
 import { useTesterProgram } from "@/store/testerProgram";
 
 /**
@@ -130,8 +132,13 @@ export default function HomeScreen() {
       useHomeSummary.getState().load(userId),
       // Partner promos re-read on every focus, so an edit needs no release.
       useHomePromos.getState().load(userId),
+      // The Play opt-in read reports this install first: a Play build's report
+      // is what enrolls it, so the tester read after it already sees Day 1.
       // A Google Play tester's open is the day's check-in (nothing for anyone else).
-      useTesterProgram.getState().load(userId),
+      usePlayOptin
+        .getState()
+        .load(userId)
+        .then(() => useTesterProgram.getState().load(userId)),
       refreshNotifications(),
       // Coming back from checkout must re-read GRIDGO's basket count.
       loadCart(),
@@ -260,7 +267,7 @@ export default function HomeScreen() {
                 <LegalNoticeBanner />
               )}
 
-              <HomeTesterSlot />
+              <HomeTesterSlot onOpenPlayOptin={() => router.push(PLAY_OPTIN_ROUTE)} />
 
               {showFeatured ? (
                 <HomeFeaturedPrints
