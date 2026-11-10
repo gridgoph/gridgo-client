@@ -1,10 +1,10 @@
-import { ArrowRight, ArrowUpRight, Handshake, Megaphone, Store } from "lucide-react-native";
+import { ArrowRight, ArrowUpRight } from "lucide-react-native";
 import { useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 
 import { HOME_TILE_HEIGHT } from "@/components/HomeSmartTile";
 import { useThemeColors } from "@/hooks/useTheme";
-import { promotionTagLabel, type HomePromotion, type PromotionTag } from "@/lib/homePromos";
+import { promotionTagLabel, type HomePromotion } from "@/lib/homePromos";
 import { promoCardColors } from "@/lib/promoCardColors";
 
 type Props = {
@@ -14,15 +14,10 @@ type Props = {
   dotsGutter?: number;
 };
 
-const TAG_ICONS: Record<PromotionTag, typeof Handshake> = {
-  partner: Handshake,
-  sponsored: Megaphone,
-  featured_shop: Store,
-};
 
-/** Room the pager dots take at the foot's right end (HomeRotatingTile): one 12pt current dot, 6pt others, 4pt gaps, 8pt clear. */
+/** Room the pager dots take at the foot's right end (HomeRotatingTile): one 12pt current dot, 6pt others, 4pt gaps, 6pt clear. */
 export function promoDotsGutter(pages: number): number {
-  return pages > 1 ? 12 + (pages - 1) * 10 + 8 : 0;
+  return pages > 1 ? 12 + (pages - 1) * 10 + 6 : 0;
 }
 
 /**
@@ -36,7 +31,6 @@ export function promoDotsGutter(pages: number): number {
 export function HomePromoTile({ promo, onPress, dotsGutter = 0 }: Props) {
   const colors = useThemeColors();
   const card = promoCardColors(promo, colors.canvas, colors.outline);
-  const TagIcon = TAG_ICONS[promo.tag];
   const tag = promotionTagLabel(promo.tag);
   return (
     <Pressable
@@ -61,8 +55,7 @@ export function HomePromoTile({ promo, onPress, dotsGutter = 0 }: Props) {
       ) : null}
       <View className="flex-row items-center justify-between gap-2" style={{ height: PROMO_TOP_ROW }}>
         <PromoLogo uri={promo.logoUrl} name={promo.name} size={PROMO_TOP_ROW} />
-        <View testID="promo-tile-tag" className="shrink flex-row items-center gap-1 rounded-pill px-2 py-0.5" style={{ backgroundColor: card.chip }}>
-          <TagIcon size={11} color={card.muted} strokeWidth={2.25} />
+        <View testID="promo-tile-tag" className="shrink rounded-pill px-2 py-0.5" style={{ backgroundColor: card.chip }}>
           <Text className="shrink text-caption font-bold" style={{ color: card.muted, fontSize: 10, lineHeight: 14, letterSpacing: 0.6, textTransform: "uppercase" }} numberOfLines={1}>
             {tag}
           </Text>
@@ -77,8 +70,8 @@ export function HomePromoTile({ promo, onPress, dotsGutter = 0 }: Props) {
         </View>
         <View className="flex-row items-center gap-1" style={{ height: 16, paddingRight: dotsGutter }}>
           {promo.linkText ? (
-            <View testID="promo-tile-link" className="shrink flex-row items-center gap-1">
-              <Text className="shrink text-caption font-medium" style={{ color: card.ink }} numberOfLines={1} ellipsizeMode="tail">
+            <View testID="promo-tile-link" className="shrink flex-row items-center" style={{ gap: 2 }}>
+              <Text className="shrink text-caption" style={{ color: card.ink }} numberOfLines={1} ellipsizeMode="tail">
                 {promo.linkText}
               </Text>
               <ArrowRight size={12} color={card.ink} strokeWidth={2.25} />
