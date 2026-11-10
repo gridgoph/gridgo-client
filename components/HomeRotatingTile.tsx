@@ -12,7 +12,8 @@ import {
 } from "react-native";
 
 import { HOME_TILE_HEIGHT } from "@/components/HomeSmartTile";
-import { HomePromoTile, promoDotsGutter } from "@/components/HomePromoTile";
+import { HomePromoTile } from "@/components/HomePromoTile";
+import { TILE_FOOTER_DOTS } from "@/components/HomeTileSlots";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import { homeSlides, nextSlideIndex, PROMO_ROTATE_MS, type HomePromotion } from "@/lib/homePromos";
@@ -179,7 +180,7 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
               {page.kind === "reorder" ? (
                 copy ? <View className="flex-1" pointerEvents="none">{reorder}</View> : reorder
               ) : (
-                <HomePromoTile promo={page.promo} onPress={() => onPromoPress(page.promo)} dotsGutter={promoDotsGutter(count)} />
+                <HomePromoTile promo={page.promo} onPress={() => onPromoPress(page.promo)} />
               )}
             </View>
           );
@@ -191,7 +192,8 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
         testID="home-rotating-dots"
         pointerEvents="none"
         aria-hidden
-        className="absolute bottom-3 right-3 h-4 flex-row items-center gap-1"
+        className="absolute flex-row items-center gap-1"
+        style={TILE_FOOTER_DOTS}
       >
         {slides.map((_, position) => (
           <View

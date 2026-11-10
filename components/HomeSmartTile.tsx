@@ -2,6 +2,7 @@ import { Award, Clock, Plus, Ticket } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { HomeTileSlots } from "@/components/HomeTileSlots";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { fontFamily } from "@/constants/fonts";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -40,8 +41,8 @@ export function HomeSmartTile({ view, onPress }: Props) {
       accessibilityLabel={view.label}
       className={
         voucher
-          ? "flex-1 justify-between rounded-card border-2 border-dashed border-brand bg-surface p-3"
-          : "flex-1 justify-between rounded-card border border-outline bg-surface p-3"
+          ? "flex-1 rounded-card border-2 border-dashed border-brand bg-surface p-[11px]"
+          : "flex-1 rounded-card border border-outline bg-surface p-3"
       }
       style={({ pressed }) => [{ height: HOME_TILE_HEIGHT, minWidth: 0, flexBasis: 0 }, pressed ? { opacity: 0.75 } : null]}
     >
@@ -67,76 +68,95 @@ function TileBody({ view }: { view: SmartTileView }) {
   switch (view.kind) {
     case "missions":
       return (
-        <>
-          <Overline text="FOUNDING TESTER" icon={<Award size={18} color={colors.textPrimary} strokeWidth={2} />} />
-          <Text className="text-text-primary" style={{ fontFamily: fontFamily.black, fontSize: 30, lineHeight: 34 }}>
-            {view.done}
-            <Text className="text-h3 text-text-muted">/{view.total}</Text>
-          </Text>
-          <SegmentBar done={view.done} total={view.total} />
-        </>
+        <HomeTileSlots
+          top={<Overline text="FOUNDING TESTER" icon={<Award size={18} color={colors.textPrimary} strokeWidth={2} />} />}
+          title={
+            // A 34pt line in the 26pt title slot, bottom-aligned: its baseline lands on the h3 baseline beside it.
+            <Text className="text-text-primary" style={{ fontFamily: fontFamily.black, fontSize: 30, lineHeight: 34, marginTop: -8 }}>
+              {view.done}
+              <Text className="text-h3 text-text-muted">/{view.total}</Text>
+            </Text>
+          }
+          footer={<SegmentBar done={view.done} total={view.total} />}
+        />
       );
     case "active_order":
       return (
-        <>
-          <Overline
-            text={view.more ? `YOUR ORDER · +${view.more}` : "YOUR ORDER"}
-            icon={view.needsPayment ? <Clock size={16} color={colors.warning} strokeWidth={2} /> : undefined}
-          />
-          <View>
+        <HomeTileSlots
+          top={
+            <Overline
+              text={view.more ? `YOUR ORDER · +${view.more}` : "YOUR ORDER"}
+              icon={view.needsPayment ? <Clock size={16} color={colors.warning} strokeWidth={2} /> : undefined}
+            />
+          }
+          title={
             <Text className="text-h3 text-text-primary" numberOfLines={1}>
               {view.headline}
             </Text>
-            {view.detail ? (
+          }
+          subtitle={
+            view.detail ? (
               <Text className="text-caption text-text-secondary" numberOfLines={1}>
                 {view.detail}
               </Text>
-            ) : null}
-          </View>
-          <SegmentBar done={view.step} total={view.stepCount} tone="ink" />
-        </>
+            ) : null
+          }
+          footer={<SegmentBar done={view.step} total={view.stepCount} tone="ink" />}
+        />
       );
     case "tester_voucher":
       return (
-        <>
-          <Overline text="TESTER VOUCHER" icon={<Ticket size={18} color={colors.textPrimary} strokeWidth={2} />} />
-          <Text className="text-h2 text-text-primary" numberOfLines={1}>
-            {view.amount} off
-          </Text>
-          <View className="flex-row items-center gap-1">
-            <Clock size={14} color={colors.textSecondary} strokeWidth={2} />
-            <Text className="text-caption text-text-secondary">{daysLeftLine(view.daysLeft)}</Text>
-          </View>
-        </>
+        <HomeTileSlots
+          top={<Overline text="TESTER VOUCHER" icon={<Ticket size={18} color={colors.textPrimary} strokeWidth={2} />} />}
+          title={
+            <Text className="text-h3 text-text-primary" numberOfLines={1}>
+              {view.amount} off
+            </Text>
+          }
+          subtitle={
+            <View className="flex-row items-center gap-1">
+              <Clock size={14} color={colors.textSecondary} strokeWidth={2} />
+              <Text className="text-caption text-text-secondary">{daysLeftLine(view.daysLeft)}</Text>
+            </View>
+          }
+        />
       );
     case "invite":
       return (
-        <>
-          <Overline text="INVITE A FRIEND" />
-          <View className="flex-row items-center gap-2">
-            <View className="h-7 w-7 items-center justify-center rounded-pill bg-accent">
-              <Plus size={16} color={colors.accentOn} strokeWidth={2.5} />
+        <HomeTileSlots
+          top={<Overline text="INVITE A FRIEND" />}
+          title={
+            <View className="flex-row items-center gap-2">
+              <View className="h-6 w-6 items-center justify-center rounded-pill bg-accent">
+                <Plus size={14} color={colors.accentOn} strokeWidth={2.5} />
+              </View>
+              <Text className="flex-1 text-h3 text-text-primary" numberOfLines={1}>
+                Share
+              </Text>
             </View>
-            <Text className="flex-1 text-h3 text-text-primary" numberOfLines={1}>
-              Share
+          }
+          subtitle={
+            <Text className="text-caption text-text-secondary" numberOfLines={1}>
+              You each get a voucher
             </Text>
-          </View>
-          <Text className="text-caption text-text-secondary" numberOfLines={1}>
-            You each get a voucher
-          </Text>
-        </>
+          }
+        />
       );
     case "orders":
       return (
-        <>
-          <Overline text="YOUR ORDERS" />
-          <Text className="text-h3 text-text-primary" numberOfLines={1}>
-            See every job
-          </Text>
-          <Text className="text-caption text-text-secondary" numberOfLines={1}>
-            Status, receipts, reorder
-          </Text>
-        </>
+        <HomeTileSlots
+          top={<Overline text="YOUR ORDERS" />}
+          title={
+            <Text className="text-h3 text-text-primary" numberOfLines={1}>
+              See every job
+            </Text>
+          }
+          subtitle={
+            <Text className="text-caption text-text-secondary" numberOfLines={1}>
+              Status, receipts, reorder
+            </Text>
+          }
+        />
       );
   }
 }

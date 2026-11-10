@@ -10,7 +10,6 @@ import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { HomeCategoryCircles } from "@/components/HomeCategoryCircles";
 import { HomeFeaturedPrints } from "@/components/HomeFeaturedPrints";
 import { HomeReorderTile } from "@/components/HomeReorderTile";
-import { promoDotsGutter } from "@/components/HomePromoTile";
 import { HomeRotatingTile } from "@/components/HomeRotatingTile";
 import { PromoSheet } from "@/components/PromoSheet";
 import { RetiredDraftNotice } from "@/components/RetiredDraftNotice";
@@ -307,7 +306,6 @@ export default function HomeScreen() {
                     <HomeReorderTile
                       title={previous?.title ?? null}
                       onPress={() => previous && void reorder(previous)}
-                      footGutter={promoDotsGutter(promos.length + 1)}
                     />
                   }
                   promos={promos}

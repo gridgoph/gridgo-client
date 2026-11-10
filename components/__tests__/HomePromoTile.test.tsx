@@ -42,3 +42,8 @@ it("labels the tag chip and the name for a reader", async () => {
   expect(screen.getByLabelText("DavaoGo. Sponsored")).toBeTruthy();
   expect(screen.getByText("Sponsored")).toBeTruthy();
 });
+
+it("draws the link text in 72% ink and the arrow in full ink", async () => {
+  await render(<HomePromoTile promo={promo({ color: "#FFFFFF" })} onPress={() => {}} />);
+  expect(screen.getByTestId("promo-tile-link-text")).toHaveStyle({ color: "#1A1A1AB8" });
+});
