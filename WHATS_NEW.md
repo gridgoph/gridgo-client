@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.590 (New feature)
+
+- Android: help us launch GRIDGO on Google Play by becoming a tester, in four short steps from Home.
+
 ## 1.0.585 (New feature)
 
 - Home now shows partner offers beside Reorder. Swipe to browse, or tap one to learn more.
