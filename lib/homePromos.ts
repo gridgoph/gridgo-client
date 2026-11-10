@@ -26,6 +26,8 @@ export type HomePromotion = {
   linkUrl: string;
   tapAction: PromotionTapAction;
   style: PromotionStyle;
+  /** Operations' card colour, `#RRGGBB`; null from an API before it (then `style` decides). */
+  color: string | null;
 };
 
 /** One page of the rotating tile: Reorder always, then each live promo. */
@@ -115,6 +117,7 @@ export function promotionsFrom(body: unknown): HomePromotion[] {
       linkUrl,
       tapAction: oneOf(item.tapAction, ["sheet", "link"] as const, "sheet"),
       style: oneOf(item.style, ["light", "yellow"] as const, "light"),
+      color: typeof item.color === "string" && /^#[0-9A-Fa-f]{6}$/.test(item.color) ? item.color.toUpperCase() : null,
     });
   }
   return out;

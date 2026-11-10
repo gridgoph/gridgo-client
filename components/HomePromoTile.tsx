@@ -5,10 +5,13 @@ import { Image, Pressable, Text, View } from "react-native";
 import { HOME_TILE_HEIGHT } from "@/components/HomeSmartTile";
 import { useThemeColors } from "@/hooks/useTheme";
 import { promotionTagLabel, type HomePromotion, type PromotionTag } from "@/lib/homePromos";
+import { promoCardColors } from "@/lib/promoCardColors";
 
 type Props = {
   promo: HomePromotion;
   onPress: () => void;
+  /** Right padding on the foot line, clear of the rotation's dots. */
+  dotsGutter?: number;
 };
 
 const TAG_ICONS: Record<PromotionTag, typeof Handshake> = {
@@ -17,19 +20,20 @@ const TAG_ICONS: Record<PromotionTag, typeof Handshake> = {
   featured_shop: Store,
 };
 
+/** Room the pager dots take at the foot's right end (HomeRotatingTile). */
+export const PROMO_DOTS_GUTTER = 44;
+
 /**
- * One partner page of Home's lower-right tile. Built like Reorder — a round
- * mark top-left with the tag beside it, the name and the promo's own link
- * line ("Plan your commute →", none when Operations wrote none) at the foot — so the rotation
- * swaps content, never layout. Light sits on the surface; yellow is the
- * Operations-chosen highlight, with ink on it in both themes.
+ * One partner page of Home's lower-right tile, on the same three slots as the
+ * tile beside it so the pair mirrors: a top row (logo, tag chip where the
+ * other tile has its overline and icon), the name on the title line, and a
+ * foot line — the promo's link text and an arrow, with the rotation's dots at
+ * its right end the way the other tile's progress bar sits at its foot.
+ * Colours follow Operations' `color` with readable ink (`lib/promoCardColors`).
  */
-export function HomePromoTile({ promo, onPress }: Props) {
+export function HomePromoTile({ promo, onPress, dotsGutter = 0 }: Props) {
   const colors = useThemeColors();
-  const yellow = promo.style === "yellow";
-  const ink = yellow ? colors.actionYellowOn : colors.textPrimary;
-  const quiet = yellow ? colors.actionYellowOnMuted : colors.textSecondary;
-  const accent = yellow ? colors.actionYellowOn : colors.brand;
+  const card = promoCardColors(promo, colors.canvas, colors.outline);
   const TagIcon = TAG_ICONS[promo.tag];
   const tag = promotionTagLabel(promo.tag);
   return (
@@ -39,12 +43,11 @@ export function HomePromoTile({ promo, onPress }: Props) {
       accessibilityRole={promo.tapAction === "link" ? "link" : "button"}
       accessibilityLabel={`${promo.name}. ${tag}`}
       accessibilityHint={promo.tapAction === "link" ? "Opens in your browser" : undefined}
-      className={
-        yellow
-          ? "flex-1 justify-between overflow-hidden rounded-card border border-action-yellow bg-action-yellow p-3"
-          : "flex-1 justify-between overflow-hidden rounded-card border border-outline bg-surface p-3"
-      }
-      style={({ pressed }) => [{ height: HOME_TILE_HEIGHT }, pressed ? { opacity: 0.75 } : null]}
+      className="flex-1 justify-between overflow-hidden rounded-card border p-3"
+      style={({ pressed }) => [
+        { height: HOME_TILE_HEIGHT, backgroundColor: card.background, borderColor: card.border },
+        pressed ? { opacity: 0.75 } : null,
+      ]}
     >
       {promo.imageUrl ? (
         <Image
@@ -54,34 +57,39 @@ export function HomePromoTile({ promo, onPress }: Props) {
           style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "45%", opacity: 0.9 }}
         />
       ) : null}
-      <View className="flex-row items-start justify-between gap-2">
-        <PromoLogo uri={promo.logoUrl} name={promo.name} size={36} />
-        <View className="shrink flex-row items-center gap-1">
-          <TagIcon size={12} color={quiet} strokeWidth={2} />
-          <Text className="shrink text-caption" style={{ color: quiet }} numberOfLines={1}>
+      <View className="flex-row items-center justify-between gap-2" style={{ height: PROMO_TOP_ROW }}>
+        <PromoLogo uri={promo.logoUrl} name={promo.name} size={PROMO_TOP_ROW} />
+        <View testID="promo-tile-tag" className="shrink flex-row items-center gap-1 rounded-pill px-2 py-0.5" style={{ backgroundColor: card.chip }}>
+          <TagIcon size={11} color={card.muted} strokeWidth={2.25} />
+          <Text className="shrink text-caption font-bold" style={{ color: card.muted, fontSize: 10, lineHeight: 14, letterSpacing: 0.6, textTransform: "uppercase" }} numberOfLines={1}>
             {tag}
           </Text>
         </View>
       </View>
       <View>
         <View className="flex-row items-center gap-1">
-          <Text className="flex-1 text-h3" style={{ color: ink }} numberOfLines={1}>
+          <Text className="flex-1 text-h3" style={{ color: card.ink }} numberOfLines={1}>
             {promo.name}
           </Text>
-          {promo.tapAction === "link" ? <ArrowUpRight size={16} color={ink} strokeWidth={2} /> : null}
+          {promo.tapAction === "link" ? <ArrowUpRight size={16} color={card.ink} strokeWidth={2} /> : null}
         </View>
-        {promo.linkText ? (
-          <View testID="promo-tile-link" className="flex-row items-center gap-1">
-            <Text className="shrink text-caption font-medium" style={{ color: accent }} numberOfLines={1} ellipsizeMode="tail">
-              {promo.linkText}
-            </Text>
-            <ArrowRight size={12} color={accent} strokeWidth={2.25} />
-          </View>
-        ) : null}
+        <View className="flex-row items-center gap-1" style={{ height: 16, paddingRight: dotsGutter }}>
+          {promo.linkText ? (
+            <View testID="promo-tile-link" className="shrink flex-row items-center gap-1">
+              <Text className="shrink text-caption font-medium" style={{ color: card.ink }} numberOfLines={1} ellipsizeMode="tail">
+                {promo.linkText}
+              </Text>
+              <ArrowRight size={12} color={card.ink} strokeWidth={2.25} />
+            </View>
+          ) : null}
+        </View>
       </View>
     </Pressable>
   );
 }
+
+/** The top row's height: the logo disc matches the left tile's 36pt icon row. */
+const PROMO_TOP_ROW = 32;
 
 /**
  * The partner's logo on a white disc, so a dark or transparent logo reads on

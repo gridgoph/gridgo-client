@@ -38,7 +38,14 @@ describe("promotionsFrom", () => {
       linkUrl: "https://davaogo.app/",
       tapAction: "sheet",
       style: "yellow",
+      color: null,
     });
+  });
+
+  it("reads a hex card colour, uppercased, and drops anything else", () => {
+    expect(promotionsFrom([{ ...davaogo, color: "#17a673" }])[0].color).toBe("#17A673");
+    expect(promotionsFrom([{ ...davaogo, color: "green" }])[0].color).toBeNull();
+    expect(promotionsFrom([{ ...davaogo, color: "#FFF" }])[0].color).toBeNull();
   });
 
   it("accepts a bare array and flat logoUrl/imageUrl fields", () => {

@@ -12,10 +12,11 @@ import {
 } from "react-native";
 
 import { HOME_TILE_HEIGHT } from "@/components/HomeSmartTile";
-import { HomePromoTile } from "@/components/HomePromoTile";
+import { HomePromoTile, PROMO_DOTS_GUTTER } from "@/components/HomePromoTile";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import { homeSlides, nextSlideIndex, PROMO_ROTATE_MS, type HomePromotion } from "@/lib/homePromos";
+import { promoCardColors } from "@/lib/promoCardColors";
 
 type Props = {
   /** Today's Reorder tile, drawn unchanged as the first page. */
@@ -43,7 +44,7 @@ type Props = {
  * real Reorder without animation, which looks identical.
  */
 export function HomeRotatingTile(props: Props) {
-  if (!props.promos.length) return <View className="flex-1">{props.reorder}</View>;
+  if (!props.promos.length) return <View className="flex-1" style={{ minWidth: 0 }}>{props.reorder}</View>;
   return <Rotator {...props} />;
 }
 
@@ -137,15 +138,16 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
     }
   };
 
-  const yellowPage = slide.kind === "promo" && slide.promo.style === "yellow";
-  const dotOn = yellowPage ? colors.actionYellowOn : colors.textPrimary;
-  const dotOff = yellowPage ? colors.actionYellowOnMuted : colors.textMuted;
+  const card = slide.kind === "promo" ? promoCardColors(slide.promo, colors.canvas, colors.outline) : null;
+  const dotOn = card ? card.ink : colors.textPrimary;
+  const dotOff = card ? card.muted : colors.textMuted;
 
   return (
     <View
       testID="home-rotating-tile"
       className="flex-1 overflow-hidden rounded-card"
-      style={{ height: HOME_TILE_HEIGHT }}
+      // minWidth 0: the pages' scroll content must not widen this column past its twin.
+      style={{ height: HOME_TILE_HEIGHT, minWidth: 0 }}
       onLayout={onLayout}
       onTouchStart={hold}
       onTouchEnd={release}
@@ -177,7 +179,7 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
               {page.kind === "reorder" ? (
                 copy ? <View className="flex-1" pointerEvents="none">{reorder}</View> : reorder
               ) : (
-                <HomePromoTile promo={page.promo} onPress={() => onPromoPress(page.promo)} />
+                <HomePromoTile promo={page.promo} onPress={() => onPromoPress(page.promo)} dotsGutter={PROMO_DOTS_GUTTER} />
               )}
             </View>
           );
@@ -189,7 +191,7 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
         testID="home-rotating-dots"
         pointerEvents="none"
         aria-hidden
-        className="absolute right-3 top-4 flex-row items-center gap-1"
+        className="absolute bottom-3 right-3 h-4 flex-row items-center gap-1"
       >
         {slides.map((_, position) => (
           <View

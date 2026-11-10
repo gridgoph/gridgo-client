@@ -10,6 +10,7 @@ import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { HomeCategoryCircles } from "@/components/HomeCategoryCircles";
 import { HomeFeaturedPrints } from "@/components/HomeFeaturedPrints";
 import { HomeReorderTile } from "@/components/HomeReorderTile";
+import { PROMO_DOTS_GUTTER } from "@/components/HomePromoTile";
 import { HomeRotatingTile } from "@/components/HomeRotatingTile";
 import { PromoSheet } from "@/components/PromoSheet";
 import { RetiredDraftNotice } from "@/components/RetiredDraftNotice";
@@ -299,7 +300,13 @@ export default function HomeScreen() {
               <View className="flex-row gap-3">
                 <HomeSmartTile view={tile} onPress={(href) => router.push(href as Href)} />
                 <HomeRotatingTile
-                  reorder={<HomeReorderTile title={previous?.title ?? null} onPress={() => previous && void reorder(previous)} />}
+                  reorder={
+                    <HomeReorderTile
+                      title={previous?.title ?? null}
+                      onPress={() => previous && void reorder(previous)}
+                      footGutter={promos.length ? PROMO_DOTS_GUTTER : 0}
+                    />
+                  }
                   promos={promos}
                   onPromoPress={pressPromo}
                   onPromoShown={showPromo}
