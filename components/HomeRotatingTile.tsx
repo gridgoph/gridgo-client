@@ -13,9 +13,11 @@ import {
 
 import { HOME_TILE_HEIGHT } from "@/components/HomeSmartTile";
 import { HomePromoTile } from "@/components/HomePromoTile";
+import { TILE_FOOTER_DOTS } from "@/components/HomeTileSlots";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import { homeSlides, nextSlideIndex, PROMO_ROTATE_MS, type HomePromotion } from "@/lib/homePromos";
+import { promoCardColors } from "@/lib/promoCardColors";
 
 type Props = {
   /** Today's Reorder tile, drawn unchanged as the first page. */
@@ -43,7 +45,7 @@ type Props = {
  * real Reorder without animation, which looks identical.
  */
 export function HomeRotatingTile(props: Props) {
-  if (!props.promos.length) return <View className="flex-1">{props.reorder}</View>;
+  if (!props.promos.length) return <View className="flex-1" style={{ minWidth: 0, flexBasis: 0 }}>{props.reorder}</View>;
   return <Rotator {...props} />;
 }
 
@@ -137,15 +139,16 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
     }
   };
 
-  const yellowPage = slide.kind === "promo" && slide.promo.style === "yellow";
-  const dotOn = yellowPage ? colors.actionYellowOn : colors.textPrimary;
-  const dotOff = yellowPage ? colors.actionYellowOnMuted : colors.textMuted;
+  const card = slide.kind === "promo" ? promoCardColors(slide.promo, colors.canvas, colors.outline) : null;
+  const dotOn = card ? card.ink : colors.textPrimary;
+  const dotOff = card ? card.muted : colors.textMuted;
 
   return (
     <View
       testID="home-rotating-tile"
       className="flex-1 overflow-hidden rounded-card"
-      style={{ height: HOME_TILE_HEIGHT }}
+      // minWidth 0: the pages' scroll content must not widen this column past its twin.
+      style={{ height: HOME_TILE_HEIGHT, minWidth: 0, flexBasis: 0 }}
       onLayout={onLayout}
       onTouchStart={hold}
       onTouchEnd={release}
@@ -189,7 +192,8 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
         testID="home-rotating-dots"
         pointerEvents="none"
         aria-hidden
-        className="absolute right-3 top-4 flex-row items-center gap-1"
+        className="absolute flex-row items-center gap-1"
+        style={TILE_FOOTER_DOTS}
       >
         {slides.map((_, position) => (
           <View

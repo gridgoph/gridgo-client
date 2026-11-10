@@ -1,4 +1,5 @@
 import {
+  promoLinkLabel,
   claimPromotionView,
   homeSlides,
   nextSlideIndex,
@@ -37,7 +38,14 @@ describe("promotionsFrom", () => {
       linkUrl: "https://davaogo.app/",
       tapAction: "sheet",
       style: "yellow",
+      color: null,
     });
+  });
+
+  it("reads a hex card colour, uppercased, and drops anything else", () => {
+    expect(promotionsFrom([{ ...davaogo, color: "#17a673" }])[0].color).toBe("#17A673");
+    expect(promotionsFrom([{ ...davaogo, color: "green" }])[0].color).toBeNull();
+    expect(promotionsFrom([{ ...davaogo, color: "#FFF" }])[0].color).toBeNull();
   });
 
   it("accepts a bare array and flat logoUrl/imageUrl fields", () => {
@@ -67,7 +75,8 @@ describe("promotionsFrom", () => {
     expect(promo.tag).toBe("partner");
     expect(promo.tapAction).toBe("sheet");
     expect(promo.style).toBe("light");
-    expect(promo.linkText).toBe("Visit DavaoGo");
+    expect(promo.linkText).toBe("");
+    expect(promoLinkLabel(promo)).toBe("Visit DavaoGo");
   });
 
   it("reads nothing from a missing or malformed body", () => {

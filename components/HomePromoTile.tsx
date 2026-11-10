@@ -1,34 +1,31 @@
-import { ArrowUpRight, Handshake, Megaphone, Store } from "lucide-react-native";
+import { ArrowRight, ArrowUpRight } from "lucide-react-native";
 import { useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 
 import { HOME_TILE_HEIGHT } from "@/components/HomeSmartTile";
+import { HomeTileSlots, TILE_SLOTS } from "@/components/HomeTileSlots";
 import { useThemeColors } from "@/hooks/useTheme";
-import { promotionTagLabel, type HomePromotion, type PromotionTag } from "@/lib/homePromos";
+import { promotionTagLabel, type HomePromotion } from "@/lib/homePromos";
+import { promoCardColors } from "@/lib/promoCardColors";
 
 type Props = {
   promo: HomePromotion;
   onPress: () => void;
 };
 
-const TAG_ICONS: Record<PromotionTag, typeof Handshake> = {
-  partner: Handshake,
-  sponsored: Megaphone,
-  featured_shop: Store,
-};
+
 
 /**
- * One partner page of Home's lower-right tile. Built like Reorder — a round
- * mark top-left, one big line and a caption at the foot — so the rotation
- * swaps content, never layout. Light sits on the surface; yellow is the
- * Operations-chosen highlight, with ink on it in both themes.
+ * One partner page of Home's lower-right tile, on the shared tile grid
+ * (`HomeTileSlots`) so it mirrors the tile beside it: logo and tag chip on the
+ * top row, the name on the title line, the promo's link text (72% ink) and an
+ * arrow on the subtitle line; the rotation's dots take the footer slot, where
+ * the other tile has its progress bar. Colours follow Operations' `color` with
+ * readable ink (`lib/promoCardColors`).
  */
 export function HomePromoTile({ promo, onPress }: Props) {
   const colors = useThemeColors();
-  const yellow = promo.style === "yellow";
-  const ink = yellow ? colors.actionYellowOn : colors.textPrimary;
-  const quiet = yellow ? colors.actionYellowOnMuted : colors.textSecondary;
-  const TagIcon = TAG_ICONS[promo.tag];
+  const card = promoCardColors(promo, colors.canvas, colors.outline);
   const tag = promotionTagLabel(promo.tag);
   return (
     <Pressable
@@ -37,12 +34,11 @@ export function HomePromoTile({ promo, onPress }: Props) {
       accessibilityRole={promo.tapAction === "link" ? "link" : "button"}
       accessibilityLabel={`${promo.name}. ${tag}`}
       accessibilityHint={promo.tapAction === "link" ? "Opens in your browser" : undefined}
-      className={
-        yellow
-          ? "flex-1 justify-between overflow-hidden rounded-card border border-action-yellow bg-action-yellow p-3"
-          : "flex-1 justify-between overflow-hidden rounded-card border border-outline bg-surface p-3"
-      }
-      style={({ pressed }) => [{ height: HOME_TILE_HEIGHT }, pressed ? { opacity: 0.75 } : null]}
+      className="flex-1 overflow-hidden rounded-card border p-3"
+      style={({ pressed }) => [
+        { height: HOME_TILE_HEIGHT, backgroundColor: card.background, borderColor: card.border },
+        pressed ? { opacity: 0.75 } : null,
+      ]}
     >
       {promo.imageUrl ? (
         <Image
@@ -52,19 +48,40 @@ export function HomePromoTile({ promo, onPress }: Props) {
           style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "45%", opacity: 0.9 }}
         />
       ) : null}
-      <PromoLogo uri={promo.logoUrl} name={promo.name} size={36} />
-      <View>
-        <Text className="text-h3" style={{ color: ink }} numberOfLines={1}>
-          {promo.name}
-        </Text>
-        <View className="flex-row items-center gap-1">
-          <TagIcon size={14} color={quiet} strokeWidth={2} />
-          <Text className="flex-1 text-caption" style={{ color: quiet }} numberOfLines={1}>
-            {tag}
-          </Text>
-          {promo.tapAction === "link" ? <ArrowUpRight size={16} color={ink} strokeWidth={2} /> : null}
-        </View>
-      </View>
+      <HomeTileSlots
+        top={
+          <View className="flex-row items-center justify-between gap-2" style={{ height: TILE_SLOTS.top }}>
+            <PromoLogo uri={promo.logoUrl} name={promo.name} size={TILE_SLOTS.top} />
+            <View testID="promo-tile-tag" className="shrink rounded-pill px-2 py-0.5" style={{ backgroundColor: card.chip }}>
+              <Text
+                className="shrink text-caption font-bold"
+                style={{ color: card.muted, fontSize: 10, lineHeight: 14, letterSpacing: 0.6, textTransform: "uppercase" }}
+                numberOfLines={1}
+              >
+                {tag}
+              </Text>
+            </View>
+          </View>
+        }
+        title={
+          <View className="flex-row items-center gap-1">
+            <Text className="flex-1 text-h3" style={{ color: card.ink }} numberOfLines={1}>
+              {promo.name}
+            </Text>
+            {promo.tapAction === "link" ? <ArrowUpRight size={16} color={card.ink} strokeWidth={2} /> : null}
+          </View>
+        }
+        subtitle={
+          promo.linkText ? (
+            <View testID="promo-tile-link" className="flex-row items-center" style={{ gap: 2 }}>
+              <Text testID="promo-tile-link-text" className="shrink text-caption" style={{ color: card.muted }} numberOfLines={1} ellipsizeMode="tail">
+                {promo.linkText}
+              </Text>
+              <ArrowRight size={12} color={card.ink} strokeWidth={2.25} />
+            </View>
+          ) : null
+        }
+      />
     </Pressable>
   );
 }
