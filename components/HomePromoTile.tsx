@@ -20,8 +20,10 @@ const TAG_ICONS: Record<PromotionTag, typeof Handshake> = {
   featured_shop: Store,
 };
 
-/** Room the pager dots take at the foot's right end (HomeRotatingTile). */
-export const PROMO_DOTS_GUTTER = 44;
+/** Room the pager dots take at the foot's right end (HomeRotatingTile): one 12pt current dot, 6pt others, 4pt gaps, 8pt clear. */
+export function promoDotsGutter(pages: number): number {
+  return pages > 1 ? 12 + (pages - 1) * 10 + 8 : 0;
+}
 
 /**
  * One partner page of Home's lower-right tile, on the same three slots as the

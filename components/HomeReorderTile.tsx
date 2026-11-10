@@ -29,7 +29,7 @@ export function HomeReorderTile({ title, onPress, footGutter = 0 }: Props) {
       accessibilityLabel={disabled ? "Reorder. No past print yet" : `Reorder ${title}`}
       accessibilityState={{ disabled }}
       className="flex-1 justify-between rounded-card border border-outline bg-surface-variant p-3"
-      style={({ pressed }) => [{ height: HOME_TILE_HEIGHT, minWidth: 0 }, pressed ? { opacity: 0.75 } : null]}
+      style={({ pressed }) => [{ height: HOME_TILE_HEIGHT, minWidth: 0, flexBasis: 0 }, pressed ? { opacity: 0.75 } : null]}
     >
       <View className={disabled ? "h-9 w-9 items-center justify-center rounded-pill bg-surface-high gg-disabled" : "h-9 w-9 items-center justify-center rounded-pill bg-surface-high"}>
         <RefreshCw size={18} color={colors.textPrimary} strokeWidth={2} />

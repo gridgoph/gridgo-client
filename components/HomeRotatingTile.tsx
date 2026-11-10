@@ -12,7 +12,7 @@ import {
 } from "react-native";
 
 import { HOME_TILE_HEIGHT } from "@/components/HomeSmartTile";
-import { HomePromoTile, PROMO_DOTS_GUTTER } from "@/components/HomePromoTile";
+import { HomePromoTile, promoDotsGutter } from "@/components/HomePromoTile";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import { homeSlides, nextSlideIndex, PROMO_ROTATE_MS, type HomePromotion } from "@/lib/homePromos";
@@ -44,7 +44,7 @@ type Props = {
  * real Reorder without animation, which looks identical.
  */
 export function HomeRotatingTile(props: Props) {
-  if (!props.promos.length) return <View className="flex-1" style={{ minWidth: 0 }}>{props.reorder}</View>;
+  if (!props.promos.length) return <View className="flex-1" style={{ minWidth: 0, flexBasis: 0 }}>{props.reorder}</View>;
   return <Rotator {...props} />;
 }
 
@@ -147,7 +147,7 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
       testID="home-rotating-tile"
       className="flex-1 overflow-hidden rounded-card"
       // minWidth 0: the pages' scroll content must not widen this column past its twin.
-      style={{ height: HOME_TILE_HEIGHT, minWidth: 0 }}
+      style={{ height: HOME_TILE_HEIGHT, minWidth: 0, flexBasis: 0 }}
       onLayout={onLayout}
       onTouchStart={hold}
       onTouchEnd={release}
@@ -179,7 +179,7 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
               {page.kind === "reorder" ? (
                 copy ? <View className="flex-1" pointerEvents="none">{reorder}</View> : reorder
               ) : (
-                <HomePromoTile promo={page.promo} onPress={() => onPromoPress(page.promo)} dotsGutter={PROMO_DOTS_GUTTER} />
+                <HomePromoTile promo={page.promo} onPress={() => onPromoPress(page.promo)} dotsGutter={promoDotsGutter(count)} />
               )}
             </View>
           );

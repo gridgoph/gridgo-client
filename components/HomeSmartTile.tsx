@@ -26,7 +26,7 @@ type Props = {
 export function HomeSmartTile({ view, onPress }: Props) {
   if (!view) {
     return (
-      <View testID="smart-tile-loading" className="flex-1" style={{ height: HOME_TILE_HEIGHT, minWidth: 0 }}>
+      <View testID="smart-tile-loading" className="flex-1" style={{ height: HOME_TILE_HEIGHT, minWidth: 0, flexBasis: 0 }}>
         <SkeletonBlock className="h-full w-full rounded-card" />
       </View>
     );
@@ -43,7 +43,7 @@ export function HomeSmartTile({ view, onPress }: Props) {
           ? "flex-1 justify-between rounded-card border-2 border-dashed border-brand bg-surface p-3"
           : "flex-1 justify-between rounded-card border border-outline bg-surface p-3"
       }
-      style={({ pressed }) => [{ height: HOME_TILE_HEIGHT, minWidth: 0 }, pressed ? { opacity: 0.75 } : null]}
+      style={({ pressed }) => [{ height: HOME_TILE_HEIGHT, minWidth: 0, flexBasis: 0 }, pressed ? { opacity: 0.75 } : null]}
     >
       <TileBody view={view} />
     </Pressable>
