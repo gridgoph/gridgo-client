@@ -3,6 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { pendingRelease } from './queue-store-release.mjs';
 import { checkStoreReleases, pendingArtifacts, readReleaseArtifact } from './check-store-releases.mjs';
 import { MAX_AGE_MS } from './store-availability.mjs';
 import { ENV, NOW, fixture, response } from './test-support/store-release.mjs';
@@ -144,4 +146,111 @@ test('workflow only runs trusted main code; default manual run is dry; schedule 
   assert.ok(android.includes("github.event.inputs.play_bundle == 'true' && 'play-store-access'"));
   assert.ok(android.includes("cancel-in-progress: ${{ github.event.inputs.play_bundle != 'true' }}"));
   assert.ok(android.includes("queue: ${{ github.event.inputs.play_bundle == 'true' && 'max' || 'single' }}"));
+});
+
+// Exercise the actual notice/save/upload order, env and conditions without
+// running a build or a store upload. Only these three step types are simulated.
+function runNoticeWorkflow(channel, { saveFails = false, uploadFails = false, branch = 'main', track = 'alpha' } = {}) {
+  const play = channel === 'play';
+  const path = play ? 'android-release.yml' : 'ios-testflight.yml';
+  const queueName = play ? 'Queue the Play release notice' : 'Queue the TestFlight release notice';
+  const saveName = play ? 'Save the pending Play notice' : 'Save the pending TestFlight notice';
+  const workflow = readFileSync(new URL(`../.github/workflows/${path}`, import.meta.url), 'utf8');
+  const steps = new Proxy({
+    config: { outputs: { version: '1.0.42', code: '42', package: 'ph.gridgo.client' } },
+    'play-track': { outputs: { track } },
+    build: { outputs: { announce_version: '1.0.43', version: '1.0.0', build_number: '43' } },
+  }, { get: (target, key) => target[key] ?? { outcome: '', outputs: {} } });
+  const context = { steps, inputs: { submit_to_testflight: true }, vars: { ASC_APP_ID: ENV.ASC_APP_ID },
+    github: { ref: `refs/heads/${branch}`, event: { inputs: { play_bundle: 'true', submit_to_play: 'true' } } } };
+  const evaluate = expression => runInNewContext(expression.replace(/steps\.([\w-]+)/g, 'steps["$1"]'), context, { timeout: 100 });
+  let failed = false;
+  let queued;
+  let persisted;
+  let uploaded = false;
+  for (const block of workflow.split(/(?=^      - )/m)) {
+    const name = /^      - name: (.+)$/m.exec(block)?.[1];
+    const upload = play ? name?.startsWith('Upload the Play bundle to ') : name === 'Upload to TestFlight';
+    if (name !== queueName && name !== saveName && !upload) continue;
+    const id = /^        id: (.+)$/m.exec(block)?.[1];
+    const condition = /^        if: (.+)$/m.exec(block)?.[1] ?? 'true';
+    let outcome = 'skipped';
+    if (!failed && evaluate(condition)) {
+      try {
+        if (name === queueName) {
+          const env = Object.fromEntries([...block.matchAll(/^          ([A-Z_]+): (.+)$/gm)].map(([, key, value]) =>
+            [key, value.startsWith('${{') ? evaluate(value.slice(3, -2).trim()) : value]));
+          queued = pendingRelease(env, NOW);
+        } else if (name === saveName) {
+          if (saveFails || !queued) throw new Error('Simulated pending artifact save failure');
+          persisted = queued;
+        } else {
+          if (uploadFails) throw new Error('Simulated store upload failure');
+          uploaded = true;
+        }
+        outcome = 'success';
+      } catch {
+        outcome = 'failure';
+        if (!/^        continue-on-error: true$/m.test(block)) failed = true;
+      }
+    }
+    if (id) steps[id] = { outcome };
+  }
+  return { uploaded, persisted, conclusion: failed ? 'failure' : 'success' };
+}
+
+test('failed pending persistence blocks upload; healthy retry and two later schedules deliver both notices', async () => {
+  const mock = fixture();
+  const outcomes = {};
+  for (const [channel, id] of [['play', 201], ['ios', 202]]) {
+    outcomes[channel] = runNoticeWorkflow(channel, { saveFails: true });
+    // Reviewer regression: no artifact save must never coexist with a successful upload.
+    assert.equal(outcomes[channel].uploaded, false, `${channel} uploaded without a durable pending record`);
+    assert.equal(outcomes[channel].conclusion, 'failure');
+    const workflow = channel === 'play' ? 'android-release.yml' : 'ios-testflight.yml';
+    mock.state.overrides.set(`/repos/example/app/actions/workflows/${workflow}/runs`, () => response({ workflow_runs: [{
+      id, head_branch: 'main', event: 'workflow_dispatch', path: `.github/workflows/${workflow}`,
+      created_at: new Date(NOW - 1000).toISOString(), conclusion: outcomes[channel].conclusion,
+    }] }));
+    mock.state.overrides.set(`/repos/example/app/actions/runs/${id}/artifacts`, () => response({
+      artifacts: outcomes[channel].persisted ? [{ id: channel === 'play' ? 301 : 302,
+        name: `pending-store-release-${channel}`, expired: false, size_in_bytes: 500 }] : [],
+    }));
+  }
+  // Healthy scheduling after a failed save cannot manufacture a notification.
+  assert.deepEqual(await check(mock, { dryRun: false }), { pending: 0, available: 0, accepted: 0 });
+  for (const channel of ['play', 'ios']) {
+    outcomes[channel] = runNoticeWorkflow(channel); // retry once persistence is healthy
+    assert.equal(outcomes[channel].uploaded, true);
+    assert.equal(outcomes[channel].conclusion, 'success');
+    mock.state.releases[channel] = outcomes[channel].persisted;
+  }
+  // The reviewer's two healthy passes, thirty minutes apart, now have durable records.
+  for (const now of [NOW, NOW + 30 * 60 * 1000]) await check(mock, { now, dryRun: false });
+  assert.equal(mock.state.notices.size, 2);
+});
+
+test('pre-upload pending records cannot announce after the store upload fails', async () => {
+  const mock = fixture();
+  for (const [channel, workflow] of [['play', 'android-release.yml'], ['ios', 'ios-testflight.yml']]) {
+    const result = runNoticeWorkflow(channel, { uploadFails: true });
+    assert.ok(result.persisted);
+    assert.equal(result.uploaded, false);
+    assert.equal(result.conclusion, 'failure');
+    mock.state.overrides.set(`/repos/example/app/actions/workflows/${workflow}/runs`, () => response({ workflow_runs: [{
+      id: channel === 'play' ? 201 : 202, head_branch: 'main', event: 'workflow_dispatch',
+      path: `.github/workflows/${workflow}`, created_at: new Date(NOW - 1000).toISOString(), conclusion: result.conclusion,
+    }] }));
+  }
+  assert.deepEqual(await check(mock, { dryRun: false }), { pending: 0, available: 0, accepted: 0 });
+  assert.equal(mock.state.notices.size, 0);
+});
+
+test('internal Play and non-main store uploads retain their no-notice path', () => {
+  for (const [channel, options] of [['play', { track: 'internal' }], ['play', { branch: 'feature' }], ['ios', { branch: 'feature' }]]) {
+    const result = runNoticeWorkflow(channel, { ...options, saveFails: true });
+    assert.equal(result.uploaded, true);
+    assert.equal(result.persisted, undefined);
+    assert.equal(result.conclusion, 'success');
+  }
 });

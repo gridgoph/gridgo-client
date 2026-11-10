@@ -1,4 +1,4 @@
-/** Write non-secret build metadata only AFTER a successful upload. Never sends. */
+/** Write non-secret build metadata for durable persistence BEFORE store upload. Never sends. */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';

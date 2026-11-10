@@ -179,7 +179,8 @@ never broadcast. `lib/releasePush.ts` recognizes the fixed public release copy a
 opens this app's existing download URL on a push tap, including while signed out.
 A Google Play build ignores that tap's download and leaves the push in the inbox.
 
-Play and TestFlight uploads queue a pending notice rather than broadcasting. A
+Before eligible Play and TestFlight uploads, the workflow durably saves a pending
+notice. Failed metadata creation or persistence blocks that store upload. A
 scheduled workflow checks store availability every 30 minutes, expires pending
 records after seven days, and uses the API's existing de-duplication. Play queues notices only for
 closed-track uploads and waits for that exact build to be published and fully

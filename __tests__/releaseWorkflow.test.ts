@@ -308,7 +308,7 @@ describe("a pull request never produces a signed release build", () => {
 
 
 describe("the Play release notice waits for store availability", () => {
-  it("queues metadata only after upload and never announces immediately", () => {
+  it("persists pending metadata before upload and never announces immediately", () => {
     const queue = apkSteps.find((step) => step.includes("id: queue_play")) as string;
     expect(queue).toContain("github.ref == 'refs/heads/main'");
     expect(queue).toContain("github.event.inputs.play_bundle == 'true'");
@@ -318,10 +318,15 @@ describe("the Play release notice waits for store availability", () => {
     expect(queue).toContain("node scripts/queue-store-release.mjs");
     expect(queue).toContain("RELEASE_BUILD_NUMBER: ${{ steps.config.outputs.code }}");
     expect(queue).not.toContain("RELEASE_ANNOUNCE_TOKEN");
-    expect(apkSteps.indexOf(queue)).toBeGreaterThan(apkSteps.findIndex((s) => s.includes("PLAY_BUNDLE_PATH=")));
+    expect(apkSteps.indexOf(queue)).toBeLessThan(apkSteps.findIndex((s) => s.includes("PLAY_BUNDLE_PATH=")));
     const saved = apkSteps.find((step) => step.includes("name: pending-store-release-play")) as string;
     expect(saved).toContain("steps.queue_play.outcome == 'success'");
     expect(saved).toContain("retention-days: 7");
+    expect(queue).not.toContain("continue-on-error");
+    expect(saved).not.toContain("continue-on-error");
+    const upload = apkSteps.find((s) => s.includes("PLAY_BUNDLE_PATH=")) as string;
+    expect(apkSteps.indexOf(saved)).toBeLessThan(apkSteps.indexOf(upload));
+    expect(upload).toContain("steps.save_play_notice.outcome == 'success'");
     expect(workflow).not.toContain("Broadcast the Play release");
   });
 
@@ -477,7 +482,7 @@ describe("submit_to_play uploads the verified AAB to the selected testing track 
 
   it("runs only on a Play bundle run that asked for it", () => {
     expect(submitStep()).toMatch(
-      /if: github\.event\.inputs\.play_bundle == 'true' && github\.event\.inputs\.submit_to_play == 'true'\n/,
+      /if: github\.event\.inputs\.play_bundle == 'true' && github\.event\.inputs\.submit_to_play == 'true' && /,
     );
     expect(selectStep).toMatch(
       /if: github\.event\.inputs\.play_bundle == 'true' && github\.event\.inputs\.submit_to_play == 'true'\n/,
@@ -487,8 +492,8 @@ describe("submit_to_play uploads the verified AAB to the selected testing track 
     // The APK path cannot change.
     const readers = apkSteps.filter((step) => /inputs\.submit_to_play/.test(step));
     const named = apkSteps.find((step) => step.includes("Name the Play bundle"));
-    const broadcast = apkSteps.find((step) => step.includes("RELEASE_CHANNEL: play"));
-    expect(readers).toEqual([selectStep, named, submitStep(), broadcast]);
+    const pending = apkSteps.find((step) => step.includes("RELEASE_CHANNEL: play"));
+    expect(readers).toEqual([selectStep, named, pending, submitStep()]);
   });
 
   it("submits the AAB after it is verified and kept as an artifact", () => {

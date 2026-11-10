@@ -1,8 +1,9 @@
 # Store availability before release notices
 
 Uploading a bundle or IPA does not mean a tester can install it. The Android
-and iOS upload workflows now save `release.json` in a seven-day Actions artifact,
-without the announcement credential. `store-release-notices.yml` checks pending
+and iOS upload workflows save `release.json` in a seven-day Actions artifact
+**before** the store upload, without the announcement credential. Metadata creation
+and artifact persistence must succeed before the notice-eligible upload can run. `store-release-notices.yml` checks pending
 records every 30 minutes from trusted `main` code. It sends only after confirming
 the exact build's availability. APK publishing and its immediate notice are unchanged.
 
@@ -76,9 +77,13 @@ install the build.
 
 ## Operations and retries
 
-- Queue only after successful uploads dispatched from `main`. Builds/upload
-  runs from other branches do not queue announcements. Pending records are not
-  backfilled for uploads made before this change.
+- For notice-eligible `main` uploads, create and durably save the pending record
+  before calling Play or TestFlight. Creation/save failures fail the run and
+  block the store upload; rerun the workflow once artifact storage is healthy.
+  A pending record from an unsuccessful upload run cannot announce: discovery
+  still requires a successful trusted run and exact-build store availability.
+  Branch uploads and internal-only Play uploads retain their no-notice path.
+  Pending records are not backfilled for uploads made before this change.
 - The scheduled workflow must reach GitHub's default branch (`main`) to run.
   GitHub may delay a schedule; late notices are acceptable.
 - Reuse `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `ASC_API_KEY_P8`, `ASC_KEY_ID`,
@@ -108,7 +113,9 @@ Copy these files verbatim:
 
 The shared `scripts/play-release-notes.mjs` is an existing dependency; retain its
 `serviceAccountAssertion` export. Apply the Android/iOS workflow queue/save blocks
-and the Android check step. Copy `store-release-notices.yml`, changing only
+and the Android check step. Put queue/save before the store upload, keep both
+steps blocking, and add the `save_play_notice` / `save_ios_notice` success
+prerequisite to the corresponding upload. Copy `store-release-notices.yml`, changing only
 `RELEASE_APP` and `PLAY_PACKAGE` to that repo's role/package; queue blocks also
 use its role. Keep each repo's existing `ASC_APP_ID` variable and credentials.
 Apply the Android concurrency change too; its group must match the checker's
@@ -116,3 +123,12 @@ Apply the Android concurrency change too; its group must match the checker's
 Apply the corresponding upload-workflow test changes and README notice link.
 The self-contained script fixtures intentionally use a fake Client app and need
 no Supplier/Rider credentials or changes.
+
+Supplier's old broadcast steps are named "Announce the Play release" and
+"Announce the TestFlight release", guarded by `play_submit` / `testflight`
+upload outcomes. Replace those post-upload steps with pre-upload queue/save
+steps. Preserve the upload step IDs, and require saved pending metadata before
+the upload itself. A pre-upload queue cannot depend on an upload outcome that
+does not exist yet; successful-run discovery remains the post-upload gate.
+Rider's old broadcast blocks match Client's names. Preserve each repository's
+APK and What's New steps when moving the notice blocks.
