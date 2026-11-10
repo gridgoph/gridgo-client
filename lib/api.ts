@@ -3565,6 +3565,58 @@ export async function reportTesterFeedback(event: TesterFeedbackEvent, trigger: 
   });
 }
 
+// ---------------------------------------------------------------------------
+// Google Play closed-test opt-in. Contract: gridgo-api `docs/PLAY_OPTIN_API.md`.
+// Every call names this app, the phone's platform and this build's channel.
+// ---------------------------------------------------------------------------
+
+export type PlayOptinStep = "confirm_gmail" | "join_group" | "open_optin" | "install_from_play" | "opted_in";
+
+export type PlayOptinState = {
+  app: string;
+  /** GRIDGO's answer to "draw the card": Android, not Play, campaign on, not opted in, under three dismissals. */
+  show: boolean;
+  step: PlayOptinStep | (string & {});
+  gmailSuggestion: string | null;
+  /** `automatic`: GRIDGO adds the Gmail to the group. `link`: the person joins through `groupJoinUrl`. */
+  groupMode: "automatic" | "link" | (string & {});
+  campaignEnabled: boolean;
+  optInUrl: string;
+  groupJoinUrl: string | null;
+  target: number;
+  optedIn: boolean;
+  dismissCount: number;
+  playStoreUrl: string;
+};
+
+export type PlayOptinInstall = { platform: "android" | "ios" | "web"; channel: "play" | "sideload" };
+
+export type PlayOptinEvent = "shown" | "tapped" | "dismissed" | "group_opened" | "optin_opened";
+
+/** Also the install report: a Play build's read is what records its opt-in. */
+export async function getPlayOptin(install: PlayOptinInstall): Promise<PlayOptinState> {
+  const query = new URLSearchParams({ app: "client", platform: install.platform, channel: install.channel });
+  return request<PlayOptinState>(`/me/play-optin?${query.toString()}`);
+}
+
+export async function confirmPlayOptinGmail(
+  install: PlayOptinInstall,
+  email: string,
+  googleAccount: boolean,
+): Promise<PlayOptinState> {
+  return request<PlayOptinState>("/me/play-optin/confirm-gmail", {
+    method: "POST",
+    body: JSON.stringify({ app: "client", ...install, email, ...(googleAccount ? { googleAccount: true } : {}) }),
+  });
+}
+
+export async function reportPlayOptinEvent(install: PlayOptinInstall, type: PlayOptinEvent): Promise<void> {
+  await request<{ ok: true }>("/me/play-optin/event", {
+    method: "POST",
+    body: JSON.stringify({ app: "client", ...install, type }),
+  });
+}
+
 /**
  * File a report through `POST /issue-reports` with the client's session, so
  * the report records its reporter — the only way a confirmed bug can earn the

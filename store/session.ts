@@ -15,6 +15,7 @@ import { useSurvey } from "@/store/survey";
 import { useOrderShare } from "@/store/orderShare";
 import { useCheckoutExit } from "@/store/checkoutExit";
 import { useFoundingTester } from "@/store/foundingTester";
+import { usePlayOptin } from "@/store/playOptin";
 import { useTesterProgram } from "@/store/testerProgram";
 import { useReorderJob } from "@/store/reorderJob";
 import { useOrderRanking } from "@/store/orderRanking";
@@ -496,6 +497,7 @@ useSession.subscribe((state, previous) => {
   useCheckoutExit.getState().reset();
   useFoundingTester.getState().resetAccount();
   useTesterProgram.getState().reset();
+  usePlayOptin.getState().reset();
   // The installation goes with every account that signs in on it. Invites
   // and the reward celebration wait on `installation` settling
   // (gridgo-api docs/FOUNDING_TESTER_API.md).

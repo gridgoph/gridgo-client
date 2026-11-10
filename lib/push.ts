@@ -26,6 +26,7 @@ import { receiptNoticeHref } from "@/lib/receipt";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { isQuoteNotification, QUOTES_ROUTE } from "@/lib/quoteRequests";
+import { PLAY_OPTIN_PUSH_TYPE, PLAY_OPTIN_ROUTE } from "@/lib/playOptin";
 import { TESTER_REMINDER_TYPE } from "@/lib/testerProgram";
 
 /**
@@ -218,6 +219,8 @@ export function pushTargetRoute(data: PushData): string {
   if (data.type === SEASON_PUSH_TYPE) return "/(tabs)/home";
   // A tester's daily reminder is local; Home holds the check-in card.
   if (data.type === TESTER_REMINDER_TYPE) return "/(tabs)/home";
+  // The Play tester broadcast opens its own steps (gridgo-api `docs/PLAY_OPTIN_API.md`).
+  if (data.type === PLAY_OPTIN_PUSH_TYPE) return PLAY_OPTIN_ROUTE;
   // The officer check and Operations' notices belong to the organization,
   // and its tab is where they are answered (gridgo-client#165).
   if (data.type && ORGANIZATION_PUSH_TYPES.has(data.type)) return "/(tabs)/organizations";

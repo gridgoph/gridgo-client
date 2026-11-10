@@ -566,6 +566,7 @@ function AppNavigation() {
                 <Stack.Screen name="invite" options={pushedScreenOptions("Invite a friend")} />
                 {/* The five mission steps and the voucher (client#335), from Home and the "+" sheet. */}
                 <Stack.Screen name="founding-tester" options={pushedScreenOptions("Founding Tester")} />
+                <Stack.Screen name="play-optin" options={pushedScreenOptions("Play tester")} />
                 {/*
                   The two halves of the sign-in that take steps rather than
                   keystrokes. The band names the thing being changed, because
