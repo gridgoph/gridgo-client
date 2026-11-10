@@ -22,6 +22,10 @@ export function currentPlayOptinInstall(): api.PlayOptinInstall {
 type PlayOptinStore = {
   owner: string | null;
   state: api.PlayOptinState | null;
+  /** The last read for this account failed and nothing has replaced it. Home stays quiet; the steps screen offers Retry. */
+  readFailed: boolean;
+  /** A read for this account is in flight. */
+  reading: boolean;
   /** The flow's own call is running. */
   busy: boolean;
   /** The last refusal, worded; cleared by the next call. */
@@ -90,6 +94,8 @@ export const usePlayOptin = create<PlayOptinStore>()((set, get) => {
   return {
     owner: null,
     state: null,
+    readFailed: false,
+    reading: false,
     busy: false,
     error: null,
     dismissedThisSession: false,
@@ -103,14 +109,18 @@ export const usePlayOptin = create<PlayOptinStore>()((set, get) => {
       const install = currentPlayOptinInstall();
       if (install.platform !== "android") return;
       if (get().owner !== userId) {
-        set({ owner: userId, state: null, error: null, dismissedThisSession: false, reported: { ...EMPTY_REPORTED, owner: userId } });
+        set({ owner: userId, state: null, readFailed: false, error: null, dismissedThisSession: false, reported: { ...EMPTY_REPORTED, owner: userId } });
       }
       const mine = ++sequence;
+      set({ reading: true });
       try {
         const state = await api.getPlayOptin(install);
-        if (mine === sequence && get().owner === userId) set({ state });
+        if (mine === sequence && get().owner === userId) set({ state, readFailed: false });
       } catch {
         // No card on a failed read; the next Home load asks again.
+        if (mine === sequence && get().owner === userId) set({ readFailed: true });
+      } finally {
+        if (mine === sequence) set({ reading: false });
       }
     },
 
@@ -150,7 +160,7 @@ export const usePlayOptin = create<PlayOptinStore>()((set, get) => {
 
     reset: () => {
       sequence++;
-      set({ owner: null, state: null, busy: false, error: null, dismissedThisSession: false, reported: EMPTY_REPORTED });
+      set({ owner: null, state: null, readFailed: false, reading: false, busy: false, error: null, dismissedThisSession: false, reported: EMPTY_REPORTED });
     },
   };
 });

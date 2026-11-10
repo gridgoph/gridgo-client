@@ -136,3 +136,12 @@ it("opens the Play Store app for the install", async () => {
   await usePlayOptin.getState().openPlayStore();
   expect(openURL).toHaveBeenCalledWith("market://details?id=ph.gridgo.client");
 });
+
+it("marks a failed read for this account, keeps no state, and clears it once a read lands", async () => {
+  api.getPlayOptin.mockRejectedValueOnce(new ApiError(503, { error: "service_unavailable" }));
+  await usePlayOptin.getState().load("u1");
+  expect(usePlayOptin.getState()).toMatchObject({ state: null, readFailed: true, reading: false });
+  await usePlayOptin.getState().load("u1");
+  expect(usePlayOptin.getState().readFailed).toBe(false);
+  expect(usePlayOptin.getState().state?.show).toBe(true);
+});

@@ -103,6 +103,13 @@ it("hands the slot back to the check-in once opted in", async () => {
   expect(screen.queryByRole("button", { name: PLAY_OPTIN_COPY })).toBeNull();
 });
 
+it("stays quiet on Home after a failed read", async () => {
+  signedInWith(null);
+  usePlayOptin.setState({ readFailed: true });
+  await render(<HomeTesterSlot onOpenPlayOptin={jest.fn()} />);
+  expect(screen.toJSON()).toBeNull();
+});
+
 it("reports the tap and opens the steps", async () => {
   signedInWith(state());
   const open = jest.fn();

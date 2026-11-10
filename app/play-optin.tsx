@@ -23,6 +23,8 @@ export default function PlayOptinScreen() {
   const userId = useSession((s) => s.user?.id ?? null);
   const owner = usePlayOptin((s) => s.owner);
   const state = usePlayOptin((s) => (owner === userId ? s.state : null));
+  // A failed read offers Retry; a retry in flight goes back to the skeleton.
+  const readFailed = usePlayOptin((s) => owner === userId && s.readFailed && !s.reading);
   const busy = usePlayOptin((s) => s.busy);
   const error = usePlayOptin((s) => s.error);
   const android = currentPlayOptinInstall().platform === "android";
@@ -54,6 +56,13 @@ export default function PlayOptinScreen() {
       <View className="gg-page gap-5 pb-8 pt-4">
         {!android ? (
           <EmptyState title="Android only" body="Play testing runs on Android phones." />
+        ) : !state && readFailed ? (
+          <EmptyState
+            title="Couldn't load your steps"
+            body="Check your connection and try again."
+            actionLabel="Try again"
+            onAction={() => void read()}
+          />
         ) : !state ? (
           <View className="gap-3" testID="optin-loading">
             <SkeletonBlock className="h-14 w-full" />
