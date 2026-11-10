@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   AccessibilityInfo,
   AppState,
+  Platform,
   ScrollView,
   View,
   type LayoutChangeEvent,
@@ -196,10 +197,15 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown }: Props) {
   );
 }
 
-/** A screen reader moves through Home itself; the tile does not move under it. */
+/**
+ * A screen reader moves through Home itself; the tile does not move under it.
+ * Native only: react-native-web answers `true` on every browser, which would
+ * stop the rotation for everyone on web.
+ */
 function useScreenReader(): boolean {
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {
+    if (Platform.OS === "web") return;
     let alive = true;
     AccessibilityInfo.isScreenReaderEnabled()
       .then((value) => {
