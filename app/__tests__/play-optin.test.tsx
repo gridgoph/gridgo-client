@@ -48,10 +48,11 @@ it("opens on the Gmail step, prefilled, and counts the entry as a tap", async ()
   await waitFor(() => expect(api.reportPlayOptinEvent).toHaveBeenCalledWith(APK_INSTALL, "tapped"));
 });
 
-it("asks a custom address to be confirmed as a Google account first", async () => {
+it("offers only a Gmail as-is: another sign-in address starts empty", async () => {
   api.getPlayOptin.mockResolvedValue(playOptinState({ gmailSuggestion: "tess@shop.ph" }));
   await renderScreen(<PlayOptinScreen />);
-  expect(await screen.findByRole("checkbox", { name: "This is my Google account" })).toBeTruthy();
+  expect(await screen.findByLabelText("Gmail address")).toBeTruthy();
+  expect(screen.queryByDisplayValue("tess@shop.ph")).toBeNull();
   expect(screen.getByRole("button", { name: "Confirm" }).props.accessibilityState.disabled).toBe(true);
 });
 

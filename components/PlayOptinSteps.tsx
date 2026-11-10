@@ -191,7 +191,8 @@ function GmailForm({
   error: string | null;
   onConfirm: (email: string, googleAccount: boolean) => void;
 }) {
-  const [email, setEmail] = useState(suggestion ?? "");
+  // Only a Gmail is offered as-is: a sign-in address elsewhere is rarely the Play account.
+  const [email, setEmail] = useState(suggestion && isGmail(suggestion) ? suggestion : "");
   const [googleAccount, setGoogleAccount] = useState(false);
   const [touched, setTouched] = useState(false);
   const check = checkGmail(email, googleAccount);
