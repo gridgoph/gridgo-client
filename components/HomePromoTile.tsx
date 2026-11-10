@@ -75,8 +75,10 @@ export function HomePromoTile({ promo, onPress }: Props) {
  * disc carries the name's first letter.
  */
 export function PromoLogo({ uri, name, size }: { uri: string | null; name: string; size: number }) {
-  const [failed, setFailed] = useState(false);
-  const showImage = Boolean(uri) && !failed;
+  // The failure belongs to the URL that failed: a fresh signed link (or a
+  // replaced logo) from the next feed read gets its own attempt.
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const showImage = Boolean(uri) && uri !== failedUri;
   return (
     <View
       className="items-center justify-center overflow-hidden rounded-pill border border-slip-rule bg-slip-paper"
@@ -85,9 +87,10 @@ export function PromoLogo({ uri, name, size }: { uri: string | null; name: strin
     >
       {showImage ? (
         <Image
+          testID="promo-logo-image"
           source={{ uri: uri as string }}
           resizeMode="contain"
-          onError={() => setFailed(true)}
+          onError={() => setFailedUri(uri)}
           style={{ width: size * 0.78, height: size * 0.78 }}
         />
       ) : (

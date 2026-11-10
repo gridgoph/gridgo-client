@@ -24,6 +24,11 @@ type Props = {
   onPromoPress: (promo: HomePromotion) => void;
   /** A page came into view on a focused Home. */
   onPromoShown: (promo: HomePromotion) => void;
+  /**
+   * Something covers the tile (the promo sheet, the "+" sheet): it neither
+   * turns nor counts a view, and resumes with a full five seconds.
+   */
+  paused?: boolean;
 };
 
 /**
@@ -37,12 +42,12 @@ type Props = {
  * back to the start keeps moving forward; landing on the copy jumps to the
  * real Reorder without animation, which looks identical.
  */
-export function HomeRotatingTile({ reorder, promos, onPromoPress, onPromoShown }: Props) {
-  if (!promos.length) return <View className="flex-1">{reorder}</View>;
-  return <Rotator reorder={reorder} promos={promos} onPromoPress={onPromoPress} onPromoShown={onPromoShown} />;
+export function HomeRotatingTile(props: Props) {
+  if (!props.promos.length) return <View className="flex-1">{props.reorder}</View>;
+  return <Rotator {...props} />;
 }
 
-function Rotator({ reorder, promos, onPromoPress, onPromoShown }: Props) {
+function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }: Props) {
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
   const slides = homeSlides(promos);
@@ -74,7 +79,8 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown }: Props) {
   const current = index < count ? index : 0;
   const slide = slides[current];
   const shownPromo = slide.kind === "promo" ? slide.promo : null;
-  const visible = focused && foreground && width > 0;
+  // "Shown" means on screen and uncovered: a view is never counted under a sheet.
+  const visible = focused && foreground && width > 0 && !paused;
 
   useEffect(() => {
     if (visible && shownPromo) onPromoShown(shownPromo);

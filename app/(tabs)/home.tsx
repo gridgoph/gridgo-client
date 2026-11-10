@@ -37,6 +37,7 @@ import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useHomeSummary, useOwnHomeSummary } from "@/store/homeSummary";
 import { useNotifications } from "@/store/notifications";
+import { useQuickActions } from "@/store/quickActions";
 import { trackHomePromo, useOwnHomePromos, useHomePromos } from "@/store/homePromos";
 import { useRequestDraft } from "@/store/requestDraft";
 import { useSeasonWindows } from "@/store/seasonWindows";
@@ -184,6 +185,8 @@ export default function HomeScreen() {
   // The promo slot (client#402): Home only, never checkout, payment or tracking.
   const promos = useOwnHomePromos();
   const [openPromo, setOpenPromo] = useState<HomePromotion | null>(null);
+  // Either sheet covers the tile: no turning and no views under it.
+  const quickActionsOpen = useQuickActions((s) => s.open);
   const showPromo = useCallback((promo: HomePromotion) => trackHomePromo(promo.id, "view"), []);
   const openPromoLink = useCallback((promo: HomePromotion) => {
     trackHomePromo(promo.id, "tap");
@@ -293,6 +296,7 @@ export default function HomeScreen() {
                   promos={promos}
                   onPromoPress={pressPromo}
                   onPromoShown={showPromo}
+                  paused={openPromo !== null || quickActionsOpen}
                 />
               </View>
             </>

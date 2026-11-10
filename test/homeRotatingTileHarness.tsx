@@ -25,21 +25,26 @@ export const PROMOS: HomePromotion[] = promotionsFrom([
 
 export const WIDTH = 170;
 
-export async function renderTile(promos: HomePromotion[] = PROMOS, onPromoShown = jest.fn()) {
-  await render(
+export function tile(promos: HomePromotion[], onPromoShown: jest.Mock, paused = false) {
+  return (
     <HomeRotatingTile
       reorder={<Text testID="reorder-stub">Reorder</Text>}
       promos={promos}
       onPromoPress={jest.fn()}
       onPromoShown={onPromoShown}
-    />,
+      paused={paused}
+    />
   );
+}
+
+export async function renderTile(promos: HomePromotion[] = PROMOS, onPromoShown = jest.fn(), paused = false) {
+  const view = await render(tile(promos, onPromoShown, paused));
   if (promos.length) {
     await act(async () => {
       fireEvent(screen.getByTestId("home-rotating-tile"), "layout", { nativeEvent: { layout: { width: WIDTH, height: 112 } } });
     });
   }
-  return onPromoShown;
+  return Object.assign(onPromoShown, { rerender: view.rerender });
 }
 
 /** A swipe that has settled at `x`. */
