@@ -43,6 +43,22 @@ test('gated send uses exact app/version/channel and removes pending only after A
   }
 });
 
+test('internal or legacy trackless pending artifacts never send a Play notice', async () => {
+  for (const playTrack of ['internal', undefined]) {
+    const mock = fixture(); mock.state.releases.play.playTrack = playTrack;
+    assert.deepEqual(await check(mock, { dryRun: false }), { pending: 1, available: 1, accepted: 1 });
+    assert.deepEqual(sends(mock).map(call => JSON.parse(call.options.body).channel), ['ios']);
+  }
+});
+
+test('closed-only publishing and intentionally unassigned TestFlight groups can announce when available', async () => {
+  const mock = fixture();
+  delete mock.state.lifecycle.internal; delete mock.state.rollout.internal;
+  mock.state.groups.data.push({ id: 'withheld', attributes: { isInternalGroup: false } });
+  mock.state.members.withheld = { data: [] };
+  assert.deepEqual(await check(mock, { dryRun: false }), { pending: 2, available: 2, accepted: 2 });
+});
+
 test('API failure or missing announcement credential retains pending record for a later check', async () => {
   const mock = fixture(); mock.state.announceStatus = 503;
   assert.equal((await check(mock, { dryRun: false })).accepted, 0);

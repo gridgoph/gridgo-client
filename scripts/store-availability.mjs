@@ -6,9 +6,8 @@ import { serviceAccountAssertion } from './play-release-notes.mjs';
 const PLAY = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications';
 const ASC = 'https://api.appstoreconnect.apple.com';
 export const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-// The API targets all Play installs, without distinguishing internal/closed.
-// Require full availability on BOTH supported tracks, even for an internal upload.
-export const PLAY_TRACKS = ['alpha', 'internal'];
+// Store notices target closed testing. Internal-only uploads never announce.
+export const PLAY_NOTICE_TRACK = 'alpha';
 
 export function validPendingRelease(release, env, now = Date.now()) {
   if (!release || release.app !== env.RELEASE_APP || !['play', 'ios'].includes(release.channel)) return false;
@@ -18,7 +17,7 @@ export function validPendingRelease(release, env, now = Date.now()) {
   const age = typeof release.queuedAt === 'string' ? now - Date.parse(release.queuedAt) : NaN;
   if (!Number.isFinite(age) || age < 0 || age >= MAX_AGE_MS) return false;
   return release.channel === 'play'
-    ? release.packageName === env.PLAY_PACKAGE && Boolean(env.PLAY_PACKAGE)
+    ? release.packageName === env.PLAY_PACKAGE && Boolean(env.PLAY_PACKAGE) && release.playTrack === PLAY_NOTICE_TRACK
     : release.ascAppId === env.ASC_APP_ID && Boolean(env.ASC_APP_ID) && typeof release.storeVersion === 'string' &&
       /^\d+\.\d+\.\d+$/.test(release.storeVersion) &&
       release.storeVersion.split('.').slice(0, 2).join('.') === release.version.split('.').slice(0, 2).join('.');
@@ -49,6 +48,7 @@ export function playReleaseFullyRolledOut(response, track, code) {
 }
 
 export async function playAvailable(release, env, transport = fetch) {
+  if (release.playTrack !== PLAY_NOTICE_TRACK) return false;
   const key = JSON.parse(env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON);
   // A key's token_uri must not redirect credentials to an arbitrary origin.
   const oauth = await transport('https://oauth2.googleapis.com/token', {
@@ -61,21 +61,17 @@ export async function playAvailable(release, env, transport = fetch) {
   const { access_token: token } = await oauth.json();
   if (!token) return false;
   const base = `${PLAY}/${encodeURIComponent(release.packageName)}`;
-  for (const track of PLAY_TRACKS) {
-    const lifecycle = await jsonRequest(transport, `${base}/tracks/${track}/releases`, token);
-    if (!playReleasePublished(lifecycle, track, release.buildNumber)) return false;
-  }
+  const track = release.playTrack;
+  const lifecycle = await jsonRequest(transport, `${base}/tracks/${track}/releases`, token);
+  if (!playReleasePublished(lifecycle, track, release.buildNumber)) return false;
   // PUBLISHED also includes partial/halted releases. Read a disposable edit to
   // require completed rollout. Never commit it, upload, promote or submit anything.
   const edit = await jsonRequest(transport, `${base}/edits`, token, 'POST', {});
   if (!edit.id) return false;
   const editUrl = `${base}/edits/${encodeURIComponent(edit.id)}`;
   try {
-    for (const track of PLAY_TRACKS) {
-      const rollout = await jsonRequest(transport, `${editUrl}/tracks/${track}`, token);
-      if (!playReleaseFullyRolledOut(rollout, track, release.buildNumber)) return false;
-    }
-    return true;
+    const rollout = await jsonRequest(transport, `${editUrl}/tracks/${track}`, token);
+    return playReleaseFullyRolledOut(rollout, track, release.buildNumber);
   } finally {
     await jsonRequest(transport, editUrl, token, 'DELETE');
   }
@@ -118,18 +114,20 @@ export async function iosAvailable(release, env, transport = fetch, now = Date.n
   const review = await jsonRequest(transport, `${base}/betaAppReviewSubmission`, token);
   if (detail.data?.attributes?.externalBuildState !== 'IN_BETA_TESTING' ||
     review.data?.attributes?.betaReviewState !== 'APPROVED') return false;
-  // Notices target the entire iOS channel. Do not mistake an internal-only
-  // build or a build attached to just one external group for channel availability.
+  // Require an assigned external audience. Groups intentionally left without
+  // this build are not targets; check readiness for every group it does reach.
   const groups = await appleList(`/v1/betaGroups?${new URLSearchParams({ 'filter[app]': release.ascAppId, limit: '200' })}`, token, transport);
-  if (!groups.some(group => group.attributes?.isInternalGroup === false)) return false;
+  let externalAssigned = false;
   for (const group of groups) {
-    const internal = group.attributes?.isInternalGroup;
-    if (!group.id || typeof internal !== 'boolean') return false;
-    if (internal && detail.data.attributes.internalBuildState !== 'IN_BETA_TESTING') return false;
+    if (!group.id) return false;
     const members = await appleList(`/v1/betaGroups/${encodeURIComponent(group.id)}/relationships/builds?limit=200`, token, transport);
-    if (!members.some(member => member.type === 'builds' && member.id === build.id)) return false;
+    if (!members.some(member => member.type === 'builds' && member.id === build.id)) continue;
+    const internal = group.attributes?.isInternalGroup;
+    if (typeof internal !== 'boolean') return false;
+    if (internal && detail.data.attributes.internalBuildState !== 'IN_BETA_TESTING') return false;
+    if (!internal) externalAssigned = true;
   }
-  return true;
+  return externalAssigned;
 }
 
 export async function storeAvailable(release, env, transport = fetch, now = Date.now()) {

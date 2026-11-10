@@ -313,6 +313,8 @@ describe("the Play release notice waits for store availability", () => {
     expect(queue).toContain("github.ref == 'refs/heads/main'");
     expect(queue).toContain("github.event.inputs.play_bundle == 'true'");
     expect(queue).toContain("github.event.inputs.submit_to_play == 'true'");
+    expect(queue).toContain("steps.play-track.outputs.track == 'alpha'");
+    expect(queue).toContain("PLAY_TRACK: ${{ steps.play-track.outputs.track }}");
     expect(queue).toContain("node scripts/queue-store-release.mjs");
     expect(queue).toContain("RELEASE_BUILD_NUMBER: ${{ steps.config.outputs.code }}");
     expect(queue).not.toContain("RELEASE_ANNOUNCE_TOKEN");

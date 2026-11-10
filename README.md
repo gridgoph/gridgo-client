@@ -181,9 +181,10 @@ A Google Play build ignores that tap's download and leaves the push in the inbox
 
 Play and TestFlight uploads queue a pending notice rather than broadcasting. A
 scheduled workflow checks store availability every 30 minutes, expires pending
-records after seven days, and uses the API's existing de-duplication. Play requires
-the same build published and fully rolled out on both internal and closed tracks;
-TestFlight requires processing, beta review, and access for all tester groups. See
+records after seven days, and uses the API's existing de-duplication. Play queues notices only for
+closed-track uploads and waits for that exact build to be published and fully
+rolled out there. TestFlight requires processing, approved beta review, and access
+for at least one assigned external group plus readiness for every assigned group. See
 [store release notices](docs/STORE_RELEASE_NOTICES.md) for the signals, conservative
 trade-offs, dry runs, and exact Supplier/Rider porting instructions.
 

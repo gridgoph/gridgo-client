@@ -13,7 +13,7 @@ export const ENV = {
   GITHUB_REPOSITORY: 'example/app', GITHUB_TOKEN: 'fake-github-token', RELEASE_ANNOUNCE_TOKEN: 'fake-announce-token',
 };
 export const PLAY_RELEASE = { app: 'client', version: '1.0.42', buildNumber: '42', channel: 'play',
-  packageName: 'ph.gridgo.client', queuedAt: new Date(NOW - 3600000).toISOString() };
+  packageName: 'ph.gridgo.client', playTrack: 'alpha', queuedAt: new Date(NOW - 3600000).toISOString() };
 export const IOS_RELEASE = { app: 'client', version: '1.0.43', buildNumber: '43', channel: 'ios', ascAppId: '12345',
   storeVersion: '1.0.0', queuedAt: PLAY_RELEASE.queuedAt };
 export const response = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => structuredClone(body) });

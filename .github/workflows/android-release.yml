@@ -641,10 +641,11 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Upload is not publication. Persist only metadata; the scheduled checker
-      # proves availability before it can announce. Only trusted main runs queue.
+      # proves availability before it can announce. Only closed-track main
+      # uploads queue notices; internal-only builds never broadcast to clients.
       - name: Queue the Play release notice
         id: queue_play
-        if: github.ref == 'refs/heads/main' && github.event.inputs.play_bundle == 'true' && github.event.inputs.submit_to_play == 'true'
+        if: github.ref == 'refs/heads/main' && github.event.inputs.play_bundle == 'true' && github.event.inputs.submit_to_play == 'true' && steps.play-track.outputs.track == 'alpha'
         continue-on-error: true
         env:
           RELEASE_APP: client
@@ -652,6 +653,7 @@ jobs:
           RELEASE_VERSION: ${{ steps.config.outputs.version }}
           RELEASE_BUILD_NUMBER: ${{ steps.config.outputs.code }}
           PLAY_PACKAGE: ${{ steps.config.outputs.package }}
+          PLAY_TRACK: ${{ steps.play-track.outputs.track }}
         run: node scripts/queue-store-release.mjs "$RUNNER_TEMP/pending-release/release.json"
 
       - name: Save the pending Play notice

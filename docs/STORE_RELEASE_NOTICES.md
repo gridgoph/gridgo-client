@@ -33,12 +33,13 @@ Do not run this script locally with the production service account during an
 upload: the Actions lock cannot serialize a local process. See Google's
 [edit lifecycle](https://developers.google.com/android-publisher/edits).
 
-The API's announcement audience distinguishes `play`, not testing tracks. To
-avoid telling closed testers about an internal-only release, the **same build
-must pass both checks on both `alpha` (closed) and `internal`**. These are the two
-tracks this repository supports. This intentionally suppresses notices for
-builds released to only one track. If additional cohorts/tracks are introduced,
-the audience and gate need updating before sending to them.
+This app's releases target `alpha` (closed testing). The successful upload's actual
+`PLAY_TRACK` is saved as `playTrack` in the pending record, and the checker
+requires both publication and completed/unstaged rollout on that exact track.
+The workflow queues notices only when the upload targeted `alpha`; internal-only
+uploads queue no Play notice. The checker also rejects internal, unknown, and
+older trackless records before any store or announcement request. Availability
+on the unused internal track is not required.
 
 A first Play-channel device reporting a build is weaker evidence: distribution
 is baked into the bundle, so a sideloaded bundle-generated APK can report `play`;
@@ -53,17 +54,25 @@ and build number. It requires `processingState: VALID`, `expired: false`, a futu
 expiration date, `externalBuildState: IN_BETA_TESTING`, and
 `betaReviewState: APPROVED`.
 
-It lists **all current tester groups** for that app and requires the build in
-every group's build relationship, following pagination. At least one group must
-be external. Internal groups also require `internalBuildState: IN_BETA_TESTING`.
-Processing complete, approval alone, and internal-only availability cannot pass.
+It enumerates all tester groups and their build relationships, following
+pagination, to find the groups **actually assigned this build**. At least one
+assigned group must be external. The external testing state and approved beta
+review confirm access for assigned external groups; every assigned internal
+group also requires `internalBuildState: IN_BETA_TESTING`. Internal-only
+availability, processing complete, and approval alone cannot pass.
 See Apple's [build beta details](https://developer.apple.com/documentation/appstoreconnectapi/buildbetadetail),
 [beta review submission](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-builds-_id_-betaappreviewsubmission),
 and [group builds](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-betagroups-_id_-builds).
 
-This deliberately favors silence: an unused/unassigned group, absent explicit
-review record, missing permission, or unknown state blocks the notice. The
-channel-wide API cannot target one beta group separately.
+A group intentionally left without this build **does not block the notice**.
+Failed group/membership reads still block: a failed read cannot establish that
+a group is unassigned. Missing explicit review approval or unknown availability
+states also leave the notice pending. Group assignment is read live at each
+check, so later assignment changes are respected while the notice is pending.
+The existing GRIDGO API still delivers to the iOS install channel; it does not
+filter recipients by TestFlight group. This gate confirms availability for
+assigned groups, rather than asserting that deliberately excluded groups can
+install the build.
 
 ## Operations and retries
 

@@ -8,7 +8,7 @@ export function pendingRelease(env = process.env, now = Date.now()) {
   const release = {
     app: env.RELEASE_APP, channel: env.RELEASE_CHANNEL, version: env.RELEASE_VERSION,
     buildNumber: env.RELEASE_BUILD_NUMBER, queuedAt: new Date(now).toISOString(),
-    ...(env.RELEASE_CHANNEL === 'play' ? { packageName: env.PLAY_PACKAGE } : {
+    ...(env.RELEASE_CHANNEL === 'play' ? { packageName: env.PLAY_PACKAGE, playTrack: env.PLAY_TRACK } : {
       ascAppId: env.ASC_APP_ID, storeVersion: env.RELEASE_STORE_VERSION,
     }),
   };
