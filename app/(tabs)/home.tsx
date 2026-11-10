@@ -1,6 +1,6 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Platform, Pressable, Text, View } from "react-native";
+import { AppState, Linking, Platform, Pressable, Text, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 
@@ -10,6 +10,8 @@ import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { HomeCategoryCircles } from "@/components/HomeCategoryCircles";
 import { HomeFeaturedPrints } from "@/components/HomeFeaturedPrints";
 import { HomeReorderTile } from "@/components/HomeReorderTile";
+import { HomeRotatingTile } from "@/components/HomeRotatingTile";
+import { PromoSheet } from "@/components/PromoSheet";
 import { RetiredDraftNotice } from "@/components/RetiredDraftNotice";
 import { HomeSearch } from "@/components/HomeSearch";
 import { HomeActionRow } from "@/components/HomeRow";
@@ -30,10 +32,13 @@ import { homeJobs } from "@/lib/homeJobs";
 import { lastOrder, smartTileView } from "@/lib/homeSummary";
 import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
 import { type ProductCategory } from "@/lib/productCategories";
+import { type HomePromotion } from "@/lib/homePromos";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useHomeSummary, useOwnHomeSummary } from "@/store/homeSummary";
 import { useNotifications } from "@/store/notifications";
+import { useQuickActions } from "@/store/quickActions";
+import { trackHomePromo, useOwnHomePromos, useHomePromos } from "@/store/homePromos";
 import { useRequestDraft } from "@/store/requestDraft";
 import { useSeasonWindows } from "@/store/seasonWindows";
 import { useFoundingTester } from "@/store/foundingTester";
@@ -86,7 +91,7 @@ export default function HomeScreen() {
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
-    void api
+    const ordersRead = api
       .listOrders()
       .then((list) => {
         if (sequence === loadSequence.current) setOrders(list);
@@ -95,7 +100,7 @@ export default function HomeScreen() {
         // Home still starts a print; the waiting line and Reorder wait.
         if (sequence === loadSequence.current) setOrders((current) => current ?? []);
       });
-    void api
+    const featuredRead = api
       .getFeaturedPrints()
       .then((body) => {
         // The same cards keep the list on screen: a fresh signature on the
@@ -108,7 +113,7 @@ export default function HomeScreen() {
       .catch(() => {
         if (sequence === loadSequence.current) setSamples((current) => current ?? []);
       });
-    void api
+    const categoriesRead = api
       .getProductCategories()
       .then((tree) => {
         // An empty payload must not blank the seed already on screen.
@@ -117,34 +122,43 @@ export default function HomeScreen() {
       .catch(() => {
         // Seed already on screen.
       });
-    void useHomeSummary.getState().load(useSession.getState().user?.id ?? null);
-    // A Google Play tester's open is the day's check-in (nothing for anyone else).
-    void useTesterProgram.getState().load(useSession.getState().user?.id ?? null);
-    void refreshNotifications();
-    // The basket lives on GRIDGO, so the count on the cart control is only
-    // honest if it is re-read. Coming back from checkout is exactly when it
-    // has changed.
-    void loadCart();
-    void loadSeasons();
-    // The Founding Tester missions ride on the account.
-    void refreshAccount();
+    const userId = useSession.getState().user?.id ?? null;
+    const reads = [
+      ordersRead,
+      featuredRead,
+      categoriesRead,
+      useHomeSummary.getState().load(userId),
+      // Partner promos re-read on every focus, so an edit needs no release.
+      useHomePromos.getState().load(userId),
+      // A Google Play tester's open is the day's check-in (nothing for anyone else).
+      useTesterProgram.getState().load(userId),
+      refreshNotifications(),
+      // Coming back from checkout must re-read GRIDGO's basket count.
+      loadCart(),
+      loadSeasons(),
+      // The Founding Tester missions ride on the account.
+      refreshAccount(),
+    ];
     const tester = foundingTesterView(useSession.getState().user);
     if (tester?.kind === "missions" && tester.steps.some((step) => step.key === "rated" && step.status === "next")) {
-      void useFoundingTester.getState().loadOpenSurveys();
+      reads.push(useFoundingTester.getState().loadOpenSurveys());
     }
+    // Each panel applies its own answer above; refresh stays busy until every
+    // read settles, even if one fails, so invalidations queue one follow-up.
+    await Promise.allSettled(reads);
   }, [refreshNotifications, loadCart, loadSeasons, refreshAccount]);
 
-  useLiveRefresh(["orders", "catalog", "identity", "settings", "credits"], load, { refreshOnFocus: false });
+  useLiveRefresh(["orders", "catalog", "identity", "settings", "credits"], load);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      // Focus loading belongs to useLiveRefresh, alongside invalidations.
       // Back on Home, any "add more from Shop A" errand is over.
       useBasketGroupTarget.getState().clear();
       return () => {
         loadSequence.current++;
       };
-    }, [load]),
+    }, []),
   );
 
   // Coming back to the app on a new day is an open too.
@@ -167,6 +181,25 @@ export default function HomeScreen() {
   // The first-order tour starts here, once, for a client with nothing on press.
   useTourScreen("home");
   useTourAutoStart(orders !== null && orders.length === 0);
+
+  // The promo slot (client#402): Home only, never checkout, payment or tracking.
+  const promos = useOwnHomePromos();
+  const [openPromo, setOpenPromo] = useState<HomePromotion | null>(null);
+  // Either sheet covers the tile: no turning and no views under it.
+  const quickActionsOpen = useQuickActions((s) => s.open);
+  const showPromo = useCallback((promo: HomePromotion) => trackHomePromo(promo.id, "view"), []);
+  const openPromoLink = useCallback((promo: HomePromotion) => {
+    trackHomePromo(promo.id, "tap");
+    void Linking.openURL(promo.linkUrl).catch(() => undefined);
+  }, []);
+  const pressPromo = (promo: HomePromotion) => {
+    if (promo.tapAction === "link") {
+      openPromoLink(promo);
+      return;
+    }
+    trackHomePromo(promo.id, "open");
+    setOpenPromo(promo);
+  };
 
   const [searchOpen, setSearchOpen] = useState(false);
   const firstName = (user?.name ?? "").trim().split(/\s+/)[0];
@@ -258,13 +291,27 @@ export default function HomeScreen() {
 
               <View className="flex-row gap-3">
                 <HomeSmartTile view={tile} onPress={(href) => router.push(href as Href)} />
-                <HomeReorderTile title={previous?.title ?? null} onPress={() => previous && void reorder(previous)} />
+                <HomeRotatingTile
+                  reorder={<HomeReorderTile title={previous?.title ?? null} onPress={() => previous && void reorder(previous)} />}
+                  promos={promos}
+                  onPromoPress={pressPromo}
+                  onPromoShown={showPromo}
+                  paused={openPromo !== null || quickActionsOpen}
+                />
               </View>
             </>
           )}
         </View>
       </KeyboardAwareScrollView>
 
+      <PromoSheet
+        promo={openPromo}
+        onClose={() => setOpenPromo(null)}
+        onOpenLink={(promo) => {
+          setOpenPromo(null);
+          openPromoLink(promo);
+        }}
+      />
     </TabScreen>
   );
 }

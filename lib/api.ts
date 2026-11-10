@@ -2516,6 +2516,30 @@ export async function getFeaturedPrints(): Promise<unknown> {
   return request<unknown>("/featured-prints");
 }
 
+/**
+ * Home's live partner promos, in Operations' display order (gridgo-client#402).
+ * Read through `promotionsFrom` (`lib/promotions.ts`), so a malformed card is
+ * dropped rather than drawn.
+ */
+export async function getHomePromotions(): Promise<unknown> {
+  return request<unknown>("/me/promotions/home");
+}
+
+/**
+ * Count a promo view, sheet open or link tap. The server counts a view once
+ * per `sessionId` per promo per day. Fire-and-forget: callers never wait on it.
+ */
+export async function recordPromotionEvent(
+  promotionId: string,
+  type: "view" | "open" | "tap",
+  sessionId: string,
+): Promise<void> {
+  await request<unknown>(`/me/promotions/${encodeURIComponent(promotionId)}/events`, {
+    method: "POST",
+    body: JSON.stringify({ type, sessionId }),
+  });
+}
+
 export async function listCatalog(): Promise<CatalogProduct[]> {
   const result = await request<{ catalog: CatalogProduct[] }>("/catalog");
   return result.catalog;
