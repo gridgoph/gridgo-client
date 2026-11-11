@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.608 (Fix)
+
+- Home cards now fit larger text without clipping, show partner card colours, and line up Featured prints evenly.
+
 ## 1.0.601 (Improvement)
 
 - Partner cards on Home now show what their offer is, like "Plan your commute", under the name.
