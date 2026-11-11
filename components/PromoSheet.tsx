@@ -14,7 +14,8 @@ type Props = {
 };
 
 /**
- * A partner promo, opened from Home's tile: logo, name, tag, the short
+ * A partner promo, opened from Home's tile: the cover (`imageUrl`, shown
+ * whole, or no cover block at all), logo, name, tag, the short
  * description, and one big button to the partner's site. Nothing else — it is
  * an introduction, not a page of GRIDGO.
  */
@@ -24,10 +25,12 @@ export function PromoSheet({ promo, onClose, onOpenLink }: Props) {
     <Sheet open={promo !== null} onClose={onClose} title={promo?.name ?? ""}>
       {promo ? (
         <View testID="promo-sheet" className="gap-4 px-4 pb-2 pt-4">
+          {/* The cover (gridgo-client#425): shown whole at 16:9, never the card image. */}
           {promo.imageUrl ? (
             <Image
+              testID="promo-sheet-cover"
               source={{ uri: promo.imageUrl }}
-              resizeMode="cover"
+              resizeMode="contain"
               accessibilityIgnoresInvertColors
               className="w-full rounded-card bg-surface-variant"
               style={{ aspectRatio: 16 / 9 }}

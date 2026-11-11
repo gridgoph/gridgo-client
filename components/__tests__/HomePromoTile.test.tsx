@@ -53,6 +53,7 @@ function promo(overrides: Partial<HomePromotion> = {}): HomePromotion {
     id: "promo_davaogo",
     name: "DavaoGo",
     logoUrl: null,
+    cardImageUrl: null,
     imageUrl: null,
     description: "",
     tag: "sponsored",

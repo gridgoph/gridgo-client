@@ -13,6 +13,9 @@ const STYLE_COLORS = { light: WHITE, yellow: "#FFDE58" } as const;
 /** Closer than this in relative luminance and the card would melt into the screen. */
 const NEAR_SURFACE = 0.1;
 
+/** Over a card image the ink is white on a dark scrim, and the chip is a dark wash so the tag reads on any picture. */
+const ON_IMAGE_CHIP = "#00000073";
+
 export type PromoCardColors = {
   background: string;
   ink: string;
@@ -55,16 +58,30 @@ export function promoCardColor(promo: Pick<HomePromotion, "color" | "style">): s
   return isHexColor(promo.color) ? promo.color.toUpperCase() : STYLE_COLORS[promo.style];
 }
 
-/** `screen` is the theme's colour behind the card (canvas). */
-export function promoCardColors(promo: Pick<HomePromotion, "color" | "style">, screen: string, outline: string): PromoCardColors {
+/**
+ * `screen` is the theme's colour behind the card (canvas). `onImage` is true
+ * while the card draws its card image (gridgo-client#425): the colour stays
+ * behind it while it loads, and the ink is white over the bottom scrim.
+ */
+export function promoCardColors(
+  promo: Pick<HomePromotion, "color" | "style">,
+  screen: string,
+  outline: string,
+  onImage = false,
+): PromoCardColors {
   const background = promoCardColor(promo);
-  const ink = readableInk(background);
+  const ink = onImage ? WHITE : readableInk(background);
   const near = isHexColor(screen) && Math.abs(luminance(background) - luminance(screen)) < NEAR_SURFACE;
   return {
     background,
     ink,
-    muted: alpha(ink, 0.72),
-    chip: alpha(ink, 0.1),
-    border: near ? outline : background,
+    muted: alpha(ink, onImage ? 0.85 : 0.72),
+    chip: onImage ? ON_IMAGE_CHIP : alpha(ink, 0.1),
+    border: near && !onImage ? outline : background,
   };
+}
+
+/** Whether the card draws its card image: one is set and this link has not failed to load. */
+export function promoShowsCardImage(promo: Pick<HomePromotion, "cardImageUrl">, failedUris: ReadonlySet<string>): boolean {
+  return Boolean(promo.cardImageUrl) && !failedUris.has(promo.cardImageUrl as string);
 }
