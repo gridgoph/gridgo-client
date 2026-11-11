@@ -102,42 +102,45 @@ export function featuredPrintsFrom(body: unknown): HomeSample[] {
 }
 
 // ---------------------------------------------------------------------------
-// How wide a sample card is cut
+// How the Featured Prints carousel is cut
 // ---------------------------------------------------------------------------
 
-/** The gap between two cards in the strip. */
-export const SAMPLE_GAP = spacing.md;
+/** The gap between two cards, and the step the carousel snaps by after a card. */
+export const FEATURED_GAP = spacing.md;
 
 /**
- * How much of the card after next stays on screen.
- *
- * A strip that ends flush with the screen edge is a strip nobody scrolls: the
- * two cards read as the whole shelf. This is the overhang that says otherwise —
- * wide enough to be an obvious cut edge rather than a rendering slip, narrow
- * enough that it is plainly not a third card offering itself to be read.
+ * How many cards a phone shows at rest: two whole cards and the leading edge
+ * of the third. A row that ends flush with the screen edge reads as the whole
+ * shelf; the cut third card is what says the row scrolls.
  */
-export const SAMPLE_PEEK = 44;
+export const FEATURED_VISIBLE_CARDS = 2.3;
 
-/** Never so narrow the name wraps to nonsense, never so wide it fills a tablet. */
-const MIN_SAMPLE_WIDTH = 148;
-const MAX_SAMPLE_WIDTH = 200;
+/** Never so narrow the name is all ellipsis, never so wide it fills a tablet. */
+const MIN_FEATURED_WIDTH = 112;
+const MAX_FEATURED_WIDTH = 220;
 
 /**
- * The width of one sample card, cut from the screen it is scrolling across.
+ * The width of one featured card, cut from the screen it scrolls across.
  *
- * Two cards, the gap between them, and the leading edge of the next — measured
- * rather than fixed, because a fixed 208 filled a 412dp phone exactly and left
- * nothing hanging over the edge to scroll towards.
+ * The row runs edge to edge, but its first card starts on Home's page padding
+ * (`pagePadding`), so what is visible at rest is that padding, two cards, two
+ * gaps and the edge of the third. Measured from the window, never from a
+ * layout pass, so the first frame is already the right size.
  */
-export function homeSampleCardWidth(screenWidth: number): number {
-  const usable = screenWidth - pagePadding - SAMPLE_GAP * 2 - SAMPLE_PEEK;
-  const fitted = Math.floor(usable / 2);
-  return Math.min(MAX_SAMPLE_WIDTH, Math.max(MIN_SAMPLE_WIDTH, fitted));
+export function featuredCardWidth(screenWidth: number): number {
+  const usable = screenWidth - pagePadding - FEATURED_GAP * 2;
+  const fitted = Math.floor(usable / FEATURED_VISIBLE_CARDS);
+  return Math.min(MAX_FEATURED_WIDTH, Math.max(MIN_FEATURED_WIDTH, fitted));
 }
 
-/** A sample photo is cut 4:3 in the strip, so the card is a shelf, not a column. */
-export function homeSamplePhotoHeight(cardWidth: number): number {
-  return Math.round((cardWidth * 3) / 4);
+/** The product photo is a 3:4 portrait, so every card is the same tall shape. */
+export function featuredImageHeight(cardWidth: number): number {
+  return Math.round((cardWidth * 4) / 3);
+}
+
+/** One card and the gap after it: the distance each snap moves the row. */
+export function featuredSnapInterval(cardWidth: number): number {
+  return cardWidth + FEATURED_GAP;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,17 +191,4 @@ export function keepHeldFeatured(
 ): HomeSample[] {
   if (!held || !sameFeaturedPrints(held, next)) return next;
   return hasStalePhotoLink(held, now) ? next : held;
-}
-
-/**
- * How many tiles Featured Prints draws, and in which shape: one card fills
- * the block, two or more sit side by side as equal twins on Home's centre
- * axis, in staff order ("See all" opens the rest).
- */
-export type FeaturedShape = "single" | "pair";
-
-export function featuredShape(count: number): FeaturedShape | null {
-  if (count <= 0) return null;
-  if (count === 1) return "single";
-  return "pair";
 }
