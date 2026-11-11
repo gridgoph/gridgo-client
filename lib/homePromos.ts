@@ -106,6 +106,7 @@ export function promotionsFrom(body: unknown): HomePromotion[] {
     const linkUrl = text(item.linkUrl);
     if (!id || !name || !isHttps(linkUrl) || seen.has(id)) continue;
     seen.add(id);
+    const color = text(item.color);
     out.push({
       id,
       name,
@@ -117,7 +118,7 @@ export function promotionsFrom(body: unknown): HomePromotion[] {
       linkUrl,
       tapAction: oneOf(item.tapAction, ["sheet", "link"] as const, "sheet"),
       style: oneOf(item.style, ["light", "yellow"] as const, "light"),
-      color: typeof item.color === "string" && /^#[0-9A-Fa-f]{6}$/.test(item.color) ? item.color.toUpperCase() : null,
+      color: /^#[0-9A-Fa-f]{6}$/.test(color) ? color.toUpperCase() : null,
     });
   }
   return out;

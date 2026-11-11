@@ -1,7 +1,6 @@
 import { pagePadding } from "@/constants/theme";
 import {
   SAMPLE_GAP,
-  SAMPLE_PEEK,
   featuredPrintsFrom,
   featuredShape,
   homeSampleCardWidth,
@@ -186,11 +185,11 @@ describe("keeping the held featured list", () => {
 });
 
 describe("featuredShape", () => {
-  it("fills, pairs, then makes the bento", () => {
+  it("fills for one card and pairs two or more as symmetric twins", () => {
     expect(featuredShape(0)).toBeNull();
     expect(featuredShape(1)).toBe("single");
     expect(featuredShape(2)).toBe("pair");
-    expect(featuredShape(3)).toBe("bento");
-    expect(featuredShape(9)).toBe("bento");
+    expect(featuredShape(3)).toBe("pair");
+    expect(featuredShape(9)).toBe("pair");
   });
 });

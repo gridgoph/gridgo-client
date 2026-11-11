@@ -23,45 +23,60 @@ type Props = {
 
 /** The gap between tiles, and between the heading row and the tiles. */
 const GAP = 12;
-const HEADING_GAP = 8;
-/** The heading row is as tall as its "See all" touch target (`gg-touch`). */
-const HEADING_HEIGHT = 44;
-/**
- * The shortest a small tile may get: the price tag (24) inset 6 from the top,
- * then the name (24) and unit line (16) inside 6 above and below. Below this
- * the tag would sit on the words.
- */
-export const FEATURED_CARD_MIN_HEIGHT = 82;
-/** The shortest the tiles get: two small tiles stacked. */
-const GRID_MIN_HEIGHT = FEATURED_CARD_MIN_HEIGHT * 2 + GAP;
-/** The shortest the whole block gets before Home would have to scroll. */
-export const FEATURED_MIN_HEIGHT = HEADING_HEIGHT + HEADING_GAP + GRID_MIN_HEIGHT;
+const HEADING_GAP = 6;
+/** Compact visual row height; "See all" keeps its full 44pt `gg-touch` target via `-my-1`. */
+const HEADING_HEIGHT = 36;
 
 /**
- * FEATURED PRINTS as a still bento: the first card large, the next two
- * stacked beside it (gridgo-client, Mark's option 5).
+ * Base 1.0x floor for one symmetric Featured Prints card: top price pill plus
+ * the two-line title + unit band in normal flex flow, leaving room to compact
+ * on a short 360x740 phone while growing naturally with larger text.
+ */
+export const FEATURED_CARD_MIN_HEIGHT = 96;
+export const FEATURED_TITLE_MIN_HEIGHT = 40;
+
+export function sharedFeaturedTitleHeight(heights: readonly number[]): number {
+  return Math.max(FEATURED_TITLE_MIN_HEIGHT, ...heights.map((height) => Math.ceil(height)));
+}
+
+/** Base 1.0x floor for the whole Featured Prints section. */
+export const FEATURED_MIN_HEIGHT = HEADING_HEIGHT + HEADING_GAP + FEATURED_CARD_MIN_HEIGHT;
+
+/**
+ * FEATURED PRINTS as a balanced two-column grid on Home's centre axis: equal
+ * card widths and heights, aligned price badges and title bands, and full
+ * wrapped product names with no ellipsis truncation.
  *
- * Nothing on it moves by itself. It used to be a snapping sideways pager in a
- * yellow block; every re-read re-measured the pager under the snap and the row
- * jumped on its own. Now there is no scroll view, no dots and no timer — the
- * tiles are flex boxes, so the block still takes whatever height Home has left
- * after its fixed rows and shrinks first on a small phone (client#335).
- *
- * It sits on the canvas like every other Home row. Yellow is spent only on the
- * price on each photo and the brand-coloured "See all".
+ * Nothing on it moves by itself — no scroll view, no dots and no timer — and
+ * the block still takes whatever height Home has left after its fixed rows and
+ * shrinks first on a small phone (client#335).
  *
  * The products are the ones GRIDGO's staff curated (`GET /featured-prints`), at
  * GRIDGO's own starting price — never a shop's figure and never what other
- * clients are printing. Fewer than three cards change the shape
- * (`featuredShape`) rather than leaving holes.
+ * clients are printing.
  */
 export function HomeFeaturedPrints({ samples, loading, onPick, onSeeAll, onStalePhoto }: Props) {
   const colors = useThemeColors();
   const waiting = loading && !samples.length;
-  const shape = waiting ? "bento" : featuredShape(samples.length);
+  const shape = waiting ? "pair" : featuredShape(samples.length);
+  const visible = shape === "single" ? samples.slice(0, 1) : shape === "pair" ? samples.slice(0, 2) : [];
+  const [titleHeights, setTitleHeights] = useState<Record<string, number>>({});
+  const sharedTitleMinHeight = sharedFeaturedTitleHeight(
+    visible.map((sample) => titleHeights[sample.id] ?? 0),
+  );
 
-  const tile = (sample: HomeSample, size: TileSize) => (
-    <FeaturedTile key={sample.id} sample={sample} size={size} onPress={() => onPick(sample)} onStalePhoto={onStalePhoto} />
+  const column = (sample: HomeSample) => (
+    <View key={sample.id} testID={`featured-col-${sample.id}`} className="flex-1" style={{ minWidth: 0, flexBasis: 0 }}>
+      <FeaturedTile
+        sample={sample}
+        titleMinHeight={sharedTitleMinHeight}
+        onTitleHeight={(height) =>
+          setTitleHeights((prev) => (prev[sample.id] === height ? prev : { ...prev, [sample.id]: height }))
+        }
+        onPress={() => onPick(sample)}
+        onStalePhoto={onStalePhoto}
+      />
+    </View>
   );
 
   return (
@@ -74,49 +89,34 @@ export function HomeFeaturedPrints({ samples, loading, onPick, onSeeAll, onStale
           onPress={onSeeAll}
           accessibilityRole="button"
           accessibilityLabel="See all prints"
-          className="gg-touch -mr-2 flex-row items-center gap-1 px-2"
-          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+          className="gg-touch -my-1 -mr-2 flex-row items-center gap-1 px-2"
         >
-          <Text className="text-button text-brand underline">See all</Text>
-          <ArrowRight size={16} color={colors.brand} strokeWidth={2.25} />
+          {({ pressed }) => (
+            <View className="flex-row items-center gap-1" style={pressed ? { opacity: 0.6 } : undefined}>
+              <Text className="text-button text-brand underline">See all</Text>
+              <ArrowRight size={16} color={colors.brand} strokeWidth={2.25} />
+            </View>
+          )}
         </Pressable>
       </View>
 
-      <View testID="featured-grid" className="flex-1 flex-row" style={{ marginTop: HEADING_GAP, gap: GAP }}>
+      <View testID="featured-grid" className="flex-1 flex-row items-stretch" style={{ marginTop: HEADING_GAP, gap: GAP }}>
         {waiting ? (
-          <>
-            <View className="flex-1" style={{ flexGrow: 1.15 }}>
+          <View testID="featured-waiting" className="flex-1 flex-row items-stretch" style={{ gap: GAP }}>
+            <View className="flex-1" style={{ minWidth: 0, flexBasis: 0, minHeight: FEATURED_CARD_MIN_HEIGHT }}>
               <SkeletonBlock className="h-full w-full rounded-card" />
             </View>
-            <View testID="featured-waiting" className="flex-1" style={{ gap: GAP }}>
-              <SkeletonBlock className="w-full flex-1 rounded-card" />
-              <SkeletonBlock className="w-full flex-1 rounded-card" />
+            <View className="flex-1" style={{ minWidth: 0, flexBasis: 0, minHeight: FEATURED_CARD_MIN_HEIGHT }}>
+              <SkeletonBlock className="h-full w-full rounded-card" />
             </View>
-          </>
-        ) : shape === "single" ? (
-          tile(samples[0], "large")
-        ) : shape === "pair" ? (
-          <>
-            {tile(samples[0], "large")}
-            {tile(samples[1], "large")}
-          </>
-        ) : shape === "bento" ? (
-          <>
-            <View testID="featured-lead" className="flex-1" style={{ flexGrow: 1.15 }}>
-              {tile(samples[0], "large")}
-            </View>
-            <View testID="featured-stack" className="flex-1" style={{ gap: GAP }}>
-              {tile(samples[1], "small")}
-              {tile(samples[2], "small")}
-            </View>
-          </>
-        ) : null}
+          </View>
+        ) : (
+          visible.map(column)
+        )}
       </View>
     </View>
   );
 }
-
-type TileSize = "large" | "small";
 
 /** Twelve steps from clear to the label's shade, eased so no step shows. */
 const FADE = Array.from({ length: 12 }, (_, step) => {
@@ -124,22 +124,23 @@ const FADE = Array.from({ length: 12 }, (_, step) => {
   return photoLabel.shadeAlpha * t * t;
 });
 
-/** One curated print: its photo, with the name and starting price set on it. */
+/** One curated print: its photo, with aligned starting price and wrapped title. */
 function FeaturedTile({
   sample,
-  size,
+  titleMinHeight,
+  onTitleHeight,
   onPress,
   onStalePhoto,
 }: {
   sample: HomeSample;
-  size: TileSize;
+  titleMinHeight: number;
+  onTitleHeight: (height: number) => void;
   onPress: () => void;
   onStalePhoto?: () => Promise<unknown> | void;
 }) {
   const photo = sample.photos[0];
   const unit = unitLine(sample);
   const rate = useServiceFeeRateBps();
-  const large = size === "large";
   return (
     <Pressable
       testID={`featured-tile-${sample.id}`}
@@ -147,49 +148,66 @@ function FeaturedTile({
       accessibilityRole="button"
       accessibilityLabel={`${sample.name}, from ${gridgoPriceLabel(null, rate, sample.clientFromPriceMinor)} ${unit}`}
       accessibilityHint="Finds GRIDGO's printer for this"
-      className="flex-1 overflow-hidden rounded-card border border-outline bg-surface-variant"
-      style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
+      className="w-full grow overflow-hidden rounded-card border border-outline bg-surface-variant"
+      style={{ minHeight: FEATURED_CARD_MIN_HEIGHT, minWidth: 0 }}
     >
-      <FeaturedPhoto
-        url={samplePhotoUri(photo)}
-        fileId={photo?.fileId ?? null}
-        sampleId={sample.id}
-        expiresAt={photo?.downloadUrlExpiresAt}
-        onStale={onStalePhoto}
-      />
-      {/*
-        The starting price as a tag in the corner, so the name and unit below
-        get the tile's whole width — "per pack of 100" never clips.
-      */}
-      <View pointerEvents="none" className="absolute right-1.5 top-1.5 rounded-pill bg-action-yellow px-2.5 py-0.5">
-        <GridgoPrice
-          clientMinor={sample.clientFromPriceMinor}
-          className={large ? "text-body-lg font-bold text-action-yellow-on" : "text-body font-bold text-action-yellow-on"}
-          numberOfLines={1}
-          waitingWidth="w-14"
-        />
-      </View>
-      <View pointerEvents="none" className="absolute inset-x-0 bottom-0">
-        {/* A smooth fade into the shade, so the words never sit on a hard band. */}
-        {FADE.map((alpha) => (
-          <View key={alpha} style={{ height: large ? 3 : 2, backgroundColor: photoShade(alpha) }} />
-        ))}
-        <View
-          className={large ? "px-3 pb-3 pt-1" : "px-2.5 pb-1.5"}
-          style={{ backgroundColor: photoShade(photoLabel.shadeAlpha) }}
-        >
-          <Text
-            className={large ? "text-h3 font-bold" : "text-body-lg font-bold"}
-            style={{ color: photoLabel.ink }}
-            numberOfLines={large ? 2 : 1}
-          >
-            {sample.name}
-          </Text>
-          <Text className="text-caption" style={{ color: photoLabel.inkMuted }} numberOfLines={1}>
-            from · {unit}
-          </Text>
-        </View>
-      </View>
+      {({ pressed }) => (
+        <>
+          <FeaturedPhoto
+            url={samplePhotoUri(photo)}
+            fileId={photo?.fileId ?? null}
+            sampleId={sample.id}
+            expiresAt={photo?.downloadUrlExpiresAt}
+            onStale={onStalePhoto}
+          />
+          <View pointerEvents="none" className="grow justify-between">
+            <View className="items-end px-2 pt-2">
+              <View testID={`featured-price-badge-${sample.id}`} className="rounded-pill bg-action-yellow px-2.5 py-0.5">
+                <GridgoPrice
+                  clientMinor={sample.clientFromPriceMinor}
+                  className="text-body font-bold text-action-yellow-on"
+                  numberOfLines={1}
+                  waitingWidth="w-14"
+                />
+              </View>
+            </View>
+            <View className="relative">
+              {/* A smooth fade into the shade above the band, without taking flex height on short phones. */}
+              <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: "100%" }}>
+                {FADE.map((alpha) => (
+                  <View key={alpha} style={{ height: 1.5, backgroundColor: photoShade(alpha) }} />
+                ))}
+              </View>
+              <View
+                className="gap-0.5 px-2.5 pb-2 pt-0.5"
+                style={{ backgroundColor: photoShade(photoLabel.shadeAlpha) }}
+              >
+                <View
+                  testID={`featured-title-slot-${sample.id}`}
+                  className="justify-start"
+                  style={{ minHeight: titleMinHeight }}
+                >
+                  <Text
+                    testID={`featured-title-${sample.id}`}
+                    className="text-body font-bold"
+                    style={{ color: photoLabel.ink }}
+                    onLayout={(event) => {
+                      const next = Math.ceil(event.nativeEvent.layout.height);
+                      if (next > 0) onTitleHeight(next);
+                    }}
+                  >
+                    {sample.name}
+                  </Text>
+                </View>
+                <Text className="text-caption" style={{ color: photoLabel.inkMuted, lineHeight: 18 }}>
+                  from · {unit}
+                </Text>
+              </View>
+            </View>
+          </View>
+          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
+        </>
+      )}
     </Pressable>
   );
 }

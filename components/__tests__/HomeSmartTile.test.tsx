@@ -25,28 +25,31 @@ const VIEWS: SmartTileView[] = [
   { kind: "orders", href: "/(tabs)/orders", label: "Your orders" },
 ];
 
-function height(testID: string): number | undefined {
+function minHeight(testID: string): number | undefined {
   const node = screen.getByTestId(testID);
-  const style = typeof node.props.style === "function" ? node.props.style({ pressed: false }) : node.props.style;
-  return StyleSheet.flatten(style)?.height;
+  expect(typeof node.props.style).not.toBe("function");
+  const flat = StyleSheet.flatten(node.props.style);
+  expect(flat?.height).toBeUndefined();
+  return flat?.minHeight;
 }
 
-it.each(VIEWS.map((view) => [view.kind, view] as const))("draws the %s state at the shared height", async (kind, view) => {
+it.each(VIEWS.map((view) => [view.kind, view] as const))("draws the %s state at the shared minimum height", async (kind, view) => {
   await render(<HomeSmartTile view={view} onPress={jest.fn()} />);
 
   expect(screen.getByLabelText(view.label)).toBeTruthy();
-  expect(height(`smart-tile-${kind}`)).toBe(HOME_TILE_HEIGHT);
+  expect(minHeight(`smart-tile-${kind}`)).toBe(HOME_TILE_HEIGHT);
 });
 
 it("holds the same space while the summary loads", async () => {
   await render(<HomeSmartTile view={null} onPress={jest.fn()} />);
 
-  expect(height("smart-tile-loading")).toBe(HOME_TILE_HEIGHT);
+  expect(minHeight("smart-tile-loading")).toBe(HOME_TILE_HEIGHT);
 });
 
-it("says what the active order is doing, never a countdown", async () => {
+it("says what the active order is doing with no line-cap truncation on overline, headline or detail", async () => {
   await render(<HomeSmartTile view={VIEWS[1]} onPress={jest.fn()} />);
 
-  expect(screen.getByText("Printing")).toBeTruthy();
-  expect(screen.getByText("Ready by Wed, 4 Nov")).toBeTruthy();
+  expect(screen.getByText("YOUR ORDER · +1").props.numberOfLines).toBeUndefined();
+  expect(screen.getByText("Printing").props.numberOfLines).toBeUndefined();
+  expect(screen.getByText("Ready by Wed, 4 Nov").props.numberOfLines).toBeUndefined();
 });
