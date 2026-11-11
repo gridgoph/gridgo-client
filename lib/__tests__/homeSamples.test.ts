@@ -1,12 +1,12 @@
 import { pagePadding } from "@/constants/theme";
 import {
-  SAMPLE_GAP,
+  FEATURED_GAP,
+  featuredCardWidth,
+  featuredImageHeight,
   featuredPrintsFrom,
-  featuredShape,
-  homeSampleCardWidth,
+  featuredSnapInterval,
   keepHeldFeatured,
   sameFeaturedPrints,
-  homeSamplePhotoHeight,
 } from "@/lib/homeSamples";
 
 /** One card as gridgo-api's `GET /featured-prints` sends it. */
@@ -113,25 +113,34 @@ describe("featuredPrintsFrom", () => {
 });
 
 /**
- * A strip that ends flush with the screen edge reads as the whole shelf. The
- * card after next has to hang over the edge, or nobody scrolls it.
+ * A row that ends flush with the screen edge reads as the whole shelf. About
+ * 2.3 cards show at rest on every phone: two whole cards and the cut third.
  */
-describe("homeSampleCardWidth", () => {
-  it("leaves the next card hanging over the screen edge", () => {
-    for (const screenWidth of [360, 393, 412, 430]) {
-      const card = homeSampleCardWidth(screenWidth);
-      const twoCards = pagePadding + card + SAMPLE_GAP + card;
-      expect(screenWidth - twoCards).toBeGreaterThanOrEqual(SAMPLE_GAP);
+describe("featuredCardWidth", () => {
+  it("shows two whole cards and about a third of the next on every phone", () => {
+    for (const screenWidth of [360, 390, 393, 412, 430]) {
+      const width = featuredCardWidth(screenWidth);
+      const peek = screenWidth - (pagePadding + width + FEATURED_GAP + width + FEATURED_GAP);
+      expect(peek / width).toBeGreaterThanOrEqual(0.25);
+      expect(peek / width).toBeLessThanOrEqual(0.35);
     }
   });
 
-  it("keeps a card readable on a narrow phone and sane on a tablet", () => {
-    expect(homeSampleCardWidth(320)).toBeGreaterThanOrEqual(148);
-    expect(homeSampleCardWidth(1024)).toBeLessThanOrEqual(200);
+  it("is measured from the screen: 390 wide cuts 152", () => {
+    expect(featuredCardWidth(390)).toBe(152);
+    expect(featuredCardWidth(360)).toBe(139);
+    expect(featuredCardWidth(430)).toBe(169);
   });
 
-  it("cuts the strip's sample 4:3, so the card is a shelf and not a column", () => {
-    expect(homeSamplePhotoHeight(160)).toBe(120);
+  it("keeps a card readable on a narrow phone and sane on a tablet", () => {
+    expect(featuredCardWidth(280)).toBeGreaterThanOrEqual(112);
+    expect(featuredCardWidth(1024)).toBeLessThanOrEqual(220);
+  });
+
+  it("cuts the photo 3:4 portrait and snaps one card and its gap at a time", () => {
+    expect(featuredImageHeight(150)).toBe(200);
+    expect(featuredImageHeight(152)).toBe(203);
+    expect(featuredSnapInterval(152)).toBe(152 + FEATURED_GAP);
   });
 });
 
@@ -181,15 +190,5 @@ describe("keeping the held featured list", () => {
   it("takes the first read whole", () => {
     const next = read("https://s/one");
     expect(keepHeldFeatured(null, next, BEFORE_EXPIRY)).toBe(next);
-  });
-});
-
-describe("featuredShape", () => {
-  it("fills for one card and pairs two or more as symmetric twins", () => {
-    expect(featuredShape(0)).toBeNull();
-    expect(featuredShape(1)).toBe("single");
-    expect(featuredShape(2)).toBe("pair");
-    expect(featuredShape(3)).toBe("pair");
-    expect(featuredShape(9)).toBe("pair");
   });
 });
