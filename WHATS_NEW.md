@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.619 (Improvement)
+
+- Featured prints is now a swipeable row of tall cards showing every featured product, with name and price below.
+
 ## 1.0.614 (Improvement)
 
 - Partner cards on Home show the whole logo and can carry their own picture, with the full cover in the details.
