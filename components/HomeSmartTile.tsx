@@ -2,18 +2,19 @@ import { Award, Clock, Plus, Ticket } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { HomeTileSlots } from "@/components/HomeTileSlots";
+import { HOME_TILE_MIN_HEIGHT, HomeTileSlots } from "@/components/HomeTileSlots";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { fontFamily } from "@/constants/fonts";
 import { useThemeColors } from "@/hooks/useTheme";
 import { daysLeftLine, type SmartTileView } from "@/lib/homeSummary";
 
-/** One height for every state, so Home never resettles when the state changes. */
-export const HOME_TILE_HEIGHT = 112;
+/** Shared 1.0x floor for every state, so Home never resettles when the state changes. */
+export const HOME_TILE_HEIGHT = HOME_TILE_MIN_HEIGHT;
 
 type Props = {
   view: SmartTileView | null;
   onPress: (href: string) => void;
+  onIntrinsicHeight?: (height: number) => void;
 };
 
 /**
@@ -21,13 +22,14 @@ type Props = {
  * GRIDGO's order — missions not finished, an order in progress, an unused
  * tester voucher, otherwise an invite (`lib/homeSummary.ts`).
  *
- * Every state is the same box with the same three slots — an overline, one
- * big line, and a footer — so swapping states never changes the layout.
+ * Every state shares the same minimum height and four slots (`HomeTileSlots`),
+ * growing with larger system type and stretching to match its right-hand twin
+ * so neither card clips or moves independently.
  */
-export function HomeSmartTile({ view, onPress }: Props) {
+export function HomeSmartTile({ view, onPress, onIntrinsicHeight }: Props) {
   if (!view) {
     return (
-      <View testID="smart-tile-loading" className="flex-1" style={{ height: HOME_TILE_HEIGHT, minWidth: 0, flexBasis: 0 }}>
+      <View testID="smart-tile-loading" className="w-full grow" style={{ minHeight: HOME_TILE_HEIGHT, minWidth: 0 }}>
         <SkeletonBlock className="h-full w-full rounded-card" />
       </View>
     );
@@ -41,21 +43,26 @@ export function HomeSmartTile({ view, onPress }: Props) {
       accessibilityLabel={view.label}
       className={
         voucher
-          ? "flex-1 rounded-card border-2 border-dashed border-brand bg-surface p-[11px]"
-          : "flex-1 rounded-card border border-outline bg-surface p-3"
+          ? "w-full grow overflow-hidden rounded-card border-2 border-dashed border-brand bg-surface p-[11px]"
+          : "w-full grow overflow-hidden rounded-card border border-outline bg-surface p-3"
       }
-      style={({ pressed }) => [{ height: HOME_TILE_HEIGHT, minWidth: 0, flexBasis: 0 }, pressed ? { opacity: 0.75 } : null]}
+      style={{ minHeight: HOME_TILE_HEIGHT, minWidth: 0 }}
     >
-      <TileBody view={view} />
+      {({ pressed }) => (
+        <>
+          <TileBody view={view} onIntrinsicHeight={onIntrinsicHeight} />
+          {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
+        </>
+      )}
     </Pressable>
   );
 }
 
 function Overline({ text, icon }: { text: string; icon?: ReactNode }) {
   return (
-    <View className="flex-row items-center justify-between gap-2">
+    <View className="flex-row items-center justify-between gap-1" style={{ minWidth: 0 }}>
       {/* Tighter tracking than the page overline: the tile is half a phone wide. */}
-      <Text className="flex-1 text-caption font-bold text-text-secondary" style={{ letterSpacing: 0.6 }} numberOfLines={1}>
+      <Text className="flex-1 text-caption font-bold text-text-secondary" numberOfLines={1}>
         {text}
       </Text>
       {icon}
@@ -63,16 +70,22 @@ function Overline({ text, icon }: { text: string; icon?: ReactNode }) {
   );
 }
 
-function TileBody({ view }: { view: SmartTileView }) {
+function TileBody({
+  view,
+  onIntrinsicHeight,
+}: {
+  view: SmartTileView;
+  onIntrinsicHeight?: (height: number) => void;
+}) {
   const colors = useThemeColors();
   switch (view.kind) {
     case "missions":
       return (
         <HomeTileSlots
+          onIntrinsicHeight={onIntrinsicHeight}
           top={<Overline text="FOUNDING TESTER" icon={<Award size={18} color={colors.textPrimary} strokeWidth={2} />} />}
           title={
-            // A 34pt line in the 26pt title slot, bottom-aligned: its baseline lands on the h3 baseline beside it.
-            <Text className="text-text-primary" style={{ fontFamily: fontFamily.black, fontSize: 30, lineHeight: 34, marginTop: -8 }}>
+            <Text className="text-text-primary" style={{ fontFamily: fontFamily.black, fontSize: 24, lineHeight: 26 }}>
               {view.done}
               <Text className="text-h3 text-text-muted">/{view.total}</Text>
             </Text>
@@ -83,20 +96,17 @@ function TileBody({ view }: { view: SmartTileView }) {
     case "active_order":
       return (
         <HomeTileSlots
+          onIntrinsicHeight={onIntrinsicHeight}
           top={
             <Overline
               text={view.more ? `YOUR ORDER · +${view.more}` : "YOUR ORDER"}
               icon={view.needsPayment ? <Clock size={16} color={colors.warning} strokeWidth={2} /> : undefined}
             />
           }
-          title={
-            <Text className="text-h3 text-text-primary" numberOfLines={1}>
-              {view.headline}
-            </Text>
-          }
+          title={<Text className="text-h3 text-text-primary">{view.headline}</Text>}
           subtitle={
             view.detail ? (
-              <Text className="text-caption text-text-secondary" numberOfLines={1}>
+              <Text className="text-caption text-text-secondary" style={{ lineHeight: 18 }}>
                 {view.detail}
               </Text>
             ) : null
@@ -107,16 +117,15 @@ function TileBody({ view }: { view: SmartTileView }) {
     case "tester_voucher":
       return (
         <HomeTileSlots
+          onIntrinsicHeight={onIntrinsicHeight}
           top={<Overline text="TESTER VOUCHER" icon={<Ticket size={18} color={colors.textPrimary} strokeWidth={2} />} />}
-          title={
-            <Text className="text-h3 text-text-primary" numberOfLines={1}>
-              {view.amount} off
-            </Text>
-          }
+          title={<Text className="text-h3 text-text-primary">{view.amount} off</Text>}
           subtitle={
-            <View className="flex-row items-center gap-1">
+            <View className="flex-row items-center gap-1" style={{ minWidth: 0 }}>
               <Clock size={14} color={colors.textSecondary} strokeWidth={2} />
-              <Text className="text-caption text-text-secondary">{daysLeftLine(view.daysLeft)}</Text>
+              <Text className="shrink text-caption text-text-secondary" style={{ lineHeight: 18 }}>
+                {daysLeftLine(view.daysLeft)}
+              </Text>
             </View>
           }
         />
@@ -124,19 +133,18 @@ function TileBody({ view }: { view: SmartTileView }) {
     case "invite":
       return (
         <HomeTileSlots
+          onIntrinsicHeight={onIntrinsicHeight}
           top={<Overline text="INVITE A FRIEND" />}
           title={
-            <View className="flex-row items-center gap-2">
+            <View className="flex-row items-center gap-2" style={{ minWidth: 0 }}>
               <View className="h-6 w-6 items-center justify-center rounded-pill bg-accent">
                 <Plus size={14} color={colors.accentOn} strokeWidth={2.5} />
               </View>
-              <Text className="flex-1 text-h3 text-text-primary" numberOfLines={1}>
-                Share
-              </Text>
+              <Text className="flex-1 text-h3 text-text-primary">Share</Text>
             </View>
           }
           subtitle={
-            <Text className="text-caption text-text-secondary" numberOfLines={1}>
+            <Text className="text-caption text-text-secondary" style={{ lineHeight: 18 }}>
               You each get a voucher
             </Text>
           }
@@ -145,14 +153,11 @@ function TileBody({ view }: { view: SmartTileView }) {
     case "orders":
       return (
         <HomeTileSlots
+          onIntrinsicHeight={onIntrinsicHeight}
           top={<Overline text="YOUR ORDERS" />}
-          title={
-            <Text className="text-h3 text-text-primary" numberOfLines={1}>
-              See every job
-            </Text>
-          }
+          title={<Text className="text-h3 text-text-primary">See every job</Text>}
           subtitle={
-            <Text className="text-caption text-text-secondary" numberOfLines={1}>
+            <Text className="text-caption text-text-secondary" style={{ lineHeight: 18 }}>
               Status, receipts, reorder
             </Text>
           }

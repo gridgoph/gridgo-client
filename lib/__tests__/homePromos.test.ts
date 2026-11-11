@@ -42,8 +42,9 @@ describe("promotionsFrom", () => {
     });
   });
 
-  it("reads a hex card colour, uppercased, and drops anything else", () => {
+  it("reads a hex card colour, uppercased and trimmed, and drops anything else", () => {
     expect(promotionsFrom([{ ...davaogo, color: "#17a673" }])[0].color).toBe("#17A673");
+    expect(promotionsFrom([{ ...davaogo, color: " #ffffff " }])[0].color).toBe("#FFFFFF");
     expect(promotionsFrom([{ ...davaogo, color: "green" }])[0].color).toBeNull();
     expect(promotionsFrom([{ ...davaogo, color: "#FFF" }])[0].color).toBeNull();
   });
