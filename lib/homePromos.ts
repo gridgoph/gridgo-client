@@ -17,6 +17,9 @@ export type HomePromotion = {
   name: string;
   /** Ready to render, or null when the feed sent none. */
   logoUrl: string | null;
+  /** The Home card's background (gridgo-client#425); null keeps the colour card. Never the cover. */
+  cardImageUrl: string | null;
+  /** The About sheet's 16:9 cover only; never drawn on the Home card. */
   imageUrl: string | null;
   description: string;
   tag: PromotionTag;
@@ -73,7 +76,7 @@ function isHttps(value: string): boolean {
  * A file ref from the feed: a plain URL, or the attachments flow's
  * `{downloadUrl}` / `{url}` object. A `logoUrl` sibling is read too.
  */
-function fileUrl(item: Record<string, unknown>, key: "logo" | "image"): string | null {
+function fileUrl(item: Record<string, unknown>, key: "logo" | "cardImage" | "image"): string | null {
   const flat = text(item[`${key}Url`]);
   if (flat) return flat;
   const raw = item[key];
@@ -111,6 +114,8 @@ export function promotionsFrom(body: unknown): HomePromotion[] {
       id,
       name,
       logoUrl: fileUrl(item, "logo"),
+      // An API before #425 sends no `cardImage`: the card stays its colour.
+      cardImageUrl: fileUrl(item, "cardImage"),
       imageUrl: fileUrl(item, "image"),
       description: text(item.description),
       tag: oneOf(item.tag, ["partner", "sponsored", "featured_shop"] as const, "partner"),

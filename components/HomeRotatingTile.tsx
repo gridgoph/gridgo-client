@@ -16,7 +16,7 @@ import { HOME_TILE_MIN_HEIGHT, TILE_FOOTER_DOTS } from "@/components/HomeTileSlo
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import { homeSlides, nextSlideIndex, PROMO_ROTATE_MS, type HomePromotion } from "@/lib/homePromos";
-import { promoCardColors } from "@/lib/promoCardColors";
+import { promoCardColors, promoShowsCardImage } from "@/lib/promoCardColors";
 
 type Props = {
   /** Today's Reorder tile, drawn unchanged as the first page. */
@@ -62,6 +62,8 @@ export function HomeRotatingTile(props: Props) {
 function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false, minHeight, onIntrinsicHeight }: Props) {
   const colors = useThemeColors();
   const [promoHeights, setPromoHeights] = useState<Record<string, number>>({});
+  // Card images that would not load: the dots follow the card back to its colour ink.
+  const [failedCardImages, setFailedCardImages] = useState<ReadonlySet<string>>(() => new Set());
   const maxPromoHeight = Math.max(0, ...promos.map((promo) => promoHeights[promo.id] ?? 0));
   const cardMinHeight = Math.max(HOME_TILE_MIN_HEIGHT, minHeight ?? 0, maxPromoHeight);
 
@@ -156,7 +158,10 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false, 
     }
   };
 
-  const card = slide.kind === "promo" ? promoCardColors(slide.promo, colors.canvas, colors.outline) : null;
+  const card =
+    slide.kind === "promo"
+      ? promoCardColors(slide.promo, colors.canvas, colors.outline, promoShowsCardImage(slide.promo, failedCardImages))
+      : null;
   const dotOn = card ? card.ink : colors.textPrimary;
   const dotOff = card ? card.muted : colors.textMuted;
 
@@ -205,6 +210,7 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false, 
                     setPromoHeights((prev) => (prev[page.promo.id] === height ? prev : { ...prev, [page.promo.id]: height }))
                   }
                   onPress={() => onPromoPress(page.promo)}
+                  onCardImageError={(uri) => setFailedCardImages((prev) => (prev.has(uri) ? prev : new Set(prev).add(uri)))}
                 />
               )}
             </View>
