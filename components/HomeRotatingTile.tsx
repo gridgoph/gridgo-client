@@ -32,6 +32,8 @@ type Props = {
   paused?: boolean;
   /** Intrinsic height of the sibling smart tile so horizontal pages stretch to match it. */
   minHeight?: number;
+  /** Reports the tallest unstretched promo slide height so the row twin can match it too. */
+  onIntrinsicHeight?: (height: number) => void;
 };
 
 /**
@@ -57,9 +59,15 @@ export function HomeRotatingTile(props: Props) {
   return <Rotator {...props} />;
 }
 
-function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false, minHeight }: Props) {
+function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false, minHeight, onIntrinsicHeight }: Props) {
   const colors = useThemeColors();
-  const cardMinHeight = Math.max(HOME_TILE_MIN_HEIGHT, minHeight ?? 0);
+  const [promoHeights, setPromoHeights] = useState<Record<string, number>>({});
+  const maxPromoHeight = Math.max(0, ...promos.map((promo) => promoHeights[promo.id] ?? 0));
+  const cardMinHeight = Math.max(HOME_TILE_MIN_HEIGHT, minHeight ?? 0, maxPromoHeight);
+
+  useEffect(() => {
+    if (maxPromoHeight > 0) onIntrinsicHeight?.(maxPromoHeight);
+  }, [maxPromoHeight, onIntrinsicHeight]);
   const reducedMotion = useReducedMotion();
   const slides = homeSlides(promos);
   const count = slides.length;
@@ -190,7 +198,14 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false, 
               {page.kind === "reorder" ? (
                 copy ? <View className="w-full grow" pointerEvents="none">{reorder}</View> : reorder
               ) : (
-                <HomePromoTile promo={page.promo} onPress={() => onPromoPress(page.promo)} />
+                <HomePromoTile
+                  promo={page.promo}
+                  minHeight={cardMinHeight}
+                  onIntrinsicHeight={(height) =>
+                    setPromoHeights((prev) => (prev[page.promo.id] === height ? prev : { ...prev, [page.promo.id]: height }))
+                  }
+                  onPress={() => onPromoPress(page.promo)}
+                />
               )}
             </View>
           );

@@ -210,6 +210,9 @@ export default function HomeScreen() {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [smartTileHeight, setSmartTileHeight] = useState(0);
+  const [reorderTileHeight, setReorderTileHeight] = useState(0);
+  const [promoTileHeight, setPromoTileHeight] = useState(0);
+  const bottomRowMinHeight = Math.max(smartTileHeight, reorderTileHeight, promos.length ? promoTileHeight : 0);
   const firstName = (user?.name ?? "").trim().split(/\s+/)[0];
 
   return (
@@ -303,6 +306,7 @@ export default function HomeScreen() {
                   <HomeSmartTile
                     view={tile}
                     onPress={(href) => router.push(href as Href)}
+                    minHeight={bottomRowMinHeight}
                     onIntrinsicHeight={setSmartTileHeight}
                   />
                 </View>
@@ -310,6 +314,8 @@ export default function HomeScreen() {
                   reorder={
                     <HomeReorderTile
                       title={previous?.title ?? null}
+                      minHeight={bottomRowMinHeight}
+                      onIntrinsicHeight={setReorderTileHeight}
                       onPress={() => previous && void reorder(previous)}
                     />
                   }
@@ -317,7 +323,8 @@ export default function HomeScreen() {
                   onPromoPress={pressPromo}
                   onPromoShown={showPromo}
                   paused={openPromo !== null || quickActionsOpen}
-                  minHeight={smartTileHeight}
+                  minHeight={bottomRowMinHeight}
+                  onIntrinsicHeight={setPromoTileHeight}
                 />
               </View>
             </>

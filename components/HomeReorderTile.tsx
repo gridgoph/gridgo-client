@@ -8,6 +8,8 @@ type Props = {
   /** The job a tap reorders, or null when there is none yet. */
   title: string | null;
   onPress: () => void;
+  onIntrinsicHeight?: (height: number) => void;
+  minHeight?: number;
 };
 
 /**
@@ -15,9 +17,10 @@ type Props = {
  * already filled in. With nothing to reorder it stays in place, disabled, and
  * says why — a tile that vanishes moves everything beside it.
  */
-export function HomeReorderTile({ title, onPress }: Props) {
+export function HomeReorderTile({ title, onPress, onIntrinsicHeight, minHeight }: Props) {
   const colors = useThemeColors();
   const disabled = !title;
+  const floor = Math.max(HOME_TILE_MIN_HEIGHT, minHeight ?? 0);
   return (
     <Pressable
       testID="reorder-tile"
@@ -27,11 +30,12 @@ export function HomeReorderTile({ title, onPress }: Props) {
       accessibilityLabel={disabled ? "Reorder. No past print yet" : `Reorder ${title}`}
       accessibilityState={{ disabled }}
       className="w-full grow overflow-hidden rounded-card border border-outline bg-surface-variant p-3"
-      style={{ minHeight: HOME_TILE_MIN_HEIGHT, minWidth: 0 }}
+      style={{ minHeight: floor, minWidth: 0 }}
     >
       {({ pressed }) => (
         <>
           <HomeTileSlots
+            onIntrinsicHeight={onIntrinsicHeight}
             top={
               <View className={disabled ? "h-8 w-8 items-center justify-center rounded-pill bg-surface-high gg-disabled" : "h-8 w-8 items-center justify-center rounded-pill bg-surface-high"}>
                 <RefreshCw size={16} color={colors.textPrimary} strokeWidth={2} />

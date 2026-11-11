@@ -24,9 +24,12 @@ jest.mock("expo-router", () => ({
 }));
 
 /**
- * Both Home tiles share one grid (client#419), using `minHeight` rather than
- * fixed `height` so large Android system font scales expand both cards together
- * without clipping text or letting the progress bar / pager dots overlap words.
+ * Prop and callback wiring tests for Home's shared bottom-tile grid
+ * (client#419, #423): slots and cards wire `minHeight` rather than fixed
+ * `height`, omit `numberOfLines` caps, and propagate unstretched body heights
+ * via `onIntrinsicHeight` / `minHeight`. Rendered visual bounds across phone
+ * sizes and font scales 1.0x, 1.3x and 2.0x are verified separately via the
+ * Expo web layout/screenshot capture harness.
  */
 
 const ORDER = ["top", "title", "subtitle", "footer"] as const;
@@ -96,36 +99,36 @@ it.each([
   expect(cardStyle.height).toBeUndefined();
 });
 
-it("keeps Your order, Reorder and promo text unclipped and scales row floor across 360x740, 390x844, 430x932 and font scales 1.0, 1.3 and 2.0", async () => {
+it("wires minHeight propagation and leaves text uncapped across Your order, Reorder and promo tiles", async () => {
   await render(<HomeSmartTile view={ACTIVE} onPress={jest.fn()} />);
+  expect(screen.getByText("YOUR ORDER · +4").props.numberOfLines).toBeUndefined();
   expect(screen.getByText("Order placed").props.numberOfLines).toBeUndefined();
   expect(screen.getByText("Ready by Fri, Nov 6").props.numberOfLines).toBeUndefined();
 
-  for (const width of [360, 390, 430] as const) {
-    for (const fontScale of [1.0, 1.3, 2.0] as const) {
-      const colWidth = Math.floor((width - 32 - 12) / 2);
-      expect(colWidth).toBeGreaterThan(150);
-      const scaledBodyHeight = Math.ceil(
-        (TILE_SLOTS.top + TILE_SLOTS.title * (fontScale > 1 ? 2 : 1) + TILE_SLOTS.subtitle) * fontScale,
-      );
-      const rowHeight = Math.max(HOME_TILE_HEIGHT, tileIntrinsicHeight(scaledBodyHeight));
-      await render(
-        <HomeRotatingTile
-          reorder={<HomeReorderTile title="Flyers" onPress={jest.fn()} />}
-          promos={[PROMO]}
-          onPromoPress={jest.fn()}
-          onPromoShown={jest.fn()}
-          minHeight={rowHeight}
-        />,
-      );
-      const rotatorStyle = StyleSheet.flatten(screen.getByTestId("home-rotating-tile").props.style);
-      expect(rotatorStyle.minHeight).toBe(rowHeight);
-      expect(rotatorStyle.height).toBeUndefined();
-      expect(rotatorStyle.flexBasis).toBe(0);
-      expect(rotatorStyle.minWidth).toBe(0);
-      expect(screen.getAllByText("Flyers", { includeHiddenElements: true })[0].props.numberOfLines).toBeUndefined();
-      expect(screen.getByText("DavaoGo").props.numberOfLines).toBeUndefined();
-    }
+  for (const bodyHeight of [86, 138, 212] as const) {
+    const rowHeight = Math.max(HOME_TILE_HEIGHT, tileIntrinsicHeight(bodyHeight));
+    await render(
+      <HomeRotatingTile
+        reorder={<HomeReorderTile title="Flyers" minHeight={rowHeight} onPress={jest.fn()} />}
+        promos={[PROMO]}
+        onPromoPress={jest.fn()}
+        onPromoShown={jest.fn()}
+        minHeight={rowHeight}
+      />,
+    );
+    const rotatorStyle = StyleSheet.flatten(screen.getByTestId("home-rotating-tile").props.style);
+    expect(rotatorStyle.minHeight).toBe(rowHeight);
+    expect(rotatorStyle.height).toBeUndefined();
+    expect(rotatorStyle.flexBasis).toBe(0);
+    expect(rotatorStyle.minWidth).toBe(0);
+
+    const promoStyle = StyleSheet.flatten(screen.getByTestId("promo-tile-promo_davaogo").props.style);
+    expect(promoStyle.minHeight).toBe(rowHeight);
+
+    expect(screen.getAllByText("Flyers", { includeHiddenElements: true })[0].props.numberOfLines).toBeUndefined();
+    expect(screen.getByText("DavaoGo").props.numberOfLines).toBeUndefined();
+    expect(screen.getByText("Plan your commute").props.numberOfLines).toBeUndefined();
+    expect(screen.getByText("Sponsored").props.numberOfLines).toBeUndefined();
   }
 });
 

@@ -6,9 +6,10 @@ import { featuredPrintsFrom } from "@/lib/homeSamples";
 import { usePlatformSettings } from "@/store/platformSettings";
 
 /**
- * Isolated single-event test (AGENTS.md, "Running and testing"): when one
- * featured title wraps taller at a larger font scale, both cards' title slots
- * expand to the same height so the bottom bands and prices stay aligned.
+ * Isolated single-event callback wiring test (AGENTS.md, "Running and testing"):
+ * when one featured title reports a taller `onLayout` height, `HomeFeaturedPrints`
+ * propagates that `minHeight` to both cards' title slots. Rendered font-scale
+ * layout bounds are verified via the Expo web screenshot/bounds harness.
  */
 
 const MIXED = featuredPrintsFrom({
@@ -43,7 +44,7 @@ beforeEach(() => {
   });
 });
 
-it("aligns both cards' title slots when one title wraps taller at large font scale", async () => {
+it("wires onLayout title height from the taller card to both cards' title-slot minHeight props", async () => {
   await render(<HomeFeaturedPrints samples={MIXED} loading={false} onPick={jest.fn()} onSeeAll={jest.fn()} />);
 
   fireEvent(screen.getByTestId("featured-title-sci_blueprint_blue"), "layout", {

@@ -10,6 +10,8 @@ import { promoCardColors } from "@/lib/promoCardColors";
 type Props = {
   promo: HomePromotion;
   onPress: () => void;
+  onIntrinsicHeight?: (height: number) => void;
+  minHeight?: number;
 };
 
 /**
@@ -25,10 +27,11 @@ type Props = {
  * which React Native's `Pressable` does not invoke and `View` ignores — dropping
  * `backgroundColor` and `borderColor` on Android and iOS.
  */
-export function HomePromoTile({ promo, onPress }: Props) {
+export function HomePromoTile({ promo, onPress, onIntrinsicHeight, minHeight }: Props) {
   const colors = useThemeColors();
   const card = promoCardColors(promo, colors.canvas, colors.outline);
   const tag = promotionTagLabel(promo.tag);
+  const floor = Math.max(HOME_TILE_MIN_HEIGHT, minHeight ?? 0);
   return (
     <Pressable
       testID={`promo-tile-${promo.id}`}
@@ -37,7 +40,7 @@ export function HomePromoTile({ promo, onPress }: Props) {
       accessibilityLabel={`${promo.name}. ${tag}`}
       accessibilityHint={promo.tapAction === "link" ? "Opens in your browser" : undefined}
       className="w-full grow overflow-hidden rounded-card border p-3"
-      style={{ minHeight: HOME_TILE_MIN_HEIGHT, minWidth: 0, backgroundColor: card.background, borderColor: card.border }}
+      style={{ minHeight: floor, minWidth: 0, backgroundColor: card.background, borderColor: card.border }}
     >
       {({ pressed }) => (
         <>
@@ -50,14 +53,30 @@ export function HomePromoTile({ promo, onPress }: Props) {
             />
           ) : null}
           <HomeTileSlots
+            onIntrinsicHeight={onIntrinsicHeight}
             top={
-              <View className="flex-row items-center justify-between gap-1.5" style={{ minHeight: TILE_SLOTS.top, minWidth: 0 }}>
-                <PromoLogo uri={promo.logoUrl} name={promo.name} size={28} />
-                <View testID="promo-tile-tag" className="shrink rounded-pill px-1.5 py-0.5" style={{ minWidth: 0, backgroundColor: card.chip }}>
+              <View
+                className="flex-row flex-wrap items-center justify-between gap-1.5"
+                style={{ minHeight: TILE_SLOTS.top, minWidth: 0 }}
+              >
+                <View className="shrink-0">
+                  <PromoLogo uri={promo.logoUrl} name={promo.name} size={28} />
+                </View>
+                <View
+                  testID="promo-tile-tag"
+                  className="shrink rounded-xl px-1 py-0.5"
+                  style={{ minWidth: 0, backgroundColor: card.chip }}
+                >
                   <Text
                     className="shrink text-caption font-bold"
-                    style={{ color: card.muted, fontSize: 10, lineHeight: 15, letterSpacing: 0.4, textTransform: "uppercase" }}
-                    numberOfLines={1}
+                    style={{
+                      minWidth: 0,
+                      color: card.muted,
+                      fontSize: 10,
+                      lineHeight: 15,
+                      letterSpacing: 0.2,
+                      textTransform: "uppercase",
+                    }}
                   >
                     {tag}
                   </Text>
@@ -66,25 +85,29 @@ export function HomePromoTile({ promo, onPress }: Props) {
             }
             title={
               <View className="flex-row items-center gap-1" style={{ minWidth: 0 }}>
-                <Text className="flex-1 text-h3" style={{ color: card.ink }}>
+                <Text className="flex-1 text-h3" style={{ minWidth: 0, color: card.ink }}>
                   {promo.name}
                 </Text>
-                {promo.tapAction === "link" ? <ArrowUpRight size={16} color={card.ink} strokeWidth={2} /> : null}
+                {promo.tapAction === "link" ? (
+                  <View className="shrink-0">
+                    <ArrowUpRight size={16} color={card.ink} strokeWidth={2} />
+                  </View>
+                ) : null}
               </View>
             }
             subtitle={
               promo.linkText ? (
-                <View testID="promo-tile-link" className="flex-row items-center" style={{ gap: 2, minWidth: 0 }}>
+                <View testID="promo-tile-link" className="flex-row items-center gap-1" style={{ minWidth: 0 }}>
                   <Text
                     testID="promo-tile-link-text"
                     className="shrink text-caption"
                     style={{ color: card.muted, lineHeight: 18 }}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
                   >
                     {promo.linkText}
                   </Text>
-                  <ArrowRight size={12} color={card.ink} strokeWidth={2.25} />
+                  <View className="shrink-0">
+                    <ArrowRight size={12} color={card.ink} strokeWidth={2.25} />
+                  </View>
                 </View>
               ) : null
             }

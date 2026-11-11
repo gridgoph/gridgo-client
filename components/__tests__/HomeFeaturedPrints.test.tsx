@@ -90,7 +90,7 @@ it("draws two or more curated prints as equal-size twin cards with aligned badge
   expect(screen.getByTestId("featured-price-badge-sci_blueprint_white")).toBeTruthy();
 });
 
-it("computes symmetric shared title band heights across font scales 1.0, 1.3 and 2.0", () => {
+it("wires sharedFeaturedTitleHeight to return the tallest title measurement above the 40pt floor", () => {
   expect(sharedFeaturedTitleHeight([20, 20])).toBe(FEATURED_TITLE_MIN_HEIGHT);
   expect(sharedFeaturedTitleHeight([52, 26])).toBe(52);
   expect(sharedFeaturedTitleHeight([80, 40])).toBe(80);

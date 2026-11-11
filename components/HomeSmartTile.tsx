@@ -15,6 +15,7 @@ type Props = {
   view: SmartTileView | null;
   onPress: (href: string) => void;
   onIntrinsicHeight?: (height: number) => void;
+  minHeight?: number;
 };
 
 /**
@@ -26,10 +27,11 @@ type Props = {
  * growing with larger system type and stretching to match its right-hand twin
  * so neither card clips or moves independently.
  */
-export function HomeSmartTile({ view, onPress, onIntrinsicHeight }: Props) {
+export function HomeSmartTile({ view, onPress, onIntrinsicHeight, minHeight }: Props) {
+  const floor = Math.max(HOME_TILE_HEIGHT, minHeight ?? 0);
   if (!view) {
     return (
-      <View testID="smart-tile-loading" className="w-full grow" style={{ minHeight: HOME_TILE_HEIGHT, minWidth: 0 }}>
+      <View testID="smart-tile-loading" className="w-full grow" style={{ minHeight: floor, minWidth: 0 }}>
         <SkeletonBlock className="h-full w-full rounded-card" />
       </View>
     );
@@ -46,7 +48,7 @@ export function HomeSmartTile({ view, onPress, onIntrinsicHeight }: Props) {
           ? "w-full grow overflow-hidden rounded-card border-2 border-dashed border-brand bg-surface p-[11px]"
           : "w-full grow overflow-hidden rounded-card border border-outline bg-surface p-3"
       }
-      style={{ minHeight: HOME_TILE_HEIGHT, minWidth: 0 }}
+      style={{ minHeight: floor, minWidth: 0 }}
     >
       {({ pressed }) => (
         <>
@@ -62,10 +64,10 @@ function Overline({ text, icon }: { text: string; icon?: ReactNode }) {
   return (
     <View className="flex-row items-center justify-between gap-1" style={{ minWidth: 0 }}>
       {/* Tighter tracking than the page overline: the tile is half a phone wide. */}
-      <Text className="flex-1 text-caption font-bold text-text-secondary" numberOfLines={1}>
+      <Text className="flex-1 text-caption font-bold text-text-secondary" style={{ minWidth: 0 }}>
         {text}
       </Text>
-      {icon}
+      {icon ? <View className="shrink-0">{icon}</View> : null}
     </View>
   );
 }
@@ -140,7 +142,9 @@ function TileBody({
               <View className="h-6 w-6 items-center justify-center rounded-pill bg-accent">
                 <Plus size={14} color={colors.accentOn} strokeWidth={2.5} />
               </View>
-              <Text className="flex-1 text-h3 text-text-primary">Share</Text>
+              <Text className="flex-1 text-h3 text-text-primary" style={{ minWidth: 0 }}>
+                Share
+              </Text>
             </View>
           }
           subtitle={

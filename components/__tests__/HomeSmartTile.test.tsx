@@ -46,9 +46,10 @@ it("holds the same space while the summary loads", async () => {
   expect(minHeight("smart-tile-loading")).toBe(HOME_TILE_HEIGHT);
 });
 
-it("says what the active order is doing, never a countdown", async () => {
+it("says what the active order is doing with no line-cap truncation on overline, headline or detail", async () => {
   await render(<HomeSmartTile view={VIEWS[1]} onPress={jest.fn()} />);
 
-  expect(screen.getByText("Printing")).toBeTruthy();
-  expect(screen.getByText("Ready by Wed, 4 Nov")).toBeTruthy();
+  expect(screen.getByText("YOUR ORDER · +1").props.numberOfLines).toBeUndefined();
+  expect(screen.getByText("Printing").props.numberOfLines).toBeUndefined();
+  expect(screen.getByText("Ready by Wed, 4 Nov").props.numberOfLines).toBeUndefined();
 });
