@@ -192,15 +192,13 @@ export function keepHeldFeatured(
 
 /**
  * How many tiles Featured Prints draws, and in which shape: one card fills
- * the block, two sit side by side, three or more make the bento — the first
- * card large, the next two stacked beside it. Staff order decides which card
- * is large; nothing past the third is drawn ("See all" is the rest).
+ * the block, two or more sit side by side as equal twins on Home's centre
+ * axis, in staff order ("See all" opens the rest).
  */
-export type FeaturedShape = "single" | "pair" | "bento";
+export type FeaturedShape = "single" | "pair";
 
 export function featuredShape(count: number): FeaturedShape | null {
   if (count <= 0) return null;
   if (count === 1) return "single";
-  if (count === 2) return "pair";
-  return "bento";
+  return "pair";
 }

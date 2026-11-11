@@ -209,6 +209,10 @@ export default function HomeScreen() {
   };
 
   const [searchOpen, setSearchOpen] = useState(false);
+  const [smartTileHeight, setSmartTileHeight] = useState(0);
+  const [reorderTileHeight, setReorderTileHeight] = useState(0);
+  const [promoTileHeight, setPromoTileHeight] = useState(0);
+  const bottomRowMinHeight = Math.max(smartTileHeight, reorderTileHeight, promos.length ? promoTileHeight : 0);
   const firstName = (user?.name ?? "").trim().split(/\s+/)[0];
 
   return (
@@ -296,15 +300,22 @@ export default function HomeScreen() {
                 </TourTarget>
               ) : null}
 
-              <View className="flex-row gap-3">
+              <View className="flex-row items-stretch gap-3">
                 {/* A bare column: flex-basis counts a tile's own padding and border, and only the left tile carries them. */}
                 <View className="flex-1" style={{ minWidth: 0, flexBasis: 0 }}>
-                  <HomeSmartTile view={tile} onPress={(href) => router.push(href as Href)} />
+                  <HomeSmartTile
+                    view={tile}
+                    onPress={(href) => router.push(href as Href)}
+                    minHeight={bottomRowMinHeight}
+                    onIntrinsicHeight={setSmartTileHeight}
+                  />
                 </View>
                 <HomeRotatingTile
                   reorder={
                     <HomeReorderTile
                       title={previous?.title ?? null}
+                      minHeight={bottomRowMinHeight}
+                      onIntrinsicHeight={setReorderTileHeight}
                       onPress={() => previous && void reorder(previous)}
                     />
                   }
@@ -312,6 +323,8 @@ export default function HomeScreen() {
                   onPromoPress={pressPromo}
                   onPromoShown={showPromo}
                   paused={openPromo !== null || quickActionsOpen}
+                  minHeight={bottomRowMinHeight}
+                  onIntrinsicHeight={setPromoTileHeight}
                 />
               </View>
             </>

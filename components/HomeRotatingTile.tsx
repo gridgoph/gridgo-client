@@ -11,9 +11,8 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import { HOME_TILE_HEIGHT } from "@/components/HomeSmartTile";
 import { HomePromoTile } from "@/components/HomePromoTile";
-import { TILE_FOOTER_DOTS } from "@/components/HomeTileSlots";
+import { HOME_TILE_MIN_HEIGHT, TILE_FOOTER_DOTS } from "@/components/HomeTileSlots";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useThemeColors } from "@/hooks/useTheme";
 import { homeSlides, nextSlideIndex, PROMO_ROTATE_MS, type HomePromotion } from "@/lib/homePromos";
@@ -31,6 +30,10 @@ type Props = {
    * turns nor counts a view, and resumes with a full five seconds.
    */
   paused?: boolean;
+  /** Intrinsic height of the sibling smart tile so horizontal pages stretch to match it. */
+  minHeight?: number;
+  /** Reports the tallest unstretched promo slide height so the row twin can match it too. */
+  onIntrinsicHeight?: (height: number) => void;
 };
 
 /**
@@ -45,12 +48,26 @@ type Props = {
  * real Reorder without animation, which looks identical.
  */
 export function HomeRotatingTile(props: Props) {
-  if (!props.promos.length) return <View className="flex-1" style={{ minWidth: 0, flexBasis: 0 }}>{props.reorder}</View>;
+  const cardMinHeight = Math.max(HOME_TILE_MIN_HEIGHT, props.minHeight ?? 0);
+  if (!props.promos.length) {
+    return (
+      <View className="flex-1" style={{ minHeight: cardMinHeight, minWidth: 0, flexBasis: 0 }}>
+        {props.reorder}
+      </View>
+    );
+  }
   return <Rotator {...props} />;
 }
 
-function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }: Props) {
+function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false, minHeight, onIntrinsicHeight }: Props) {
   const colors = useThemeColors();
+  const [promoHeights, setPromoHeights] = useState<Record<string, number>>({});
+  const maxPromoHeight = Math.max(0, ...promos.map((promo) => promoHeights[promo.id] ?? 0));
+  const cardMinHeight = Math.max(HOME_TILE_MIN_HEIGHT, minHeight ?? 0, maxPromoHeight);
+
+  useEffect(() => {
+    if (maxPromoHeight > 0) onIntrinsicHeight?.(maxPromoHeight);
+  }, [maxPromoHeight, onIntrinsicHeight]);
   const reducedMotion = useReducedMotion();
   const slides = homeSlides(promos);
   const count = slides.length;
@@ -148,7 +165,7 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
       testID="home-rotating-tile"
       className="flex-1 overflow-hidden rounded-card"
       // minWidth 0: the pages' scroll content must not widen this column past its twin.
-      style={{ height: HOME_TILE_HEIGHT, minWidth: 0, flexBasis: 0 }}
+      style={{ minHeight: cardMinHeight, minWidth: 0, flexBasis: 0 }}
       onLayout={onLayout}
       onTouchStart={hold}
       onTouchEnd={release}
@@ -161,6 +178,7 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         scrollEventThrottle={16}
+        contentContainerStyle={{ alignItems: "stretch" }}
         onScroll={onScroll}
         onScrollBeginDrag={hold}
         onScrollEndDrag={release}
@@ -170,17 +188,24 @@ function Rotator({ reorder, promos, onPromoPress, onPromoShown, paused = false }
           return (
             <View
               key={copy ? "reorder-copy" : page.kind === "promo" ? page.promo.id : "reorder"}
-              style={{ width: width || undefined, height: HOME_TILE_HEIGHT }}
+              style={{ width: width || undefined, flexShrink: 0, minHeight: cardMinHeight }}
               // The copy is a visual seam only: hidden from touch-free readers.
               importantForAccessibility={copy ? "no-hide-descendants" : "auto"}
               accessibilityElementsHidden={copy}
               aria-hidden={copy || undefined}
-              className="flex-row"
+              className="grow items-stretch"
             >
               {page.kind === "reorder" ? (
-                copy ? <View className="flex-1" pointerEvents="none">{reorder}</View> : reorder
+                copy ? <View className="w-full grow" pointerEvents="none">{reorder}</View> : reorder
               ) : (
-                <HomePromoTile promo={page.promo} onPress={() => onPromoPress(page.promo)} />
+                <HomePromoTile
+                  promo={page.promo}
+                  minHeight={cardMinHeight}
+                  onIntrinsicHeight={(height) =>
+                    setPromoHeights((prev) => (prev[page.promo.id] === height ? prev : { ...prev, [page.promo.id]: height }))
+                  }
+                  onPress={() => onPromoPress(page.promo)}
+                />
               )}
             </View>
           );
