@@ -31,6 +31,7 @@ describe("promotionsFrom", () => {
       id: "promo_1",
       name: "DavaoGo",
       logoUrl: "https://files.example/logo.png",
+      cardImageUrl: null,
       imageUrl: null,
       description: "Rides and deliveries around Davao.",
       tag: "partner",
@@ -53,6 +54,27 @@ describe("promotionsFrom", () => {
     const [promo] = promotionsFrom([{ ...davaogo, logo: undefined, logoUrl: "https://a/l.png", imageUrl: "https://a/i.jpg" }]);
     expect(promo.logoUrl).toBe("https://a/l.png");
     expect(promo.imageUrl).toBe("https://a/i.jpg");
+  });
+
+  it("reads the card image and the cover as two separate pictures (client#425)", () => {
+    const [promo] = promotionsFrom([
+      {
+        ...davaogo,
+        cardImage: { fileId: "file_card", contentType: "image/jpeg", downloadUrl: "https://files.example/card.jpg", expiresAt: "2026-11-11T00:05:00Z" },
+        image: { fileId: "file_cover", contentType: "image/jpeg", downloadUrl: "https://files.example/cover.jpg", expiresAt: "2026-11-11T00:05:00Z" },
+      },
+    ]);
+    expect(promo.cardImageUrl).toBe("https://files.example/card.jpg");
+    expect(promo.imageUrl).toBe("https://files.example/cover.jpg");
+  });
+
+  it("keeps the colour card when the feed has no card image, or an empty one", () => {
+    // An API before #425 sends no field at all; a promo without one sends null.
+    expect(promotionsFrom([davaogo])[0].cardImageUrl).toBeNull();
+    expect(promotionsFrom([{ ...davaogo, cardImage: null }])[0].cardImageUrl).toBeNull();
+    expect(promotionsFrom([{ ...davaogo, cardImage: { fileId: "file_card" } }])[0].cardImageUrl).toBeNull();
+    // A cover alone never becomes the card image.
+    expect(promotionsFrom([{ ...davaogo, imageUrl: "https://a/i.jpg" }])[0].cardImageUrl).toBeNull();
   });
 
   it("drops a promo without an https link, a name or an id, and duplicates", () => {

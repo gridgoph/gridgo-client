@@ -1,4 +1,4 @@
-import { contrastRatio, promoCardColor, promoCardColors, readableInk } from "@/lib/promoCardColors";
+import { contrastRatio, promoCardColor, promoCardColors, promoShowsCardImage, readableInk } from "@/lib/promoCardColors";
 
 const LIGHT_CANVAS = "#F8F8F8";
 const DARK_CANVAS = "#000000";
@@ -33,5 +33,26 @@ describe("promo card colour (promo-color contract)", () => {
     expect(promoCardColors({ color: "#FFFFFF", style: "light" }, DARK_CANVAS, OUTLINE).border).toBe("#FFFFFF");
     expect(promoCardColors({ color: "#1A1A1A", style: "light" }, DARK_CANVAS, OUTLINE).border).toBe(OUTLINE);
     expect(promoCardColors({ color: "#17A673", style: "light" }, LIGHT_CANVAS, OUTLINE).border).toBe("#17A673");
+  });
+
+  it("draws white ink over a card image, whatever the colour behind it (client#425)", () => {
+    for (const screen of [LIGHT_CANVAS, DARK_CANVAS]) {
+      const card = promoCardColors({ color: "#FFFFFF", style: "light" }, screen, OUTLINE, true);
+      expect(card.ink).toBe("#FFFFFF");
+      // The colour stays behind the picture while it loads.
+      expect(card.background).toBe("#FFFFFF");
+      // A dark wash, so the tag reads on the top of any picture.
+      expect(card.chip).toBe("#00000073");
+      expect(card.border).toBe("#FFFFFF");
+    }
+  });
+
+  it("draws the card image only while one is set and has not failed", () => {
+    const none = new Set<string>();
+    expect(promoShowsCardImage({ cardImageUrl: null }, none)).toBe(false);
+    expect(promoShowsCardImage({ cardImageUrl: "https://a/card.jpg" }, none)).toBe(true);
+    expect(promoShowsCardImage({ cardImageUrl: "https://a/card.jpg" }, new Set(["https://a/card.jpg"]))).toBe(false);
+    // A fresh signed link from the next feed read gets its own attempt.
+    expect(promoShowsCardImage({ cardImageUrl: "https://a/card.jpg?v=2" }, new Set(["https://a/card.jpg"]))).toBe(true);
   });
 });

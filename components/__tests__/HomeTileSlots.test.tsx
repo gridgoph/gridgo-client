@@ -55,6 +55,7 @@ const PROMO: HomePromotion = {
   id: "promo_davaogo",
   name: "DavaoGo",
   logoUrl: null,
+  cardImageUrl: null,
   imageUrl: null,
   description: "",
   tag: "sponsored",
