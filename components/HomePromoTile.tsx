@@ -142,8 +142,8 @@ export function HomePromoTile({ promo, onPress, onCardImageError, onIntrinsicHei
 }
 
 /**
- * Clear at the top, dark under the name, link line and dots, so white ink
- * reads on any card image. Drawn, not a library: react-native-svg is already
+ * Light at the top, dark from the name down through the link line and dots,
+ * so white ink reads on any card image (the name sits mid-card). Drawn, not a library: react-native-svg is already
  * the app's gradient.
  */
 function CardScrim() {
@@ -152,9 +152,9 @@ function CardScrim() {
       <Svg width="100%" height="100%" preserveAspectRatio="none">
         <Defs>
           <LinearGradient id="gg-promo-scrim" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#000000" stopOpacity="0.05" />
-            <Stop offset="0.35" stopColor="#000000" stopOpacity="0.15" />
-            <Stop offset="1" stopColor="#000000" stopOpacity="0.72" />
+            <Stop offset="0" stopColor="#000000" stopOpacity="0.15" />
+            <Stop offset="0.4" stopColor="#000000" stopOpacity="0.45" />
+            <Stop offset="1" stopColor="#000000" stopOpacity="0.75" />
           </LinearGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#gg-promo-scrim)" />
