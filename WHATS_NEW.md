@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.614 (Improvement)
+
+- Partner cards on Home show the whole logo and can carry their own picture, with the full cover in the details.
+
 ## 1.0.608 (Fix)
 
 - Home cards now fit larger text without clipping, show partner card colours, and line up Featured prints evenly.
