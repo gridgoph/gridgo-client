@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.632 (Fix)
+
+- Location lookups stop if they take too long, keep your dragged pin in place, and announce errors with a retry.
+
 ## 1.0.626 (Improvement)
 
 - Drag the drop-off pin onto your door, and search finds more of Davao with clearer results.
