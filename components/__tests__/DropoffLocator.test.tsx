@@ -25,14 +25,14 @@ const OK: GeocodeResult = {
 
 jest.mock("@/components/PinPicker", () => {
   const React = require("react");
-  const { Pressable: MockPressable, Text: MockText } = require("react-native");
+  const { Pressable: MockPressable } = require("react-native");
   return {
     PinPicker: ({
       onPick,
-      caption,
+      children,
     }: {
       onPick: (point: { lat: number; lng: number }) => void;
-      caption?: string | null;
+      children?: unknown;
     }) =>
       React.createElement(
         React.Fragment,
@@ -42,23 +42,21 @@ jest.mock("@/components/PinPicker", () => {
           accessibilityLabel: "Drop pin",
           onPress: () => onPick({ lat: 7.0731, lng: 125.6128 }),
         }),
-        caption
-          ? React.createElement(MockText, { accessibilityLabel: "pin caption" }, caption)
-          : null,
+        children,
       ),
   };
 });
 
 jest.mock("@/components/PinPicker.native", () => {
   const React = require("react");
-  const { Pressable: MockPressable, Text: MockText } = require("react-native");
+  const { Pressable: MockPressable } = require("react-native");
   return {
     PinPicker: ({
       onPick,
-      caption,
+      children,
     }: {
       onPick: (point: { lat: number; lng: number }) => void;
-      caption?: string | null;
+      children?: unknown;
     }) =>
       React.createElement(
         React.Fragment,
@@ -68,9 +66,7 @@ jest.mock("@/components/PinPicker.native", () => {
           accessibilityLabel: "Drop pin",
           onPress: () => onPick({ lat: 7.0731, lng: 125.6128 }),
         }),
-        caption
-          ? React.createElement(MockText, { accessibilityLabel: "pin caption" }, caption)
-          : null,
+        children,
       ),
   };
 });
@@ -117,9 +113,8 @@ describe("DropoffLocator", () => {
         "12 J.P. Laurel Avenue",
       );
     });
-    expect(screen.getByLabelText("pin caption").props.children).toBe(
-      "12 J.P. Laurel Avenue, Bajada, Davao City",
-    );
+    // The row under the map confirms the street, then the rest once.
+    expect(screen.getByText("Bajada, Davao City")).toBeTruthy();
     expect(screen.getByLabelText("search query").props.children).toBe("");
     expect(screen.getByLabelText("Search location").props.value).toBe("");
   });

@@ -124,7 +124,11 @@ export default function SavedPlaceScreen() {
           />
           {editor.touched && !editor.ready ? (
             <Text className="text-center text-caption text-text-muted">
-              {editor.point
+              {editor.outside
+                ? "Move the pin into Davao City — GRIDGO only delivers there."
+                : editor.reversing || editor.locating
+                ? "Wait a moment — the map is still reading this pin."
+                : editor.point
                 ? "Add the street and number so a rider can find it."
                 : "Search, use your location, or tap the map — GRIDGO prices delivery from this pin."}
             </Text>
