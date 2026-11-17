@@ -13,6 +13,8 @@ export type PinPickerProps = {
   accuracyMeters?: number | null;
   /** A tap or a drag on the map. */
   onPick: (point: GeoPoint) => void;
+  /** Cancel a pending phone fix as soon as the pin is picked up. */
+  onPickStart?: () => void;
   /** Controls drawn over the map (Use my location). */
   children?: ReactNode;
 };
@@ -26,7 +28,7 @@ export type PinPickerProps = {
  * document in a sandboxed iframe, as `DeliveryMap.tsx` does — the web used to
  * get no map at all, only "The map needs the GRIDGO app on your phone".
  */
-export function PinPicker({ point, accuracyMeters, onPick, children }: PinPickerProps) {
+export function PinPicker({ point, accuracyMeters, onPick, onPickStart, children }: PinPickerProps) {
   const theme = useThemeName() === "dark" ? "dark" : "light";
   const colors = useThemeColors();
   const frame = useRef<HTMLIFrameElement | null>(null);
@@ -54,14 +56,20 @@ export function PinPicker({ point, accuracyMeters, onPick, children }: PinPicker
   }, [point, accuracyMeters]);
 
   const picked = useRef(onPick);
+  const grabbed = useRef(onPickStart);
   useEffect(() => {
     picked.current = onPick;
+    grabbed.current = onPickStart;
   });
   useEffect(() => {
     if (typeof window === "undefined") return;
     const listen = (event: MessageEvent) => {
       if (!frame.current || event.source !== frame.current.contentWindow) return;
       const message = parseMapMessage(event.data);
+      if (message?.type === "grab") {
+        grabbed.current?.();
+        return;
+      }
       if (message?.type !== "pin") return;
       const next = { lat: message.lat, lng: message.lng };
       lastTap.current = next;
