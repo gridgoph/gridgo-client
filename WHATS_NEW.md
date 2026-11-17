@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.626 (Improvement)
+
+- Drag the drop-off pin onto your door, and search finds more of Davao with clearer results.
+
 ## 1.0.619 (Improvement)
 
 - Featured prints is now a swipeable row of tall cards showing every featured product, with name and price below.
