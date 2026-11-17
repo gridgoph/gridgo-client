@@ -1,5 +1,7 @@
 import {
   LOCATION_DENIED,
+  LOCATION_UNAVAILABLE,
+  FALLBACK_FIX_TIMEOUT_MS,
   PRECISE_FIX_TIMEOUT_MS,
   peekCurrentLocation,
   requestCurrentLocation,
@@ -44,6 +46,25 @@ describe("requestCurrentLocation", () => {
 });
 
 describe("precision", () => {
+  it.each(["request", "peek"])("ends a %s read when neither provider answers", async (kind) => {
+    jest.useFakeTimers();
+    try {
+      Location.requestForegroundPermissionsAsync.mockResolvedValue({ granted: true });
+      Location.getForegroundPermissionsAsync.mockResolvedValue({ granted: true });
+      Location.getCurrentPositionAsync.mockImplementation(() => new Promise(() => undefined));
+      const answer = jest.fn();
+      const pending = (kind === "request" ? requestCurrentLocation() : peekCurrentLocation()).then(answer);
+      await jest.advanceTimersByTimeAsync(PRECISE_FIX_TIMEOUT_MS);
+      expect(Location.getCurrentPositionAsync).toHaveBeenLastCalledWith({ accuracy: 3 });
+      expect(answer).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(FALLBACK_FIX_TIMEOUT_MS);
+      expect(answer).toHaveBeenCalledWith({ status: "unavailable", message: LOCATION_UNAVAILABLE });
+      await pending;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("asks for a satellite fix and reports the phone's error radius", async () => {
     Location.requestForegroundPermissionsAsync.mockResolvedValue({ granted: true, status: "granted" });
     Location.getCurrentPositionAsync.mockResolvedValue({

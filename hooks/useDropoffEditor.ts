@@ -54,6 +54,7 @@ export function useDropoffEditor(options?: {
   const [asked, setAsked] = useState<{ query: string; attempt: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [completeAddress, setCompleteAddress] = useState("");
   const [reversing, setReversing] = useState(false);
@@ -133,7 +134,13 @@ export function useDropoffEditor(options?: {
   const stopLocating = useCallback(() => {
     locateGen.current += 1;
     setLocating(false);
+    setLocationError(null);
   }, []);
+
+  const beginPinDrag = useCallback(() => {
+    stopLocating();
+    setAccuracyMeters(null);
+  }, [stopLocating]);
 
   const pickSearch = useCallback(
     (suggestion: DropoffSuggestion) => {
@@ -206,16 +213,17 @@ export function useDropoffEditor(options?: {
     const mine = () => gen === locateGen.current;
     setLocating(true);
     setNotice(null);
+    setLocationError(null);
     try {
       const result = await requestCurrentLocation();
       if (!mine()) return;
       if (result.status !== "ok") {
-        setNotice(result.message);
+        setLocationError(result.message);
         return;
       }
       if (!pointInDavao(result.point)) {
         // Not a pin: the phone is somewhere GRIDGO does not deliver.
-        setNotice("This phone is outside Davao City. Search for the drop-off, or tap the map.");
+        setLocationError("This phone is outside Davao City. Search for the drop-off, or tap the map.");
         return;
       }
       setPoint(result.point);
@@ -268,10 +276,13 @@ export function useDropoffEditor(options?: {
   useEffect(() => {
     if (options?.skipPrePin || prePinned.current) return;
     prePinned.current = true;
+    const gen = locateGen.current;
     void peekCurrentLocation().then(async (result) => {
       if (!result || result.status !== "ok") return;
+      if (gen !== locateGen.current) return;
       if (pointRef.current || !pointInDavao(result.point)) return;
       const reverse = await reverseNominatim(result.point, appVersion());
+      if (gen !== locateGen.current) return;
       if (pointRef.current) return;
       setPoint(result.point);
       setAccuracyMeters(result.accuracyMeters ?? null);
@@ -286,6 +297,7 @@ export function useDropoffEditor(options?: {
     (input: { label: string; line1: string; landmark: string; point: GeoPoint }) => {
       locateGen.current += 1;
       setLocating(false);
+      setLocationError(null);
       setCityVerdict(null);
       reverseGen.current += 1;
       setReversing(false);
@@ -340,6 +352,7 @@ export function useDropoffEditor(options?: {
     retrySearch: submitSearch,
     locating,
     notice,
+    locationError,
     setNotice,
     touched,
     setTouched,
@@ -351,6 +364,7 @@ export function useDropoffEditor(options?: {
     saveLabel,
     pickSearch,
     pickPin,
+    beginPinDrag,
     useMyLocation,
     runReverse,
     loadSaved,

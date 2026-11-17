@@ -29,7 +29,7 @@ function samePoint(a: GeoPoint | null, b: GeoPoint | null): boolean {
  * injected into the live document so the marker moves and the map pans
  * without reloading tiles. `children` are drawn over the map's top corner.
  */
-export function PinPicker({ point, accuracyMeters, onPick, children }: PinPickerProps) {
+export function PinPicker({ point, accuracyMeters, onPick, onPickStart, children }: PinPickerProps) {
   const theme = useThemeName() === "dark" ? "dark" : "light";
   const colors = useThemeColors();
   const webRef = useRef<WebView>(null);
@@ -53,6 +53,10 @@ export function PinPicker({ point, accuracyMeters, onPick, children }: PinPicker
 
   const receive = (event: WebViewMessageEvent) => {
     const message = parseMapMessage(event.nativeEvent.data);
+    if (message?.type === "grab") {
+      onPickStart?.();
+      return;
+    }
     // Anything else on the channel (a pan) is not a pin.
     if (message?.type !== "pin") return;
     const next = { lat: message.lat, lng: message.lng };

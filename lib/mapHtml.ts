@@ -261,6 +261,7 @@ export function buildMapHtml(model: MapModel): string {
     var routeLayer = null;
     var accuracyLayer = null;
     var markers = [];
+    var dragging = false;
     // The client moved the map themselves; stop fitting it until they ask.
     // Read from their input, not from Leaflet's move events: a refit fires
     // those too, and would look like the client's own pan.
@@ -376,6 +377,9 @@ export function buildMapHtml(model: MapModel): string {
     }
 
     function applyModel(m) {
+      // Host messages can already be queued when the client grabs the pin.
+      // Keep the marker and viewport under their finger until the drop.
+      if (dragging) return;
       MODEL = m;
       var isDark = m.theme === 'dark';
       document.body.className = isDark ? 'dark-attr' : '';
@@ -463,11 +467,14 @@ export function buildMapHtml(model: MapModel): string {
         }).addTo(map);
         if (m.pickable) {
           dropMarker.on('dragstart', function () {
+            dragging = true;
             var el = dropMarker.getElement();
             if (el) el.classList.add('is-lifted');
             if (accuracyLayer) { map.removeLayer(accuracyLayer); accuracyLayer = null; }
+            notify({ type: 'grab' });
           });
           dropMarker.on('dragend', function () {
+            dragging = false;
             var at = dropMarker.getLatLng();
             placedByHand(at.lat, at.lng);
           });
@@ -533,6 +540,7 @@ export function buildMapHtml(model: MapModel): string {
     // Search / Use my location set the pin from JS. Clear the tap-guard so
     // the map pans to the new point; a finger-tap still skips that pan.
     function setExternalPin(lat, lng, accuracy) {
+      if (dragging) return;
       if (typeof lat !== 'number' || typeof lng !== 'number') return;
       if (!isFinite(lat) || !isFinite(lng)) return;
       MODEL.dropoff = { lat: lat, lng: lng };
@@ -644,13 +652,14 @@ export function pickerMapModel(input: {
 }
 
 /** A message the map page posts back: a tap that set a pin, or the client moving the view. */
-export type MapMessage = { type: "pin"; lat: number; lng: number } | { type: "moved" };
+export type MapMessage = { type: "pin"; lat: number; lng: number } | { type: "moved" } | { type: "grab" };
 
 export function parseMapMessage(data: unknown): MapMessage | null {
   if (typeof data !== "string") return null;
   try {
     const value = JSON.parse(data) as { type?: unknown; lat?: unknown; lng?: unknown };
     if (value.type === "moved") return { type: "moved" };
+    if (value.type === "grab") return { type: "grab" };
     if (value.type === "pin" && typeof value.lat === "number" && typeof value.lng === "number") {
       return { type: "pin", lat: value.lat, lng: value.lng };
     }
