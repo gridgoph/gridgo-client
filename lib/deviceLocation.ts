@@ -24,6 +24,9 @@ export const LOCATION_UNAVAILABLE =
 /** How long a satellite fix may take before the network's rougher one is used. */
 export const PRECISE_FIX_TIMEOUT_MS = 10000;
 
+/** Bound the network fallback too, so both reads finish within 20 seconds. */
+export const FALLBACK_FIX_TIMEOUT_MS = 10000;
+
 export type DeviceLocationResult =
   | {
       status: "ok";
@@ -100,7 +103,10 @@ async function readPosition(): Promise<DeviceLocationResult> {
     }
   }
   try {
-    const reading = (await Location.getCurrentPositionAsync({ accuracy: rough })) as Reading;
+    const reading = await withTimeout(
+      Location.getCurrentPositionAsync({ accuracy: rough }) as Promise<Reading>,
+      FALLBACK_FIX_TIMEOUT_MS,
+    );
     return resultFrom(reading) ?? { status: "unavailable", message: LOCATION_UNAVAILABLE };
   } catch {
     return { status: "unavailable", message: LOCATION_UNAVAILABLE };

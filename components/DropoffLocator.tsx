@@ -10,7 +10,8 @@ import {
   Search,
   SearchX,
 } from "lucide-react-native";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useEffect } from "react";
+import { AccessibilityInfo, ActivityIndicator, Platform, Pressable, Text, View } from "react-native";
 
 import { PinPicker } from "@/components/PinPicker";
 import { FormField } from "@/components/form/FormField";
@@ -31,6 +32,12 @@ type Editor = ReturnType<typeof useDropoffEditor>;
  * yellow belongs to the screen's Save, not to this hunt.
  */
 export function DropoffLocator({ editor }: { editor: Editor }) {
+  useEffect(() => {
+    if (editor.locationError && Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility(editor.locationError);
+    }
+  }, [editor.locationError]);
+
   return (
     <View className="gap-5">
       <View className="gap-3">
@@ -64,11 +71,36 @@ export function DropoffLocator({ editor }: { editor: Editor }) {
       </View>
 
       <View className="gg-card-flush">
-        <PinPicker point={editor.point} accuracyMeters={editor.accuracyMeters} onPick={editor.pickPin}>
+        <PinPicker
+          point={editor.point}
+          accuracyMeters={editor.accuracyMeters}
+          onPick={editor.pickPin}
+          onPickStart={editor.beginPinDrag}
+        >
           <LocateButton editor={editor} />
         </PinPicker>
         <PinRow status={editor.pin} />
       </View>
+      {editor.locationError ? (
+        <View className="gap-2">
+          <Text
+            accessibilityRole="alert"
+            accessibilityLiveRegion="assertive"
+            aria-live="assertive"
+            className="text-body text-text-secondary"
+          >
+            {editor.locationError}
+          </Text>
+          <Pressable
+            onPress={() => void editor.useMyLocation()}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+            className="min-h-11 justify-center self-start"
+          >
+            <Text className="text-body font-medium text-text-primary">Try again</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
