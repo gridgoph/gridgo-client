@@ -1,4 +1,14 @@
-import { CircleAlert, Flag, Hand, LocateFixed, Map as MapIcon, MapPin, Route, SearchX } from "lucide-react-native";
+import {
+  CircleAlert,
+  Flag,
+  Hand,
+  LocateFixed,
+  Map as MapIcon,
+  MapPin,
+  RotateCw,
+  Route,
+  SearchX,
+} from "lucide-react-native";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { PinPicker } from "@/components/PinPicker";
@@ -35,6 +45,8 @@ export function DropoffLocator({ editor }: { editor: Editor }) {
             autoCapitalize="words"
             autoCorrect={false}
             returnKeyType="search"
+            // The keyboard's Search key asks again, even for the same words.
+            onSubmitEditing={editor.retrySearch}
           />
         </FormField>
         <SearchState editor={editor} />
@@ -63,9 +75,26 @@ function SearchState({ editor }: { editor: Editor }) {
   }
   if (editor.searchNotice) {
     return (
-      <View className="flex-row items-start gap-2" accessibilityLiveRegion="polite">
+      <View className="flex-row items-center gap-2" accessibilityLiveRegion="polite">
         <SearchX size={16} color={colors.textSecondary} strokeWidth={2} aria-hidden />
         <Text className="min-w-0 flex-1 text-caption text-text-secondary">{editor.searchNotice}</Text>
+        {editor.searchFailed ? (
+          <Pressable
+            onPress={editor.retrySearch}
+            accessibilityRole="button"
+            accessibilityLabel="Retry search"
+            hitSlop={8}
+            className="min-h-11 flex-row items-center gap-1.5 overflow-hidden rounded-pill border border-outline bg-surface px-3"
+          >
+            {({ pressed }) => (
+              <>
+                <RotateCw size={14} color={colors.textPrimary} strokeWidth={2} aria-hidden />
+                <Text className="text-caption font-medium text-text-primary">Retry</Text>
+                {pressed ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
+              </>
+            )}
+          </Pressable>
+        ) : null}
       </View>
     );
   }

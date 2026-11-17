@@ -46,7 +46,12 @@ export function useDropoffEditor(options?: {
     query: string;
     results: DropoffSuggestion[];
     message: string | null;
-  }>({ query: "", results: [], message: null });
+    /** The lookup itself failed (offline, busy, slow) — worth trying again. */
+    failed: boolean;
+  }>({ query: "", results: [], message: null, failed: false });
+  // Bumped by Retry / the keyboard's Search key to ask the same words again.
+  const [searchAttempt, setSearchAttempt] = useState(0);
+  const retrying = useRef(false);
   const [locating, setLocating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
@@ -59,6 +64,10 @@ export function useDropoffEditor(options?: {
   const [accuracyMeters, setAccuracyMeters] = useState<number | null>(null);
   const [precision, setPrecision] = useState<PinPrecision | null>(null);
   const [placeName, setPlaceName] = useState("");
+  // What the reverse lookup said about this exact point: in Davao City or
+  // not. The city box is a rectangle, so a town at its edge is only known to
+  // be outside once OSM names it. Kept per point, cleared by a new point.
+  const [cityVerdict, setCityVerdict] = useState<{ point: GeoPoint; outside: boolean } | null>(null);
 
   const pointRef = useRef(point);
   const lineRef = useRef(line1);
@@ -72,18 +81,29 @@ export function useDropoffEditor(options?: {
   const prePinned = useRef(false);
   const searchGen = useRef(0);
   const reverseGen = useRef(0);
+  // Who owns the "Finding you…" state. A pin placed while the phone is still
+  // acquiring takes it over, so the late GPS answer neither moves the pin nor
+  // leaves the button disabled for good (#432 review, C1).
+  const locateGen = useRef(0);
 
   const trimmedQuery = query.trim();
   const answered = search.query === trimmedQuery;
   const results = answered ? search.results : [];
   const searching = trimmedQuery !== "" && !answered;
   const searchNotice = answered && trimmedQuery ? search.message : null;
+  const searchFailed = answered && Boolean(trimmedQuery) && search.failed;
 
-  const outside = Boolean(point) && !pointInDavao(point as GeoPoint);
+  const verdictHere =
+    cityVerdict && point && cityVerdict.point.lat === point.lat && cityVerdict.point.lng === point.lng
+      ? cityVerdict
+      : null;
+  const outside = Boolean(point) && (!pointInDavao(point as GeoPoint) || Boolean(verdictHere?.outside));
   const parts = { line1, barangay: "", landmark };
   const addressCheck = checkAddress(parts);
   const addressLine = composeAddress(parts);
-  const ready = addressCheck.ok && Boolean(point) && !outside;
+  // Not while the pin is still being read: the street on screen may belong to
+  // the previous spot, and the city verdict is not in yet.
+  const ready = addressCheck.ok && Boolean(point) && !outside && !reversing && !locating;
   const saveLabel = (label.trim() || addressLine).slice(0, ADDRESS_LABEL_MAX);
 
   const setLine1 = useCallback((value: string) => {
@@ -109,10 +129,19 @@ export function useDropoffEditor(options?: {
     }
   }, []);
 
+  /** A placement by hand or search takes over from a GPS fix still on its way. */
+  const stopLocating = useCallback(() => {
+    locateGen.current += 1;
+    setLocating(false);
+  }, []);
+
   const pickSearch = useCallback(
     (suggestion: DropoffSuggestion) => {
+      stopLocating();
       reverseGen.current += 1;
       setReversing(false);
+      // Search results are already checked against the city by name.
+      setCityVerdict({ point: suggestion.point, outside: false });
       setPoint(suggestion.point);
       fillFromMap(suggestion);
       setAccuracyMeters(null);
@@ -122,10 +151,10 @@ export function useDropoffEditor(options?: {
         setLabel((current) => current || suggestion.label.slice(0, ADDRESS_LABEL_MAX));
       }
       setQuery("");
-      setSearch({ query: "", results: [], message: null });
+      setSearch({ query: "", results: [], message: null, failed: false });
       setNotice(null);
     },
-    [fillFromMap, options?.initialLabel],
+    [fillFromMap, stopLocating, options?.initialLabel],
   );
 
   const runReverse = useCallback(
@@ -138,6 +167,9 @@ export function useDropoffEditor(options?: {
       try {
         const result = await reverseNominatim(next, appVersion(), undefined, { isCurrent });
         if (!isCurrent() || result.status === "superseded") return;
+        if (result.status === "ok" || result.status === "empty" || result.status === "outside_davao") {
+          setCityVerdict({ point: next, outside: result.status === "outside_davao" });
+        }
         if (result.status === "ok") {
           // The pin is the source of truth: a later placement replaces the
           // street even when the field had text from search or an earlier pin.
@@ -145,7 +177,7 @@ export function useDropoffEditor(options?: {
           return;
         }
         forgetMapStreet();
-        // Outside Davao is drawn on the pin row from the point itself.
+        // Outside Davao is drawn on the pin row from the verdict above.
         if (result.status === "failed") setNotice(result.message);
       } finally {
         if (isCurrent()) setReversing(false);
@@ -157,24 +189,25 @@ export function useDropoffEditor(options?: {
   /** A tap or a drag: the client put the pin exactly here. */
   const pickPin = useCallback(
     (next: GeoPoint) => {
+      stopLocating();
       setPoint(next);
       setAccuracyMeters(null);
       setPrecision(null);
       setPlaceName("");
       void runReverse(next);
     },
-    [runReverse],
+    [runReverse, stopLocating],
   );
 
   const useMyLocation = useCallback(async () => {
     if (locating) return;
-    const gen = ++reverseGen.current;
-    const isCurrent = () => gen === reverseGen.current;
+    const gen = ++locateGen.current;
+    const mine = () => gen === locateGen.current;
     setLocating(true);
     setNotice(null);
     try {
       const result = await requestCurrentLocation();
-      if (!isCurrent()) return;
+      if (!mine()) return;
       if (result.status !== "ok") {
         setNotice(result.message);
         return;
@@ -189,23 +222,12 @@ export function useDropoffEditor(options?: {
       setPrecision(null);
       setPlaceName("");
       setLocating(false);
-      setReversing(true);
-      const reverse = await reverseNominatim(result.point, appVersion(), undefined, { isCurrent });
-      if (!isCurrent() || reverse.status === "superseded") return;
-      if (reverse.status === "ok") {
-        fillFromMap(reverse.suggestion);
-        setNotice(null);
-      } else {
-        forgetMapStreet();
-        if (reverse.status === "failed") setNotice(reverse.message);
-      }
+      // From here it is an ordinary placement: the reverse lookup owns it.
+      void runReverse(result.point);
     } finally {
-      if (isCurrent()) {
-        setLocating(false);
-        setReversing(false);
-      }
+      if (mine()) setLocating(false);
     }
-  }, [locating, fillFromMap, forgetMapStreet]);
+  }, [locating, runReverse]);
 
   const onChangeQuery = useCallback((value: string) => {
     setQuery(value);
@@ -217,17 +239,34 @@ export function useDropoffEditor(options?: {
     if (!q) return;
     const gen = ++searchGen.current;
     const isCurrent = () => gen === searchGen.current;
-    const handle = setTimeout(() => {
-      void searchNominatim(q, appVersion(), undefined, { isCurrent }).then((result) => {
-        if (!isCurrent() || result.status === "superseded") return;
-        if (result.status === "ok") {
-          setSearch({ query: q, results: result.suggestions, message: null });
-          return;
-        }
-        setSearch({ query: q, results: [], message: result.message });
-      });
-    }, SEARCH_DEBOUNCE_MS);
+    // A retry has already waited for its tap; a keystroke waits to settle.
+    const now = retrying.current;
+    retrying.current = false;
+    const handle = setTimeout(
+      () => {
+        void searchNominatim(q, appVersion(), undefined, { isCurrent }).then((result) => {
+          if (!isCurrent() || result.status === "superseded") return;
+          if (result.status === "ok") {
+            setSearch({ query: q, results: result.suggestions, message: null, failed: false });
+            return;
+          }
+          setSearch({ query: q, results: [], message: result.message, failed: result.status === "failed" });
+        });
+      },
+      now ? 0 : SEARCH_DEBOUNCE_MS,
+    );
     return () => clearTimeout(handle);
+  }, [query, searchAttempt]);
+
+  /**
+   * Ask the same words again — Retry, or the keyboard's Search key. Goes
+   * through the same queue, so it still keeps to Nominatim's one a second.
+   */
+  const retrySearch = useCallback(() => {
+    if (!query.trim()) return;
+    retrying.current = true;
+    setSearch({ query: "", results: [], message: null, failed: false });
+    setSearchAttempt((attempt) => attempt + 1);
   }, [query]);
 
   useEffect(() => {
@@ -240,12 +279,18 @@ export function useDropoffEditor(options?: {
       if (pointRef.current) return;
       setPoint(result.point);
       setAccuracyMeters(result.accuracyMeters ?? null);
+      if (reverse.status !== "failed" && reverse.status !== "superseded") {
+        setCityVerdict({ point: result.point, outside: reverse.status === "outside_davao" });
+      }
       if (reverse.status === "ok" && !lineRef.current.trim()) fillFromMap(reverse.suggestion);
     });
   }, [options?.skipPrePin, fillFromMap]);
 
   const loadSaved = useCallback(
     (input: { label: string; line1: string; landmark: string; point: GeoPoint }) => {
+      locateGen.current += 1;
+      setLocating(false);
+      setCityVerdict(null);
       reverseGen.current += 1;
       setReversing(false);
       setLabel(input.label);
@@ -292,6 +337,9 @@ export function useDropoffEditor(options?: {
     searching,
     /** Why the search list is empty: no match, outside Davao, offline, busy. */
     searchNotice,
+    /** The last lookup failed rather than finding nothing: offer Retry. */
+    searchFailed,
+    retrySearch,
     locating,
     notice,
     setNotice,

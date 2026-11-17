@@ -127,6 +127,11 @@ export type DropoffSuggestion = {
    * same-named places apart (three "Jollibee" rows used to read identically).
    */
   area?: string;
+  /**
+   * The finer place OSM names inside the barangay (a subdivision or
+   * neighbourhood). Added to `area` only when two rows would read the same.
+   */
+  locality?: string;
   precision?: PinPrecision;
   point: GeoPoint;
 };
@@ -157,12 +162,52 @@ export function nominatimUserAgent(version: string): string {
   return `GRIDGO-client/${ver}`;
 }
 
+/**
+ * Samal and Talikud, as `[lng, lat]`: OSM's boundary of the Island Garden
+ * City of Samal, simplified by Nominatim to about 200 m (Nov 2026).
+ *
+ * The city box above is a rectangle, and the islands sit inside it across a
+ * strait about a kilometre wide, so a pin tapped on Babak passed the box and
+ * saved as a Davao drop-off. The outline answers without a network, so the
+ * guard holds when the reverse lookup cannot. Its western edge runs
+ * mid-channel: the Sasa wharf tip, Panacan and every Davao shore point
+ * checked fall outside it.
+ */
+const SAMAL_OUTLINE: readonly (readonly [number, number])[] = [
+  [125.5765, 6.9562], [125.5829, 6.8212], [125.6072, 6.7981], [125.6323, 6.7825],
+  [125.6921, 6.7645], [125.7248, 6.7636], [125.758, 6.7579], [125.7822, 6.7587],
+  [125.8121, 6.7658], [125.8362, 6.7771], [125.8607, 6.7954], [125.8793, 6.8169],
+  [125.8844, 6.8245], [125.8838, 6.9193], [125.8827, 6.9619], [125.8765, 6.9908],
+  [125.8304, 7.1666], [125.8141, 7.2061], [125.7855, 7.256], [125.6972, 7.2289],
+  [125.6793, 7.2156], [125.6725, 7.1945], [125.6711, 7.129], [125.6577, 7.1053],
+  [125.6492, 7.0646], [125.6496, 7.0513], [125.6619, 7.0329], [125.6622, 7.023],
+  [125.6561, 7.0137], [125.6227, 6.9872],
+];
+
+function insideOutline(point: GeoPoint, ring: readonly (readonly [number, number])[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > point.lat !== yj > point.lat && point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Inside the city box and not on Samal. Still a coarse test — a town at the
+ * box's edge is refused by the reverse lookup's own answer (`isDavaoCityHit`),
+ * which the editor keeps per pin.
+ */
 export function pointInDavao(point: GeoPoint): boolean {
   return (
     point.lat >= DAVAO_VIEWBOX.south &&
     point.lat <= DAVAO_VIEWBOX.north &&
     point.lng >= DAVAO_VIEWBOX.west &&
-    point.lng <= DAVAO_VIEWBOX.east
+    point.lng <= DAVAO_VIEWBOX.east &&
+    !insideOutline(point, SAMAL_OUTLINE)
   );
 }
 
@@ -302,6 +347,14 @@ export function barangayOf(hit: NominatimHit): string {
   return firstText(addr.suburb, addr.quarter, addr.village, addr.neighbourhood, addr.hamlet, addr.city_district);
 }
 
+/** The subdivision or neighbourhood below the barangay, when OSM has one. */
+export function localityOf(hit: NominatimHit): string {
+  const addr = hit.address ?? {};
+  const barangay = barangayOf(hit);
+  const finer = firstText(addr.neighbourhood, addr.quarter, addr.hamlet);
+  return finer && finer !== barangay ? finer : "";
+}
+
 /** Road and barangay, skipping whatever the row's title already says. */
 export function areaFromNominatim(hit: NominatimHit, label: string): string {
   const addr = hit.address ?? {};
@@ -342,6 +395,7 @@ export function suggestionFromNominatim(hit: NominatimHit): GeocodeResult {
       landmark,
       completeAddress,
       area: areaFromNominatim(hit, label),
+      locality: localityOf(hit),
       precision,
       point,
     },
@@ -401,20 +455,35 @@ function metresBetween(a: GeoPoint, b: GeoPoint): number {
 
 /**
  * One row per place. OSM splits a road into many ways, so "Quimpo Blvd"
- * came back as five identical "Quimpo Boulevard" rows; a road keeps one
- * row per barangay, and a named place one row per spot.
+ * came back as five identical "Quimpo Boulevard" rows: a road keeps one row
+ * per barangay. A named place is only a twin when it is the same OSM object
+ * or within 80 m — two 7-Elevens on the same long avenue in the same
+ * barangay are two branches, not one.
  */
 export function distinctSuggestions(suggestions: DropoffSuggestion[]): DropoffSuggestion[] {
   const kept: DropoffSuggestion[] = [];
   for (const next of suggestions) {
     const twin = kept.some((seen) => {
+      if (seen.id === next.id) return true;
       if (seen.label.toLowerCase() !== next.label.toLowerCase()) return false;
-      if ((seen.area ?? "").toLowerCase() === (next.area ?? "").toLowerCase()) return true;
+      const sameArea = (seen.area ?? "").toLowerCase() === (next.area ?? "").toLowerCase();
+      if (sameArea && seen.precision === "street" && next.precision === "street") return true;
       return metresBetween(seen.point, next.point) < 80;
     });
     if (!twin) kept.push(next);
   }
-  return kept;
+  // Two branches still left reading the same: name the neighbourhood too.
+  return kept.map((row) => {
+    const sameText = kept.filter(
+      (other) =>
+        other.label.toLowerCase() === row.label.toLowerCase() &&
+        (other.area ?? "").toLowerCase() === (row.area ?? "").toLowerCase(),
+    );
+    if (sameText.length < 2 || !row.locality) return row;
+    const [road, ...rest] = (row.area ?? "").split(", ");
+    const area = rest.length ? [road, row.locality, ...rest].join(", ") : [row.locality, road].join(", ");
+    return { ...row, area };
+  });
 }
 
 export function viewboxQuery(): string {

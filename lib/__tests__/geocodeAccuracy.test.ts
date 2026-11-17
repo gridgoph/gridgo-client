@@ -34,15 +34,30 @@ const JOLLIBEE_MAA: NominatimHit = {
   category: "amenity",
   type: "fast_food",
   display_name: "Jollibee, MacArthur Highway, Ma-a, Talomo District, Davao City, Davao Region, 8000, Philippines",
-  address: { amenity: "Jollibee", road: "MacArthur Highway", suburb: "Ma-a", city: "Davao City" },
+  address: {
+    amenity: "Jollibee",
+    road: "MacArthur Highway",
+    neighbourhood: "New Matina",
+    suburb: "Ma-a",
+    city: "Davao City",
+  },
 };
-const JOLLIBEE_MAA_TWIN: NominatimHit = { ...JOLLIBEE_MAA, place_id: 2, lat: "7.06303", lon: "125.59680" };
+// A second branch ~330 m along the same highway, in the same barangay.
+const JOLLIBEE_MAA_TWIN: NominatimHit = {
+  ...JOLLIBEE_MAA,
+  place_id: 2,
+  lat: "7.06303",
+  lon: "125.59680",
+  address: { ...JOLLIBEE_MAA.address, neighbourhood: "Villa Abrille" },
+};
+// The same branch again, a few metres off (a node and its building).
+const JOLLIBEE_MAA_ECHO: NominatimHit = { ...JOLLIBEE_MAA, place_id: 4, lat: "7.06240", lon: "125.59390" };
 const JOLLIBEE_CROSSING: NominatimHit = {
   ...JOLLIBEE_MAA,
   place_id: 3,
   lat: "7.05883",
   lon: "125.56901",
-  address: { ...JOLLIBEE_MAA.address, suburb: "74-A Matina Crossing" },
+  address: { amenity: "Jollibee", road: "MacArthur Highway", suburb: "74-A Matina Crossing", city: "Davao City" },
 };
 const QUIMPO_WAY = (id: number, lat: string, suburb: string): NominatimHit => ({
   place_id: id,
@@ -73,6 +88,17 @@ describe("Davao bounds", () => {
     expect(pointInDavao({ lat: 7.0731, lng: 125.6128 })).toBe(true); // downtown
     expect(DAVAO_VIEWBOX.north).toBeGreaterThanOrEqual(7.606);
     expect(DAVAO_VIEWBOX.west).toBeLessThanOrEqual(125.2176);
+  });
+
+  it("refuses Samal and Talikud without a network, and keeps Davao's shore", () => {
+    // The pin Codex saved as a Davao drop-off (gridgo-client#432 review, C2).
+    expect(pointInDavao({ lat: 7.080003671460744, lng: 125.68001031875612 })).toBe(false);
+    expect(pointInDavao({ lat: 7.14, lng: 125.7 })).toBe(false); // Peñaplata
+    expect(pointInDavao({ lat: 6.98, lng: 125.64 })).toBe(false); // Talikud
+    expect(pointInDavao({ lat: 7.125, lng: 125.664 })).toBe(true); // Sasa wharf tip
+    expect(pointInDavao({ lat: 7.155, lng: 125.665 })).toBe(true); // Panacan
+    expect(pointInDavao({ lat: 7.075, lng: 125.625 })).toBe(true); // Sta. Ana wharf
+    expect(pointInDavao({ lat: 7.045, lng: 125.585 })).toBe(true); // Matina Aplaya
   });
 
   it("still refuses Samal by name even inside the box", () => {
@@ -145,9 +171,10 @@ describe("search rows", () => {
     expect(ok(QUIMPO_WAY(5, "7.05", "Matina")).area).toBe("Matina");
   });
 
-  it("keeps one row per place", () => {
+  it("keeps one row per place, and every branch", () => {
     const rows = distinctSuggestions([
       ok(JOLLIBEE_MAA),
+      ok(JOLLIBEE_MAA_ECHO),
       ok(JOLLIBEE_MAA_TWIN),
       ok(JOLLIBEE_CROSSING),
       ok(QUIMPO_WAY(5, "7.0548", "Matina")),
@@ -155,11 +182,28 @@ describe("search rows", () => {
       ok(QUIMPO_WAY(7, "7.0625", "Poblacion District")),
     ]);
     expect(rows.map((row) => `${row.label} | ${row.area}`)).toEqual([
-      "Jollibee | MacArthur Highway, Ma-a",
+      // Two branches in one barangay are told apart by their neighbourhood.
+      "Jollibee | MacArthur Highway, New Matina, Ma-a",
+      "Jollibee | MacArthur Highway, Villa Abrille, Ma-a",
       "Jollibee | MacArthur Highway, 74-A Matina Crossing",
       "Quimpo Boulevard | Matina",
       "Quimpo Boulevard | Poblacion District",
     ]);
+  });
+
+  it("never folds two branches on one long road into one (review C3)", () => {
+    const store = (id: number, lat: string): NominatimHit => ({
+      place_id: id,
+      lat,
+      lon: "125.62",
+      name: "7-Eleven",
+      category: "shop",
+      type: "convenience",
+      address: { shop: "7-Eleven", road: "J. P. Laurel Avenue", suburb: "Buhangin", city: "Davao City" },
+    });
+    // About 2.2 km apart, same label, same road and barangay.
+    const rows = distinctSuggestions([ok(store(1, "7.11")), ok(store(2, "7.13"))]);
+    expect(rows).toHaveLength(2);
   });
 
   it("marks how exactly a hit pins: a door, a road, or an area", () => {
