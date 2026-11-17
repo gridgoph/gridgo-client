@@ -59,6 +59,7 @@ describe("Where is it going? Use my location", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Street and building").props.value).toBe("12 J.P. Laurel Avenue");
     });
-    expect(screen.getByText("Tap again anywhere to move the pin.")).toBeTruthy();
+    // The row under the map confirms where the rider is sent.
+    expect(screen.getByLabelText("12 J.P. Laurel Avenue")).toBeTruthy();
   });
 });

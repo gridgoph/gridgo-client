@@ -58,6 +58,12 @@ export type MapModel = {
    */
   pickable?: boolean;
   /**
+   * The phone's own error radius round a Use-my-location pin, in metres.
+   * Drawn as a faint circle so a rough network fix reads as "somewhere in
+   * here", not as the door. Cleared the moment the client places the pin.
+   */
+  accuracyMeters?: number | null;
+  /**
    * Screen space covered by something drawn over the map — the delivery
    * screen's panel at the bottom, its status card at the top — so fitting the
    * view keeps every pin in the part a person can actually see.
@@ -84,11 +90,22 @@ export type MapModel = {
 
 const LIGHT_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
+/** How close the picker comes in on a pin: individual buildings and their gates. */
+export const PIN_ZOOM = 18;
+
+/** Downtown Davao, where a map with nothing on it opens. */
+const DAVAO_CENTRE = { lat: 7.0731, lng: 125.6128, zoom: 13 };
+
 /**
  * Injected into the live Leaflet page so an external pin pans without a reload.
+ * `accuracyMeters` draws the phone's error circle; omit it for a searched place.
  */
-export function externalPinScript(point: GeoPoint): string {
-  return `try { setExternalPin(${Number(point.lat)}, ${Number(point.lng)}); } catch (e) {} true;`;
+export function externalPinScript(point: GeoPoint, accuracyMeters?: number | null): string {
+  const accuracy =
+    typeof accuracyMeters === "number" && Number.isFinite(accuracyMeters) && accuracyMeters > 0
+      ? Math.round(accuracyMeters)
+      : "null";
+  return `try { setExternalPin(${Number(point.lat)}, ${Number(point.lng)}, ${accuracy}); } catch (e) {} true;`;
 }
 
 /**
@@ -169,6 +186,16 @@ export function buildMapHtml(model: MapModel): string {
       filter: blur(2px);
     }
     .dark-attr .pin-tip { background: rgba(0,0,0,0.6); }
+    /*
+      Picked up: the head lifts off its shadow, so the finger can see the tip
+      and the street under it. Put down, it settles back onto the point.
+    */
+    .pin-head, .pin-tip { transition: transform 160ms ease-out, opacity 160ms ease-out; }
+    .is-lifted .pin-head { transform: translateY(-14px); }
+    .is-lifted .pin-tip { transform: scale(0.7); opacity: 0.6; }
+    @media (prefers-reduced-motion: reduce) {
+      .pin-head, .pin-tip { transition: none; }
+    }
     .pin-rider {
       position: relative;
       width: 20px; height: 20px;
@@ -232,6 +259,7 @@ export function buildMapHtml(model: MapModel): string {
     var map = null;
     var tileLayer = null;
     var routeLayer = null;
+    var accuracyLayer = null;
     var markers = [];
     // The client moved the map themselves; stop fitting it until they ask.
     // Read from their input, not from Leaflet's move events: a refit fires
@@ -255,6 +283,16 @@ export function buildMapHtml(model: MapModel): string {
       var top = 36 + (m.padTop || 0);
       var bottom = 36 + (m.padBottom || 0);
       return { paddingTopLeft: [36, top], paddingBottomRight: [36, bottom], maxZoom: 17 };
+    }
+
+    // The client put the pin down themselves (tap or drag): it is where they
+    // said, so the phone's error circle no longer describes it.
+    function placedByHand(lat, lng) {
+      MODEL.dropoff = { lat: lat, lng: lng };
+      MODEL.accuracyMeters = null;
+      map.__ggPicked = true;
+      applyModel(MODEL);
+      notify({ type: 'pin', lat: lat, lng: lng });
     }
 
     function clearMarkers() {
@@ -403,11 +441,38 @@ export function buildMapHtml(model: MapModel): string {
         }).addTo(map));
         bounds.push([m.pickup.lat, m.pickup.lng]);
       }
+      if (accuracyLayer) map.removeLayer(accuracyLayer);
+      accuracyLayer = null;
       if (m.dropoff) {
-        markers.push(L.marker([m.dropoff.lat, m.dropoff.lng], {
+        if (m.pickable && m.accuracyMeters > 0) {
+          var blue = isDark ? '#42A5F5' : '#1565C0';
+          accuracyLayer = L.circle([m.dropoff.lat, m.dropoff.lng], {
+            radius: m.accuracyMeters,
+            color: blue, weight: 1, opacity: 0.6,
+            fillColor: blue, fillOpacity: 0.10,
+            interactive: false
+          }).addTo(map);
+        }
+        // In the picker the pin can be picked up and dragged onto the door —
+        // tapping alone meant guessing where a fingertip lands.
+        var dropMarker = L.marker([m.dropoff.lat, m.dropoff.lng], {
           icon: pinIcon('dropoff', '', false, m.pickable ? '' : (m.dropoffLabel || '')),
-          title: m.dropoffLabel || 'Your delivery address'
-        }).addTo(map));
+          title: m.dropoffLabel || 'Your delivery address',
+          draggable: !!m.pickable,
+          autoPan: true
+        }).addTo(map);
+        if (m.pickable) {
+          dropMarker.on('dragstart', function () {
+            var el = dropMarker.getElement();
+            if (el) el.classList.add('is-lifted');
+            if (accuracyLayer) { map.removeLayer(accuracyLayer); accuracyLayer = null; }
+          });
+          dropMarker.on('dragend', function () {
+            var at = dropMarker.getLatLng();
+            placedByHand(at.lat, at.lng);
+          });
+        }
+        markers.push(dropMarker);
         bounds.push([m.dropoff.lat, m.dropoff.lng]);
       }
       if (m.rider) {
@@ -429,12 +494,25 @@ export function buildMapHtml(model: MapModel): string {
         catch (e) { /* keep previous view */ }
       } else if (bounds.length >= 2) {
         map.fitBounds(bounds, fitOptions(m));
+      } else if (bounds.length === 1 && m.pickable) {
+        // Close enough to see which building the tip is on. A rough GPS fix
+        // shows its whole circle instead, so the client sees how far off
+        // it might be.
+        if (accuracyLayer && m.accuracyMeters > 40) {
+          // From the point itself: a circle's own getBounds needs a map that
+          // already has a view, and on first load this one has none yet.
+          var reach = L.latLng(bounds[0]).toBounds(m.accuracyMeters * 2);
+          map.fitBounds(reach, Object.assign(fitOptions(m), { maxZoom: ${PIN_ZOOM} }));
+        } else {
+          map.setView(bounds[0], ${PIN_ZOOM});
+        }
       } else if (bounds.length === 1) {
         var only = L.latLngBounds([bounds[0], bounds[0]]);
         map.fitBounds(only, Object.assign(fitOptions(m), { maxZoom: 15 }));
       } else {
-        // Davao City centre fallback so an empty model still shows a map.
-        map.setView([7.1907, 125.4553], 12);
+        // Downtown Davao, so an empty model still shows the city people
+        // live in. (This used to open on Calinan, 25 km out.)
+        map.setView([${DAVAO_CENTRE.lat}, ${DAVAO_CENTRE.lng}], ${DAVAO_CENTRE.zoom});
       }
     }
 
@@ -445,11 +523,7 @@ export function buildMapHtml(model: MapModel): string {
       map.__ggPickBound = true;
       map.on('click', function (e) {
         if (!MODEL.pickable) return;
-        var point = { type: 'pin', lat: e.latlng.lat, lng: e.latlng.lng };
-        MODEL.dropoff = { lat: point.lat, lng: point.lng };
-        map.__ggPicked = true;
-        applyModel(MODEL);
-        notify(point);
+        placedByHand(e.latlng.lat, e.latlng.lng);
       });
     }
 
@@ -458,22 +532,31 @@ export function buildMapHtml(model: MapModel): string {
 
     // Search / Use my location set the pin from JS. Clear the tap-guard so
     // the map pans to the new point; a finger-tap still skips that pan.
-    function setExternalPin(lat, lng) {
+    function setExternalPin(lat, lng, accuracy) {
       if (typeof lat !== 'number' || typeof lng !== 'number') return;
       if (!isFinite(lat) || !isFinite(lng)) return;
       MODEL.dropoff = { lat: lat, lng: lng };
+      MODEL.accuracyMeters = typeof accuracy === 'number' && accuracy > 0 ? accuracy : null;
       if (map) map.__ggPicked = false;
+      // A new place to look at: follow it even if the client had panned.
+      userMoved = false;
       applyModel(MODEL);
     }
 
-    // Host can push updates without a full HTML reload.
+    // Host can push updates without a full HTML reload: a whole model, or
+    // (the web picker) a pin set by search or Use my location.
+    function receive(raw) {
+      var data = JSON.parse(raw);
+      if (data && data.type === 'setPin') setExternalPin(data.lat, data.lng, data.accuracy);
+      else applyModel(data);
+    }
     document.addEventListener('message', function (e) {
-      try { applyModel(JSON.parse(e.data)); } catch (err) {}
+      try { receive(e.data); } catch (err) {}
     });
     window.addEventListener('message', function (e) {
       // In a browser frame, only the page that drew this map may redraw it.
       if (window.parent !== window && e.source !== window.parent) return;
-      try { applyModel(JSON.parse(e.data)); } catch (err) {}
+      try { receive(e.data); } catch (err) {}
     });
   </script>
 </body>
@@ -524,6 +607,39 @@ export function deliveryMapModel(input: DeliveryMapInput): MapModel {
     hideZoom: input.hideZoom ?? false,
     recenterKey: input.recenterKey ?? 0,
     reduceMotion: input.reduceMotion ?? false,
+  };
+}
+
+/** What the web picker posts into its frame to move the pin. */
+export function setPinMessage(point: GeoPoint, accuracyMeters?: number | null): string {
+  const accuracy =
+    typeof accuracyMeters === "number" && Number.isFinite(accuracyMeters) && accuracyMeters > 0
+      ? Math.round(accuracyMeters)
+      : null;
+  return JSON.stringify({ type: "setPin", lat: point.lat, lng: point.lng, accuracy });
+}
+
+/** The picker's model: the drop-off alone, tappable and draggable. */
+export function pickerMapModel(input: {
+  theme: MapTheme;
+  point: GeoPoint | null;
+  accuracyMeters?: number | null;
+  routeColor: string;
+}): MapModel {
+  return {
+    theme: input.theme,
+    pickup: null,
+    dropoff: input.point,
+    // No pickup point is drawn here at all; the label is inert.
+    pickupLabel: "",
+    dropoffLabel: "Drop-off",
+    routeCoordinates: [],
+    routeColor: input.routeColor,
+    rider: null,
+    riderStale: false,
+    routeUnavailable: false,
+    pickable: true,
+    accuracyMeters: input.accuracyMeters ?? null,
   };
 }
 
