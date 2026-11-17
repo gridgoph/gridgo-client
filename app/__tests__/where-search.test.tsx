@@ -59,6 +59,7 @@ describe("Where is it going? search", () => {
           label: "SM City Davao",
           line1: "SM City Davao, Quimpo Boulevard",
           landmark: "",
+          area: "Quimpo Boulevard, Matina",
           point: { lat: 7.0494, lng: 125.588 },
         },
       ],
@@ -71,7 +72,8 @@ describe("Where is it going? search", () => {
       await new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS + 30));
     });
 
-    expect(await screen.findByLabelText("Use SM City Davao")).toBeTruthy();
+    // The row names the road and barangay, so two branches read differently.
+    expect(await screen.findByLabelText("Use SM City Davao, Quimpo Boulevard, Matina")).toBeTruthy();
     expect(geocode.searchNominatim).toHaveBeenCalled();
   });
 });

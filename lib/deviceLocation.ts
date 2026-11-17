@@ -8,6 +8,8 @@
  * granted and the map is empty; it never raises the system dialog.
  */
 
+import { Platform } from "react-native";
+
 import { LOCATION_NEEDS_REBUILD, getLocationNative } from "@/lib/nativeModules";
 import type { GeoPoint } from "@/lib/tracking";
 
@@ -19,8 +21,19 @@ export const LOCATION_DENIED =
 export const LOCATION_UNAVAILABLE =
   "This phone cannot share a location. Search for the place, or tap the map.";
 
+/** How long a satellite fix may take before the network's rougher one is used. */
+export const PRECISE_FIX_TIMEOUT_MS = 10000;
+
 export type DeviceLocationResult =
-  | { status: "ok"; point: GeoPoint }
+  | {
+      status: "ok";
+      point: GeoPoint;
+      /**
+       * The phone's own error radius, in metres, when it reports one. Drawn
+       * round the pin so a 120 m network guess is not mistaken for a door.
+       */
+      accuracyMeters?: number;
+    }
   | { status: "denied"; message: string }
   | { status: "unavailable"; message: string };
 
@@ -33,19 +46,109 @@ function pointFromCoords(coords: { latitude: number; longitude: number } | undef
   return { lat, lng };
 }
 
+type Reading = { coords?: { latitude: number; longitude: number; accuracy?: number | null } } | null;
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function resultFrom(reading: Reading): DeviceLocationResult | null {
+  const point = pointFromCoords(reading?.coords);
+  if (!point) return null;
+  const accuracy = reading?.coords?.accuracy;
+  return typeof accuracy === "number" && Number.isFinite(accuracy) && accuracy > 0
+    ? { status: "ok", point, accuracyMeters: Math.round(accuracy) }
+    : { status: "ok", point };
+}
+
+/**
+ * A satellite fix first, because delivery is priced from this pin: the
+ * Balanced reading this used before is the cell/Wi-Fi guess, often 100 m
+ * or more off in Davao — the next street, or the next barangay. Indoors a
+ * satellite fix can take a long time, so after `PRECISE_FIX_TIMEOUT_MS`
+ * the rougher reading is used and its radius says how rough it is.
+ */
 async function readPosition(): Promise<DeviceLocationResult> {
   const Location = getLocationNative();
   if (!Location) {
     return { status: "unavailable", message: LOCATION_NEEDS_REBUILD };
   }
+  const precise = Location.Accuracy?.Highest ?? Location.Accuracy?.High;
+  const rough = Location.Accuracy?.Balanced ?? Location.Accuracy?.Low ?? 2;
+  if (precise != null) {
+    try {
+      const reading = await withTimeout(
+        Location.getCurrentPositionAsync({ accuracy: precise }) as Promise<Reading>,
+        PRECISE_FIX_TIMEOUT_MS,
+      );
+      const result = resultFrom(reading);
+      if (result) return result;
+    } catch {
+      // Fall back to the rougher reading below.
+    }
+  }
   try {
-    const accuracy = Location.Accuracy?.Balanced ?? Location.Accuracy?.Low ?? 2;
-    const reading = await Location.getCurrentPositionAsync({ accuracy });
-    const point = pointFromCoords(reading?.coords);
-    if (!point) return { status: "unavailable", message: LOCATION_UNAVAILABLE };
-    return { status: "ok", point };
+    const reading = (await Location.getCurrentPositionAsync({ accuracy: rough })) as Reading;
+    return resultFrom(reading) ?? { status: "unavailable", message: LOCATION_UNAVAILABLE };
   } catch {
     return { status: "unavailable", message: LOCATION_UNAVAILABLE };
+  }
+}
+
+type BrowserGeolocation = {
+  getCurrentPosition: (
+    ok: (position: { coords: { latitude: number; longitude: number; accuracy?: number } }) => void,
+    fail: (error: { code: number }) => void,
+    options: { enableHighAccuracy: boolean; timeout: number; maximumAge: number },
+  ) => void;
+};
+
+function browserGeolocation(): BrowserGeolocation | null {
+  if (Platform.OS !== "web" || typeof navigator === "undefined") return null;
+  return (navigator as unknown as { geolocation?: BrowserGeolocation }).geolocation ?? null;
+}
+
+/**
+ * The web build asks the browser. There is no native module to rebuild
+ * there, so "needs a rebuilt GRIDGO app" was the wrong thing to say. The
+ * browser's own prompt is the permission ask, raised only by the tap.
+ */
+function readBrowserPosition(geo: BrowserGeolocation): Promise<DeviceLocationResult> {
+  return new Promise((resolve) => {
+    geo.getCurrentPosition(
+      (position) =>
+        resolve(resultFrom({ coords: position.coords }) ?? { status: "unavailable", message: LOCATION_UNAVAILABLE }),
+      (error) =>
+        resolve(
+          error.code === 1
+            ? { status: "denied", message: LOCATION_DENIED }
+            : { status: "unavailable", message: LOCATION_UNAVAILABLE },
+        ),
+      { enableHighAccuracy: true, timeout: PRECISE_FIX_TIMEOUT_MS, maximumAge: 0 },
+    );
+  });
+}
+
+async function browserGranted(): Promise<boolean> {
+  try {
+    const permissions = (navigator as unknown as {
+      permissions?: { query: (input: { name: string }) => Promise<{ state: string }> };
+    }).permissions;
+    return (await permissions?.query({ name: "geolocation" }))?.state === "granted";
+  } catch {
+    return false;
   }
 }
 
@@ -54,6 +157,8 @@ async function readPosition(): Promise<DeviceLocationResult> {
  * Never prompts. Used to pre-pin an empty map.
  */
 export async function peekCurrentLocation(): Promise<DeviceLocationResult | null> {
+  const geo = browserGeolocation();
+  if (geo) return (await browserGranted()) ? readBrowserPosition(geo) : null;
   const Location = getLocationNative();
   if (!Location) return null;
   try {
@@ -67,6 +172,8 @@ export async function peekCurrentLocation(): Promise<DeviceLocationResult | null
 
 /** Request permission (on tap) and, if granted, read the position. */
 export async function requestCurrentLocation(): Promise<DeviceLocationResult> {
+  const geo = browserGeolocation();
+  if (geo) return readBrowserPosition(geo);
   const Location = getLocationNative();
   if (!Location) {
     return { status: "unavailable", message: LOCATION_NEEDS_REBUILD };

@@ -202,7 +202,9 @@ export default function WhereScreen() {
           />
           {editor.touched && !editor.ready ? (
             <Text className="text-center text-caption text-text-muted">
-              {editor.point
+              {editor.outside
+                ? "Move the pin into Davao City — GRIDGO only delivers there."
+                : editor.point
                 ? "Add the street and number so a rider can find it."
                 : "Search, use your location, or tap the map — GRIDGO prices delivery from this pin."}
             </Text>

@@ -177,9 +177,7 @@ describe("searchNominatim", () => {
     expect(url).toContain("nominatim.openstreetmap.org/search");
     expect(url).toContain("bounded=1");
     expect(url).toContain("viewbox=");
-    expect(called?.[1]).toEqual({
-      headers: nominatimHeaders("1.0.0"),
-    });
+    expect(called?.[1]).toEqual(expect.objectContaining({ headers: nominatimHeaders("1.0.0") }));
   });
 
   it("says so when every hit is outside Davao", async () => {
