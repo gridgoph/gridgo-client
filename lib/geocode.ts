@@ -12,7 +12,6 @@
 import { DELIVERY_CITY } from "@/lib/address";
 import type { GeoPoint } from "@/lib/tracking";
 
-export const SEARCH_DEBOUNCE_MS = 400;
 export const NOMINATIM_MIN_INTERVAL_MS = 1100;
 
 /**
@@ -72,6 +71,8 @@ export type NominatimAddress = {
   pedestrian?: string;
   footway?: string;
   neighbourhood?: string;
+  /** A subdivision's name, on a `landuse=residential` hit. */
+  residential?: string;
   quarter?: string;
   village?: string;
   hamlet?: string;
@@ -336,6 +337,11 @@ export function precisionOf(hit: NominatimHit): PinPrecision {
   const category = hit.category ?? "";
   const type = hit.type ?? "";
   if (category === "boundary") return "area";
+  // A subdivision, a farm, a park: OSM draws it as a landuse polygon and the
+  // pin lands in its middle. Its name is a place to look, not a door — "Deca
+  // Homes" saved as the street sent a rider into a whole subdivision (#432
+  // review, C5). The supplier app reads landuse the same way.
+  if (category === "landuse") return "area";
   if (category === "place" && AREA_PLACES.has(type)) return "area";
   if (category === "highway") return "street";
   return "exact";

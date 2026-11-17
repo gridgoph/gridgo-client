@@ -7,6 +7,7 @@ import {
   MapPin,
   RotateCw,
   Route,
+  Search,
   SearchX,
 } from "lucide-react-native";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
@@ -35,19 +36,29 @@ export function DropoffLocator({ editor }: { editor: Editor }) {
       <View className="gap-3">
         <FormField
           label="Search location"
-          helper={editor.searching || editor.searchNotice ? null : "A street, a building, a place in Davao City."}
+          helper={
+            editor.searching || editor.searchNotice
+              ? null
+              : "A street, a building, a place in Davao City, then Search."
+          }
         >
-          <TextField
-            value={editor.query}
-            onChangeText={editor.onChangeQuery}
-            placeholder="Quimpo Blvd, SM Lanang…"
-            accessibilityLabel="Search location"
-            autoCapitalize="words"
-            autoCorrect={false}
-            returnKeyType="search"
-            // The keyboard's Search key asks again, even for the same words.
-            onSubmitEditing={editor.retrySearch}
-          />
+          {/* Nothing is looked up while typing: Nominatim's usage policy
+              forbids search-as-you-type, so the client asks once. */}
+          <View className="flex-row items-center gap-2">
+            <View className="min-w-0 flex-1">
+              <TextField
+                value={editor.query}
+                onChangeText={editor.onChangeQuery}
+                placeholder="Quimpo Blvd, SM Lanang…"
+                accessibilityLabel="Search location"
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="search"
+                onSubmitEditing={editor.submitSearch}
+              />
+            </View>
+            <SearchButton editor={editor} />
+          </View>
         </FormField>
         <SearchState editor={editor} />
       </View>
@@ -110,6 +121,32 @@ function SearchState({ editor }: { editor: Editor }) {
         />
       ))}
     </View>
+  );
+}
+
+/** Charcoal outline, not yellow: the screen's Save keeps the one yellow. */
+function SearchButton({ editor }: { editor: Editor }) {
+  const colors = useThemeColors();
+  const empty = !editor.query.trim();
+  return (
+    <Pressable
+      onPress={editor.submitSearch}
+      disabled={empty || editor.searching}
+      accessibilityRole="button"
+      accessibilityLabel="Search"
+      accessibilityState={{ disabled: empty || editor.searching, busy: editor.searching }}
+      className="h-12 flex-row items-center gap-1.5 overflow-hidden rounded-field border border-outline bg-surface px-4"
+    >
+      {({ pressed }) => (
+        <>
+          <Search size={16} color={empty ? colors.textMuted : colors.textPrimary} strokeWidth={2} aria-hidden />
+          <Text className={empty ? "text-body font-medium text-text-muted" : "text-body font-medium text-text-primary"}>
+            Search
+          </Text>
+          {pressed && !empty ? <View pointerEvents="none" className="gg-pressed absolute inset-0" /> : null}
+        </>
+      )}
+    </Pressable>
   );
 }
 

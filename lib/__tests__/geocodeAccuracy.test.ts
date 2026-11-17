@@ -80,6 +80,24 @@ const TALOMO: NominatimHit = {
   address: { suburb: "Talomo Proper", city_district: "Talomo District", city: "Davao City" },
 };
 
+// The live answer for "Deca Homes Catalunan Grande" (Nov 2026): a subdivision
+// drawn as a landuse polygon, not a door (#432 review, C5).
+const DECA_HOMES: NominatimHit = {
+  place_id: 10,
+  lat: "7.0866627",
+  lon: "125.5345379",
+  name: "Deca Homes",
+  category: "landuse",
+  type: "residential",
+  address: {
+    residential: "Deca Homes",
+    quarter: "Awa",
+    suburb: "Catalunan Grande",
+    city_district: "Talomo District",
+    city: "Davao City",
+  },
+};
+
 describe("Davao bounds", () => {
   it("covers the whole city, not only the downtown half", () => {
     // Marilog, Paquibato and Baguio districts were outside the old box.
@@ -214,6 +232,14 @@ describe("search rows", () => {
     // A barangay is not a street: the client moves the pin onto their door.
     expect(area.line1).toBe("");
     expect(area.label).toBe("Talomo Proper");
+  });
+
+  it("reads a subdivision as an area: its name is kept for the hint, never saved as the street", () => {
+    const deca = ok(DECA_HOMES);
+    expect(deca.precision).toBe("area");
+    expect(deca.line1).toBe("");
+    expect(deca.label).toBe("Deca Homes");
+    expect(deca.area).toContain("Catalunan Grande");
   });
 });
 

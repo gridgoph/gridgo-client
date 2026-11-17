@@ -1,9 +1,8 @@
 import type { ReactElement } from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import WhereScreen from "@/app/request/where";
-import { SEARCH_DEBOUNCE_MS } from "@/lib/geocode";
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({ replace: jest.fn(), push: jest.fn(), back: jest.fn() }),
@@ -67,9 +66,11 @@ describe("Where is it going? search", () => {
 
     await renderInSafeArea(<WhereScreen />);
     fireEvent.changeText(screen.getByLabelText("Search location"), "SM City");
-
+    await waitFor(() => expect(screen.getByLabelText("Search location").props.value).toBe("SM City"));
+    // Typing alone asks nothing; the Search key does (Nominatim policy).
+    expect(geocode.searchNominatim).not.toHaveBeenCalled();
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS + 30));
+      fireEvent(screen.getByLabelText("Search location"), "submitEditing");
     });
 
     // The row names the road and barangay, so two branches read differently.

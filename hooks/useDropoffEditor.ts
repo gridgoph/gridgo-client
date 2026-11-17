@@ -17,7 +17,6 @@ import { ADDRESS_LABEL_MAX, checkAddress, composeAddress } from "@/lib/address";
 import { peekCurrentLocation, requestCurrentLocation } from "@/lib/deviceLocation";
 import { pinStatus } from "@/lib/dropoffPin";
 import {
-  SEARCH_DEBOUNCE_MS,
   pointInDavao,
   reverseNominatim,
   searchNominatim,
@@ -49,9 +48,10 @@ export function useDropoffEditor(options?: {
     /** The lookup itself failed (offline, busy, slow) — worth trying again. */
     failed: boolean;
   }>({ query: "", results: [], message: null, failed: false });
-  // Bumped by Retry / the keyboard's Search key to ask the same words again.
-  const [searchAttempt, setSearchAttempt] = useState(0);
-  const retrying = useRef(false);
+  // The words the client last asked for, with a count so asking the same
+  // words again (Retry) is a new request. Nothing searches until they ask:
+  // Nominatim's usage policy forbids search-as-you-type (#432 review, C6).
+  const [asked, setAsked] = useState<{ query: string; attempt: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
@@ -89,7 +89,7 @@ export function useDropoffEditor(options?: {
   const trimmedQuery = query.trim();
   const answered = search.query === trimmedQuery;
   const results = answered ? search.results : [];
-  const searching = trimmedQuery !== "" && !answered;
+  const searching = Boolean(asked) && asked?.query === trimmedQuery && !answered;
   const searchNotice = answered && trimmedQuery ? search.message : null;
   const searchFailed = answered && Boolean(trimmedQuery) && search.failed;
 
@@ -151,6 +151,7 @@ export function useDropoffEditor(options?: {
         setLabel((current) => current || suggestion.label.slice(0, ADDRESS_LABEL_MAX));
       }
       setQuery("");
+      setAsked(null);
       setSearch({ query: "", results: [], message: null, failed: false });
       setNotice(null);
     },
@@ -232,41 +233,36 @@ export function useDropoffEditor(options?: {
   const onChangeQuery = useCallback((value: string) => {
     setQuery(value);
     setNotice(null);
+    // New words drop a lookup still on its way for the old ones.
+    searchGen.current += 1;
+    setAsked(null);
   }, []);
 
   useEffect(() => {
-    const q = query.trim();
-    if (!q) return;
+    if (!asked) return;
+    const q = asked.query;
     const gen = ++searchGen.current;
     const isCurrent = () => gen === searchGen.current;
-    // A retry has already waited for its tap; a keystroke waits to settle.
-    const now = retrying.current;
-    retrying.current = false;
-    const handle = setTimeout(
-      () => {
-        void searchNominatim(q, appVersion(), undefined, { isCurrent }).then((result) => {
-          if (!isCurrent() || result.status === "superseded") return;
-          if (result.status === "ok") {
-            setSearch({ query: q, results: result.suggestions, message: null, failed: false });
-            return;
-          }
-          setSearch({ query: q, results: [], message: result.message, failed: result.status === "failed" });
-        });
-      },
-      now ? 0 : SEARCH_DEBOUNCE_MS,
-    );
-    return () => clearTimeout(handle);
-  }, [query, searchAttempt]);
+    void searchNominatim(q, appVersion(), undefined, { isCurrent }).then((result) => {
+      if (!isCurrent() || result.status === "superseded") return;
+      if (result.status === "ok") {
+        setSearch({ query: q, results: result.suggestions, message: null, failed: false });
+        return;
+      }
+      setSearch({ query: q, results: [], message: result.message, failed: result.status === "failed" });
+    });
+  }, [asked]);
 
   /**
-   * Ask the same words again — Retry, or the keyboard's Search key. Goes
-   * through the same queue, so it still keeps to Nominatim's one a second.
+   * Search for what is typed — the Search button, the keyboard's Search key,
+   * or Retry. Goes through the one serialised queue, so it keeps to
+   * Nominatim's one request a second however often it is tapped.
    */
-  const retrySearch = useCallback(() => {
-    if (!query.trim()) return;
-    retrying.current = true;
+  const submitSearch = useCallback(() => {
+    const q = query.trim();
+    if (!q) return;
     setSearch({ query: "", results: [], message: null, failed: false });
-    setSearchAttempt((attempt) => attempt + 1);
+    setAsked((prev) => ({ query: q, attempt: (prev?.attempt ?? 0) + 1 }));
   }, [query]);
 
   useEffect(() => {
@@ -339,7 +335,9 @@ export function useDropoffEditor(options?: {
     searchNotice,
     /** The last lookup failed rather than finding nothing: offer Retry. */
     searchFailed,
-    retrySearch,
+    submitSearch,
+    /** Retry is the same request as Search: the words as they stand. */
+    retrySearch: submitSearch,
     locating,
     notice,
     setNotice,
