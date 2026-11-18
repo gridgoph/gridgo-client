@@ -26,7 +26,7 @@ type Props = {
   /** The share that amount is of the total. Defaults to the old 75. */
   downpaymentPercent?: number;
   /** Defaults to checkout wording; final, pin and change payments reuse the same receiving QR. */
-  paymentKind?: "checkout" | "initial" | "final" | "pin" | "change";
+  paymentKind?: "checkout" | "initial" | "final" | "pin" | "change" | "repayment";
   /**
    * Public plate from `GET /settings` `paymentQr.imageUrl`. Missing or empty
    * uses the bundled GCash screenshot — never a blank plate.
@@ -144,6 +144,9 @@ export function qrPayCopy(
 ): { title: string; due: string; pending: string } {
   const inFull = percent >= FULL_PAYMENT_PERCENT;
   const pending = `GRIDGO works the ${inFull ? "total" : `${percent}%`} out once every item has an address to be delivered to.`;
+  if (paymentKind === "repayment") {
+    return { title: "Repay your cash order", due: "Repayment due", pending: "Send the exact amount by QR, then submit the transfer receipt and reference for Operations to check." };
+  }
   if (paymentKind === "final") {
     return { title: "Scan to pay the final balance", due: "Final payment due", pending };
   }

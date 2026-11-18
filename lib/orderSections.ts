@@ -1,3 +1,4 @@
+import { cashOrderLine } from "@/lib/cash";
 /**
  * The order screen's shape: one latest-progress docket that opens onto the
  * job's whole history, then three folding sections (gridgo-client#129).
@@ -125,6 +126,8 @@ export function artworkSummary({
  */
 export function paymentSummary(order: Order): string {
   const total = orderTotalMinor(order);
+  const cash = cashOrderLine(order);
+  if (cash) return `${cash}${total != null ? ` · ${formatPhp(total)}` : ""}`;
   if (total != null) return `Total ${formatPhp(total)}`;
   const range = order.priceRange;
   if (range) {

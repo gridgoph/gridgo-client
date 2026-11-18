@@ -1,3 +1,6 @@
+import { CashCheckoutChoice, CashCheckoutNote } from "@/components/CashCheckoutChoice";
+import { cashCheckoutChoice, cashDebtOutstanding } from "@/lib/cash";
+import { useSession } from "@/store/session";
 import { documentPagesSummary } from "@/lib/documentPages";
 import {
   colourAwaitsPriceCheck,
@@ -200,6 +203,10 @@ export default function CheckoutScreen() {
   const clearCart = useCart((state) => state.clear);
 
   const [settings, setSettings] = useState<api.PlatformSettings | null>(null);
+  const user = useSession((state) => state.user);
+  const method = useCheckoutPayment((state) => state.method);
+  const chooseMethod = useCheckoutPayment((state) => state.chooseMethod);
+  const [cashBarred, setCashBarred] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [referenceTouched, setReferenceTouched] = useState(false);
   const [attempted, setAttempted] = useState(false);
@@ -251,6 +258,13 @@ export default function CheckoutScreen() {
       const settings = await api.getSettings();
       if (sequence !== loadSequence.current) return;
       setSettings(settings);
+      if (settings.cash?.enabled === true) {
+        // No account eligibility endpoint yet; the client's own orders expose unpaid debt.
+        // A failed read leaves the authoritative checkout refusal in charge.
+        void api.listOrders().then((orders) => {
+          if (sequence === loadSequence.current) setCashBarred(orders.some(cashDebtOutstanding));
+        }).catch(() => undefined);
+      }
       // The same charges price every other screen; keep them in step.
       usePlatformSettings.getState().adopt(settings);
       setLoadError(null);
@@ -352,7 +366,10 @@ export default function CheckoutScreen() {
   // settles the first payment with it, so no QR, screenshot or reference is
   // asked for — or sent — and a receipt being read cannot hold the order up.
   const noCash = voucherSettlesUpFront(cart?.clientQuote);
-  const ocrReading = !noCash && proof.ocr.status === "reading";
+  const cashChoice = cashCheckoutChoice(settings, user, cart, cashBarred);
+  const cashSelected = !noCash && cashChoice.eligible && method === "cash";
+  const noProof = noCash || cashSelected;
+  const ocrReading = !noProof && proof.ocr.status === "reading";
   const shopClosed = lines.filter((line) => shopPaused(line.listing?.shopHours));
   // How GRIDGO wants this basket approved (gridgo-client#248), and whether the
   // client has approved exactly this version of it. Any change to the basket
@@ -377,8 +394,8 @@ export default function CheckoutScreen() {
     // More than one group: each is printed and delivered for its own date, so
     // GRIDGO needs one on every product (gridgo-client#189).
     missingBasketDate: multi && groups.some((group) => group.deadline == null),
-    referenceOk: noCash || ocrReading || referenceCheck.ok,
-    hasProof: noCash || Boolean(proof.state.fileId),
+    referenceOk: noProof || ocrReading || referenceCheck.ok,
+    hasProof: noProof || Boolean(proof.state.fileId),
     hasSettings: Boolean(settings),
     rightsAgreed,
     approval: approvalMethod && approvalState !== "given" ? approvalMethod : "given",
@@ -605,7 +622,7 @@ export default function CheckoutScreen() {
 
   const place = async () => {
     const proofFileId = proof.state.fileId;
-    if (blockers.length || ocrReading || placing || !cartId || (!noCash && !proofFileId)) return;
+    if (blockers.length || ocrReading || placing || !cartId || (!noProof && !proofFileId)) return;
     setPlacing(true);
     setPlaceError(null);
     setApprovalError(null);
@@ -659,7 +676,7 @@ export default function CheckoutScreen() {
       useNotificationNudge.getState().hush(PLACE_HUSH_MS);
       const { order, invoice, basket } = await api.checkoutCart(
         cartId,
-        noCash || !proofFileId ? null : { reference: reference.trim(), proofFileId },
+        cashSelected ? { method: "cash" } : noCash || !proofFileId ? null : { reference: reference.trim(), proofFileId },
         // Recorded by GRIDGO against every order this basket becomes.
         await artworkRightsPayload(),
         approval,
@@ -671,7 +688,7 @@ export default function CheckoutScreen() {
       // The basket beside it carries each group's date for the slip.
       // The slip says what GRIDGO answered: settled by the voucher, or sent
       // by QR and waiting on Operations.
-      const placed = receiptFromCheckout(invoice, order, noCash ? "" : reference);
+      const placed = receiptFromCheckout(invoice, order, noProof ? "" : reference);
       holdPlacedReceipt(placed && basket?.groups ? withBasket(placed, basket) : placed);
       resetPayment();
       if (approvalScope) useApproval.getState().withdraw(approvalScope);
@@ -680,6 +697,14 @@ export default function CheckoutScreen() {
       clearOrderFlow();
       openReceiptAfterCheckout(router, order.id);
     } catch (e) {
+      if (e instanceof api.ApiError && typeof e.body === "object" && e.body && "error" in e.body) {
+        const code = String(e.body.error);
+        if (code === "cash_client_barred") setCashBarred(true);
+        if (["cash_disabled", "cash_client_barred", "cash_limit_exceeded", "cash_individual_only", "cash_delivery_required"].includes(code)) {
+          chooseMethod("qr_manual");
+          void load();
+        }
+      }
       // The approval was refused: said beside the approval, where the fix is.
       // A basket that changed since it was approved is read again and asked
       // for again, the same as GRIDGO asks.
@@ -1241,7 +1266,16 @@ export default function CheckoutScreen() {
         </Section>
 
         {/* ---- Paying ----------------------------------------------------- */}
-        {noCash ? (
+        {!noCash && (cashChoice.eligible || cashChoice.reason) ? (
+          <Section title="PAYMENT METHOD">
+            {cashChoice.eligible ? (
+              <CashCheckoutChoice selected={cashSelected} onChoose={(cash) => chooseMethod(cash ? "cash" : "qr_manual")} disabled={placing || busy} />
+            ) : <Text className="text-body text-text-secondary">{cashChoice.reason}</Text>}
+          </Section>
+        ) : null}
+        {cashSelected && totals.totalMinor != null ? (
+          <Section title="HOW YOU PAY"><CashCheckoutNote amountMinor={totals.totalMinor} multi={multi || runs.length > 1} /></Section>
+        ) : noCash ? (
           <Section title="HOW YOU PAY">
             <VoucherCoveredPayment
               voucherName={discountLineLabel(cart?.clientQuote?.voucher)}
@@ -1294,7 +1328,7 @@ export default function CheckoutScreen() {
                   {PAYMENT_CHOICE_LABEL}
                 </Text>
                 <View className="gg-chip">
-                  <Text className="text-caption text-text-secondary">Only method</Text>
+                  <Text className="text-caption text-text-secondary">{cashChoice.eligible ? "Online" : "Only method"}</Text>
                 </View>
               </View>
               <Text className="text-body text-text-secondary">{CHECKOUT_PAY_INSTRUCTION}</Text>
@@ -1382,7 +1416,7 @@ export default function CheckoutScreen() {
             />
             {payDetailsOpen ? (
               <View className="gap-2 px-1">
-                <Text className="text-caption text-text-muted">{DIGITAL_ONLY_NOTICE}</Text>
+                <Text className="text-caption text-text-muted">{cashChoice.eligible ? "Pay online by QR — GCash, Maya or a bank e-wallet." : DIGITAL_ONLY_NOTICE}</Text>
                 {multi ? null : (
                   <Text className="text-caption text-text-muted">
                     {paymentPlanNote(totals.downpaymentPercent)}

@@ -486,7 +486,33 @@ export type DeliveryPinPreview = {
  * price under a different name is still withheld — `subtotalMinor` is the
  * print line, not the supplier settlement.
  */
+/** Client-safe cash data; private rider wallets and shop settlements stay on the API. */
+export type OrderCash = { method: "cash"; status: string; version: number };
+export type CashRepayment = {
+  status: "none" | "pending" | "rejected" | "confirmed";
+  submittedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+};
+export type CashDetail = {
+  version: number;
+  status: string;
+  amountDueMinor: number;
+  collectedAt: string | null;
+  noShowApprovedAt: string | null;
+  repaymentConfirmedAt: string | null;
+  /** Missing on an older API; interpreted as no submission. */
+  repayment?: CashRepayment;
+};
+export type CashRepaymentBody = {
+  expectedVersion: number;
+  amountMinor: number;
+  reference: string;
+  proofFileId: string;
+};
+
 export type Order = {
+  cash?: OrderCash;
   id: string;
   /** Whether this order has already been rated, so a client is asked once. */
   rated?: boolean;
@@ -761,6 +787,7 @@ export type ShopRating = { average: number; count: number };
 
 /** Platform-wide operational settings. The issue window is one of them. */
 export type PlatformSettings = {
+  cash?: { enabled: boolean; limitMinor: number; noShowWaitSeconds?: number };
   issueWindowHours: number;
   /**
    * The four delivery zones, in order: Nearby, Away, Long Distance, Out of
@@ -3268,6 +3295,7 @@ export type MatchedJob = {
 };
 
 export type MatchedOrder = {
+  cash?: OrderCash;
   id: string;
   state: string;
   itemSubtotalMinor: number;
@@ -3279,7 +3307,7 @@ export type MatchedOrder = {
   serviceLevel: ServiceLevel;
   scheduledFor: string | null;
   paymentPlan: {
-    method: "qr_manual";
+    method: "qr_manual" | "cash";
     downpaymentMinor: number;
     balanceMinor: number;
     downpaymentStatus: string;
@@ -3361,7 +3389,7 @@ export type Invoice = {
   pickupFeeMinor?: number;
   totalMinor: number;
   paymentPlan: {
-    method: "qr_manual";
+    method: "qr_manual" | "cash";
     downpaymentMinor: number;
     balanceMinor: number;
     downpaymentPercent?: number;
@@ -4421,7 +4449,7 @@ export async function setCartLineMockup(
 /**
  * Place the order.
  *
- * QR Ph only, and the reference and the receipt screenshot go with it — the
+ * QR Ph sends its reference and receipt screenshot; cash sends its method only. The
  * payment is submitted, never confirmed, because Operations matches it against
  * the GRIDGO wallet by hand. The order comes back waiting for Operations QA.
  *
@@ -4432,7 +4460,7 @@ export async function setCartLineMockup(
  */
 export async function checkoutCart(
   cartId: string,
-  payment: { reference: string; proofFileId: string } | null,
+  payment: { reference: string; proofFileId: string } | { method: "cash" } | null,
   artworkRights?: ArtworkRightsBody | null,
   approval?: ApprovalBody | null,
 ): Promise<{ order: MatchedOrder; invoice: Invoice; basket?: Basket }> {
@@ -6670,4 +6698,22 @@ export async function revokeAppleAuthorization(
     },
     { deferUnauthorized: true },
   );
+}
+
+/** Owning-client projection only, no wallet or shop settlement data. */
+export async function getOrderCash(orderId: string): Promise<CashDetail> {
+  const result = await request<{ cash: CashDetail }>(`/orders/${encodeURIComponent(orderId)}/cash`);
+  return result.cash;
+}
+
+export async function submitCashRepayment(
+  orderId: string,
+  body: CashRepaymentBody,
+  idempotencyKey: string,
+): Promise<Pick<CashDetail, "version" | "status" | "repayment">> {
+  const result = await request<{ cash: Pick<CashDetail, "version" | "status" | "repayment"> }>(
+    `/orders/${encodeURIComponent(orderId)}/cash/repayment`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) },
+  );
+  return result.cash;
 }
