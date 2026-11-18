@@ -55,7 +55,8 @@ export function orderStepLabel(id: OrderStepId): string {
  * The current step's one-line task. Unnumbered for the reason above: the
  * position is the bar's job, and the screen reader hears it there.
  */
-export function orderStepCaption(current: OrderStepId): string {
+export function orderStepCaption(current: OrderStepId, paymentMethod?: "cash"): string {
+  if (current === "pay" && paymentMethod === "cash") return "Check your order, then place it. Pay the rider the exact cash at delivery.";
   return SEQUENCE.find((step) => step.id === current)?.caption ?? "";
 }
 

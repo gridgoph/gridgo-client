@@ -1,3 +1,4 @@
+import { cashOrderLine, isCashOrder } from "@/lib/cash";
 /**
  * The client's acknowledgement receipt, from the invoice snapshot.
  *
@@ -131,6 +132,7 @@ export type ReceiptGroup = {
   /** This group's share of the voucher, already out of `totalMinor`. */
   voucherDiscountMinor?: number;
   stopped?: string | null;
+  cashLine?: string;
 };
 
 /**
@@ -159,6 +161,8 @@ export type ReceiptView = {
   /** One transfer covers the whole total; no balance step follows. */
   paidInFull: boolean;
   paymentStatus: ReceiptPaymentStatus;
+  /** Cash status stays separate from the digital installment ladder. */
+  cashLine?: string;
 };
 
 /** The QR reference the client sent, from either payment half. */
@@ -265,7 +269,7 @@ function invoiceParts(invoice: Invoice) {
  */
 export function withGroupStanding(
   view: ReceiptView,
-  groups: Pick<BasketGroup, "orderId" | "state" | "deadline">[],
+  groups: Pick<BasketGroup, "orderId" | "state" | "deadline" | "order">[],
 ): ReceiptView {
   if (!view.groups) return view;
   const sections = view.groups.map((section) => {
@@ -276,9 +280,10 @@ export function withGroupStanding(
       // A receipt written before groups carried their own date reads it from the basket.
       deadline: section.deadline ?? live.deadline ?? null,
       stopped: receiptGroupStanding(live),
+      ...(live.order && isCashOrder(live.order) ? { cashLine: cashOrderLine(live.order)! } : {}),
     };
   });
-  return { ...view, groups: byDate(sections, (section) => section.deadline) };
+  return { ...view, groups: byDate(sections, (section) => section.deadline), ...(view.cashLine ? { cashLine: "Cash on delivery · collected separately for each delivery" } : {}) };
 }
 
 /**
@@ -298,6 +303,7 @@ export function receiptFromInvoice(invoice: Invoice, order?: Order | null): Rece
     paymentReference: paymentReferenceOf(order?.payments) ?? null,
     paidInFull: invoicePaidInFull(invoice) || (order ? paysInFull(order) : false),
     paymentStatus: paymentStatusOf(order?.payments),
+    ...(invoice.paymentPlan.method === "cash" && invoice.groups?.length ? { cashLine: "Cash on delivery · collected separately for each delivery" } : order && isCashOrder(order) ? { cashLine: cashOrderLine(order)! } : invoice.paymentPlan.method === "cash" ? { cashLine: "Cash on delivery · not collected yet" } : {}),
   };
 }
 
@@ -320,7 +326,8 @@ export function receiptFromCheckout(
   const status = order.paymentPlan?.downpaymentStatus;
   const confirmed = status === "confirmed" || status === "legacy_confirmed";
   const byVoucher = confirmed && order.paymentPlan?.downpaymentMethod === VOUCHER_METHOD;
-  const typed = reference.trim() || null;
+  const cash = order.paymentPlan?.method === "cash" || invoice.paymentPlan.method === "cash";
+  const typed = cash ? null : reference.trim() || null;
   return {
     ...invoiceParts(invoice),
     orderId: order.id,
@@ -330,6 +337,7 @@ export function receiptFromCheckout(
       invoicePaidInFull(invoice) ||
       order.paymentPlan?.balanceMinor === 0 ||
       order.paymentPlan?.downpaymentPercent === FULL_PAYMENT_PERCENT,
+    ...(cash ? { cashLine: invoice.groups?.length ? "Cash on delivery · collected separately for each delivery" : "Cash on delivery · not collected yet" } : {}),
     paymentStatus: byVoucher ? "voucher" : confirmed ? "confirmed" : typed ? "checking" : "none",
   };
 }
@@ -357,8 +365,9 @@ export function placedReceiptFor(orderId: string | null | undefined): ReceiptVie
  * is not paying, and the client sits in "being checked" for real.
  */
 export function receiptPaymentLine(
-  view: Pick<ReceiptView, "paidInFull" | "paymentStatus">,
+  view: Pick<ReceiptView, "paidInFull" | "paymentStatus" | "cashLine">,
 ): string | null {
+  if (view.cashLine) return view.cashLine;
   if (view.paymentStatus === "none") return null;
   if (view.paymentStatus === "voucher") {
     return view.paidInFull ? "Covered in full by your voucher" : "Downpayment covered by your voucher";
@@ -423,6 +432,7 @@ export function receiptFromOrder(order: Order): ReceiptView | null {
     paymentReference: paymentReferenceOf(order.payments),
     paidInFull: paysInFull(order),
     paymentStatus: paymentStatusOf(order.payments),
+    ...(isCashOrder(order) ? { cashLine: cashOrderLine(order)! } : {}),
   };
 }
 

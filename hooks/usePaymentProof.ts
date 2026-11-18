@@ -27,7 +27,7 @@ export type { PaymentProofState };
  * State lives in `useCheckoutPayment` so leaving checkout to set an address
  * does not throw the screenshot and the reference away.
  */
-export function usePaymentProof(cartId: string | null, paymentStore = useCheckoutPayment) {
+export function usePaymentProof(cartId: string | null, paymentStore = useCheckoutPayment, purpose = "payment_proof") {
   const bound = paymentStore((state) => state.cartId === cartId);
   const proof = paymentStore((state) => state.proof);
   const ocr = paymentStore((state) => state.ocr);
@@ -143,7 +143,7 @@ export function usePaymentProof(cartId: string | null, paymentStore = useCheckou
         mimeType: asset.mimeType ?? null,
         file: "file" in asset ? (asset as { file?: Blob }).file : undefined,
       },
-      "payment_proof",
+      purpose,
       (fraction) => {
         if (isCurrent()) setProof((prev) => (prev.phase === "sending" ? { ...prev, progress: fraction } : prev));
       },
@@ -173,7 +173,7 @@ export function usePaymentProof(cartId: string | null, paymentStore = useCheckou
     } finally {
       if (handleRef.current === handle) handleRef.current = null;
     }
-  }, [cartId, paymentStore, readReference, setProof]);
+  }, [cartId, purpose, paymentStore, readReference, setProof]);
 
   const reset = useCallback(() => {
     const state = paymentStore.getState();

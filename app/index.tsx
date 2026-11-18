@@ -3,8 +3,8 @@ import { type Href } from "expo-router";
 import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
 import { useSession } from "@/store/session";
 
-const welcome = "/(auth)/welcome" as Href;
-const login = "/(auth)/login" as Href;
+const welcome = "/(auth)/welcome" satisfies Href;
+const login = "/(auth)/login" satisfies Href;
 
 /**
  * Launch mapping only. The ladder itself lives in `lib/authLanding.ts`, and

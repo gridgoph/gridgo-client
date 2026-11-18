@@ -210,6 +210,7 @@ function SlipGroup({ group }: { group: ReceiptGroup }) {
           {formatPhp(group.totalMinor)}
         </Text>
       </View>
+      {group.cashLine ? <Text className="text-caption text-text-secondary">{group.cashLine}</Text> : null}
       {group.stopped ? (
         <Text className="text-caption text-text-secondary">{group.stopped}</Text>
       ) : null}

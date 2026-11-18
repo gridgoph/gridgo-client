@@ -1,10 +1,11 @@
+import { useCashRepayment } from "@/store/cashRepayment";
 import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useMyFiles } from "@/store/myFiles";
 import { useCoverSpine } from "@/store/coverSpine";
 import { claimAppleRevocation, forgetAppleRevocation } from "@/store/accountDeletion";
 import { useCart } from "@/store/cart";
 import { useListingDraft } from "@/store/listingDraft";
-import { useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
+import { useCashPayment, useCheckoutPayment, useOrderPayment } from "@/store/checkoutPayment";
 import { useHandoverActions } from "@/store/handoverActions";
 import { useNotifications } from "@/store/notifications";
 import { useQuotes } from "@/store/quotes";
@@ -472,6 +473,8 @@ useSession.subscribe((state, previous) => {
   }
   useCheckoutPayment.getState().reset();
   useOrderPayment.getState().reset();
+  useCashPayment.getState().reset();
+  useCashRepayment.getState().reset();
   useHandoverActions.getState().reset();
   // Uploads in flight belong to the account that started them.
   useArtworkAttachments.getState().reset();
