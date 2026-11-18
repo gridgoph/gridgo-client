@@ -1,3 +1,4 @@
+import { cashDebtOutstanding } from "@/lib/cash";
 /**
  * Client-facing order state vocabulary.
  *
@@ -264,6 +265,7 @@ export function orderNextAction(order: Order): OrderNextAction | null {
   // issue window all wait on Operations' decision, so nothing is asked of
   // the client until it is made.
   if (order.refundHold) return null;
+  if (cashDebtOutstanding(order)) return { title: "Review your cash order", body: "Open the cash status for online repayment or Operations’ review. Cash stays unavailable until repayment is confirmed.", tone: "warning", icon: "wallet" };
   // The shop could not take the job, or asked for more time: the order is
   // stopped on the client's decision, so that decision comes before anything
   // the order's state would otherwise ask for.
@@ -371,6 +373,7 @@ const PAID_IN_FULL_WAITING_ON: Record<string, string> = {
 };
 
 export function orderWaitingOn(order: Order): string | null {
+  if (cashDebtOutstanding(order)) return "Cash is unavailable until Operations confirms online repayment of this order and its delivery fare. Redelivery is at your cost.";
   if (order.refundDisposition === "cancelled") {
     return "This job was cancelled for your refund. Open the refund to see when the money is sent.";
   }

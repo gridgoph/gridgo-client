@@ -13,6 +13,7 @@ import {
 type Props = {
   /** Where the client is standing. */
   current: OrderStepId;
+  paymentMethod?: "cash";
   /**
    * Where a finished step goes back to. Return null for a step this screen
    * cannot address — the trail draws it as done but leaves it unpressable
@@ -42,9 +43,9 @@ type Props = {
  * content — a shop's sample, trimmed — so spending them on chrome is what would
  * turn the motif into decoration.
  */
-export function StepTrail({ current, onStep, canGo }: Props) {
+export function StepTrail({ current, onStep, canGo, paymentMethod }: Props) {
   const steps = orderSteps(current);
-  const caption = orderStepCaption(current);
+  const caption = orderStepCaption(current, paymentMethod);
 
   return (
     <View className="gap-1">

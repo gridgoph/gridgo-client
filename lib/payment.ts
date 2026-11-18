@@ -1,3 +1,4 @@
+import { isCashOrder } from "@/lib/cash";
 /**
  * The digital payment split, as the client meets it.
  *
@@ -13,8 +14,8 @@
  * a bank e-wallet — confirmed by hand by Operations. No money moves through
  * this app, so nothing here may ever read as "paid" on submission.
  *
- * Cash on delivery and Pilot Credits are not payment methods. Both routes are
- * retired server-side; offering either would walk a client into an error.
+ * Eligible cash orders use their own collection and no-show repayment flow
+ * (`lib/cash.ts`), and never enter this installment ladder. Pilot Credits remain retired.
  */
 
 import type { InstallmentCode, Order, PaymentInstallment, PlatformSettings } from "@/lib/api";
@@ -166,14 +167,14 @@ export function collectionPaused(order: Pick<Order, "refundHold" | "unpaidBalanc
 }
 
 export function downpaymentDue(order: Order): boolean {
-  if (collectionPaused(order)) return false;
+  if (isCashOrder(order) || collectionPaused(order)) return false;
   if (!["awaiting_downpayment", "awaiting_initial_payment"].includes(order.state)) return false;
   const installment = paymentInstallment(order, "downpayment");
   return Boolean(installment && installment.amountMinor != null && installment.amountMinor > 0 && ["not_submitted", "rejected"].includes(installment.status));
 }
 
 export function balanceDue(order: Order): boolean {
-  if (collectionPaused(order)) return false;
+  if (isCashOrder(order) || collectionPaused(order)) return false;
   if (paysInFull(order)) return false;
   if (!(BALANCE_DUE_STATES as readonly string[]).includes(order.state)) return false;
   if (order.payments?.initial
@@ -185,6 +186,7 @@ export function balanceDue(order: Order): boolean {
 
 /** Which half — if either — the client is currently waiting on a check for. */
 export function installmentUnderReview(order: Order): InstallmentCode | null {
+  if (isCashOrder(order)) return null;
   if (isInstallmentSubmitted(paymentInstallment(order, "downpayment"))) return "downpayment";
   if (isInstallmentSubmitted(paymentInstallment(order, "balance"))) return "balance";
   return null;

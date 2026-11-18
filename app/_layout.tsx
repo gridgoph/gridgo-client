@@ -398,6 +398,7 @@ function AppNavigation() {
                 <Stack.Screen name="chat/index" options={pushedScreenOptions("Chat")} />
                 <Stack.Screen name="chat/[thread]" options={pushedScreenOptions("Chat")} />
                 <Stack.Screen name="checkout" options={pushedScreenOptions("Checkout")} />
+                <Stack.Screen name="order/cash-repayment" options={pushedScreenOptions("Cash repayment")} />
                 <Stack.Screen name="order/[id]" options={pushedScreenOptions("Order")} />
                 <Stack.Screen
                   name="order/receipt"

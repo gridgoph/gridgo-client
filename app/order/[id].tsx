@@ -1,3 +1,5 @@
+import { CashOrderCard } from "@/components/CashOrderCard";
+import { cashDebtOutstanding, cashOrderLine, isCashOrder } from "@/lib/cash";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronLeft, ChevronRight, LifeBuoy, MessageCircle, ReceiptText, ScrollText, Share2, Star } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -147,6 +149,7 @@ export default function OrderDetailScreen() {
    * none right now, `"error"` when the read failed — a claim code is not
    * something to guess at, so a failure says so and offers a retry.
    */
+  const [cashDetail, setCashDetail] = useState<api.CashDetail | null | "error">(null);
   const [handover, setHandover] = useState<api.OrderHandover | null | "error">(null);
   /**
    * The delivery acknowledgement receipt (gridgo-rider#152). Not inlined on
@@ -205,12 +208,13 @@ export default function OrderDetailScreen() {
       // The claim code is read with the order, so it lands with the screen
       // rather than popping in under it, and so is the acknowledgement
       // receipt. Each is only asked for when it can exist.
-      const [group, credential, receipt] = await Promise.all([
+      const [group, credential, receipt, cash] = await Promise.all([
         current.basketId ? api.getBasket(current.basketId).catch(() => null) : null,
-        handoverKind(current) ? api.getOrderHandover(current.id).catch(() => "error" as const) : null,
+        !cashDebtOutstanding(current) && handoverKind(current) ? api.getOrderHandover(current.id).catch(() => "error" as const) : null,
         readsAcknowledgementReceipt(current)
           ? api.getAcknowledgementReceipt(current.id).catch(() => "error" as const)
           : null,
+        isCashOrder(current) ? api.getOrderCash(current.id).catch(() => "error" as const) : null,
       ]);
       if (sequence !== loadSequence.current) return;
       // The post-order survey lives in its own store, read alongside the
@@ -237,6 +241,7 @@ export default function OrderDetailScreen() {
           });
       }
       setHandover(credential);
+      setCashDetail(cash);
       setAckReceipt(receipt);
       setBasket(group);
       setOrder(current);
@@ -394,6 +399,7 @@ export default function OrderDetailScreen() {
   const reschedule = recovery ? null : rescheduleView(order);
   // The shop asked to change the job while printing it (report F9FCD485).
   const changeView = changeRequestView(order);
+  const cashDebt = cashDebtOutstanding(order);
   const actionZone = order.refundHold && existingRefund
     ? "refund"
     : order.refundHold
@@ -402,6 +408,8 @@ export default function OrderDetailScreen() {
         ? "recovery"
         : reschedule
           ? "reschedule"
+          : cashDebt
+            ? "cash"
           : isProofApprovalState(order.state)
     ? "proof"
     : isClientCorrectionState(order.state)
@@ -565,7 +573,10 @@ export default function OrderDetailScreen() {
       key={`${order.state}:${actionZone}:${recovery?.kind ?? reschedule?.kind ?? changeView?.kind ?? ""}`}
       entering={reducedMotion ? undefined : FadeIn.duration(200)}
     >
-      {actionZone === "refund" && existingRefund ? (
+      {actionZone === "cash" ? (
+        <CashOrderCard order={order} detail={cashDetail} onRetry={() => void load()}
+          onRepay={() => router.push({ pathname: "/order/cash-repayment", params: { orderId: order.id } })} />
+      ) : actionZone === "refund" && existingRefund ? (
         <RefundOrderCard refund={existingRefund} onOpen={openRefund} />
       ) : actionZone === "recovery" && recovery ? (
         <ShopRecoveryCard order={order} view={recovery} onChanged={() => void load()} />
@@ -696,7 +707,7 @@ export default function OrderDetailScreen() {
         {/* A collected job is not going to the address they shopped with.
             Naming that address here is how a client ends up waiting at home
             for something sitting on our counter. */}
-        {collectsAtOffice(order) ? (
+        {!cashDebt && collectsAtOffice(order) ? (
           <SpecRow label="Collect at" value="GRIDGO Office" />
         ) : (
           <SpecRow label="Deliver to" value={order.address || "—"} />
@@ -909,6 +920,7 @@ export default function OrderDetailScreen() {
         {refundRecord}
 
         {actionZoneView}
+        {isCashOrder(order) && !cashDebt ? <CashOrderCard order={order} detail={cashDetail} /> : null}
 
         {survey}
 
@@ -927,7 +939,7 @@ export default function OrderDetailScreen() {
           ready before the switch has none and keeps the old counter card.
         */}
         {missedCalls}
-        {handover === "error" && handoverKind(order) ? (
+        {!cashDebt && handover === "error" && handoverKind(order) ? (
           <View className="gg-card gap-3">
             <Text className="text-body-lg font-medium text-text-primary">
               {handoverKind(order) === "hub" ? "Your claim code did not load" : "Your handover code did not load"}
@@ -940,7 +952,7 @@ export default function OrderDetailScreen() {
             <SecondaryButton label="Try again" onPress={() => void load()} />
           </View>
         ) : null}
-        {collectsAtOffice(order) ? (
+        {!cashDebt && collectsAtOffice(order) ? (
           isAwaitingCollectionState(order.state) ? (
             handover !== "error" && isHubHandover(handover) ? (
               <HubClaimCard order={order} handover={handover} onChanged={() => void load()} />
@@ -1059,10 +1071,11 @@ function MoneyDetails({
     );
   }
 
-  const downpayment = paymentInstallment(order, "downpayment");
+  const cash = isCashOrder(order);
+  const downpayment = cash ? undefined : paymentInstallment(order, "downpayment");
   // A paid-in-full order has no balance step: its `not_required` row is not
   // something the client owes, so it is not drawn at all.
-  const balance = paysInFull(order) ? undefined : paymentInstallment(order, "balance");
+  const balance = cash || paysInFull(order) ? undefined : paymentInstallment(order, "balance");
   const showFee = showsServiceFee(order) && serviceFeeVisibleToClient(settings);
   const physicalInvoice = physicalInvoiceEntry(order, physicalInvoiceRequestsEnabled(settings));
   // The saved total less the saved fulfilment charge: both GRIDGO's figures.
@@ -1122,6 +1135,7 @@ function MoneyDetails({
         {showFee ? (
           <ServiceFeeRow explainOnly rateBps={order.serviceFeeRateBps ?? null} />
         ) : null}
+        {cash ? <Text className="text-body text-text-secondary">{cashOrderLine(order)}</Text> : null}
         {downpayment ? (
           <SpecRow
             label={`${installmentLabel("downpayment", order)} · ${installmentStatusLabel(downpayment.status)}`}

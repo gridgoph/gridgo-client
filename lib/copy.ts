@@ -5,6 +5,7 @@
  * Errors explain what happened and how to recover — never apologise alone.
  */
 
+import { cashErrorMessage } from "@/lib/cash";
 import { ApiError } from "@/lib/api";
 import { safeErrorText } from "@/lib/connectionError";
 import { coverSpineErrorMessage } from "@/lib/coverSpine";
@@ -107,6 +108,9 @@ export function userFacingError(error: unknown, fallback: string): string {
       typeof error.body === "object" && error.body && "error" in error.body
         ? String((error.body as { error: string }).error)
         : error.message;
+
+    const cashMessage = cashErrorMessage(code);
+    if (cashMessage) return cashMessage;
 
     // A hardbound book's cover and spine: said for the field GRIDGO named.
     const coverSpine = coverSpineErrorMessage(error.body);
