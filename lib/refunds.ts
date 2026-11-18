@@ -1,3 +1,4 @@
+import { isCashOrder } from "@/lib/cash";
 /**
  * Client refunds under the available-funds policy (`available_funds_v1`).
  *
@@ -115,6 +116,8 @@ export function refundEntry(
 ): RefundEntry {
   const open = (refunds ?? []).find(isRefundActive);
   if (open) return { kind: "open", refund: open };
+  // Cash remedies follow the issue decision; this form is for online refunds.
+  if (isCashOrder(order)) return { kind: "none" };
   const paidMinor = confirmedPaidMinor(order);
   const settled = (refunds ?? []).some((refund) => refund.settlement != null);
   // A cancelled order whose refund was settled has nothing left to return.

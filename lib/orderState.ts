@@ -265,7 +265,7 @@ export function orderNextAction(order: Order): OrderNextAction | null {
   // issue window all wait on Operations' decision, so nothing is asked of
   // the client until it is made.
   if (order.refundHold) return null;
-  if (cashDebtOutstanding(order)) return { title: "Repay your cash order online", body: "Open the cash status to repay the order and original delivery fare. Cash stays unavailable until Operations confirms repayment.", tone: "warning", icon: "wallet" };
+  if (cashDebtOutstanding(order)) return { title: "Review your cash order", body: "Open the cash status for online repayment or Operations’ review. Cash stays unavailable until repayment is confirmed.", tone: "warning", icon: "wallet" };
   // The shop could not take the job, or asked for more time: the order is
   // stopped on the client's decision, so that decision comes before anything
   // the order's state would otherwise ask for.

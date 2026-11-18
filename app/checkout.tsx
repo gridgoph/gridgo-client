@@ -91,7 +91,7 @@ import { lineArtworkLinks, lineArtworkSummary, lineHasArtwork } from "@/lib/desi
 import { holdPlacedReceipt, openReceiptAfterCheckout, receiptFromCheckout, withBasket } from "@/lib/receipt";
 import { PLACE_HUSH_MS } from "@/lib/receiptPrint";
 import { serviceFeeVisibleToClient } from "@/lib/serviceFee";
-import { clearOrderFlow } from "@/lib/orderFlow";
+import { clearOrderFlow, orderFlowNow } from "@/lib/orderFlow";
 import {
   artworkRefusalOf,
   blockerLine,
@@ -127,7 +127,6 @@ import {
 import { samplePhotoUri } from "@/lib/listing";
 import { readyByDate, READY_TIME_EXPLANATION } from "@/lib/readyTime";
 import { checkoutNoticeView, openingHoursLines, upcomingClosures } from "@/lib/operatingHours";
-import { orderFlowNow } from "@/lib/orderFlow";
 import { type OrderStepId } from "@/lib/orderSteps";
 import { checkPaymentReference, DIGITAL_ONLY_NOTICE, FULL_PAYMENT_PERCENT, paymentPlanNote } from "@/lib/payment";
 import {
@@ -1040,7 +1039,7 @@ export default function CheckoutScreen() {
     >
       <View ref={contentRef} collapsable={false} className="gg-page pb-8 pt-2">
         {/* Where this sits in the run, and the way back to any of it. */}
-        <StepTrail current="pay" onStep={goStep} canGo={(step) => step === "shop" || Boolean(lastLine)} />
+        <StepTrail paymentMethod={cashSelected ? "cash" : undefined} current="pay" onStep={goStep} canGo={(step) => step === "shop" || Boolean(lastLine)} />
 
         <Text className="mt-4 text-h1 text-text-primary">Your order</Text>
 
@@ -1409,14 +1408,14 @@ export default function CheckoutScreen() {
 
             <OrderDisclosure
               title={PAYMENT_DETAILS_TITLE}
-              summary={PAYMENT_DETAILS_SUMMARY}
+              summary={settings?.cash?.enabled ? "GCash, Maya or a bank e-wallet." : PAYMENT_DETAILS_SUMMARY}
               icon={Info}
               open={payDetailsOpen}
               onToggle={() => setPayDetailsOpen((open) => !open)}
             />
             {payDetailsOpen ? (
               <View className="gap-2 px-1">
-                <Text className="text-caption text-text-muted">{cashChoice.eligible ? "Pay online by QR — GCash, Maya or a bank e-wallet." : DIGITAL_ONLY_NOTICE}</Text>
+                <Text className="text-caption text-text-muted">{settings?.cash?.enabled ? "Pay online by QR — GCash, Maya or a bank e-wallet." : DIGITAL_ONLY_NOTICE}</Text>
                 {multi ? null : (
                   <Text className="text-caption text-text-muted">
                     {paymentPlanNote(totals.downpaymentPercent)}
@@ -1551,7 +1550,7 @@ export default function CheckoutScreen() {
             </Text>
           ) : null}
           <Text className="text-caption text-text-muted">
-            {invoiceNote(serviceFeeVisibleToClient(settings))}
+            {cashSelected ? "GRIDGO issues a digital invoice with this cash order. Open Receipt as soon as the order is placed." : invoiceNote(serviceFeeVisibleToClient(settings))}
           </Text>
           <OrganizationSavingsNote source={cart?.clientQuote} />
         </Section>

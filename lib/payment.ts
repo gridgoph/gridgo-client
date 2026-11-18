@@ -14,8 +14,8 @@ import { isCashOrder } from "@/lib/cash";
  * a bank e-wallet — confirmed by hand by Operations. No money moves through
  * this app, so nothing here may ever read as "paid" on submission.
  *
- * Cash on delivery and Pilot Credits are not payment methods. Both routes are
- * retired server-side; offering either would walk a client into an error.
+ * Eligible cash orders use their own collection and no-show repayment flow
+ * (`lib/cash.ts`), and never enter this installment ladder. Pilot Credits remain retired.
  */
 
 import type { InstallmentCode, Order, PaymentInstallment, PlatformSettings } from "@/lib/api";

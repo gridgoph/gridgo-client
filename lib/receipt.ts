@@ -132,6 +132,7 @@ export type ReceiptGroup = {
   /** This group's share of the voucher, already out of `totalMinor`. */
   voucherDiscountMinor?: number;
   stopped?: string | null;
+  cashLine?: string;
 };
 
 /**
@@ -268,7 +269,7 @@ function invoiceParts(invoice: Invoice) {
  */
 export function withGroupStanding(
   view: ReceiptView,
-  groups: Pick<BasketGroup, "orderId" | "state" | "deadline">[],
+  groups: Pick<BasketGroup, "orderId" | "state" | "deadline" | "order">[],
 ): ReceiptView {
   if (!view.groups) return view;
   const sections = view.groups.map((section) => {
@@ -279,9 +280,10 @@ export function withGroupStanding(
       // A receipt written before groups carried their own date reads it from the basket.
       deadline: section.deadline ?? live.deadline ?? null,
       stopped: receiptGroupStanding(live),
+      ...(live.order && isCashOrder(live.order) ? { cashLine: cashOrderLine(live.order)! } : {}),
     };
   });
-  return { ...view, groups: byDate(sections, (section) => section.deadline) };
+  return { ...view, groups: byDate(sections, (section) => section.deadline), ...(view.cashLine ? { cashLine: "Cash on delivery · collected separately for each delivery" } : {}) };
 }
 
 /**
@@ -301,7 +303,7 @@ export function receiptFromInvoice(invoice: Invoice, order?: Order | null): Rece
     paymentReference: paymentReferenceOf(order?.payments) ?? null,
     paidInFull: invoicePaidInFull(invoice) || (order ? paysInFull(order) : false),
     paymentStatus: paymentStatusOf(order?.payments),
-    ...(order && isCashOrder(order) ? { cashLine: cashOrderLine(order)! } : invoice.paymentPlan.method === "cash" ? { cashLine: "Cash on delivery · not collected yet" } : {}),
+    ...(invoice.paymentPlan.method === "cash" && invoice.groups?.length ? { cashLine: "Cash on delivery · collected separately for each delivery" } : order && isCashOrder(order) ? { cashLine: cashOrderLine(order)! } : invoice.paymentPlan.method === "cash" ? { cashLine: "Cash on delivery · not collected yet" } : {}),
   };
 }
 
@@ -335,7 +337,7 @@ export function receiptFromCheckout(
       invoicePaidInFull(invoice) ||
       order.paymentPlan?.balanceMinor === 0 ||
       order.paymentPlan?.downpaymentPercent === FULL_PAYMENT_PERCENT,
-    ...(cash ? { cashLine: "Cash on delivery · not collected yet" } : {}),
+    ...(cash ? { cashLine: invoice.groups?.length ? "Cash on delivery · collected separately for each delivery" : "Cash on delivery · not collected yet" } : {}),
     paymentStatus: byVoucher ? "voucher" : confirmed ? "confirmed" : typed ? "checking" : "none",
   };
 }

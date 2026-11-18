@@ -246,7 +246,9 @@ export default function OrderReceiptScreen() {
           {view.issuedAt ? (
             <SpecRow label="Issued" value={formatTimelineStamp(view.issuedAt)} />
           ) : null}
-          {view.paymentReference ? (
+          {view.cashLine ? (
+            <SpecRow label="Payment" value={view.cashLine} />
+          ) : view.paymentReference ? (
             <SpecRow label="Payment reference" value={view.paymentReference} />
           ) : (
             <SpecRow label="Payment reference" value="Waiting on your QR receipt" />
@@ -268,6 +270,7 @@ export default function OrderReceiptScreen() {
                     {formatPhp(group.totalMinor)}
                   </Text>
                 </View>
+                {group.cashLine ? <Text className="pb-2 text-caption text-text-secondary">{group.cashLine}</Text> : null}
                 {group.stopped ? (
                   <Text className="pb-2 text-caption text-text-secondary">{group.stopped}</Text>
                 ) : null}

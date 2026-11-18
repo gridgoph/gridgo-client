@@ -26,7 +26,7 @@ export const useCashRepayment = create<State>((set, get) => ({
   load: async (orderId) => {
     const run = ++generation;
     const owner = liveGeneration();
-    if (get().orderId !== orderId) set({ orderId, cash: null, attempt: null, error: null });
+    if (get().orderId !== orderId) set({ orderId, cash: null, attempt: null, error: null, busy: false });
     set({ loading: true, loadError: null });
     try {
       const cash = await api.getOrderCash(orderId);
@@ -53,7 +53,7 @@ export const useCashRepayment = create<State>((set, get) => ({
       const result = await api.submitCashRepayment(orderId, body, attempt.key);
       if (!current()) return;
       // A successful submission is known even when an older API omits repayment.
-      set({ cash: { ...cash, ...result, repayment: result.repayment ?? { status: "pending", submittedAt: new Date().toISOString(), rejectedAt: null, rejectionReason: null } }, attempt: null });
+      if (result.version >= (get().cash?.version ?? 0)) set({ cash: { ...cash, ...result, repayment: result.repayment ?? { status: "pending", submittedAt: new Date().toISOString(), rejectedAt: null, rejectionReason: null } }, attempt: null });
       useCashPayment.getState().reset();
     } catch (error) {
       if (!current()) return;

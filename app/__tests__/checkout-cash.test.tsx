@@ -30,6 +30,8 @@ it("places an eligible cash order without a QR proof, reference or OCR wait", as
   await screen.findByText("Have ₱69.00 ready");
   expect(screen.queryByLabelText("Payment reference")).toBeNull();
   expect(screen.queryByText("Only method")).toBeNull();
+  expect(screen.queryByText(/pay by QR to place it/)).toBeNull();
+  expect(screen.queryByText(/and your payment reference/)).toBeNull();
   await fireEvent.press(screen.getByLabelText("Place this order"));
   await waitFor(() => expect(api.checkoutCart).toHaveBeenCalledWith("cart_1", { method: "cash" }, expect.objectContaining({ accepted: true }), null));
 });

@@ -1,6 +1,8 @@
 import type { Order } from "@/lib/api";
 import { balanceDue, downpaymentDue, installmentUnderReview, payableInstallment } from "@/lib/payment";
-import { receiptFromCheckout, receiptFromInvoice, receiptPaymentLine } from "@/lib/receipt";
+import { receiptFromCheckout, receiptFromInvoice, receiptPaymentLine, withBasket } from "@/lib/receipt";
+import { refundEntry } from "@/lib/refunds";
+import { combinedInvoice, placedBasket } from "@/test/multiShopFixtures";
 import { placed } from "@/test/voucherPlaceHarness";
 
 it("suppresses ordinary QR installment requests and review on all cash orders", () => {
@@ -22,4 +24,21 @@ it("draws a cash checkout receipt without calling it paid by QR", () => {
   expect(receiptPaymentLine(receiptFromInvoice(result.invoice, order))).toBe("Paid in cash on delivery");
   order.cash!.status = "no_show_repaid";
   expect(receiptPaymentLine(receiptFromInvoice(result.invoice, order))).toBe("Cash order · repaid online");
+});
+
+it("does not offer the online change-of-mind refund flow for a cash order", () => {
+  const order = { state: "production", cash: { method: "cash", status: "collected", version: 2 }, payments: { initial: { method: "cash", status: "confirmed", amountMinor: 6900 } }, timeline: [] } as unknown as Order;
+  expect(refundEntry(order, [])).toEqual({ kind: "none" });
+});
+
+it("keeps independently collected deliveries from making the whole basket look paid", () => {
+  const invoice = combinedInvoice();
+  invoice.paymentPlan.method = "cash";
+  const order = { cash: { method: "cash", status: "collected", version: 2 } } as Order;
+  const basket = placedBasket(["production", "production", "production"]);
+  basket.groups = basket.groups.map((group, index) => ({ ...group, order: { cash: { method: "cash", status: index === 0 ? "collected" : "due", version: 2 } } as Order }));
+  const view = withBasket(receiptFromInvoice(invoice, order), basket);
+  expect(receiptPaymentLine(view)).toBe("Cash on delivery · collected separately for each delivery");
+  expect(view.groups?.[0].cashLine).toBe("Paid in cash on delivery");
+  expect(view.groups?.[1].cashLine).toBe("Cash on delivery · not collected yet");
 });

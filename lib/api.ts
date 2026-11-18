@@ -3241,6 +3241,8 @@ export type Cart = {
 
 /** One shop group of a placed multi-shop basket, with its live state. */
 export type BasketGroup = {
+  /** The group's own client projection, including independent cash collection. */
+  order?: Order;
   orderId: string;
   label: string;
   /** This group's own date (gridgo-client#189); absent on an older API. */
