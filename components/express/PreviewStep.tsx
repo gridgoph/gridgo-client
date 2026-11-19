@@ -49,7 +49,8 @@ function fileSizeOf(file: StoredFile) {
 
 function FileCard({ file, print, index, count }: { file: StoredFile; print: ExpressPrint; index: number; count: number }) {
   const colors = useThemeColors();
-  const image = useArtworkImage(file.fileId);
+  const sample = useExpress((state) => state.sample);
+  const image = useArtworkImage(sample ? null : file.fileId);
   const pages = filePageCount(file);
   const paper = filePaperName(file.detected);
   const files = useExpress((state) => state.files);
@@ -139,7 +140,8 @@ function Warnings({ file, print }: { file: StoredFile; print: ExpressPrint }) {
 }
 
 function LayoutChoices({ file, print }: { file: StoredFile; print: ExpressPrint }) {
-  const image = useArtworkImage(file.fileId);
+  const sample = useExpress((state) => state.sample);
+  const image = useArtworkImage(sample ? null : file.fileId);
   return (
     <View className="flex-row gap-2" accessibilityRole="radiogroup" accessibilityLabel="Layout">
       {LAYOUT_OPTIONS.map((option) => {

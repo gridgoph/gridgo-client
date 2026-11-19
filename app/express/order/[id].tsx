@@ -12,6 +12,7 @@ import {
   RatingCard,
   ShopCard,
 } from "@/components/express/ExpressOrderCards";
+import { GuideTarget } from "@/components/GuideTarget";
 import { Screen } from "@/components/Screen";
 import { SkeletonLine, SkeletonPill } from "@/components/Skeleton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
@@ -19,6 +20,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { useServerNow } from "@/hooks/useVoucherClock";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
+import { GUIDE_SAMPLE_ORDER_ID, SAMPLE_PICKUP_CODE, SAMPLE_SHOP } from "@/lib/expressGuide";
 import { acceptCountdown, expressView } from "@/lib/expressOrder";
 import { refundEntry } from "@/lib/refunds";
 import { useExpressShops } from "@/store/expressShops";
@@ -29,7 +31,39 @@ import { useExpressShops } from "@/store/expressShops";
  * no shop has accepted, the counter code once ready, the rating and Friend
  * Pass when it is done. Everything else stays on the full order screen.
  */
-export default function ExpressOrderScreen() {
+export default function ExpressOrderRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return id === GUIDE_SAMPLE_ORDER_ID ? <SampleExpressOrder /> : <ExpressOrderScreen />;
+}
+
+/**
+ * How to order's last tip (gridgo-client#441): a ready order drawn from
+ * sample data with the real cards. Nothing here is read from GRIDGO.
+ */
+function SampleExpressOrder() {
+  return (
+    <Screen edges={["bottom"]}>
+      <Stack.Screen options={{ gestureEnabled: false }} />
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
+        <ExpressHero phase="ready" title="Ready!" line={`Show this code at ${SAMPLE_SHOP.name}.`} countdown={null} />
+        <ExpressRail index={2} pickup />
+        <GuideTarget step="express.pickup">
+          <PickupCodeCard code={SAMPLE_PICKUP_CODE} />
+        </GuideTarget>
+        <ShopCard
+          name={SAMPLE_SHOP.name}
+          address={SAMPLE_SHOP.address}
+          point={null}
+          orderId={GUIDE_SAMPLE_ORDER_ID}
+          showMap={false}
+          canMessage={false}
+        />
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function ExpressOrderScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [order, setOrder] = useState<api.Order | null>(null);

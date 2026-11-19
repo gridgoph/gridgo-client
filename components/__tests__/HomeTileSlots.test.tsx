@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 
 import { HomePromoTile } from "@/components/HomePromoTile";
-import { HomeReorderTile } from "@/components/HomeReorderTile";
+import { HomeExpressTile } from "@/components/HomeExpressTile";
 import { HomeRotatingTile } from "@/components/HomeRotatingTile";
 import { HOME_TILE_HEIGHT, HomeSmartTile } from "@/components/HomeSmartTile";
 import {
@@ -81,7 +81,7 @@ it.each([
   ["missions", "smart-tile-missions", () => <HomeSmartTile view={MISSIONS} onPress={jest.fn()} />],
   ["active order", "smart-tile-active_order", () => <HomeSmartTile view={ACTIVE} onPress={jest.fn()} />],
   ["promo", "promo-tile-promo_davaogo", () => <HomePromoTile promo={PROMO} onPress={jest.fn()} />],
-  ["reorder", "reorder-tile", () => <HomeReorderTile title="Flyers" onPress={jest.fn()} />],
+  ["express", "express-tile", () => <HomeExpressTile onPress={jest.fn()} />],
 ])("draws the %s tile on flexible minHeight slots with no fixed height cap", async (_name, testId, buildTile) => {
   await render(buildTile());
 
@@ -100,7 +100,7 @@ it.each([
   expect(cardStyle.height).toBeUndefined();
 });
 
-it("wires minHeight propagation and leaves text uncapped across Your order, Reorder and promo tiles", async () => {
+it("wires minHeight propagation and leaves text uncapped across Your order, Express and promo tiles", async () => {
   await render(<HomeSmartTile view={ACTIVE} onPress={jest.fn()} />);
   expect(screen.getByText("YOUR ORDER · +4").props.numberOfLines).toBeUndefined();
   expect(screen.getByText("Order placed").props.numberOfLines).toBeUndefined();
@@ -110,7 +110,7 @@ it("wires minHeight propagation and leaves text uncapped across Your order, Reor
     const rowHeight = Math.max(HOME_TILE_HEIGHT, tileIntrinsicHeight(bodyHeight));
     await render(
       <HomeRotatingTile
-        reorder={<HomeReorderTile title="Flyers" minHeight={rowHeight} onPress={jest.fn()} />}
+        reorder={<HomeExpressTile minHeight={rowHeight} onPress={jest.fn()} />}
         promos={[PROMO]}
         onPromoPress={jest.fn()}
         onPromoShown={jest.fn()}
@@ -126,7 +126,7 @@ it("wires minHeight propagation and leaves text uncapped across Your order, Reor
     const promoStyle = StyleSheet.flatten(screen.getByTestId("promo-tile-promo_davaogo").props.style);
     expect(promoStyle.minHeight).toBe(rowHeight);
 
-    expect(screen.getAllByText("Flyers", { includeHiddenElements: true })[0].props.numberOfLines).toBeUndefined();
+    expect(screen.getAllByText("Print your docs now", { includeHiddenElements: true })[0].props.numberOfLines).toBeUndefined();
     expect(screen.getByText("DavaoGo").props.numberOfLines).toBeUndefined();
     expect(screen.getByText("Plan your commute").props.numberOfLines).toBeUndefined();
     expect(screen.getByText("Sponsored").props.numberOfLines).toBeUndefined();

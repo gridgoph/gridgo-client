@@ -40,6 +40,7 @@ import { useServerNow } from "@/hooks/useVoucherClock";
 import { VOUCHERS_ROUTE, walletSummary } from "@/lib/vouchers";
 import { claimOffer, claimRowLine } from "@/lib/promotions";
 import { usePromotions } from "@/store/promotions";
+import { startHowToOrder } from "@/components/ExpressGuideOverlay";
 
 /**
  * The client's own account.
@@ -337,6 +338,12 @@ export default function AccountScreen() {
               the client there — the one navigation the tour ever does, and
               only because they asked for it.
             */}
+            {/* How to order (client#441): the Express guide, from its first tip on Home. */}
+            <DestinationRow
+              title="How to order"
+              detail="Print a document in under a minute"
+              onPress={() => startHowToOrder(router)}
+            />
             {user ? (
               <DestinationRow
                 title="Replay the tour"

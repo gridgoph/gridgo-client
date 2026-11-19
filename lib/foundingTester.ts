@@ -22,6 +22,7 @@ import type { FoundingTester, Order, OrderSurvey, TesterInvites, User } from "@/
 import { isFinishedOrderState } from "@/lib/homeJobs";
 import type { StartPrintHref } from "@/lib/startPrint";
 import { installmentUnderReview, isInstallmentConfirmed, paymentInstallment, payableInstallment } from "@/lib/payment";
+import { startOrderAction } from "@/lib/expressGuide";
 import { canHaveSurvey, isSurveyOpen, surveyRoute } from "@/lib/survey";
 import { exactTime, stubAmount } from "@/lib/vouchers";
 
@@ -44,7 +45,8 @@ export type MissionKey = keyof FoundingTester["missions"];
 
 /** The five steps, in the order a first order meets them. Titles are the API's own. */
 export const FOUNDING_TESTER_STEPS: readonly { key: MissionKey; title: string; detail: string }[] = [
-  { key: "added", title: "Add an item to your cart", detail: "Counts once something is in your order" },
+  // Step one counts for a file uploaded in Express or an item added to a custom order (client#441).
+  { key: "added", title: "Start an order", detail: "Add a file or pick an item" },
   { key: "placed", title: "Place your order", detail: "Counts once GRIDGO confirms your payment" },
   { key: "tracked", title: "Track your order", detail: "Counts when you open your paid order to follow it" },
   { key: "received", title: "Receive your order", detail: "Counts when it is delivered to you or you pick it up" },
@@ -180,6 +182,11 @@ export type StepContext = {
   cartOpen: boolean;
   /** Where the yellow "+" would start a print (`startPrintHref`). */
   startHref: StartPrintHref;
+  /**
+   * GRIDGO's How to order flag (`GET /me/express-guide`). Step one opens the
+   * guide while it is false, else Express Files; unknown opens Express Files.
+   */
+  guideCompleted?: boolean;
 };
 
 const ORDERS_TAB = "/(tabs)/orders";
@@ -213,7 +220,7 @@ export function stepAction(key: MissionKey, context: StepContext): StepAction | 
   const orders = context.orders ? newestFirst(context.orders) : null;
   switch (key) {
     case "added":
-      return { label: "Choose something to print", href: context.startHref };
+      return startOrderAction(context.guideCompleted);
     case "placed": {
       const waiting = orders?.find(
         (order) => order.state !== "cancelled" && (payableInstallment(order) || installmentUnderReview(order)),

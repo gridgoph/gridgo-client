@@ -3,6 +3,7 @@ import { CircleAlert, CircleCheck, FileText, FolderOpen, Image as ImageIcon, Sma
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { GuideTarget } from "@/components/GuideTarget";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { StoredFile } from "@/lib/api";
 import { EXPRESS_MAX_FILES, expressFileProblem, filePageCount, filePaperName } from "@/lib/express";
@@ -90,7 +91,20 @@ function UploadRow({ upload, divided }: { upload: ExpressUpload; divided: boolea
   );
 }
 
-function AddButton({ icon: Icon, label, onPress, disabled }: { icon: typeof Smartphone; label: string; onPress: () => void; disabled: boolean }) {
+function AddButton({
+  icon: Icon,
+  label,
+  onPress,
+  disabled,
+  fill = true,
+}: {
+  icon: typeof Smartphone;
+  label: string;
+  onPress: () => void;
+  disabled: boolean;
+  /** Off when a wrapper already takes the row's share. */
+  fill?: boolean;
+}) {
   const colors = useThemeColors();
   return (
     <Pressable
@@ -98,7 +112,7 @@ function AddButton({ icon: Icon, label, onPress, disabled }: { icon: typeof Smar
       disabled={disabled}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
-      className={disabled ? "gg-btn-secondary gg-disabled flex-1" : "gg-btn-secondary flex-1"}
+      className={[disabled ? "gg-btn-secondary gg-disabled" : "gg-btn-secondary", fill ? "flex-1" : ""].join(" ")}
     >
       <Icon size={18} color={colors.textPrimary} strokeWidth={2} aria-hidden />
       <Text className="text-button text-text-primary">{label}</Text>
@@ -161,7 +175,9 @@ export function FilesStep() {
       )}
 
       <View className="flex-row gap-2">
-        <AddButton icon={Smartphone} label="This phone" onPress={() => void pickFromPhone()} disabled={full} />
+        <GuideTarget step="express.upload" className="flex-1">
+          <AddButton icon={Smartphone} label="This phone" onPress={() => void pickFromPhone()} disabled={full} fill={false} />
+        </GuideTarget>
         <AddButton
           icon={FolderOpen}
           label="My files"

@@ -25,6 +25,7 @@ import {
   type FoundingTesterView,
   type MissionsView,
 } from "@/lib/foundingTester";
+import { HOW_TO_ORDER_HREF } from "@/lib/expressGuide";
 import { refundOrder } from "@/test/refundFixtures";
 
 const NONE = { added: false, placed: false, tracked: false, received: false, rated: false };
@@ -68,7 +69,7 @@ function path(missions: FoundingTester["missions"], patch: Partial<FoundingTeste
 describe("the five steps, as GRIDGO counted them", () => {
   it("lists them in the path's order, under the API's own names", () => {
     expect(path(NONE).steps.map((step) => step.title)).toEqual([
-      "Add an item to your cart",
+      "Start an order",
       "Place your order",
       "Track your order",
       "Receive your order",
@@ -160,9 +161,12 @@ describe("where the next step leads", () => {
   const delivered = refundOrder({ id: "ord_delivered", state: "issue_window_open", createdAt: "2026-09-20T08:00:00+08:00" });
   const cancelled = refundOrder({ id: "ord_cancelled", state: "cancelled", createdAt: "2026-10-05T08:00:00+08:00" });
 
-  it("starts a print for the cart step, wherever the yellow + would", () => {
-    expect(stepAction("added", start)).toEqual({ label: "Choose something to print", href: "/request/category" });
-    expect(stepAction("added", { ...start, startHref: "/checkout" })?.href).toBe("/checkout");
+  // Step one (client#441): the How to order guide until it is completed, then Express Files.
+  it("opens the guide for step one until GRIDGO says it is completed, then Express Files", () => {
+    expect(stepAction("added", { ...start, guideCompleted: false })).toEqual({ label: "How to order", href: HOW_TO_ORDER_HREF });
+    expect(stepAction("added", { ...start, guideCompleted: true })).toEqual({ label: "Open Express", href: "/express" });
+    // Flags not read yet: straight to Files, never a guide that might be done.
+    expect(stepAction("added", start)).toEqual({ label: "Open Express", href: "/express" });
   });
 
   it("opens the order waiting on its payment, else checkout, else a new print", () => {

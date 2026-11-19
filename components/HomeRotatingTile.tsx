@@ -19,7 +19,7 @@ import { homeSlides, nextSlideIndex, PROMO_ROTATE_MS, type HomePromotion } from 
 import { promoCardColors, promoShowsCardImage } from "@/lib/promoCardColors";
 
 type Props = {
-  /** Today's Reorder tile, drawn unchanged as the first page. */
+  /** The first page, drawn unchanged: the Express tile (client#441; it was Reorder). */
   reorder: ReactNode;
   promos: readonly HomePromotion[];
   onPromoPress: (promo: HomePromotion) => void;

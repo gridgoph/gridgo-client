@@ -6856,3 +6856,34 @@ export async function getFriendPass(create = false): Promise<FriendPass> {
   });
   return result.friendPass;
 }
+
+/**
+ * The How to order guide and the mission popup's server flags
+ * (gridgo-api `docs/EXPRESS_API.md#guide-and-missions`, gridgo-client#441).
+ * `missions` are the Founding Tester flags; `showPopup` is GRIDGO's own
+ * answer (step one not done, not yet shown today in Manila).
+ */
+export type ExpressGuide = {
+  missions: Partial<FoundingTester["missions"]>;
+  popupLastShownDate: string | null;
+  guideSeen: boolean;
+  guideCompleted: boolean;
+  showPopup: boolean;
+};
+
+export type ExpressGuideAction = "popup_shown" | "guide_seen" | "guide_completed" | "file_added";
+
+/** `GET /me/express-guide`. */
+export async function getExpressGuide(): Promise<ExpressGuide> {
+  const result = await request<{ guide: ExpressGuide }>("/me/express-guide");
+  return result.guide;
+}
+
+/** `PATCH /me/express-guide` — one action; `file_added` names an owned, ready artwork upload. */
+export async function updateExpressGuide(action: ExpressGuideAction, fileId?: string): Promise<ExpressGuide> {
+  const result = await request<{ guide: ExpressGuide }>("/me/express-guide", {
+    method: "PATCH",
+    body: JSON.stringify(fileId ? { action, fileId } : { action }),
+  });
+  return result.guide;
+}

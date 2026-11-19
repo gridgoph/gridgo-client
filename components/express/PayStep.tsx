@@ -6,6 +6,7 @@ import { Pressable, Text, View } from "react-native";
 import { ChoiceChips, ExpressRow } from "@/components/express/ExpressChrome";
 import { PayWithSheet, PlaceSheet, ShopSheet, ShopTags, shopFacts } from "@/components/express/PaySheets";
 import { CheckboxRow } from "@/components/form/CheckboxRow";
+import { GuideTarget } from "@/components/GuideTarget";
 import { ArtworkRightsBox } from "@/components/legal/ArtworkRightsBox";
 import { QrPaySheet, paymentQrFromSettings } from "@/components/QrPaySheet";
 import { VoucherCodeField } from "@/components/VoucherCodeField";
@@ -215,7 +216,9 @@ export function PayStep() {
         onChange={(next) => useExpress.getState().setFulfilment(next)}
       />
       <View className="gg-card-flush">
-        <ShopRow onPress={() => setSheet("shop")} />
+        <GuideTarget step="express.shop">
+          <ShopRow onPress={() => setSheet("shop")} />
+        </GuideTarget>
         <ExpressRow
           icon={fulfilment === "delivery" ? Bike : MapPin}
           title={fulfilment === "delivery" ? "Deliver to" : "Near"}
@@ -307,6 +310,8 @@ export function PayFooter() {
   });
 
   const placeOrder = async () => {
+    // How to order's sample is never placed.
+    if (useExpress.getState().sample) return;
     setAttempted(true);
     if (blocker || !draft || busy) return;
     setBusy(true);
