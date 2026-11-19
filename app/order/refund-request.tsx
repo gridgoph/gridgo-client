@@ -28,6 +28,7 @@ import {
   REFUND_KINDS,
   cancellationQuoteCopy,
   cancellationQuoteRefusal,
+  cancelledAwaitingRefund,
   checkRefundReason,
   destinationInput,
   handoverCompleted,
@@ -102,7 +103,7 @@ export default function RefundRequestScreen() {
       // the goods, before it the client is calling the job off.
       const draft = useRefundDraft.getState();
       if (!draft.kind) draft.setKind(handoverCompleted(nextOrder) ? "complaint" : "cancellation");
-      if (useRefundDraft.getState().kind === "cancellation") await draft.loadQuote(orderId);
+      if (useRefundDraft.getState().kind === "cancellation" && !cancelledAwaitingRefund(nextOrder)) await draft.loadQuote(orderId);
     } catch (caught) {
       setLoadError(refundErrorMessage(caught, "GRIDGO could not open this order. Check your connection and try again."));
     }
@@ -117,12 +118,13 @@ export default function RefundRequestScreen() {
   const chooseKind = (value: RefundKind) => {
     setKind(value);
     const { quote } = useRefundDraft.getState();
-    if (value === "cancellation" && orderId && (quote.phase === "idle" || quote.phase === "failed")) {
+    if (value === "cancellation" && orderId && !cancelledAwaitingRefund(order) && (quote.phase === "idle" || quote.phase === "failed")) {
       void useRefundDraft.getState().loadQuote(orderId);
     }
   };
 
-  const cancelling = kind === "cancellation";
+  // Already cancelled by GRIDGO: no quote to read, the request asks for it all back.
+  const cancelling = kind === "cancellation" && !cancelledAwaitingRefund(order);
   const quote = cancelling && quoteRead.phase === "ready" ? quoteRead.quote : null;
   const quoteProblem = !cancelling
     ? null
@@ -233,7 +235,15 @@ export default function RefundRequestScreen() {
     );
   }
 
-  const policy = refundPolicyCopy(entry);
+  const policy = cancelledAwaitingRefund(order)
+    ? {
+        headline: "You get everything back",
+        points: [
+          `No shop could take this order, so GRIDGO cancelled it. Everything you paid comes back: ${api.formatPhp(entry.paidMinor)}.`,
+          "Operations sends it by hand to your receiving QR. It shows as Refunded once they record the transfer.",
+        ],
+      }
+    : refundPolicyCopy(entry);
   const quoteCopy = quote ? cancellationQuoteCopy(quote) : null;
   const refusal = cancelling && quoteRead.phase === "refused" ? quoteRead.refusal : null;
   const quoteFailure = cancelling && quoteRead.phase === "failed" ? quoteRead.message : null;

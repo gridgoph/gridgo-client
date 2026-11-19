@@ -1,4 +1,5 @@
 import type { ExpressOrder } from "@/lib/api";
+import { cancelledAwaitingRefund } from "@/lib/refunds";
 import {
   acceptCountdown,
   expressView,
@@ -87,5 +88,16 @@ describe("helpers", () => {
     expect(ratingTags(2)).toContain("Slow");
     expect(ratingBody(5, ["Fast", "Slow"])).toEqual({ qualityStars: 5, speedStars: 5, valueStars: 5, comment: "Tags: Fast" });
     expect(ratingBody(2, [])).toEqual({ qualityStars: 2, speedStars: 2, valueStars: 2 });
+  });
+});
+
+describe("cancelledAwaitingRefund", () => {
+  it("is only a paid Express order GRIDGO already cancelled", () => {
+    const express = order({ status: "cancelled", refundRequired: true }).expressOrder;
+    expect(cancelledAwaitingRefund({ state: "cancelled", expressOrder: express })).toBe(true);
+    expect(cancelledAwaitingRefund({ state: "cancelled", expressOrder: { ...express, refundRequired: false } })).toBe(false);
+    expect(cancelledAwaitingRefund({ state: "supplier_assigned", expressOrder: express })).toBe(false);
+    expect(cancelledAwaitingRefund({ state: "cancelled", expressOrder: null })).toBe(false);
+    expect(cancelledAwaitingRefund(null)).toBe(false);
   });
 });
