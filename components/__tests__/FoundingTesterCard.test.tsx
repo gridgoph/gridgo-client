@@ -42,7 +42,7 @@ it.each([
 
   expect(screen.getByText("Become a Founding Tester")).toBeTruthy();
   expect(screen.getByText(`${count} of 5 done`)).toBeTruthy();
-  for (const title of ["Add an item to your cart", "Place your order", "Track your order", "Receive your order", "Complete the survey"]) {
+  for (const title of ["Start an order", "Place your order", "Track your order", "Receive your order", "Complete the survey"]) {
     expect(screen.getByText(title)).toBeTruthy();
   }
   // Every tick is said in words as well as drawn.
@@ -60,7 +60,7 @@ it("says only the next step's how-it-counts, and quiets the ones after it", asyn
   expect(screen.getByText("Counts once GRIDGO confirms your payment")).toBeTruthy();
   expect(screen.queryByText("Counts when you open your paid order to follow it")).toBeNull();
   expect(screen.getByLabelText("Step 3 of 5, Track your order, not done yet")).toBeTruthy();
-  expect(screen.getByLabelText("Step 1 of 5, Add an item to your cart, done")).toBeTruthy();
+  expect(screen.getByLabelText("Step 1 of 5, Start an order, done")).toBeTruthy();
 });
 
 it("says a finished path is waiting on approval or budget, with no step left to press", async () => {

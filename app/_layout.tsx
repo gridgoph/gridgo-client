@@ -1,3 +1,4 @@
+import { ExpressHeaderActions } from "@/components/express/ExpressChrome";
 import { ReceiptOcrHost } from "@/components/ReceiptOcrHost";
 import { useGridgoCharges } from "@/hooks/useGridgoCharges";
 import { useLiveNotifications } from "@/hooks/useLiveNotifications";
@@ -35,6 +36,7 @@ import { PromotionClaimSheet } from "@/components/PromotionClaimSheet";
 import { PushExplainerSheet } from "@/components/PushExplainerSheet";
 import { SessionShell } from "@/components/SessionShell";
 import { TourOverlay } from "@/components/TourOverlay";
+import { ExpressGuideOverlay } from "@/components/ExpressGuideOverlay";
 import { colors, radius, type ThemeName, typography } from "@/constants/theme";
 import { useAppFonts } from "@/hooks/useAppFonts";
 import { useAppUpdateCheck } from "@/hooks/useAppUpdateCheck";
@@ -398,6 +400,14 @@ function AppNavigation() {
                 <Stack.Screen name="chat/index" options={pushedScreenOptions("Chat")} />
                 <Stack.Screen name="chat/[thread]" options={pushedScreenOptions("Chat")} />
                 <Stack.Screen name="checkout" options={pushedScreenOptions("Checkout")} />
+                <Stack.Screen
+                  name="express/index"
+                  options={{ ...pushedScreenOptions("Express", { bell: false }), headerRight: ExpressHeaderActions }}
+                />
+                <Stack.Screen
+                  name="express/order/[id]"
+                  options={{ ...pushedScreenOptions("Express order", { bell: false }), headerRight: ExpressHeaderActions }}
+                />
                 <Stack.Screen name="order/cash-repayment" options={pushedScreenOptions("Cash repayment")} />
                 <Stack.Screen name="order/[id]" options={pushedScreenOptions("Order")} />
                 <Stack.Screen
@@ -567,6 +577,10 @@ function AppNavigation() {
                 <Stack.Screen name="invite" options={pushedScreenOptions("Invite a friend")} />
                 {/* The five mission steps and the voucher (client#335), from Home and the "+" sheet. */}
                 <Stack.Screen name="founding-tester" options={pushedScreenOptions("Founding Tester")} />
+                <Stack.Screen
+                  name="mission"
+                  options={{ ...pushedScreenOptions("Founding Tester"), animation: "slide_from_bottom" }}
+                />
                 <Stack.Screen name="play-optin" options={pushedScreenOptions("Play tester")} />
                 {/*
                   The two halves of the sign-in that take steps rather than
@@ -632,6 +646,10 @@ function AppNavigation() {
             {/* The first-order tour. Waits behind both prompts; it checks that itself. */}
             <OverlayErrorBoundary name="tour">
               <TourOverlay ready={!introPlaying && fontsReady} />
+            </OverlayErrorBoundary>
+
+            <OverlayErrorBoundary name="how-to-order">
+              <ExpressGuideOverlay ready={!introPlaying && fontsReady} />
             </OverlayErrorBoundary>
             {/* "What stopped you from ordering?": last in line, behind every prompt above. */}
             <OverlayErrorBoundary name="checkout-exit">

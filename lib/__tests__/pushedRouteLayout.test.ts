@@ -1,3 +1,4 @@
+import { ExpressHeaderActions } from "@/components/express/ExpressChrome";
 import { createElement, type ReactNode } from "react";
 import { render, screen } from "@testing-library/react-native";
 import { Platform } from "react-native";
@@ -125,8 +126,13 @@ describe("pushed route layout contract", () => {
         expect(options.statusBarTranslucent).toBe(true);
         expect(options.header).toBe(PushedStackHeader);
         // Every pushed screen carries the bell (#230), except the inbox it opens.
+        // Express puts its pill in front of the same actions.
         expect(options.headerRight).toBe(
-          route.props.name === "inbox" ? HeaderThemeButton : PushedHeaderActions,
+          route.props.name === "inbox"
+            ? HeaderThemeButton
+            : route.props.name.startsWith("express/")
+              ? ExpressHeaderActions
+              : PushedHeaderActions,
         );
       }
       if (signedIn) {

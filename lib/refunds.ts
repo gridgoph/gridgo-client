@@ -133,6 +133,17 @@ export function refundEntry(
   return { kind: "eligible", deadlineAt: null, beforeProduction: !productionStarted(order), paidMinor };
 }
 
+/**
+ * GRIDGO already cancelled this paid order itself: an Express order no shop
+ * took (gridgo-api `docs/EXPRESS_API.md`, `refundRequired`). There is nothing
+ * left to call off, so no cancellation quote exists (the API answers
+ * `refund_state_conflict`); the client files a plain cancellation request and
+ * Operations returns what was paid.
+ */
+export function cancelledAwaitingRefund(order: Pick<Order, "state" | "expressOrder"> | null | undefined): boolean {
+  return order?.state === "cancelled" && order.expressOrder?.refundRequired === true;
+}
+
 /** The one line under "Request a refund" on the order screen. */
 export function refundEntryNote(entry: Extract<RefundEntry, { kind: "eligible" }>): string {
   if (entry.deadlineAt) {

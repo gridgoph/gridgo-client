@@ -8,6 +8,8 @@ import { buildMapHtml, deliveryMapModel, parseMapMessage } from "@/lib/mapHtml";
 import { isGeoPoint, type GeoPoint, type LonLat } from "@/lib/tracking";
 
 export type DeliveryMapProps = {
+  /** The word on the pickup pin; see `DeliveryMapInput.pickupMark`. */
+  pickupMark?: string;
   /** GRIDGO's counter on a collected order; withheld on a delivery. */
   pickup: GeoPoint | null;
   dropoff: GeoPoint | null;
@@ -54,6 +56,7 @@ export function DeliveryMap({
   padBottom,
   controlsBottom,
   hideZoom,
+  pickupMark,
   recenterKey,
   onMoved,
 }: DeliveryMapProps) {
@@ -75,6 +78,7 @@ export function DeliveryMap({
         routed,
         routeColor: colors.actionYellow,
         pickupLabel: GRIDGO_OFFICE_LABEL,
+        pickupMark,
         padTop,
         padBottom,
         controlsBottom,
@@ -95,6 +99,7 @@ export function DeliveryMap({
       padBottom,
       controlsBottom,
       hideZoom,
+      pickupMark,
       recenterKey,
       reduceMotion,
     ],
