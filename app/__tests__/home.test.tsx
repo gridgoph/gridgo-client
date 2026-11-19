@@ -74,7 +74,7 @@ beforeEach(() => {
 
 /**
  * Home is one screen (client#335): a search that greets the client, Featured
- * Prints, the five families as round buttons, the smart tile and Reorder.
+ * Prints, the five families as round buttons, the smart tile and Express.
  * The job lists live on Orders.
  */
 describe("Home on one screen", () => {
@@ -95,19 +95,14 @@ describe("Home on one screen", () => {
     expect(screen.queryByText("START YOUR FIRST PRINT")).toBeNull();
   });
 
-  it("keeps Reorder in place, disabled, before there is a past print", async () => {
-    await renderInSafeArea(<HomeScreen />);
-    const reorder = await screen.findByLabelText("Reorder. No past print yet");
-    expect(reorder.props.accessibilityState).toEqual(expect.objectContaining({ disabled: true }));
-  });
-
-  it("offers the newest past order on the Reorder tile", async () => {
+  // client#441: the Express tile took Reorder's place, past orders or not.
+  it("puts the Express tile where Reorder was", async () => {
     api.listOrders.mockResolvedValue([
-      { id: "ord_old", title: "Old flyers", state: "completed", createdAt: "2026-08-01T00:00:00Z" },
       { id: "ord_new", title: "Event tarpaulin", state: "completed", createdAt: "2026-09-01T00:00:00Z" },
     ]);
     await renderInSafeArea(<HomeScreen />);
-    expect(await screen.findByLabelText("Reorder Event tarpaulin")).toBeTruthy();
+    expect(await screen.findByLabelText("Express. Print your docs now")).toBeTruthy();
+    expect(screen.queryByLabelText("Reorder Event tarpaulin")).toBeNull();
   });
 
   it("shows the smart tile GRIDGO's summary names", async () => {

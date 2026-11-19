@@ -27,7 +27,7 @@ it("throws confetti over the badge and ticks all five steps", async () => {
 
   expect(await screen.findByText(CELEBRATION_TITLE)).toBeTruthy();
   expect(screen.getByTestId("founding-tester-confetti", { includeHiddenElements: true })).toBeTruthy();
-  for (const title of ["Add an item to your cart", "Place your order", "Track your order", "Receive your order", "Complete the survey"]) {
+  for (const title of ["Start an order", "Place your order", "Track your order", "Receive your order", "Complete the survey"]) {
     expect(screen.getByText(title)).toBeTruthy();
   }
 });

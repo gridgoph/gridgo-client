@@ -16,6 +16,8 @@ import {
   type ExpressWarningCode,
 } from "@/lib/express";
 import { userFacingError } from "@/lib/copy";
+import { SAMPLE_FILE, SAMPLE_PLACE, SAMPLE_SHOP, sampleDraft } from "@/lib/expressGuide";
+import { useExpressGuide } from "@/store/expressGuide";
 import { useExpressShops } from "@/store/expressShops";
 
 export type ExpressStep = "files" | "preview" | "pay";
@@ -57,6 +59,14 @@ type ExpressState = {
   voucherOff: boolean;
   /** Set once the order is placed, so the back guard lets the route go. */
   leaving: boolean;
+  /**
+   * How to order is drawing sample data on these screens (gridgo-client#441):
+   * nothing uploads, no shop list or draft is read, and nothing can be placed.
+   */
+  sample: boolean;
+
+  /** Fills the flow with the guide's sample file, shop and price. */
+  startSample: () => void;
 
   leave: () => void;
   goTo: (step: ExpressStep) => void;
@@ -101,6 +111,7 @@ const INITIAL = {
   voucherId: null,
   voucherOff: false,
   leaving: false,
+  sample: false,
 };
 
 export function expressChoices(state: Pick<ExpressState, "prints" | "supplierId" | "fulfilment" | "place">): ExpressChoices {
@@ -156,7 +167,27 @@ export const useExpress = create<ExpressState>((set, get) => ({
 
   leave: () => set({ leaving: true }),
 
+  startSample: () => {
+    get().reset();
+    const prints = [defaultPrint(SAMPLE_FILE)];
+    const fulfilment: ExpressFulfilment = "pickup";
+    const key = choicesKey({ prints, supplierId: SAMPLE_SHOP.supplierId, fulfilment, dropoff: SAMPLE_PLACE });
+    set({
+      sample: true,
+      files: [SAMPLE_FILE],
+      prints,
+      activeFileId: SAMPLE_FILE.fileId,
+      fulfilment,
+      place: SAMPLE_PLACE,
+      shops: [SAMPLE_SHOP],
+      supplierId: SAMPLE_SHOP.supplierId,
+      draft: { status: "ready", key, draft: sampleDraft() },
+      tickedKey: key,
+    });
+  },
+
   upload: (asset) => {
+    if (get().sample) return;
     if (get().files.length + get().uploads.length >= EXPRESS_MAX_FILES) return;
     const key = `upload_${++uploadSeq}`;
     const name = normalizeFileName(asset.name);
@@ -192,9 +223,12 @@ export const useExpress = create<ExpressState>((set, get) => ({
       prints: [...state.prints, defaultPrint(file)],
       activeFileId: state.activeFileId ?? file.fileId,
     });
+    // A file in Express is the Founding Tester's step one ("Start an order").
+    if (!state.sample && file.state === "ready") useExpressGuide.getState().fileAdded(file.fileId);
   },
 
   addSavedFile: async (fileId) => {
+    if (get().sample) return null;
     try {
       const file = await api.getFile(fileId);
       get().addFile(file);
@@ -251,7 +285,7 @@ export const useExpress = create<ExpressState>((set, get) => ({
 
   loadShops: async () => {
     const place = get().place;
-    if (!place) return;
+    if (!place || get().sample) return;
     set({ shopsError: null });
     try {
       const shops = await api.listExpressShops(place, "nearest");
@@ -275,6 +309,7 @@ export const useExpress = create<ExpressState>((set, get) => ({
 
   refreshDraft: async () => {
     const state = get();
+    if (state.sample) return;
     const body = draftBody(state);
     if (!body) {
       if (state.draft.status !== "idle") set({ draft: { status: "idle" } });

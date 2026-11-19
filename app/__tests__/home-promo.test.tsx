@@ -40,10 +40,10 @@ beforeEach(() => {
   api.recordPromotionEvent.mockClear();
 });
 
-it("keeps Reorder alone when nothing is live", async () => {
+it("keeps the Express tile alone when nothing is live", async () => {
   api.getHomePromotions.mockResolvedValue({ promotions: [] });
   await renderHome(<HomeScreen />);
-  expect(await screen.findByLabelText("Reorder. No past print yet")).toBeTruthy();
+  expect(await screen.findByLabelText("Express. Print your docs now")).toBeTruthy();
   expect(screen.queryByTestId("home-rotating-scroll")).toBeNull();
 });
 

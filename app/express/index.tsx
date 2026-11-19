@@ -8,6 +8,7 @@ import { FilesStep } from "@/components/express/FilesStep";
 import { PayFooter, PayStep } from "@/components/express/PayStep";
 import { PreviewFooter, PreviewStep } from "@/components/express/PreviewStep";
 import { FormScreen } from "@/components/FormScreen";
+import { GuideTarget } from "@/components/GuideTarget";
 import * as api from "@/lib/api";
 import { peekCurrentLocation } from "@/lib/deviceLocation";
 import { expressFileProblem, looksRightHolds } from "@/lib/express";
@@ -24,8 +25,8 @@ const DRAFT_SETTLE_MS = 450;
  * one route, so a half-built order never travels through URL params and the
  * back gesture steps back through the flow before it leaves.
  *
- * Temporary entry: the "+" sheet's Express action. The Home tile, popup and
- * guide are gridgo-client#441.
+ * Opened from Home's Express tile and the Docs badge (gridgo-client#441).
+ * How to order draws its sample on this same route (`sample`).
  */
 export default function ExpressScreen() {
   const step = useExpress((state) => state.step);
@@ -37,13 +38,15 @@ export default function ExpressScreen() {
   const place = useExpress((state) => state.place);
   const tickedKey = useExpress((state) => state.tickedKey);
   const leaving = useExpress((state) => state.leaving);
+  // How to order is drawing its sample here: it moves the steps itself.
+  const sample = useExpress((state) => state.sample);
 
   const filesReady = files.length > 0 && uploads.length === 0 && files.every((file) => !expressFileProblem(file));
   const ticked = looksRightHolds(tickedKey, expressChoices({ prints, supplierId, fulfilment, place }));
   const canGo = (target: ExpressStep) =>
     target === "files" || (target === "preview" ? filesReady : filesReady && ticked);
 
-  usePreventRemove(step !== "files" && !leaving, () => {
+  usePreventRemove(step !== "files" && !leaving && !sample, () => {
     const previous = PREVIOUS[useExpress.getState().step];
     if (previous) useExpress.getState().goTo(previous);
   });
@@ -52,7 +55,7 @@ export default function ExpressScreen() {
   // location the phone already shares. Pay's place row asks on a tap.
   useEffect(() => {
     void usePlatformSettings.getState().load().catch(() => undefined);
-    if (useExpress.getState().place) return;
+    if (sample || useExpress.getState().place) return;
     let alive = true;
     void (async () => {
       const addresses = await api.listAddresses().catch(() => [] as api.ClientAddress[]);
@@ -75,7 +78,7 @@ export default function ExpressScreen() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [sample]);
 
   // A leftover flow is dropped when the route goes.
   useEffect(() => () => useExpress.getState().reset(), []);
@@ -102,14 +105,16 @@ export default function ExpressScreen() {
         </Pressable>
       </View>
     ) : step === "preview" ? (
-      <PreviewFooter onContinue={() => useExpress.getState().goTo("pay")} />
+      <GuideTarget step="express.preview">
+        <PreviewFooter onContinue={() => useExpress.getState().goTo("pay")} />
+      </GuideTarget>
     ) : (
       <PayFooter />
     );
 
   return (
     <FormScreen footer={footer} contentContainerStyle={{ paddingBottom: 12 }}>
-      <Stack.Screen options={{ title: TITLES[step] }} />
+      <Stack.Screen options={{ title: TITLES[step], gestureEnabled: !sample }} />
       <ExpressStepBar step={step} canGo={canGo} onStep={(target) => useExpress.getState().goTo(target)} />
       <View className="gg-page pt-1">
         {step === "files" ? <FilesStep /> : step === "preview" ? <PreviewStep /> : <PayStep />}

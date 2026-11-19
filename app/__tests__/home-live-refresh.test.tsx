@@ -97,7 +97,6 @@ it("serializes focus and repeated invalidations into one batch and one dirty fol
 
   // One panel can land while another is pending; the guard still owns the batch.
   await act(async () => orders.resolve([pastOrder]));
-  expect(screen.getByLabelText("Reorder Event tarpaulin")).toBeTruthy();
   expect(screen.getByTestId("featured-waiting")).toBeTruthy();
   await advance(100);
   expect(api.listOrders).toHaveBeenCalledTimes(1);
@@ -122,7 +121,7 @@ it("renders featured prints while orders are pending and keeps waiting after a p
   await openHome();
   await advance(80);
   expect(screen.getByText("Featured flyers")).toBeTruthy();
-  expect(screen.getByLabelText("Reorder. No past print yet")).toBeTruthy();
+  expect(screen.getByLabelText("Express. Print your docs now")).toBeTruthy();
 
   invalidate("catalog");
   await advance(100);
@@ -147,7 +146,6 @@ it("drops a queued follow-up and late panel answers on blur", async () => {
   await home.rerender(<HomeScreen />);
   await act(async () => { orders.resolve([pastOrder]); prints.resolve(featured); });
   await advance(500);
-  expect(screen.queryByLabelText("Reorder Event tarpaulin")).toBeNull();
   expect(screen.queryByText("Featured flyers")).toBeNull();
   expect(api.listOrders).toHaveBeenCalledTimes(1);
   expect(api.getFeaturedPrints).toHaveBeenCalledTimes(1);

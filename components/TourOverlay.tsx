@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AccessibilityInfo,
   BackHandler,
@@ -32,6 +32,7 @@ import { useAppUpdate } from "@/store/appUpdate";
 import { useCheckoutExit } from "@/store/checkoutExit";
 import { usePromotions } from "@/store/promotions";
 import { usePushPrompt } from "@/store/pushPrompt";
+import { useExpressGuide } from "@/store/expressGuide";
 import { useTour } from "@/store/tour";
 
 /** Room around the lit control, so its own border is not cut in half. */
@@ -88,6 +89,8 @@ export function TourOverlay({ ready }: { ready: boolean }) {
   const updatePrompt = useAppUpdate((s) => s.promptOpen || s.completed !== null);
   const exitQuestion = useCheckoutExit((s) => s.open);
   const claimSheet = usePromotions((s) => s.sheet != null);
+  // How to order runs its own coach marks; the tour waits for it.
+  const guideOn = useExpressGuide((s) => s.progress !== null);
   const settled = useTour((s) => s.settled);
   const overdue = useTour((s) => s.overdue);
   const mounted = useTour((s) => (step ? (s.mounted[step.id] ?? 0) > 0 : false));
@@ -111,6 +114,7 @@ export function TourOverlay({ ready }: { ready: boolean }) {
     !updatePrompt &&
     !exitQuestion &&
     !claimSheet &&
+    !guideOn &&
     accountId != null &&
     step != null &&
     progress?.status === "active" &&
@@ -175,11 +179,11 @@ export function TourOverlay({ ready }: { ready: boolean }) {
   );
 }
 
-function onScreen(rect: TourRect, width: number, height: number): boolean {
+export function onScreen(rect: TourRect, width: number, height: number): boolean {
   return rect.y < height && rect.y + rect.height > 0 && rect.x < width && rect.x + rect.width > 0;
 }
 
-function holeFor(rect: TourRect, width: number, height: number): TourRect {
+export function holeFor(rect: TourRect, width: number, height: number): TourRect {
   const x = Math.max(0, rect.x - HOLE_PAD);
   const y = Math.max(0, rect.y - HOLE_PAD);
   return {
@@ -199,7 +203,7 @@ function holeFor(rect: TourRect, width: number, height: number): TourRect {
  * same on Android, iOS and web without a mask. A thin light ring and a fainter
  * halo outside it are what make the edge read as lit rather than punched.
  */
-function Spotlight({ hole }: { hole: TourRect | null }) {
+export function Spotlight({ hole, blockHole = false }: { hole: TourRect | null; blockHole?: boolean }) {
   const colors = useThemeColors();
   const reduceMotion = useReducedMotion();
   const { width, height } = useWindowDimensions();
@@ -289,6 +293,8 @@ function Spotlight({ hole }: { hole: TourRect | null }) {
       <Absorb left={0} top={below} width={width} height={Math.max(0, height - below)} />
       <Absorb left={0} top={hole.y} width={hole.x} height={hole.height} />
       <Absorb left={right} top={hole.y} width={Math.max(0, width - right)} height={hole.height} />
+      {/* The guide lights sample data: the lit control looks live but must not act. */}
+      {blockHole ? <Absorb left={hole.x} top={hole.y} width={hole.width} height={hole.height} /> : null}
     </>
   );
 }
@@ -311,7 +317,7 @@ function Absorb(frame: { left: number; top: number; width: number; height: numbe
  * primary action, and the lit control under the dim is already the loudest
  * thing on the screen.
  */
-function TourCard({
+export function TourCard({
   hole,
   place,
   visible,
@@ -324,7 +330,12 @@ function TourCard({
   onNext,
   onBack,
   onSkip,
+  skipLabel = "Skip the tour",
+  children,
 }: {
+  skipLabel?: string;
+  /** Replaces the title and body, for a card that is not a tip (the guide's end card). */
+  children?: ReactNode;
   hole: TourRect | null;
   place: { top: number; side: "below" | "above" | "pinned" | "centred" };
   /** Hidden only until the card has measured itself, and never for long. */
@@ -380,7 +391,7 @@ function TourCard({
           <Pressable
             onPress={onSkip}
             accessibilityRole="button"
-            accessibilityLabel="Skip the tour"
+            accessibilityLabel={skipLabel}
             className="gg-touch -mr-2 items-center justify-center px-2"
             style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
           >
@@ -388,10 +399,12 @@ function TourCard({
           </Pressable>
         </View>
 
-        <View className="gap-1">
-          <Text className="text-h3 text-text-primary">{title}</Text>
-          <Text className="text-body text-text-secondary">{body}</Text>
-        </View>
+        {children ?? (
+          <View className="gap-1">
+            <Text className="text-h3 text-text-primary">{title}</Text>
+            <Text className="text-body text-text-secondary">{body}</Text>
+          </View>
+        )}
 
         <View className="flex-row justify-end gap-3 pt-1">
           {backable ? (

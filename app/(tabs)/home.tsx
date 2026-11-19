@@ -9,7 +9,8 @@ import { KEYBOARD_CARET_GAP } from "@/components/FormScreen";
 import { GridgoLogo, logoRoleForClientAccount } from "@/components/GridgoLogo";
 import { HomeCategoryCircles } from "@/components/HomeCategoryCircles";
 import { HomeFeaturedPrints } from "@/components/HomeFeaturedPrints";
-import { HomeReorderTile } from "@/components/HomeReorderTile";
+import { GuideTarget } from "@/components/GuideTarget";
+import { HomeExpressTile } from "@/components/HomeExpressTile";
 import { HomeRotatingTile } from "@/components/HomeRotatingTile";
 import { PromoSheet } from "@/components/PromoSheet";
 import { RetiredDraftNotice } from "@/components/RetiredDraftNotice";
@@ -22,15 +23,15 @@ import { SeasonBanner } from "@/components/SeasonBanner";
 import { TourTarget } from "@/components/TourTarget";
 import { LegalNoticeBanner } from "@/components/legal/LegalNoticeBanner";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
-import { useReorder } from "@/hooks/useReorder";
 import { useStartPrintJob } from "@/hooks/useStartPrintJob";
 import { useTourAutoStart, useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
+import { EXPRESS_FILES_HREF, shouldOpenMissionPopup } from "@/lib/expressGuide";
 import { foundingTesterView } from "@/lib/foundingTester";
 import { PLAY_OPTIN_ROUTE } from "@/lib/playOptin";
 import { featuredPrintsFrom, keepHeldFeatured, type HomeSample } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
-import { lastOrder, smartTileView } from "@/lib/homeSummary";
+import { smartTileView } from "@/lib/homeSummary";
 import { bannersToShow, davaoToday } from "@/lib/seasonWindows";
 import { type ProductCategory } from "@/lib/productCategories";
 import { type HomePromotion } from "@/lib/homePromos";
@@ -42,7 +43,10 @@ import { useQuickActions } from "@/store/quickActions";
 import { trackHomePromo, useOwnHomePromos, useHomePromos } from "@/store/homePromos";
 import { useRequestDraft } from "@/store/requestDraft";
 import { useSeasonWindows } from "@/store/seasonWindows";
+import { useAppUpdate } from "@/store/appUpdate";
+import { useExpressGuide } from "@/store/expressGuide";
 import { useFoundingTester } from "@/store/foundingTester";
+import { usePushPrompt } from "@/store/pushPrompt";
 import { useSession } from "@/store/session";
 import { usePlayOptin } from "@/store/playOptin";
 import { useTesterProgram } from "@/store/testerProgram";
@@ -50,7 +54,8 @@ import { useTesterProgram } from "@/store/testerProgram";
 /**
  * Home is one phone screen with no scrolling (client#335): the mark, cart and
  * theme; a search that greets the client; Featured Prints; the five families
- * as one row of round buttons; and two tiles — the smart tile and Reorder.
+ * as one row of round buttons; and two tiles — the smart tile and Express
+ * (client#441; Reorder lives on Orders and in the "+" sheet).
  *
  * Featured Prints is the one part that flexes, so on a small phone it shrinks
  * first and nothing else moves; nothing on it moves by itself either. The full
@@ -73,7 +78,6 @@ export default function HomeScreen() {
   const dismissSeason = useSeasonWindows((s) => s.dismiss);
   const summary = useOwnHomeSummary();
   const summaryFailed = useHomeSummary((s) => s.failed);
-  const { reorder } = useReorder();
   const retiredDraft = useRequestDraft((s) => s.retiredNotice);
   const dismissRetiredDraft = useRequestDraft((s) => s.dismissRetiredNotice);
 
@@ -139,6 +143,8 @@ export default function HomeScreen() {
         .getState()
         .load(userId)
         .then(() => useTesterProgram.getState().load(userId)),
+      // How to order's flags: the mission popup and the guide (client#441).
+      useExpressGuide.getState().load(userId),
       refreshNotifications(),
       // Coming back from checkout must re-read GRIDGO's basket count.
       loadCart(),
@@ -178,7 +184,6 @@ export default function HomeScreen() {
 
   const jobs = homeJobs(orders ?? []);
   const waiting = jobs.needsYou[0] ?? null;
-  const previous = lastOrder(orders ?? []);
   const tile = summary || summaryFailed ? smartTileView(summary, user) : null;
   const seasonToday = davaoToday();
   const seasonBanner = seasonsHydrated ? bannersToShow(seasons, dismissedSeasons, seasonToday)[0] ?? null : null;
@@ -187,7 +192,35 @@ export default function HomeScreen() {
 
   // The first-order tour starts here, once, for a client with nothing on press.
   useTourScreen("home");
-  useTourAutoStart(orders !== null && orders.length === 0);
+  // How to order is the first-time walk now; the first-order tour starts by
+  // itself only on a GRIDGO without it (Account still replays it).
+  const guideUnavailable = useExpressGuide((s) => s.unavailable);
+  useTourAutoStart(orders !== null && orders.length === 0 && guideUnavailable);
+
+  // The mission popup (client#441): once a launch, at most once a Manila day
+  // (GRIDGO's `showPopup`), only while Home is up and nothing else is asking.
+  const guide = useExpressGuide((s) => s.guide);
+  const popupOpened = useExpressGuide((s) => s.popupOpened);
+  const guideOn = useExpressGuide((s) => s.progress !== null);
+  const pushPromptOpen = usePushPrompt((s) => s.open);
+  const updatePrompt = useAppUpdate((s) => s.promptOpen || s.completed !== null);
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
+  const popupDue =
+    focused &&
+    !pushPromptOpen &&
+    !updatePrompt &&
+    shouldOpenMissionPopup({ guide, view: foundingTesterView(user), openedThisLaunch: popupOpened, guideRunning: guideOn });
+  useEffect(() => {
+    if (!popupDue) return;
+    useExpressGuide.getState().popupShown();
+    router.push("/mission");
+  }, [popupDue, router]);
 
   // The promo slot (client#402): Home only, never checkout, payment or tracking.
   const promos = useOwnHomePromos();
@@ -295,6 +328,7 @@ export default function HomeScreen() {
                     <HomeCategoryCircles
                       categories={categories}
                       onPress={(category) => router.push(`/request/${category.code}`)}
+                      onExpress={() => router.push(EXPRESS_FILES_HREF)}
                     />
                   </View>
                 </TourTarget>
@@ -312,12 +346,13 @@ export default function HomeScreen() {
                 </View>
                 <HomeRotatingTile
                   reorder={
-                    <HomeReorderTile
-                      title={previous?.title ?? null}
-                      minHeight={bottomRowMinHeight}
-                      onIntrinsicHeight={setReorderTileHeight}
-                      onPress={() => previous && void reorder(previous)}
-                    />
+                    <GuideTarget step="home.express" className="grow">
+                      <HomeExpressTile
+                        minHeight={bottomRowMinHeight}
+                        onIntrinsicHeight={setReorderTileHeight}
+                        onPress={() => router.push(EXPRESS_FILES_HREF)}
+                      />
+                    </GuideTarget>
                   }
                   promos={promos}
                   onPromoPress={pressPromo}
