@@ -143,7 +143,7 @@ export function ShopCard({
     <View className="gg-card-flush">
       {showMap && point ? (
         <View style={{ height: 140 }}>
-          <DeliveryMap pickup={point} dropoff={null} rider={null} stale={false} route={[]} routed={false} fill hideZoom />
+          <DeliveryMap pickup={point} pickupMark="Shop" dropoff={null} rider={null} stale={false} route={[]} routed={false} fill hideZoom />
         </View>
       ) : null}
       <View className="gap-3 p-4">

@@ -117,7 +117,7 @@ export function ExpressRow({
   value: string;
   open?: boolean;
   /** Absent for a row that opens a sheet instead of folding open. */
-  onToggle: () => void;
+  onToggle?: () => void;
   divided?: boolean;
   children?: ReactNode;
   /** Replaces the chevron, for a row whose control sits inline. */
@@ -128,25 +128,32 @@ export function ExpressRow({
   const folds = children !== undefined;
   return (
     <View className={divided ? "border-t border-outline-subtle" : undefined}>
-      <Pressable
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityLabel={`${title}: ${value}`}
-        accessibilityState={folds ? { expanded: Boolean(open) } : undefined}
-        className="min-h-12 flex-row items-center gap-3 px-4 py-2.5"
-        style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-      >
-        <Icon size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
-        <Text className="text-body font-medium text-text-primary">{title}</Text>
-        <Text className="min-w-0 flex-1 text-right text-body text-text-secondary" numberOfLines={1}>
-          {value}
-        </Text>
-        {trailing ?? (
+      {trailing ? (
+        // An inline control is its own button; the row around it is not one.
+        <View className="min-h-12 flex-row items-center gap-3 px-4 py-2.5">
+          <Icon size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+          <Text className="min-w-0 flex-1 text-body font-medium text-text-primary">{title}</Text>
+          {trailing}
+        </View>
+      ) : (
+        <Pressable
+          onPress={onToggle}
+          accessibilityRole="button"
+          accessibilityLabel={`${title}: ${value}`}
+          accessibilityState={folds ? { expanded: Boolean(open) } : undefined}
+          className="min-h-12 flex-row items-center gap-3 px-4 py-2.5"
+          style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+        >
+          <Icon size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+          <Text className="text-body font-medium text-text-primary">{title}</Text>
+          <Text className="min-w-0 flex-1 text-right text-body text-text-secondary" numberOfLines={1}>
+            {value}
+          </Text>
           <View style={folds && open ? { transform: [{ rotate: "180deg" }] } : folds ? undefined : { transform: [{ rotate: "-90deg" }] }}>
             <ChevronDown size={18} color={colors.textMuted} strokeWidth={2} aria-hidden />
           </View>
-        )}
-      </Pressable>
+        </Pressable>
+      )}
       {folds && open ? (
         <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(180)} className="px-4 pb-3">
           {children}

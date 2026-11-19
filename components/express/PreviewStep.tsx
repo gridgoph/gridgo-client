@@ -309,7 +309,6 @@ export function PreviewStep() {
           icon={Copy}
           title="Copies"
           value=""
-          onToggle={() => undefined}
           trailing={<CopiesStepper fileId={file.fileId} copies={print.copies} />}
         />
       </View>
@@ -354,9 +353,12 @@ export function PreviewFooter({ onContinue }: { onContinue: () => void }) {
         </View>
         <View className="items-end" accessible accessibilityLabel={price != null ? `Printing ${formatPhp(price)}` : pagesLine(files, prints)}>
           <Text className="text-caption text-text-muted">{pagesLine(files, prints)}</Text>
-          <Text className="text-body-lg font-bold text-text-primary">
-            {price != null ? formatPhp(price) : pricing ? "…" : "—"}
-          </Text>
+          {price != null || pricing ? (
+            <Text className="text-body-lg font-bold text-text-primary">{price != null ? formatPhp(price) : "…"}</Text>
+          ) : (
+            // No shop or place yet: Pay picks both, and the price follows.
+            <Text className="text-caption text-text-secondary">{supplierId && place ? "No price yet" : "Priced on Pay"}</Text>
+          )}
         </View>
       </View>
       <Pressable

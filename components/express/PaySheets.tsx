@@ -57,7 +57,7 @@ export function ShopSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const rows = sortExpressShops(shops ?? [], sort);
   return (
     <Sheet open={open} onClose={onClose} title="Choose a shop" subtitle="Same price at every shop" maxHeightRatio={0.8}>
-      <View className="gap-3">
+      <View className="px-4 pb-2 pt-3 gap-3">
         <ChoiceChips label="Sort shops" options={SORT_OPTIONS} value={sort} onChange={(next) => useExpress.getState().setSort(next)} />
         {shopsError ? <Text className="text-caption text-error">{shopsError}</Text> : null}
         {shops && !rows.length ? (
@@ -144,7 +144,7 @@ export function PlaceSheet({ open, onClose }: { open: boolean; onClose: () => vo
 
   return (
     <Sheet open={open} onClose={onClose} title={fulfilment === "delivery" ? "Deliver to" : "Find shops near"}>
-      <View className="gap-2">
+      <View className="px-4 pb-2 pt-3 gap-2">
         {fulfilment === "pickup" ? (
           <Pressable
             onPress={() => void locateMe()}
@@ -230,7 +230,7 @@ export function PayWithSheet({
 
   return (
     <Sheet open={open} onClose={onClose} title="Pay with" subtitle={amountMinor != null ? `${api.formatPhp(amountMinor)} to GRIDGO` : undefined} maxHeightRatio={0.9}>
-      <View className="gap-3">
+      <View className="px-4 pb-2 pt-3 gap-3">
         <ChoiceChips
           label="Payment method"
           options={[

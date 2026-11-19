@@ -1,4 +1,5 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { ChevronLeft } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
@@ -14,6 +15,7 @@ import {
 import { Screen } from "@/components/Screen";
 import { SkeletonLine, SkeletonPill } from "@/components/Skeleton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { useThemeColors } from "@/hooks/useTheme";
 import { useServerNow } from "@/hooks/useVoucherClock";
 import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
@@ -34,8 +36,10 @@ export default function ExpressOrderScreen() {
   const [refunds, setRefunds] = useState<api.Refund[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [justRated, setJustRated] = useState(false);
   const now = useServerNow(1000);
   const shops = useExpressShops((state) => state.shops);
+  const colors = useThemeColors();
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -44,13 +48,18 @@ export default function ExpressOrderScreen() {
         api.getOrder(id),
         api.listOrderRefunds(id).catch(() => null),
       ]);
+      // Not (or no longer) an Express order: the full order screen has it all.
+      if (!current.expressOrder) {
+        router.replace({ pathname: "/order/[id]", params: { id: current.id, full: "1" } });
+        return;
+      }
       setOrder(current);
       setRefunds(refundList);
       setError(null);
     } catch (failure) {
       setError(userFacingError(failure, "This order did not load. Try again."));
     }
-  }, [id]);
+  }, [id, router]);
 
   useLiveRefresh(["orders", "dispatch"], load, { refreshOnFocus: false });
   useFocusEffect(
@@ -58,6 +67,27 @@ export default function ExpressOrderScreen() {
       void load();
     }, [load]),
   );
+
+  // Opened from a link or after Place order replaced the flow: no stack to go
+  // back through, so the header leads to Orders (same rule as order/[id]).
+  const headerEscape = !router.canGoBack() ? (
+    <Stack.Screen
+      options={{
+        headerLeft: () => (
+          <Pressable
+            onPress={() => router.replace("/(tabs)/orders")}
+            accessibilityRole="button"
+            accessibilityLabel="Back to orders"
+            hitSlop={12}
+            className="flex-row items-center gap-1 pr-3"
+          >
+            <ChevronLeft size={24} color={colors.textPrimary} strokeWidth={2} />
+            <Text className="text-body-lg text-text-primary">Orders</Text>
+          </Pressable>
+        ),
+      }}
+    />
+  ) : null;
 
   const details = () => router.push({ pathname: "/order/[id]", params: { id: id ?? "", full: "1" } });
 
@@ -106,6 +136,7 @@ export default function ExpressOrderScreen() {
 
   return (
     <Screen edges={["bottom"]}>
+      {headerEscape}
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
         <ExpressHero phase={view.phase} title={view.title} line={view.line} countdown={countdown} />
         {view.railIndex != null ? <ExpressRail index={view.railIndex} pickup={pickup} /> : null}
@@ -168,7 +199,20 @@ export default function ExpressOrderScreen() {
             </Pressable>
           </View>
         ) : null}
-        {done && rateable ? <RatingCard orderId={order.id} onRated={() => setOrder({ ...order, rated: true })} /> : null}
+        {done && rateable ? (
+          <RatingCard
+            orderId={order.id}
+            onRated={() => {
+              setJustRated(true);
+              setOrder({ ...order, rated: true });
+            }}
+          />
+        ) : null}
+        {justRated ? (
+          <Text className="text-body text-text-secondary" accessibilityLiveRegion="polite">
+            Thanks. Your rating is in.
+          </Text>
+        ) : null}
         {done ? <FriendPassCard /> : null}
 
         <Pressable onPress={details} accessibilityRole="link" className="min-h-11 items-center justify-center">

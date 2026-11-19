@@ -583,6 +583,8 @@ export type DeliveryMapInput = {
   routeColor: string;
   /** The origin pin's caption: GRIDGO's counter, never a shop. */
   pickupLabel: string;
+  /** The word on the origin pin. GRIDGO, except an Express order collected at its shop. */
+  pickupMark?: string;
   padTop?: number;
   padBottom?: number;
   controlsBottom?: number;
@@ -601,7 +603,7 @@ export function deliveryMapModel(input: DeliveryMapInput): MapModel {
     pickup: input.pickup,
     dropoff: input.dropoff,
     pickupLabel: input.pickup?.label || input.pickupLabel,
-    pickupMark: "GRIDGO",
+    pickupMark: input.pickupMark ?? "GRIDGO",
     dropoffLabel: input.dropoff?.label || "Your delivery address",
     routeCoordinates: input.route,
     routeColor: input.routeColor,
