@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { CircleAlert } from "lucide-react-native";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -16,6 +16,7 @@ import { ARTWORK_RETENTION_NOTE } from "@/lib/artworkDeletion";
 import { DELETE_SAVED_CONFIRM, reuseRefusal } from "@/lib/myFiles";
 import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useCart } from "@/store/cart";
+import { useExpress } from "@/store/express";
 import { useMyFiles } from "@/store/myFiles";
 
 /**
@@ -33,7 +34,10 @@ import { useMyFiles } from "@/store/myFiles";
 export default function MyFilesScreen() {
   const router = useRouter();
   const colors = useThemeColors();
-  const { lineId } = useLocalSearchParams<{ lineId?: string }>();
+  const { lineId, for: target } = useLocalSearchParams<{ lineId?: string; for?: string }>();
+  // Opened from Express Files: the chosen file joins that order (gridgo-client#442).
+  const forExpress = target === "express";
+  const [expressError, setExpressError] = useState<string | null>(null);
   const files = useMyFiles((state) => state.files);
   const usage = useMyFiles((state) => state.usage);
   const loadingMore = useMyFiles((state) => state.loadingMore);
@@ -48,7 +52,7 @@ export default function MyFilesScreen() {
 
   // Choosing for one basket item: its listing says which files it takes.
   const line = useCart((state) => (lineId ? state.cart?.lines.find((entry) => entry.id === lineId) ?? null : null));
-  const choosing = Boolean(lineId);
+  const choosing = Boolean(lineId) || forExpress;
   const adding = useArtworkAttachments((state) => (lineId ? state.saving[lineId] === true : false));
   const addError = useArtworkAttachments((state) => (lineId ? state.saveError[lineId] ?? null : null));
 
@@ -59,9 +63,15 @@ export default function MyFilesScreen() {
   );
 
   const confirmFile = files?.find((file) => file.fileId === confirming) ?? null;
-  const problem = choosing ? addError : deleteError;
+  const problem = forExpress ? expressError : choosing ? addError : deleteError;
 
   const chooseFile = async (fileId: string, name: string, contentType: string) => {
+    if (forExpress) {
+      const refusal = await useExpress.getState().addSavedFile(fileId);
+      setExpressError(refusal);
+      if (!refusal) router.back();
+      return;
+    }
     if (lineId) {
       if (adding) return;
       const result = await useArtworkAttachments.getState().attachSaved(lineId, fileId);
@@ -78,8 +88,9 @@ export default function MyFilesScreen() {
         <View className="gg-page gap-6 pb-16 pt-4">
           {choosing ? (
             <Text className="text-body text-text-secondary">
-              Choose a file you saved. It goes onto {line?.listing?.name ?? "this item"} as it is — nothing is
-              uploaded again.
+              {forExpress
+                ? "Choose a file you saved. Nothing is uploaded again."
+                : `Choose a file you saved. It goes onto ${line?.listing?.name ?? "this item"} as it is — nothing is uploaded again.`}
             </Text>
           ) : null}
 
@@ -126,7 +137,13 @@ export default function MyFilesScreen() {
                     opening={opening[file.fileId] === true}
                     openError={openError[file.fileId] ?? null}
                     use={
-                      choosing
+                      forExpress
+                        ? {
+                            label: "Add to Express",
+                            onPress: () => void chooseFile(file.fileId, file.originalFilename, file.detectedContentType),
+                            refusal: reuseRefusal(file, null),
+                          }
+                        : choosing
                         ? {
                             label: adding ? "Adding…" : "Add to this item",
                             onPress: () => void chooseFile(file.fileId, file.originalFilename, file.detectedContentType),

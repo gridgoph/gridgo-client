@@ -8,6 +8,7 @@ import {
   Truck,
   Upload,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -41,6 +42,7 @@ import { useSupportChatStore } from "@/store/supportChat";
 
 const ICONS: Record<QuickActionKey, LucideIcon> = {
   start: Plus,
+  express: Zap,
   chat: MessageSquare,
   track: Truck,
   reorder: RefreshCw,
@@ -218,7 +220,7 @@ export function QuickActionsSheet() {
   const byKey = (key: QuickActionKey) => actions.find((item) => item.key === key);
   const start = byKey("start");
   const grid = (["chat", "track", "reorder", "quote"] as const).map(byKey).filter((item): item is QuickAction => Boolean(item));
-  const rows = (["report", "missions"] as const).map(byKey).filter((item): item is QuickAction => Boolean(item));
+  const rows = (["express", "report", "missions"] as const).map(byKey).filter((item): item is QuickAction => Boolean(item));
 
   return (
     <>

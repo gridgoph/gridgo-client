@@ -638,6 +638,10 @@ export type Order = {
    * vocabulary changes: nothing is ever "out for delivery" to a client who is
    * coming to fetch it themselves.
    */
+  /** `express` on an Express document order (gridgo-api `docs/EXPRESS_API.md`); absent otherwise. */
+  orderType?: "express" | (string & {});
+  /** The Express projection; present only when `orderType` is `express`. */
+  expressOrder?: ExpressOrder | null;
   fulfillmentMode?: FulfilmentMode | null;
   /** Supplier shop, once a supplier is assigned. Where the client collects. */
   pickup?: OrderPoint | null;
@@ -6718,4 +6722,137 @@ export async function submitCashRepayment(
     { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) },
   );
   return result.cash;
+}
+
+// ---------------------------------------------------------------------------
+// Express document printing — gridgo-api `docs/EXPRESS_API.md`
+// ---------------------------------------------------------------------------
+
+export type ExpressShop = {
+  supplierId: string;
+  catalogItemIds: string[];
+  name: string;
+  address: string;
+  location: OrderPoint;
+  distanceMeters: number;
+  /** Null below the public rating threshold — never draw a zero. */
+  rating: { average: number; count: number } | null;
+  jobsAhead: number;
+  readyAt: string | null;
+  isNew: boolean;
+  busy: boolean;
+};
+
+/** One file's settings exactly as `POST /express/drafts` takes them. */
+export type ExpressDraftFile = {
+  fileId: string;
+  catalogItemId?: string;
+  copies: number;
+  pageRange?: string;
+  paper: "a4" | "short" | "long";
+  colour: "bw" | "colour";
+  sides: "one" | "two";
+  layout: "fit_to_paper" | "actual_size_centered" | "actual_size_original_position";
+  note?: string;
+  acceptedWarnings: ("paper_size_mismatch" | "rgb_colour")[];
+};
+
+export type ExpressDraftBody = {
+  supplierId: string;
+  location: { lat: number; lng: number };
+  fulfillmentMode: "pickup" | "delivery";
+  dropoff?: { lat: number; lng: number; label: string };
+  files: ExpressDraftFile[];
+};
+
+/** Express quotes carry no fee rate or percentage: amounts only. */
+export type ExpressQuote = Omit<CartQuote, "downpaymentPercent" | "voucherGroups"> & { downpaymentPercent?: number };
+
+export type ExpressDraft = { cartId: string; confirmation: string; quote: ExpressQuote; shop: ExpressShop };
+
+export type ExpressStatus =
+  | "sending" | "accepted" | "printing" | "ready" | "picked_up" | "delivered" | "cancelled" | (string & {});
+
+export type ExpressEvent = {
+  state: "sending" | "accepted" | "moved" | "declined" | "timed_out" | "cancelled" | (string & {});
+  at: string;
+  supplierId?: string | null;
+  reason?: string | null;
+};
+
+export type ExpressPrintSetting = {
+  fileId: string;
+  pages: DocumentPages | null;
+  copies: number;
+  colour: "bw" | "colour";
+  paper: "a4" | "short" | "long";
+  paperStock?: string | null;
+  sides: "one" | "two";
+  layout: string;
+  note: string;
+  acceptedWarnings: string[];
+};
+
+export type ExpressOrder = {
+  status: ExpressStatus;
+  originalSupplierId: string;
+  currentSupplierId: string | null;
+  declineCount: number;
+  /** ISO time the current shop must accept by; null when not waiting on a shop. */
+  acceptBy: string | null;
+  events: ExpressEvent[];
+  refundRequired: boolean;
+  /** Six digits, leading zeroes kept. Only the owning client, only once ready for pickup. */
+  pickupCode?: string;
+  printSettings?: ExpressPrintSetting[];
+};
+
+export type FriendPass = { link: string | null; signups: number; successful: number };
+
+/** `GET /express/shops` — open shops that take Express, in the asked order. */
+export async function listExpressShops(
+  point: { lat: number; lng: number },
+  sort: "nearest" | "top_rated" | "fewest_jobs" = "nearest",
+): Promise<ExpressShop[]> {
+  const query = `lat=${encodeURIComponent(point.lat)}&lng=${encodeURIComponent(point.lng)}&sort=${sort}`;
+  const result = await request<{ shops: ExpressShop[] }>(`/express/shops?${query}`);
+  return result.shops;
+}
+
+/** `POST /express/drafts` — a fresh internal draft for one exact set of choices. */
+export async function createExpressDraft(body: ExpressDraftBody): Promise<ExpressDraft> {
+  return request<ExpressDraft>("/express/drafts", { method: "POST", body: JSON.stringify(body) });
+}
+
+/**
+ * Express checkout: today's cart checkout plus the preview tick and the
+ * draft's confirmation. `payment` is null when a voucher leaves nothing to pay.
+ */
+export async function checkoutExpress(
+  cartId: string,
+  input: {
+    confirmation: string;
+    payment: { reference: string; proofFileId: string } | { method: "cash" } | null;
+    artworkRights: ArtworkRightsBody | null;
+  },
+): Promise<{ order: MatchedOrder & { orderType?: string; expressOrder?: ExpressOrder | null }; invoice: Invoice }> {
+  return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
+    method: "POST",
+    body: JSON.stringify({
+      looksRight: true,
+      expressConfirmation: input.confirmation,
+      ...(input.payment ? { payment: { method: "qr_manual", ...input.payment } } : {}),
+      ...(input.artworkRights
+        ? { legalConsentVersion: LEGAL_CONSENT_VERSION, artworkRights: input.artworkRights }
+        : {}),
+    }),
+  });
+}
+
+/** `GET|POST /me/express-friend-pass` — POST makes the referral code on first use. */
+export async function getFriendPass(create = false): Promise<FriendPass> {
+  const result = await request<{ friendPass: FriendPass }>("/me/express-friend-pass", {
+    method: create ? "POST" : "GET",
+  });
+  return result.friendPass;
 }

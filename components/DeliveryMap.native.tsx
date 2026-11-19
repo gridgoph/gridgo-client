@@ -44,6 +44,7 @@ export function DeliveryMap({
   padBottom,
   controlsBottom,
   hideZoom,
+  pickupMark,
   recenterKey,
   onMoved,
 }: DeliveryMapProps) {
@@ -65,6 +66,7 @@ export function DeliveryMap({
         routed,
         routeColor: colors.actionYellow,
         pickupLabel: GRIDGO_OFFICE_LABEL,
+        pickupMark,
         padTop,
         padBottom,
         controlsBottom,
@@ -85,6 +87,7 @@ export function DeliveryMap({
       padBottom,
       controlsBottom,
       hideZoom,
+      pickupMark,
       recenterKey,
       reduceMotion,
     ],

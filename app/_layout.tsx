@@ -1,3 +1,4 @@
+import { ExpressHeaderActions } from "@/components/express/ExpressChrome";
 import { ReceiptOcrHost } from "@/components/ReceiptOcrHost";
 import { useGridgoCharges } from "@/hooks/useGridgoCharges";
 import { useLiveNotifications } from "@/hooks/useLiveNotifications";
@@ -398,6 +399,14 @@ function AppNavigation() {
                 <Stack.Screen name="chat/index" options={pushedScreenOptions("Chat")} />
                 <Stack.Screen name="chat/[thread]" options={pushedScreenOptions("Chat")} />
                 <Stack.Screen name="checkout" options={pushedScreenOptions("Checkout")} />
+                <Stack.Screen
+                  name="express/index"
+                  options={{ ...pushedScreenOptions("Express", { bell: false }), headerRight: ExpressHeaderActions }}
+                />
+                <Stack.Screen
+                  name="express/order/[id]"
+                  options={{ ...pushedScreenOptions("Express order", { bell: false }), headerRight: ExpressHeaderActions }}
+                />
                 <Stack.Screen name="order/cash-repayment" options={pushedScreenOptions("Cash repayment")} />
                 <Stack.Screen name="order/[id]" options={pushedScreenOptions("Order")} />
                 <Stack.Screen
