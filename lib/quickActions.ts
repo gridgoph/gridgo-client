@@ -14,7 +14,7 @@ import type { HubSchedule } from "@/lib/api";
 import { clockLabel } from "@/lib/hubPickup";
 import { QUOTES_ROUTE } from "@/lib/quoteRequests";
 
-export type QuickActionKey = "start" | "chat" | "track" | "reorder" | "quote" | "report" | "missions";
+export type QuickActionKey = "start" | "express" | "chat" | "track" | "reorder" | "quote" | "report" | "missions";
 
 export type QuickAction = {
   key: QuickActionKey;
@@ -46,6 +46,8 @@ export type QuickActionsInput = {
 export const CHAT_ROUTE = "/chat";
 export const REPORT_ROUTE = "/report-problem";
 export const MISSIONS_ROUTE = "/founding-tester";
+/** Express documents (gridgo-client#442). Its Home tile is gridgo-client#441. */
+export const EXPRESS_ROUTE = "/express";
 
 function action(fields: Omit<QuickAction, "badge" | "tag" | "disabledReason"> & Partial<QuickAction>): QuickAction {
   return { badge: null, tag: null, disabledReason: null, ...fields };
@@ -54,6 +56,7 @@ function action(fields: Omit<QuickAction, "badge" | "tag" | "disabledReason"> & 
 export function quickActions(input: QuickActionsInput): QuickAction[] {
   const list: QuickAction[] = [
     action({ key: "start", title: "Start a new print", detail: "Pick a product. GRIDGO finds the printer.", href: input.startHref }),
+    action({ key: "express", title: "Express documents", detail: "Send files to a shop nearby", href: EXPRESS_ROUTE }),
     action({
       key: "chat",
       title: "Chat with GRIDGO",

@@ -120,3 +120,5 @@ export const useCashPayment = createPaymentDraft();
 export const useChangePayment = createPaymentDraft();
 
 export type PaymentDraftStore = typeof useCheckoutPayment;
+/** Express Pay's receipt; bound once, so a recreated draft keeps the screenshot. */
+export const useExpressPayment = createPaymentDraft();

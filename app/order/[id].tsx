@@ -130,7 +130,7 @@ import { sampleBatchHref } from "@/lib/sampleFirst";
  * who did what, when.
  */
 export default function OrderDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, full } = useLocalSearchParams<{ id: string; full?: string }>();
   const router = useRouter();
   const colors = useThemeColors();
   const reducedMotion = useReducedMotion();
@@ -240,6 +240,12 @@ export default function OrderDetailScreen() {
             routerRef.current.push({ pathname: "/order/share", params: { orderId: current.id, presentation: "order_repeat" } });
           });
       }
+      // An Express order opens on its own screen; "Order details" there comes
+      // back here with `full` for the record, help and refunds.
+      if (current.orderType === "express" && full !== "1") {
+        routerRef.current.replace({ pathname: "/express/order/[id]", params: { id: current.id } });
+        return;
+      }
       setHandover(credential);
       setCashDetail(cash);
       setAckReceipt(receipt);
@@ -260,7 +266,7 @@ export default function OrderDetailScreen() {
         userFacingError(e, "Could not load this order. Go back to Orders and open it again."),
       );
     }
-  }, [id]);
+  }, [id, full]);
 
   useLiveRefresh(["orders", "dispatch", "claims", "payouts"], load, { refreshOnFocus: false });
   // The delivery map's window opened or closed: only the order itself moved.

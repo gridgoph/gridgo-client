@@ -16,7 +16,7 @@ const byKey = (input: Partial<QuickActionsInput>) =>
 
 describe("quickActions", () => {
   it("lists the actions in the sheet's order", () => {
-    expect(quickActions(base).map((a) => a.key)).toEqual(["start", "chat", "track", "reorder", "quote", "report"]);
+    expect(quickActions(base).map((a) => a.key)).toEqual(["start", "express", "chat", "track", "reorder", "quote", "report"]);
   });
 
   it("keeps an unusable action on the list, disabled with its reason", () => {
