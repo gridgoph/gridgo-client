@@ -21,6 +21,11 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.643 (New feature)
+
+- Express documents: add files, check each page, pick a nearby shop and pay, then collect with a six-digit code.
+- Print documents faster: a new Express tile on Home, plus a short How to order guide you can replay from Account.
+
 ## 1.0.632 (Fix)
 
 - Location lookups stop if they take too long, keep your dragged pin in place, and announce errors with a retry.
