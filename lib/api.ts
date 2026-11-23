@@ -6731,9 +6731,11 @@ export async function submitCashRepayment(
 export type ExpressShop = {
   supplierId: string;
   catalogItemIds: string[];
+  /** A home printer's name is its barangay, never a person. */
   name: string;
   address: string;
-  location: OrderPoint;
+  /** Null for a home printer: its pin is private. */
+  location: OrderPoint | null;
   distanceMeters: number;
   /** Null below the public rating threshold — never draw a zero. */
   rating: { average: number; count: number } | null;
@@ -6741,6 +6743,44 @@ export type ExpressShop = {
   readyAt: string | null;
   isNew: boolean;
   busy: boolean;
+} & Partial<ExpressPrinterFacts>;
+
+export type ExpressFareLimit = "nearby" | "up_to_149" | "any";
+export type ExpressPrinterSort = "nearby" | "all_davao" | "fastest" | "top_rated" | "lowest_price";
+export type ExpressPaymentTiming = "checkout" | "after_acceptance" | (string & {});
+
+/**
+ * What `POST /express/shops` adds to a card (gridgo-api `docs/EXPRESS_API.md`,
+ * "Who prints it? (B26328C8)"). Absent on the legacy `GET` list.
+ */
+export type ExpressPrinterFacts = {
+  printerType: "shop" | "home" | (string & {});
+  verificationLevel: "verified" | "starter" | (string & {});
+  isOpenNow: boolean;
+  /** The only thing that enables a card: open alone is not enough (rider hours). */
+  selectable: boolean;
+  openStatus: "open" | "night" | "closed" | (string & {});
+  zone: { code: "A" | "B" | "C" | null; key: string; label: string } | null;
+  /** Delivery only; null for pickup. */
+  deliveryFeeMinor: number | null;
+  /** The fare the fare limit is checked against, even for pickup. */
+  deliveryFareMinor: number | null;
+  /** Pickup only: a straight-line estimate, not a routed walk. */
+  walkingTimeMinutes: number | null;
+  barangay: string | null;
+  distanceApproximate: boolean;
+  /** This card's exact checkout quote; only on selectable cards. */
+  quote: ExpressQuote | null;
+  paymentTiming: ExpressPaymentTiming | null;
+};
+
+export type ExpressPrintersRead = {
+  shops: ExpressShop[];
+  sort: string;
+  expanded: boolean;
+  expandedZones: string[];
+  expansionReason: string | null;
+  fareBands: DeliveryFeeBand[];
 };
 
 /** One file's settings exactly as `POST /express/drafts` takes them. */
@@ -6749,7 +6789,7 @@ export type ExpressDraftFile = {
   catalogItemId?: string;
   copies: number;
   pageRange?: string;
-  paper: "a4" | "short" | "long";
+  paper: "a4" | "short" | "long" | "a3";
   colour: "bw" | "colour";
   sides: "one" | "two";
   layout: "fit_to_paper" | "actual_size_centered" | "actual_size_original_position";
@@ -6758,7 +6798,11 @@ export type ExpressDraftFile = {
 };
 
 export type ExpressDraftBody = {
-  supplierId: string;
+  /** A manual pick. Omitted when GRIDGO picks (`selection`). */
+  supplierId?: string;
+  selection?: "just_print_it";
+  /** Required with `selection`: how far GRIDGO may go for the fare. */
+  fareLimit?: ExpressFareLimit;
   location: { lat: number; lng: number };
   fulfillmentMode: "pickup" | "delivery";
   dropoff?: { lat: number; lng: number; label: string };
@@ -6768,7 +6812,14 @@ export type ExpressDraftBody = {
 /** Express quotes carry no fee rate or percentage: amounts only. */
 export type ExpressQuote = Omit<CartQuote, "downpaymentPercent" | "voucherGroups"> & { downpaymentPercent?: number };
 
-export type ExpressDraft = { cartId: string; confirmation: string; quote: ExpressQuote; shop: ExpressShop };
+export type ExpressDraft = {
+  cartId: string;
+  confirmation: string;
+  quote: ExpressQuote;
+  shop: ExpressShop;
+  /** `after_acceptance` for A3: checkout takes no payment; the client pays once the shop accepts. */
+  paymentTiming?: ExpressPaymentTiming;
+};
 
 export type ExpressStatus =
   | "sending" | "accepted" | "printing" | "ready" | "picked_up" | "delivered" | "cancelled" | (string & {});
@@ -6785,7 +6836,7 @@ export type ExpressPrintSetting = {
   pages: DocumentPages | null;
   copies: number;
   colour: "bw" | "colour";
-  paper: "a4" | "short" | "long";
+  paper: "a4" | "short" | "long" | "a3" | (string & {});
   paperStock?: string | null;
   sides: "one" | "two";
   layout: string;
@@ -6804,6 +6855,12 @@ export type ExpressOrder = {
   refundRequired: boolean;
   /** Six digits, leading zeroes kept. Only the owning client, only once ready for pickup. */
   pickupCode?: string;
+  /** `after_acceptance` on A3: payment is asked for once the shop accepts. */
+  paymentTiming?: ExpressPaymentTiming;
+  /** ISO time payment evidence must be sent before, after an A3 acceptance. */
+  payBy?: string | null;
+  /** The A3 shop declined or timed out: the client picks again. */
+  repickRequired?: boolean;
   printSettings?: ExpressPrintSetting[];
 };
 
@@ -6817,6 +6874,32 @@ export async function listExpressShops(
   const query = `lat=${encodeURIComponent(point.lat)}&lng=${encodeURIComponent(point.lng)}&sort=${sort}`;
   const result = await request<{ shops: ExpressShop[] }>(`/express/shops?${query}`);
   return result.shops;
+}
+
+/**
+ * `POST /express/shops` — who can print these exact files, quoted per card.
+ * Persists nothing. An API from before B26328C8 answers 404 or 405, which the
+ * caller reads as "no printer choice screen".
+ */
+export async function readExpressPrinters(
+  body: Omit<ExpressDraftBody, "supplierId" | "selection" | "fareLimit"> & {
+    sort: ExpressPrinterSort;
+    shopsOnly: boolean;
+    verifiedOnly: boolean;
+  },
+): Promise<ExpressPrintersRead> {
+  const result = await request<Partial<ExpressPrintersRead> & { shops: ExpressShop[] }>("/express/shops", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return {
+    shops: result.shops ?? [],
+    sort: result.sort ?? body.sort,
+    expanded: result.expanded === true,
+    expandedZones: result.expandedZones ?? [],
+    expansionReason: result.expansionReason ?? null,
+    fareBands: result.fareBands ?? [],
+  };
 }
 
 /** `POST /express/drafts` — a fresh internal draft for one exact set of choices. */

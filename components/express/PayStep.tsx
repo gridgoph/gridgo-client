@@ -18,6 +18,7 @@ import { userFacingError } from "@/lib/copy";
 import { choicesKey, looksRightHolds } from "@/lib/express";
 import { checkPaymentReference } from "@/lib/payment";
 import { voucherSettlesUpFront } from "@/lib/vouchers";
+import { apiErrorCode } from "@/lib/whoPrints";
 import { artworkRightsPayload, useArtworkRights } from "@/store/artworkRights";
 import { useExpressPayment } from "@/store/checkoutPayment";
 import { expressChoices, useExpress } from "@/store/express";
@@ -32,11 +33,12 @@ export const EXPRESS_PAYMENT_OWNER = "express";
 function useExpressPay() {
   const prints = useExpress((state) => state.prints);
   const supplierId = useExpress((state) => state.supplierId);
+  const fareLimit = useExpress((state) => state.fareLimit);
   const fulfilment = useExpress((state) => state.fulfilment);
   const place = useExpress((state) => state.place);
   const draftState = useExpress((state) => state.draft);
   const tickedKey = useExpress((state) => state.tickedKey);
-  const choices = expressChoices({ prints, supplierId, fulfilment, place });
+  const choices = expressChoices({ prints, supplierId, fulfilment, place, fareLimit });
   const key = choicesKey(choices);
   const draft = draftState.status === "ready" && draftState.key === key ? draftState.draft : null;
   const settings = usePlatformSettings((state) => state.settings);
@@ -48,13 +50,16 @@ function useExpressPay() {
     quote ? ({ fulfillmentMode: fulfilment, clientQuote: quote } as unknown as api.Cart) : null,
   );
   const method = useExpressPayment((state) => state.method);
+  // A3: checkout takes no payment; the client pays once the shop accepts.
+  const payLater = draft?.paymentTiming === "after_acceptance" && !voucherSettlesUpFront(quote);
   return {
     draft,
     draftState,
     quote,
-    cash,
-    cashSelected: cash.eligible && method === "cash",
+    cash: payLater ? { ...cash, eligible: false } : cash,
+    cashSelected: !payLater && cash.eligible && method === "cash",
     noCash: voucherSettlesUpFront(quote),
+    payLater,
     ticked: looksRightHolds(tickedKey, choices),
     settings,
   };
@@ -98,6 +103,49 @@ function ShopRow({ onPress }: { onPress: () => void }) {
       <View style={{ transform: [{ rotate: "-90deg" }] }}>
         <ChevronDown size={18} color={colors.textMuted} strokeWidth={2} aria-hidden />
       </View>
+    </Pressable>
+  );
+}
+
+/**
+ * Who prints it, picked on the step before: one row that leads back there.
+ * "Just print it" names the printer GRIDGO picked once the draft has one.
+ */
+function PrinterRow() {
+  const colors = useThemeColors();
+  const fareLimit = useExpress((state) => state.fareLimit);
+  const fulfilment = useExpress((state) => state.fulfilment);
+  const place = useExpress((state) => state.place);
+  const chosenShop = useExpress((state) => state.chosenShop);
+  const { draft } = useExpressPay();
+  const name = fareLimit ? (draft?.shop?.name ?? null) : (chosenShop?.name ?? draft?.shop?.name ?? null);
+  const title = fareLimit ? "Just print it" : (name ?? "Choose a printer");
+  const how = fulfilment === "delivery" ? `Deliver to ${place?.label ?? "…"}` : "You pick it up";
+  const picked = fareLimit && name ? `GRIDGO picked ${name}` : null;
+  const line = [picked, how].filter(Boolean).join(". ");
+  return (
+    <Pressable
+      onPress={() => useExpress.getState().goTo("printer")}
+      accessibilityRole="button"
+      accessibilityLabel={`Printer: ${title}. ${line}. Change`}
+      className="min-h-14 flex-row items-center gap-3 px-4 py-2.5"
+      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+    >
+      <Store size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text className="text-body font-bold text-text-primary" numberOfLines={1}>
+          {title}
+        </Text>
+        {picked ? (
+          <Text className="text-caption text-text-secondary" numberOfLines={1}>
+            {picked}
+          </Text>
+        ) : null}
+        <Text className="text-caption text-text-secondary" numberOfLines={1}>
+          {how}
+        </Text>
+      </View>
+      <Text className="text-body font-medium text-text-primary underline">Change</Text>
     </Pressable>
   );
 }
@@ -182,7 +230,8 @@ export function PayStep() {
   const place = useExpress((state) => state.place);
   const method = useExpressPayment((state) => state.method);
   const proofState = useExpressPayment((state) => state.proof);
-  const { draft, draftState, quote, cash, noCash } = useExpressPay();
+  const { draft, draftState, quote, cash, noCash, payLater } = useExpressPay();
+  const withPrinter = useExpress((state) => state.whoPrints === "on");
   const [sheet, setSheet] = useState<"shop" | "place" | "pay" | "qr" | null>(null);
   const [totalOpen, setTotalOpen] = useState(false);
   const proof = usePaymentProof(EXPRESS_PAYMENT_OWNER, useExpressPayment);
@@ -193,6 +242,8 @@ export function PayStep() {
 
   const payValue = noCash
     ? "Voucher covers it"
+    : payLater
+      ? "After the shop accepts"
     : method === "cash" && cash.eligible
       ? "Cash on delivery"
       : proofState.phase === "stored"
@@ -206,26 +257,43 @@ export function PayStep() {
 
   return (
     <View className="gap-3">
-      <ChoiceChips
-        label="Pick up or deliver"
-        options={[
-          { value: "pickup", label: "Pick up" },
-          { value: "delivery", label: "Deliver" },
-        ]}
-        value={fulfilment}
-        onChange={(next) => useExpress.getState().setFulfilment(next)}
-      />
-      <View className="gg-card-flush">
-        <GuideTarget step="express.shop">
-          <ShopRow onPress={() => setSheet("shop")} />
-        </GuideTarget>
-        <ExpressRow
-          icon={fulfilment === "delivery" ? Bike : MapPin}
-          title={fulfilment === "delivery" ? "Deliver to" : "Near"}
-          value={place ? (fulfilment === "delivery" && !place.addressId ? "Choose a saved place" : place.label) : "Choose"}
-          onToggle={() => setSheet("place")}
+      {withPrinter ? null : (
+        <ChoiceChips
+          label="Pick up or deliver"
+          options={[
+            { value: "pickup", label: "Pick up" },
+            { value: "delivery", label: "Deliver" },
+          ]}
+          value={fulfilment}
+          onChange={(next) => useExpress.getState().setFulfilment(next)}
         />
-        <ExpressRow icon={Wallet} title="Pay with" value={payValue} onToggle={() => setSheet("pay")} />
+      )}
+      <View className="gg-card-flush">
+        {withPrinter ? (
+          <PrinterRow />
+        ) : (
+          <>
+            <GuideTarget step="express.shop">
+              <ShopRow onPress={() => setSheet("shop")} />
+            </GuideTarget>
+            <ExpressRow
+              icon={fulfilment === "delivery" ? Bike : MapPin}
+              title={fulfilment === "delivery" ? "Deliver to" : "Near"}
+              value={place ? (fulfilment === "delivery" && !place.addressId ? "Choose a saved place" : place.label) : "Choose"}
+              onToggle={() => setSheet("place")}
+            />
+          </>
+        )}
+        {payLater ? (
+          <ExpressRow
+            icon={Wallet}
+            title="Pay"
+            value={payValue}
+            trailing={<Text className="text-body text-text-secondary">After the shop accepts</Text>}
+          />
+        ) : (
+          <ExpressRow icon={Wallet} title="Pay with" value={payValue} onToggle={() => setSheet("pay")} />
+        )}
         <ExpressRow
           icon={Receipt}
           title="Total"
@@ -289,7 +357,7 @@ function blockerLine(input: {
 
 export function PayFooter() {
   const router = useRouter();
-  const { draft, quote, cashSelected, noCash, ticked } = useExpressPay();
+  const { draft, quote, cashSelected, noCash, payLater, ticked } = useExpressPay();
   const fulfilment = useExpress((state) => state.fulfilment);
   const place = useExpress((state) => state.place);
   const proof = useExpressPayment((state) => state.proof);
@@ -299,7 +367,7 @@ export function PayFooter() {
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const paid = noCash || cashSelected || (proof.phase === "stored" && Boolean(proof.fileId) && checkPaymentReference(reference).ok);
+  const paid = noCash || payLater || cashSelected || (proof.phase === "stored" && Boolean(proof.fileId) && checkPaymentReference(reference).ok);
   const blocker = blockerLine({
     draft: Boolean(draft),
     ticked,
@@ -318,7 +386,7 @@ export function PayFooter() {
     setError(null);
     try {
       const artworkRights = await artworkRightsPayload();
-      const payment = noCash
+      const payment = noCash || payLater
         ? null
         : cashSelected
           ? ({ method: "cash" } as const)
@@ -334,14 +402,21 @@ export function PayFooter() {
       useExpress.getState().leave();
       requestAnimationFrame(() => router.replace({ pathname: "/express/order/[id]", params: { id: order.id } }));
     } catch (failure) {
-      const code = (failure as { code?: string } | null)?.code ?? null;
+      const code = apiErrorCode(failure);
       if (code === "express_preview_required") {
         useExpress.getState().setTicked(false);
         void useExpress.getState().refreshDraft();
         setError("Something changed. Check the preview and tick Looks right again.");
       } else if (code === "express_shop_unavailable") {
-        void useExpress.getState().loadShops();
-        setError("That shop just closed. Choose another shop.");
+        const state = useExpress.getState();
+        if (state.whoPrints === "on") {
+          void state.loadPrinters();
+          setError("That printer just closed. Choose another printer.");
+          state.goTo("printer");
+        } else {
+          void state.loadShops();
+          setError("That shop just closed. Choose another shop.");
+        }
       } else if (code && code.startsWith("cash_")) {
         useExpressPayment.getState().chooseMethod("qr_manual");
         setError(cashErrorMessage(code));
@@ -368,6 +443,10 @@ export function PayFooter() {
       {message ? (
         <Text className="text-caption text-error" accessibilityRole="alert">
           {message}
+        </Text>
+      ) : payLater ? (
+        <Text className="text-caption text-text-secondary">
+          GRIDGO checks your files, then the shop accepts. You then have 5 minutes to pay.
         </Text>
       ) : null}
       <Pressable

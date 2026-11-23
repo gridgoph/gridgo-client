@@ -40,27 +40,32 @@ export function ExpressHeaderActions() {
 const STEPS: { key: ExpressStep; label: string }[] = [
   { key: "files", label: "Files" },
   { key: "preview", label: "Preview" },
+  { key: "printer", label: "Printer" },
   { key: "pay", label: "Pay" },
 ];
 
 /**
- * Files · Preview · Pay. Every step is a button; one not reachable yet is
- * drawn quiet and does nothing. The current step is the bar's one yellow.
+ * Files · Preview · Printer · Pay. Every step is a button; one not reachable
+ * yet is drawn quiet and does nothing. The current step is the bar's one
+ * yellow. Printer is left out where the API has no printer choice.
  */
 export function ExpressStepBar({
   step,
   canGo,
   onStep,
+  withPrinter = true,
 }: {
   step: ExpressStep;
   canGo: (step: ExpressStep) => boolean;
   onStep: (step: ExpressStep) => void;
+  withPrinter?: boolean;
 }) {
   const colors = useThemeColors();
-  const currentIndex = STEPS.findIndex((entry) => entry.key === step);
+  const steps = withPrinter ? STEPS : STEPS.filter((entry) => entry.key !== "printer");
+  const currentIndex = steps.findIndex((entry) => entry.key === step);
   return (
     <View className="flex-row items-center gap-1.5 px-4 pb-2 pt-1" accessibilityRole="tablist">
-      {STEPS.map((entry, index) => {
+      {steps.map((entry, index) => {
         const current = entry.key === step;
         const done = index < currentIndex;
         const enabled = !current && canGo(entry.key);

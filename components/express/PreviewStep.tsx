@@ -38,6 +38,7 @@ import {
   type ExpressLayout,
   type ExpressPrint,
 } from "@/lib/express";
+import { usesShopPrices } from "@/lib/whoPrints";
 import { expressChoices, useExpress } from "@/store/express";
 
 type RowKey = "pages" | "paper" | "printAs" | "layout" | "note";
@@ -252,6 +253,8 @@ export function PreviewStep() {
   const files = useExpress((state) => state.files);
   const prints = useExpress((state) => state.prints);
   const activeFileId = useExpress((state) => state.activeFileId);
+  // A3 is offered only where the client can then choose each shop's price.
+  const choosesPrinter = useExpress((state) => state.whoPrints !== "off");
   const [open, setOpen] = useState<RowKey | null>(null);
   const index = Math.max(0, files.findIndex((row) => row.fileId === activeFileId));
   const file = files[index];
@@ -271,7 +274,19 @@ export function PreviewStep() {
           <PagesChoice key={file.fileId} file={file} print={print} />
         </ExpressRow>
         <ExpressRow icon={RectangleVertical} title="Paper" value={summary.paper} open={open === "paper"} onToggle={() => toggle("paper")}>
-          <ChoiceChips label="Paper" options={PAPER_OPTIONS} value={print.paper} onChange={(paper) => change({ paper })} />
+          <View className="gap-2">
+            <ChoiceChips
+              label="Paper"
+              options={choosesPrinter ? PAPER_OPTIONS : PAPER_OPTIONS.filter((option) => option.value !== "a3")}
+              value={print.paper}
+              onChange={(paper) => change({ paper })}
+            />
+            {print.paper === "a3" ? (
+              <Text className="text-caption text-text-secondary">
+                Each shop sets its own A3 price. You pay once the shop accepts.
+              </Text>
+            ) : null}
+          </View>
         </ExpressRow>
         <ExpressRow icon={Palette} title="Print as" value={summary.printAs} open={open === "printAs"} onToggle={() => toggle("printAs")}>
           <View className="gap-2">
@@ -336,10 +351,13 @@ export function PreviewFooter({ onContinue }: { onContinue: () => void }) {
   const fulfilment = useExpress((state) => state.fulfilment);
   const place = useExpress((state) => state.place);
   const draft = useExpress((state) => state.draft);
-  const key = choicesKey(expressChoices({ prints, supplierId, fulfilment, place }));
-  const ticked = looksRightHolds(tickedKey, expressChoices({ prints, supplierId, fulfilment, place }));
+  const fareLimit = useExpress((state) => state.fareLimit);
+  const choosesPrinter = useExpress((state) => state.whoPrints !== "off");
+  const shopPrices = usesShopPrices(prints);
+  const key = choicesKey(expressChoices({ prints, supplierId, fulfilment, place, fareLimit }));
+  const ticked = looksRightHolds(tickedKey, { prints });
   const tickable = canTickLooksRight(files, prints);
-  const price = draft.status === "ready" && draft.key === key ? draft.draft.quote.clientItemSubtotalMinor : null;
+  const price = draft.status === "ready" && draft.key === key && !shopPrices ? draft.draft.quote.clientItemSubtotalMinor : null;
   const pricing = draft.status === "loading" || (draft.status === "ready" && draft.key !== key);
   return (
     <View className="gap-2 border-t border-outline-subtle bg-surface px-4 pb-2 pt-2">
@@ -359,7 +377,9 @@ export function PreviewFooter({ onContinue }: { onContinue: () => void }) {
             <Text className="text-body-lg font-bold text-text-primary">{price != null ? formatPhp(price) : "…"}</Text>
           ) : (
             // No shop or place yet: Pay picks both, and the price follows.
-            <Text className="text-caption text-text-secondary">{supplierId && place ? "No price yet" : "Priced on Pay"}</Text>
+            <Text className="text-caption text-text-secondary">
+              {shopPrices ? "Each shop prices A3" : choosesPrinter ? "Priced next" : supplierId && place ? "No price yet" : "Priced on Pay"}
+            </Text>
           )}
         </View>
       </View>
@@ -370,7 +390,7 @@ export function PreviewFooter({ onContinue }: { onContinue: () => void }) {
         accessibilityState={{ disabled: !ticked }}
         className={ticked ? "gg-btn-primary" : "gg-btn-primary gg-disabled"}
       >
-        <Text className="text-button text-action-yellow-on">Continue to pay</Text>
+        <Text className="text-button text-action-yellow-on">{choosesPrinter ? "Choose who prints it" : "Continue to pay"}</Text>
       </Pressable>
     </View>
   );

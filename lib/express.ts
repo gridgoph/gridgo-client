@@ -5,9 +5,10 @@
  * how the shop sheet orders shops. Screens and the store compose these.
  */
 
-import type { DetectedArtwork, ExpressShop, StoredFile } from "@/lib/api";
+import type { DetectedArtwork, ExpressFareLimit, ExpressShop, StoredFile } from "@/lib/api";
 
-export type ExpressPaper = "a4" | "short" | "long";
+/** A3 is priced by each shop and paid after the shop accepts (B26328C8). */
+export type ExpressPaper = "a4" | "short" | "long" | "a3";
 export type ExpressColour = "bw" | "colour";
 export type ExpressSides = "one" | "two";
 export type ExpressLayout = "fit_to_paper" | "actual_size_centered" | "actual_size_original_position";
@@ -39,6 +40,7 @@ export const PAPER_OPTIONS: { value: ExpressPaper; label: string; detail: string
   { value: "a4", label: "A4", detail: "210 × 297 mm" },
   { value: "short", label: "Short", detail: "8.5 × 11 in" },
   { value: "long", label: "Long", detail: "8.5 × 13 in" },
+  { value: "a3", label: "A3", detail: "297 × 420 mm" },
 ];
 
 export const LAYOUT_OPTIONS: { value: ExpressLayout; label: string }[] = [
@@ -77,6 +79,7 @@ export function paperAspect(paper: ExpressPaper): number {
 export function filePaper(detected: DetectedArtwork | null | undefined): ExpressPaper | null {
   if (!detected) return null;
   const name = detected.pageSize?.toLowerCase() ?? null;
+  // A3 is never a default: it changes who prices the job and when it is paid.
   if (name === "a4") return "a4";
   if (name === "letter") return "short";
   const width = detected.widthMilli;
@@ -184,6 +187,8 @@ export function changePrint(file: StoredFile, print: ExpressPrint, change: Parti
 export type ExpressChoices = {
   prints: ExpressPrint[];
   supplierId: string | null;
+  /** Set when GRIDGO picks ("Just print it"); the shop is then the draft's answer. */
+  fareLimit?: ExpressFareLimit | null;
   fulfilment: ExpressFulfilment;
   dropoff: { lat: number; lng: number; label?: string | null } | null;
 };
@@ -207,7 +212,8 @@ export function choicesKey(choices: ExpressChoices): string {
       print.note.trim(),
       [...print.acceptedWarnings].sort(),
     ]),
-    supplierId: choices.supplierId,
+    supplierId: choices.fareLimit ? null : choices.supplierId,
+    fareLimit: choices.fareLimit ?? null,
     fulfilment: choices.fulfilment,
     dropoff: choices.fulfilment === "delivery" && choices.dropoff
       ? [choices.dropoff.lat, choices.dropoff.lng, choices.dropoff.label ?? ""]
@@ -215,8 +221,18 @@ export function choicesKey(choices: ExpressChoices): string {
   });
 }
 
-export function looksRightHolds(tickedKey: string | null, choices: ExpressChoices): boolean {
-  return tickedKey != null && tickedKey === choicesKey(choices);
+/**
+ * What "Looks right" vouches for: the preview — files and their print
+ * settings — not the printer or the place. Picking a printer after Preview
+ * must not take the tick away; checkout still sends the current draft's own
+ * confirmation, which is what gridgo-api fingerprints.
+ */
+export function previewKey(prints: ExpressPrint[]): string {
+  return choicesKey({ prints, supplierId: null, fulfilment: "pickup", dropoff: null });
+}
+
+export function looksRightHolds(tickedKey: string | null, choices: Pick<ExpressChoices, "prints"> & Partial<ExpressChoices>): boolean {
+  return tickedKey != null && tickedKey === previewKey(choices.prints);
 }
 
 /** Every file's open warning must be accepted or fixed before the tick can be given. */
@@ -308,6 +324,7 @@ export const PAPER_MM: Record<ExpressPaper, { width: number; height: number }> =
   a4: { width: 210, height: 297 },
   short: { width: 215.9, height: 279.4 },
   long: { width: 215.9, height: 330.2 },
+  a3: { width: 297, height: 420 },
 };
 
 /** Fit to page leaves the printer's usual margin. */

@@ -3,6 +3,7 @@ import {
   canTickLooksRight,
   changePrint,
   choicesKey,
+  previewKey,
   defaultPrint,
   expressFileProblem,
   expressWarnings,
@@ -115,8 +116,8 @@ describe("Looks right tick", () => {
   const pdf = file();
   const base: ExpressChoices = { prints: [defaultPrint(pdf)], supplierId: "shop_1", fulfilment: "pickup", dropoff: null };
 
-  it("holds only for the exact choices it was given on", () => {
-    const key = choicesKey(base);
+  it("holds only for the exact preview it was given on", () => {
+    const key = previewKey(base.prints);
     expect(looksRightHolds(key, base)).toBe(true);
     expect(looksRightHolds(null, base)).toBe(false);
   });
@@ -130,16 +131,26 @@ describe("Looks right tick", () => {
     ["layout", { prints: [{ ...base.prints[0], layout: "actual_size_centered" as const }] }],
     ["note", { prints: [{ ...base.prints[0], note: "Staple" }] }],
     ["files", { prints: [...base.prints, { ...base.prints[0], fileId: "file_2" }] }],
-    ["shop", { supplierId: "shop_2" }],
-    ["fulfilment", { fulfilment: "delivery" as const, dropoff: { lat: 7, lng: 125 } }],
   ])("clears when %s changes", (_name, change) => {
-    const key = choicesKey(base);
+    const key = previewKey(base.prints);
     expect(looksRightHolds(key, { ...base, ...change })).toBe(false);
   });
 
-  it("ignores a delivery address while picking up", () => {
-    const key = choicesKey(base);
-    expect(looksRightHolds(key, { ...base, dropoff: { lat: 7, lng: 125 } })).toBe(true);
+  // "Who prints it?" comes after Preview: choosing the printer must not take the tick away.
+  it.each([
+    ["shop", { supplierId: "shop_2" }],
+    ["fulfilment", { fulfilment: "delivery" as const, dropoff: { lat: 7, lng: 125 } }],
+    ["Just print it", { fareLimit: "any" as const }],
+  ])("holds when the %s changes", (_name, change) => {
+    const key = previewKey(base.prints);
+    expect(looksRightHolds(key, { ...base, ...change })).toBe(true);
+  });
+
+  it("the draft key still changes with the printer and fare limit", () => {
+    expect(choicesKey(base)).not.toBe(choicesKey({ ...base, supplierId: "shop_2" }));
+    expect(choicesKey({ ...base, fareLimit: "nearby" })).not.toBe(choicesKey({ ...base, fareLimit: "any" }));
+    // GRIDGO picks: the last manual shop no longer names the draft.
+    expect(choicesKey({ ...base, fareLimit: "nearby" })).toBe(choicesKey({ ...base, supplierId: "shop_9", fareLimit: "nearby" }));
   });
 
   it("cannot be given while a warning is open", () => {
