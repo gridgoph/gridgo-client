@@ -70,6 +70,63 @@ describe("expressView", () => {
   });
 });
 
+describe("A3: pay after the shop accepts", () => {
+  const now = Date.parse("2026-11-24T05:00:00.000Z");
+  const a3 = (express: Partial<ExpressOrder>, state: string, initialStatus = "not_submitted") => ({
+    ...order({ paymentTiming: "after_acceptance", status: "accepted", ...express }),
+    state,
+    payments: { initial: { amountMinor: 24_000, method: "qr_manual", status: initialStatus, reference: null, submittedAt: null, confirmedAt: null } },
+  });
+
+  it("asks for payment while the five minutes run", () => {
+    const view = expressView(a3({ payBy: "2026-11-24T05:04:00.000Z" }, "awaiting_initial_payment"), "Corner Print", now);
+    expect(view).toMatchObject({ phase: "pay_now", title: "Corner Print accepted", cancellable: false });
+  });
+
+  it("says the window closed instead of asking once payBy passed", () => {
+    const view = expressView(a3({ payBy: "2026-11-24T04:59:59.000Z" }, "awaiting_initial_payment"), "Corner Print", now);
+    expect(view.phase).toBe("pay_expired");
+  });
+
+  it("holds the price while GRIDGO checks a payment sent in time", () => {
+    const view = expressView(
+      a3({ payBy: "2026-11-24T05:04:00.000Z" }, "awaiting_initial_payment", "pending_confirmation"),
+      "Corner Print",
+      now,
+    );
+    expect(view.phase).toBe("accepted");
+    expect(view.line).toContain("checking your payment");
+    expect(view.railIndex).toBe(0);
+    // The API moves a sent payment to initial_payment_review; the same card holds.
+    const review = expressView(
+      a3({ payBy: "2026-11-24T04:59:00.000Z" }, "initial_payment_review", "pending_confirmation"),
+      "Corner Print",
+      now,
+    );
+    expect(review.phase).toBe("accepted");
+    expect(review.line).toContain("checking your payment");
+  });
+
+  it("asks again after a payment was sent back, inside the window", () => {
+    const view = expressView(a3({ payBy: "2026-11-24T05:04:00.000Z" }, "awaiting_initial_payment", "rejected"), null, now);
+    expect(view.phase).toBe("pay_now");
+  });
+
+  it("offers a calm re-pick when the shop declined or timed out", () => {
+    const view = expressView({ ...order({ paymentTiming: "after_acceptance", status: "cancelled", repickRequired: true }), state: "cancelled" }, "Corner Print", now);
+    expect(view).toMatchObject({ phase: "repick", title: "Pick another printer", railIndex: null });
+    expect(view.line).toContain("Your files are kept");
+  });
+
+  it("says up front that an A3 order is paid after acceptance", () => {
+    expect(expressView(order({ paymentTiming: "after_acceptance" }), null).line).toContain("You pay once the shop accepts");
+  });
+
+  it("leaves a standard document order exactly as it was", () => {
+    expect(expressView({ ...order({ status: "accepted" }), state: "payment_authorized" }, "Corner Print", now).phase).toBe("accepted");
+  });
+});
+
 describe("helpers", () => {
   it("counts the acceptance window down and stops at zero", () => {
     const now = Date.parse("2026-11-19T01:00:00.000Z");

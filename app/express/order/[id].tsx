@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { ErrorState } from "@/components/ErrorState";
+import { FormScreen } from "@/components/FormScreen";
 import {
   ExpressHero,
   ExpressRail,
@@ -13,6 +14,7 @@ import {
   ShopCard,
 } from "@/components/express/ExpressOrderCards";
 import { GuideTarget } from "@/components/GuideTarget";
+import { PaymentPanel } from "@/components/PaymentPanel";
 import { Screen } from "@/components/Screen";
 import { SkeletonLine, SkeletonPill } from "@/components/Skeleton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
@@ -23,6 +25,8 @@ import { userFacingError } from "@/lib/copy";
 import { GUIDE_SAMPLE_ORDER_ID, SAMPLE_PICKUP_CODE, SAMPLE_SHOP } from "@/lib/expressGuide";
 import { acceptCountdown, expressView } from "@/lib/expressOrder";
 import { refundEntry } from "@/lib/refunds";
+import { payCountdown } from "@/lib/whoPrints";
+import { useExpress } from "@/store/express";
 import { useExpressShops } from "@/store/expressShops";
 
 /**
@@ -71,6 +75,8 @@ function ExpressOrderScreen() {
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [justRated, setJustRated] = useState(false);
+  const [repicking, setRepicking] = useState(false);
+  const [repickError, setRepickError] = useState<string | null>(null);
   const now = useServerNow(1000);
   const shops = useExpressShops((state) => state.shops);
   const colors = useThemeColors();
@@ -149,13 +155,28 @@ function ExpressOrderScreen() {
   const express = order.expressOrder;
   const pickup = order.fulfillmentMode !== "delivery";
   const known = express.currentSupplierId ? shops[express.currentSupplierId] : undefined;
-  const view = expressView(order, known?.name ?? null);
+  const view = expressView(order, known?.name ?? null, now);
+  const payLeft = view.phase === "pay_now" ? (payCountdown(express.payBy, now)?.label ?? null) : null;
+  const canRepick = view.phase === "repick" || view.phase === "pay_expired";
   const refund = refundEntry(order, refunds, now);
   const countdown = view.phase === "sending" || view.phase === "moved" ? acceptCountdown(express.acceptBy, now) : null;
   const point = order.pickup ?? known?.location ?? null;
   const done = view.phase === "done";
   const windowOpen = order.state === "issue_window_open" || order.state === "delivered";
   const rateable = ["completed", "payout_released"].includes(order.state) && !order.rated;
+
+  // Same files and settings, back on "Who prints it?" (A3 never moves by itself).
+  const repick = async () => {
+    setRepicking(true);
+    setRepickError(null);
+    const failure = await useExpress.getState().startRepick(order);
+    setRepicking(false);
+    if (failure) {
+      setRepickError(failure);
+      return;
+    }
+    router.push("/express");
+  };
 
   const confirm = async () => {
     setConfirming(true);
@@ -168,91 +189,119 @@ function ExpressOrderScreen() {
     }
   };
 
+  // FormScreen, not a ScrollView: an A3 order asks for the payment reference here.
   return (
-    <Screen edges={["bottom"]}>
+    <FormScreen contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
       {headerEscape}
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
-        <ExpressHero phase={view.phase} title={view.title} line={view.line} countdown={countdown} />
-        {view.railIndex != null ? <ExpressRail index={view.railIndex} pickup={pickup} /> : null}
+      <ExpressHero phase={view.phase} title={view.title} line={view.line} countdown={countdown} payCountdown={payLeft} />
+      {view.railIndex != null ? <ExpressRail index={view.railIndex} pickup={pickup} /> : null}
 
-        {view.phase === "ready" && express.pickupCode ? <PickupCodeCard code={express.pickupCode} /> : null}
-
-        {view.phase !== "cancelled" && !done ? (
-          <ShopCard
-            name={known?.name ?? null}
-            address={known?.address ?? null}
-            point={pickup ? point : null}
-            orderId={order.id}
-            showMap={view.phase === "ready"}
-            canMessage={!["checking", "sending", "moved"].includes(view.phase)}
-          />
-        ) : null}
-
-        {view.phase === "on_the_way" ? (
-          <Pressable onPress={details} accessibilityRole="button" className="gg-btn-secondary">
-            <Text className="text-button text-text-primary">Track delivery</Text>
-          </Pressable>
-        ) : null}
-
-        {view.cancellable && refund.kind === "eligible" ? (
+      {view.phase === "pay_now" ? (
+        <PaymentPanel order={order} installment="downpayment" onSubmitted={setOrder} />
+      ) : null}
+      {canRepick ? (
+        <View className="gap-2">
           <Pressable
-            onPress={() => router.push({ pathname: "/order/refund-request", params: { orderId: order.id } })}
+            onPress={() => void repick()}
+            disabled={repicking}
             accessibilityRole="button"
-            className="gg-btn-secondary"
+            accessibilityState={{ disabled: repicking }}
+            className={repicking ? "gg-btn-primary gg-disabled" : "gg-btn-primary"}
           >
-            <Text className="text-button text-text-primary">Cancel for free</Text>
+            <Text className="text-button text-action-yellow-on">
+              {repicking ? "Opening your files…" : "Pick a printer"}
+            </Text>
           </Pressable>
-        ) : null}
+          {repickError ? (
+            <Text className="text-caption text-error" accessibilityRole="alert">
+              {repickError}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
-        {view.phase === "cancelled" && express.refundRequired && refund.kind === "eligible" ? (
-          <Pressable
-            onPress={() => router.push({ pathname: "/order/refund-request", params: { orderId: order.id } })}
-            accessibilityRole="button"
-            className="gg-btn-secondary"
-          >
-            <Text className="text-button text-text-primary">Get your money back</Text>
-          </Pressable>
-        ) : null}
-        {refund.kind === "open" ? (
-          <Pressable
-            onPress={() => router.push({ pathname: "/order/refund", params: { orderId: order.id, refundId: refund.refund.id } })}
-            accessibilityRole="button"
-            className="gg-btn-secondary"
-          >
-            <Text className="text-button text-text-primary">See your refund</Text>
-          </Pressable>
-        ) : null}
+      {view.phase === "ready" && express.pickupCode ? <PickupCodeCard code={express.pickupCode} /> : null}
 
-        {done && windowOpen ? (
-          <View className="gap-2">
-            <Pressable onPress={() => void confirm()} disabled={confirming} accessibilityRole="button" className="gg-btn-secondary">
-              <Text className="text-button text-text-primary">{confirming ? "Saving…" : "All good"}</Text>
-            </Pressable>
-            <Pressable onPress={details} accessibilityRole="link" className="min-h-11 items-center justify-center">
-              <Text className="text-body font-medium text-text-primary underline">Something wrong? Report a problem</Text>
-            </Pressable>
-          </View>
-        ) : null}
-        {done && rateable ? (
-          <RatingCard
-            orderId={order.id}
-            onRated={() => {
-              setJustRated(true);
-              setOrder({ ...order, rated: true });
-            }}
-          />
-        ) : null}
-        {justRated ? (
-          <Text className="text-body text-text-secondary" accessibilityLiveRegion="polite">
-            Thanks. Your rating is in.
-          </Text>
-        ) : null}
-        {done ? <FriendPassCard /> : null}
+      {view.phase !== "cancelled" && !done && !canRepick ? (
+        <ShopCard
+          name={known?.name ?? null}
+          address={known?.address ?? null}
+          point={pickup ? point : null}
+          orderId={order.id}
+          showMap={view.phase === "ready"}
+          canMessage={!["checking", "sending", "moved"].includes(view.phase)}
+        />
+      ) : null}
 
-        <Pressable onPress={details} accessibilityRole="link" className="min-h-11 items-center justify-center">
-          <Text className="text-body text-text-secondary underline">Order details</Text>
+      {view.phase === "on_the_way" ? (
+        <Pressable onPress={details} accessibilityRole="button" className="gg-btn-secondary">
+          <Text className="text-button text-text-primary">Track delivery</Text>
         </Pressable>
-      </ScrollView>
-    </Screen>
+      ) : null}
+
+      {view.cancellable && refund.kind === "eligible" ? (
+        <Pressable
+          onPress={() => router.push({ pathname: "/order/refund-request", params: { orderId: order.id } })}
+          accessibilityRole="button"
+          className="gg-btn-secondary"
+        >
+          <Text className="text-button text-text-primary">Cancel for free</Text>
+        </Pressable>
+      ) : null}
+
+      {view.phase === "cancelled" && express.refundRequired && refund.kind === "eligible" ? (
+        <Pressable
+          onPress={() => router.push({ pathname: "/order/refund-request", params: { orderId: order.id } })}
+          accessibilityRole="button"
+          className="gg-btn-secondary"
+        >
+          <Text className="text-button text-text-primary">Get your money back</Text>
+        </Pressable>
+      ) : null}
+      {refund.kind === "open" ? (
+        <Pressable
+          onPress={() => router.push({ pathname: "/order/refund", params: { orderId: order.id, refundId: refund.refund.id } })}
+          accessibilityRole="button"
+          className="gg-btn-secondary"
+        >
+          <Text className="text-button text-text-primary">See your refund</Text>
+        </Pressable>
+      ) : null}
+
+      {done && windowOpen ? (
+        <View className="gap-2">
+          <Pressable
+            onPress={() => void confirm()}
+            disabled={confirming}
+            accessibilityRole="button"
+            className="gg-btn-secondary"
+          >
+            <Text className="text-button text-text-primary">{confirming ? "Saving…" : "All good"}</Text>
+          </Pressable>
+          <Pressable onPress={details} accessibilityRole="link" className="min-h-11 items-center justify-center">
+            <Text className="text-body font-medium text-text-primary underline">Something wrong? Report a problem</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {done && rateable ? (
+        <RatingCard
+          orderId={order.id}
+          onRated={() => {
+            setJustRated(true);
+            setOrder({ ...order, rated: true });
+          }}
+        />
+      ) : null}
+      {justRated ? (
+        <Text className="text-body text-text-secondary" accessibilityLiveRegion="polite">
+          Thanks. Your rating is in.
+        </Text>
+      ) : null}
+      {done ? <FriendPassCard /> : null}
+
+      <Pressable onPress={details} accessibilityRole="link" className="min-h-11 items-center justify-center">
+        <Text className="text-body text-text-secondary underline">Order details</Text>
+      </Pressable>
+    </FormScreen>
   );
 }

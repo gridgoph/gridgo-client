@@ -16,7 +16,13 @@ export type ExpressPhase =
   | "ready"
   | "on_the_way"
   | "done"
-  | "cancelled";
+  | "cancelled"
+  /** A3: the shop accepted and the five-minute payment window is open. */
+  | "pay_now"
+  /** A3: the window closed with nothing sent; GRIDGO is cancelling for a re-pick. */
+  | "pay_expired"
+  /** A3: the shop declined, timed out or the window closed. The client picks again. */
+  | "repick";
 
 export type ExpressView = {
   phase: ExpressPhase;
@@ -38,11 +44,66 @@ function lastTurn(events: ExpressEvent[]): ExpressEvent | null {
   return null;
 }
 
-export function expressView(order: Pick<Order, "fulfillmentMode" | "expressOrder">, shopName: string | null): ExpressView {
+/** A3 is paid after the shop accepts (gridgo-api B26328C8). */
+export function paysAfterAcceptance(express: Pick<ExpressOrder, "paymentTiming"> | null | undefined): boolean {
+  return express?.paymentTiming === "after_acceptance";
+}
+
+/** Whether the A3 payment is still the client's to send: not yet sent, or sent back. */
+function paymentOwed(order: Partial<Pick<Order, "state" | "payments">>): boolean {
+  if (order.state !== "awaiting_initial_payment") return false;
+  const record = order.payments?.initial ?? order.payments?.downpayment;
+  return !record || ["not_submitted", "rejected"].includes(record.status);
+}
+
+export function expressView(
+  order: Pick<Order, "fulfillmentMode" | "expressOrder"> & Partial<Pick<Order, "state" | "payments">>,
+  shopName: string | null,
+  now: number = Date.now(),
+): ExpressView {
   const express = order.expressOrder as ExpressOrder;
   const pickup = order.fulfillmentMode !== "delivery";
   const shop = shopName ?? "the shop";
   const turn = lastTurn(express.events ?? []);
+  const after = paysAfterAcceptance(express);
+  if (express.repickRequired) {
+    return {
+      phase: "repick",
+      title: "Pick another printer",
+      line: `${capitalise(shop)} could not take it this time. Your files are kept, and nothing was paid for it.`,
+      railIndex: null,
+      cancellable: false,
+    };
+  }
+  if (after && express.status === "accepted" && express.payBy && paymentOwed(order)) {
+    const open = Date.parse(express.payBy) > now;
+    return open
+      ? {
+          phase: "pay_now",
+          title: `${capitalise(shop)} accepted`,
+          line: "Pay now to keep this price and start printing.",
+          railIndex: 0,
+          cancellable: false,
+        }
+      : {
+          phase: "pay_expired",
+          title: "Time to pay ran out",
+          line: "This price is no longer held. You can pick a printer again.",
+          railIndex: null,
+          cancellable: false,
+        };
+  }
+  // Sent, then with Operations: the order sits at initial_payment_review until it is confirmed.
+  const checkingPayment = order.state === "awaiting_initial_payment" || order.state === "initial_payment_review";
+  if (after && express.status === "accepted" && checkingPayment) {
+    return {
+      phase: "accepted",
+      title: `${capitalise(shop)} accepted`,
+      line: "GRIDGO is checking your payment. The price stays held.",
+      railIndex: 0,
+      cancellable: false,
+    };
+  }
   switch (express.status) {
     case "sending": {
       if (turn?.state === "moved") {
@@ -58,7 +119,9 @@ export function expressView(order: Pick<Order, "fulfillmentMode" | "expressOrder
         return {
           phase: "checking",
           title: "Checking your order",
-          line: "GRIDGO checks your payment and files, then sends it.",
+          line: after
+            ? "GRIDGO checks your files, then sends it. You pay once the shop accepts."
+            : "GRIDGO checks your payment and files, then sends it.",
           railIndex: 0,
           cancellable: true,
         };
