@@ -1,5 +1,6 @@
 import { CalendarClock, X } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { SeasonLevelTag, useSeasonTrackColour } from "@/components/SeasonLevelTag";
 import { useThemeColors } from "@/hooks/useTheme";

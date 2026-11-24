@@ -1,13 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  AccessibilityInfo,
-  BackHandler,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { AccessibilityInfo, BackHandler, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import Animated, {
   Easing,
   useAnimatedStyle,

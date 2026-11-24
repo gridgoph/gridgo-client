@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ColourCorrectionDetail } from "@/components/orderChange/ColourCorrection";

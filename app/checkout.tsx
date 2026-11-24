@@ -17,15 +17,8 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { usePhotoLinkRefresh } from "@/hooks/usePhotoLinkRefresh";
 import { ChevronRight, Home, Info, MapPin, Minus, Plus, QrCode, Truck } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Linking,
-  Modal,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Image, Linking, Modal, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useFocusEffect, useRouter } from "expo-router";
 
 import { CheckoutApproval } from "@/components/approval/CheckoutApproval";

@@ -1,4 +1,5 @@
-import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Text, View, useWindowDimensions } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { GridgoPrice, gridgoPriceLabel } from "@/components/GridgoPrice";
 import { SamplePhoto } from "@/components/SamplePhoto";

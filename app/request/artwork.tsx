@@ -1,6 +1,7 @@
 import { CircleAlert, FileCheck, Lightbulb, Palette } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Image, Pressable, Text, TextInput, View } from "react-native";
+import { Image, Text, TextInput, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
 

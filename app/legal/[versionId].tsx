@@ -1,7 +1,8 @@
 import { useLocalSearchParams } from "expo-router";
 import { FileDown, Info } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { Linking, ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ErrorState } from "@/components/ErrorState";
 import { Screen } from "@/components/Screen";

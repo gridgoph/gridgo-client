@@ -1,5 +1,6 @@
 import { Check, Trash2 } from "lucide-react-native";
-import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Image, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { WhyWeAsk } from "@/components/legal/WhyWeAsk";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { usePaymentProof } from "@/hooks/usePaymentProof";

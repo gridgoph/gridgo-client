@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Pressable, Text, View, type LayoutChangeEvent } from "react-native";
+import { Text, View, type LayoutChangeEvent } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import Svg, { Line } from "react-native-svg";
 
 import { StatusChip, type StatusIconName, type StatusTone } from "@/components/StatusChip";

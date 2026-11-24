@@ -1,6 +1,7 @@
 import { BadgeCheck, Bike, Check, Info, MapPin, Star, Store, House, Zap } from "lucide-react-native";
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ChoiceChips, ExpressRow } from "@/components/express/ExpressChrome";
 import { PlaceSheet } from "@/components/express/PaySheets";

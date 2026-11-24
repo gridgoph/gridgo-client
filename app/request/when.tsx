@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { DeadlineCalendar, DeadlineCalendarSkeleton } from "@/components/DeadlineCalendar";

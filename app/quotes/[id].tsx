@@ -1,6 +1,7 @@
 import { Check } from "lucide-react-native";
 import { useCallback, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";

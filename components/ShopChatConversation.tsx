@@ -2,7 +2,8 @@ import { useCallback, useContext, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { HeaderHeightContext } from "expo-router/react-navigation";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import * as WebBrowser from "expo-web-browser";
 import { AlertTriangle, EyeOff, FileText, Flag, Info, Lock, Paperclip, Store } from "lucide-react-native";
 

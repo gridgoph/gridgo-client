@@ -3,7 +3,8 @@ import { useUser } from "@clerk/expo";
 import { router, useFocusEffect } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { useCallback, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TabScreen } from "@/components/TabScreen";

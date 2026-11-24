@@ -19,7 +19,8 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ArtworkFileGuidance } from "@/components/ArtworkFileGuidance";
 import { CheckboxRow } from "@/components/form/CheckboxRow";

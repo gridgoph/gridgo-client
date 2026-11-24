@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react-native";
 import { useEffect } from "react";
-import { Pressable, Text } from "react-native";
+import { Text } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useThemeColors } from "@/hooks/useTheme";

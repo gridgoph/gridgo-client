@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Zap, type LucideIcon } from "lucide-react-native";
 import type { ReactNode } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { HeaderNotificationBell } from "@/components/HeaderNotificationBell";

@@ -1,7 +1,8 @@
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { ArrowRight, Award, Bug, Check, Copy, Lock, UserPlus, Zap, type LucideIcon } from "lucide-react-native";
 import { useCallback, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { EmptyState } from "@/components/EmptyState";
 import { startHowToOrder } from "@/components/ExpressGuideOverlay";

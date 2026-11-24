@@ -1,6 +1,7 @@
 import { Check, ChevronRight, MapPin, Package } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 
 import { ArtworkUploadCard } from "@/components/ArtworkUploadCard";

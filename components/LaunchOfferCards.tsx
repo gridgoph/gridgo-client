@@ -1,6 +1,7 @@
 import { CircleAlert, CircleCheck, Info, UserPlus } from "lucide-react-native";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { TextField } from "@/components/form/TextField";
 import { OfferTicket } from "@/components/OfferTicket";
