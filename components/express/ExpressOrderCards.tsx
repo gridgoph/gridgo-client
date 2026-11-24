@@ -6,6 +6,7 @@ import {
   CircleX,
   Copy,
   Hand,
+  House,
   MessageCircle,
   Navigation,
   Package,
@@ -26,6 +27,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { apiErrorCode } from "@/lib/whoPrints";
 import { copyText } from "@/lib/copyText";
+import { HOME_PICKUP_STREET_PENDING, type HomePickupPlace } from "@/lib/homePrinter";
 import { userFacingError } from "@/lib/copy";
 import {
   directionsUrl,
@@ -203,6 +205,66 @@ export function ShopCard({
             </Pressable>
           ) : null}
         </View>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * A home printer on an Express order (gridgo-api#412): the barangay, and for a
+ * paid pickup the street. No map and no directions, because GRIDGO never gives
+ * a client the pin — a map would draw a guess as if it were the door.
+ */
+export function HomePrinterCard({
+  place,
+  pickup,
+  orderId,
+  canMessage,
+}: {
+  place: HomePickupPlace;
+  pickup: boolean;
+  orderId: string;
+  canMessage: boolean;
+}) {
+  const router = useRouter();
+  const colors = useThemeColors();
+  const where = place.barangay ? `Home printer in ${place.barangay}` : "Home printer";
+  const line = !pickup
+    ? "Printed at home. A rider brings it to you."
+    : place.street
+      ? null
+      : HOME_PICKUP_STREET_PENDING;
+  return (
+    <View className="gg-card-flush">
+      <View className="gap-3 p-4">
+        <View className="flex-row items-start gap-3">
+          <View className="h-10 w-10 items-center justify-center rounded-pill bg-surface-variant">
+            <House size={20} color={colors.textPrimary} strokeWidth={2} aria-hidden />
+          </View>
+          <View className="min-w-0 flex-1 gap-0.5" accessible>
+            <Text className="text-body-lg font-bold text-text-primary">{where}</Text>
+            {pickup && place.street ? (
+              <>
+                <Text className="text-caption text-text-muted">Pick up on</Text>
+                <Text className="text-body font-medium text-text-primary">
+                  {[place.street, place.barangay].filter(Boolean).join(", ")}
+                </Text>
+              </>
+            ) : null}
+            {line ? <Text className="text-caption text-text-secondary">{line}</Text> : null}
+          </View>
+        </View>
+        {canMessage ? (
+          <Pressable
+            onPress={() => router.push({ pathname: "/order/shop-chat", params: { orderId } })}
+            accessibilityRole="button"
+            accessibilityLabel="Message the printer"
+            className="gg-btn-secondary"
+          >
+            <MessageCircle size={18} color={colors.textPrimary} strokeWidth={2} aria-hidden />
+            <Text className="text-button text-text-primary">Message</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );

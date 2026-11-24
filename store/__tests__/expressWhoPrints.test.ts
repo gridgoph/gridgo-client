@@ -1,6 +1,6 @@
 import * as api from "@/lib/api";
-import { defaultPrint } from "@/lib/express";
-import { draftBody, printersBody, useExpress } from "@/store/express";
+import { choicesKey, defaultPrint } from "@/lib/express";
+import { draftBody, expressChoices, printersBody, useExpress } from "@/store/express";
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
@@ -115,6 +115,24 @@ describe("drafts", () => {
     const body = draftBody(useExpress.getState());
     expect(body).toMatchObject({ selection: "just_print_it", fareLimit: "up_to_149" });
     expect(body).not.toHaveProperty("supplierId");
+  });
+
+  it("Just print it obeys Shops only and Verified only, and a filter change makes a new draft", () => {
+    seed({ whoPrints: "on", fareLimit: "nearby", shopsOnly: true });
+    expect(draftBody(useExpress.getState())).toMatchObject({ selection: "just_print_it", shopsOnly: true });
+    expect(draftBody(useExpress.getState())).not.toHaveProperty("verifiedOnly");
+    const before = choicesKey(expressChoices(useExpress.getState()));
+    useExpress.getState().setFilter("verifiedOnly", true);
+    expect(draftBody(useExpress.getState())).toMatchObject({ shopsOnly: true, verifiedOnly: true });
+    expect(choicesKey(expressChoices(useExpress.getState()))).not.toBe(before);
+  });
+
+  it("a manual pick is not re-drafted by a filter change", () => {
+    seed({ whoPrints: "on", fareLimit: null, supplierId: "shop_1", chosenShop: card() });
+    const before = choicesKey(expressChoices(useExpress.getState()));
+    useExpress.getState().setFilter("shopsOnly", true);
+    expect(choicesKey(expressChoices(useExpress.getState()))).toBe(before);
+    expect(draftBody(useExpress.getState())).not.toHaveProperty("shopsOnly");
   });
 
   it("does not let GRIDGO pick before the API has said it can", () => {

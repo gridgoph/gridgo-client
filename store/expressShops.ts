@@ -7,7 +7,7 @@ import { createPersistStorage } from "@/lib/persistStorage";
 const STORAGE_KEY = "gridgo.client.expressShops.v1";
 const KEEP = 40;
 
-export type KnownShop = Pick<ExpressShop, "name" | "address" | "location">;
+export type KnownShop = Pick<ExpressShop, "name" | "address" | "location"> & Partial<Pick<ExpressShop, "printerType" | "barangay">>;
 
 type ExpressShopsStore = {
   shops: Record<string, KnownShop>;
@@ -30,7 +30,12 @@ export const useExpressShops = create<ExpressShopsStore>()(
         const next: Record<string, KnownShop> = { ...get().shops };
         for (const row of rows) {
           delete next[row.supplierId];
-          next[row.supplierId] = { name: row.name, address: row.address, location: row.location };
+          next[row.supplierId] = {
+            name: row.name,
+            address: row.address,
+            location: row.location,
+            ...(row.printerType ? { printerType: row.printerType, barangay: row.barangay ?? null } : {}),
+          };
         }
         const ids = Object.keys(next);
         for (const id of ids.slice(0, Math.max(0, ids.length - KEEP))) delete next[id];
