@@ -54,14 +54,17 @@ export function ExpressStepBar({
   canGo,
   onStep,
   withPrinter = true,
+  only = null,
 }: {
   step: ExpressStep;
   canGo: (step: ExpressStep) => boolean;
   onStep: (step: ExpressStep) => void;
   withPrinter?: boolean;
+  /** A group member's own files: Files and Preview only. */
+  only?: ExpressStep[] | null;
 }) {
   const colors = useThemeColors();
-  const steps = withPrinter ? STEPS : STEPS.filter((entry) => entry.key !== "printer");
+  const steps = STEPS.filter((entry) => (only ? only.includes(entry.key) : withPrinter || entry.key !== "printer"));
   const currentIndex = steps.findIndex((entry) => entry.key === step);
   return (
     <View className="flex-row items-center gap-1.5 px-4 pb-2 pt-1" accessibilityRole="tablist">

@@ -1,3 +1,4 @@
+import { groupNotificationCopy, isGroupNotification } from "@/lib/expressGroup";
 import { formatPhp, type Notification } from "@/lib/api";
 import { PLAY_OPTIN_PUSH_TYPE } from "@/lib/playOptin";
 import { deliveryPinNotificationCopy, isDeliveryPinAsk } from "@/lib/deliveryPin";
@@ -569,6 +570,9 @@ export function presentNotification(
   // A voucher notice is about the wallet, never a job (gridgo-api#204).
   const voucher = voucherNotificationCopy(notification.type, notification.body);
   if (voucher) return presentVoucher(notification, voucher);
+  // A group order is collected from its shop by the host, never at the GRIDGO
+  // Office, and members never pay GRIDGO: no office stage and no payment ask.
+  if (isGroupNotification(notification.type)) return presentGroup(notification);
   const refund =
     deliveryPinNotificationCopy(notification.type) ??
     changeNotificationCopy(notification.type) ??
@@ -646,6 +650,27 @@ export function presentNotification(
       : isSurveyNotification(notification.type)
         ? surveyCallout(notification.at, surveyRewardEligible, surveyRewardProgram, surveyRewardMinor)
         : calloutFor(notification, hold, collectReady),
+  };
+}
+
+/** A group order update (gridgo-api#415): GRIDGO's words, made readable, and a way into the group. */
+function presentGroup(notification: Notification): PresentedNotification {
+  const copy = groupNotificationCopy(notification);
+  return {
+    stamp: null,
+    title: copy.title,
+    body: copy.body,
+    jobLine: null,
+    reference: orderReference(notification.orderId),
+    railKind: null,
+    stageIndex: null,
+    stageLabel: null,
+    collectHold: false,
+    collectReady: false,
+    // Only the host's copy of a shop change asks for a choice.
+    lane: notification.type === "group_shop_changed" && /review the replacement/i.test(notification.body) ? "need_you" : "update",
+    hint: copy.hint,
+    callout: null,
   };
 }
 
@@ -728,19 +753,22 @@ export function groupInbox(items: Notification[]): NotificationGroup[] {
   const byOrder = new Map<string, NotificationGroup>();
   for (const item of newestFirst(items)) {
     const orderId = item.orderId || null;
-    const existing = orderId ? byOrder.get(orderId) : undefined;
+    // A group order's updates fold into one card from the first join, before
+    // there is an order to fold them under (gridgo-api#415).
+    const fold = item.groupId ? `group:${item.groupId}` : orderId ? `order:${orderId}` : null;
+    const existing = fold ? byOrder.get(fold) : undefined;
     if (existing) {
       existing.items.push(item);
       continue;
     }
     const group: NotificationGroup = {
-      key: orderId ? `order:${orderId}` : `note:${item.id}`,
+      key: fold ?? `note:${item.id}`,
       orderId,
       latest: item,
       items: [item],
     };
     groups.push(group);
-    if (orderId) byOrder.set(orderId, group);
+    if (fold) byOrder.set(fold, group);
   }
   return groups;
 }

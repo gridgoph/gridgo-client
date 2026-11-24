@@ -343,7 +343,21 @@ function pagesLine(files: StoredFile[], prints: ExpressPrint[]): string {
   return `${count} ${count === 1 ? "page" : "pages"}`;
 }
 
-export function PreviewFooter({ onContinue }: { onContinue: () => void }) {
+export function PreviewFooter({
+  onContinue,
+  continueLabel = null,
+  priceNote = null,
+  busy = false,
+  error = null,
+}: {
+  onContinue: () => void;
+  /** A group member saves instead of choosing a printer. */
+  continueLabel?: string | null;
+  /** Said where the price would be, when nothing is priced on this screen. */
+  priceNote?: string | null;
+  busy?: boolean;
+  error?: string | null;
+}) {
   const files = useExpress((state) => state.files);
   const prints = useExpress((state) => state.prints);
   const tickedKey = useExpress((state) => state.tickedKey);
@@ -378,19 +392,26 @@ export function PreviewFooter({ onContinue }: { onContinue: () => void }) {
           ) : (
             // No shop or place yet: Pay picks both, and the price follows.
             <Text className="text-caption text-text-secondary">
-              {shopPrices ? "Each shop prices A3" : choosesPrinter ? "Priced next" : supplierId && place ? "No price yet" : "Priced on Pay"}
+              {priceNote ? priceNote : shopPrices ? "Each shop prices A3" : choosesPrinter ? "Priced next" : supplierId && place ? "No price yet" : "Priced on Pay"}
             </Text>
           )}
         </View>
       </View>
+      {error ? (
+        <Text className="text-caption text-error" accessibilityRole="alert">
+          {error}
+        </Text>
+      ) : null}
       <Pressable
         onPress={onContinue}
-        disabled={!ticked}
+        disabled={!ticked || busy}
         accessibilityRole="button"
-        accessibilityState={{ disabled: !ticked }}
-        className={ticked ? "gg-btn-primary" : "gg-btn-primary gg-disabled"}
+        accessibilityState={{ disabled: !ticked || busy }}
+        className={ticked && !busy ? "gg-btn-primary" : "gg-btn-primary gg-disabled"}
       >
-        <Text className="text-button text-action-yellow-on">{choosesPrinter ? "Choose who prints it" : "Continue to pay"}</Text>
+        <Text className="text-button text-action-yellow-on">
+          {continueLabel ?? (choosesPrinter ? "Choose who prints it" : "Continue to pay")}
+        </Text>
       </Pressable>
     </View>
   );

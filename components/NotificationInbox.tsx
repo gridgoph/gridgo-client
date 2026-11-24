@@ -12,7 +12,7 @@ import { SkeletonList } from "@/components/Skeleton";
 import { businessApplicationSentBack } from "@/lib/accountProfile";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
-import { chatNotificationRoute } from "@/lib/push";
+import { chatNotificationRoute, groupNotificationRoute } from "@/lib/push";
 import { quoteNotificationRoute } from "@/lib/quoteRequests";
 import { appInstallChannel } from "@/lib/buildDistribution";
 import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
@@ -79,6 +79,8 @@ export function NotificationInbox() {
     const chatRoute = chatNotificationRoute(notification);
     // A quote notice opens its quote (gridgo-api#226).
     const quoteRoute = quoteNotificationRoute(notification);
+    // A group update opens the group, which carries the shared tracking.
+    const groupRoute = groupNotificationRoute(notification);
     // A release notice opens this install's own store, exactly as its push does.
     const release = releaseNoticeDestination(notification, notification.title, appInstallChannel());
     return (
@@ -116,6 +118,12 @@ export function NotificationInbox() {
                 // The Play tester broadcast opens its steps, as its push does.
                 markGroupRead();
                 router.push(PLAY_OPTIN_ROUTE);
+              }
+            : groupRoute
+            ? () => {
+                markGroupRead();
+                // A route this app declares, built at runtime.
+                router.push(groupRoute as Href);
               }
             : quoteRoute
             ? () => {

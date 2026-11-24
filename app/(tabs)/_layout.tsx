@@ -1,10 +1,11 @@
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import { useEffect } from "react";
 
 import { GridgoTabBar } from "@/components/GridgoTabBar";
 import { isBarTab, TABS } from "@/constants/tabs";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useOrganization } from "@/store/organization";
+import { usePendingGroupInvite } from "@/store/pendingGroupInvite";
 import { useSession } from "@/store/session";
 
 /**
@@ -31,6 +32,20 @@ export default function TabsLayout() {
   useEffect(() => {
     if (userId && accountType === "organization") void useOrganization.getState().load();
   }, [userId, accountType]);
+
+  // A group invite that opened the app before sign-in opens once the shell is up.
+  const router = useRouter();
+  const pendingInvite = usePendingGroupInvite((s) => s.token);
+  useEffect(() => {
+    if (!userId || !pendingInvite) return;
+    const frame = requestAnimationFrame(() => {
+      // The join screen may already have opened it from the link itself.
+      if (usePendingGroupInvite.getState().token !== pendingInvite) return;
+      usePendingGroupInvite.getState().clear();
+      router.push({ pathname: "/express/group/join/[token]", params: { token: pendingInvite } });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [userId, pendingInvite, router]);
 
   return (
     <Tabs
