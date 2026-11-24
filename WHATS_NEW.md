@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.648 (New feature)
+
+- Express now asks who prints it: let GRIDGO pick within your fare, or choose a printer. A3 is priced by each shop.
+
 ## 1.0.643 (New feature)
 
 - Express documents: add files, check each page, pick a nearby shop and pay, then collect with a six-digit code.
