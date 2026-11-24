@@ -1,13 +1,11 @@
 import { useAuth, useClerk, useSignIn } from "@clerk/expo";
-import { useSSO } from "@clerk/expo/experimental";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { AuthDivider } from "@/components/auth/AuthDivider";
-import { AppleButton } from "@/components/auth/AppleButton";
-import { GoogleButton } from "@/components/auth/GoogleButton";
+import { ProviderButtons } from "@/components/auth/ProviderButtons";
 import { OtpCodeStep } from "@/components/auth/OtpCodeStep";
 import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
 import { ErrorState } from "@/components/ErrorState";
@@ -36,19 +34,18 @@ import {
   verificationCodeGate,
   type ClerkSecondFactorStrategy,
 } from "@/lib/clerkSignIn";
-import { clerkTokenUnavailableMessage } from "@/lib/clerkSessionBridge";
 import { clientEmailUnavailableMessage } from "@/lib/copy";
-import { appleSignInOutcome, isAppleCancel, type AppleFlowResult } from "@/lib/appleSignIn";
-import { completeGoogleSso } from "@/lib/googleSso";
 import { PASSWORD_RULE, passwordLengthProblem } from "@/lib/signup";
 import { loginVerifyCopy } from "@/lib/verifyCode";
 import { useLoginFlow } from "@/store/loginFlow";
+import { useFacebookOffered } from "@/hooks/useFacebookOffered";
 import { useSession } from "@/store/session";
+import { useSocialFinish } from "@/store/socialFinish";
 
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn, fetchStatus } = useSignIn();
-  const { startSSOFlow } = useSSO();
+  const facebook = useFacebookOffered();
   const { isSignedIn, getToken, sessionId } = useAuth();
   const { setActive, signOut } = useClerk();
   const sessionError = useSession((state) => state.error);
@@ -89,6 +86,7 @@ export default function LoginScreen() {
     // on the component, so a remount returns to the password form. Do the
     // same here so a dead code step cannot hide Sign in / Google.
     resetLoginFlow();
+    useSocialFinish.getState().reset();
     // Drop a leftover wait from Fast Refresh / a previous visit so Sign In is
     // tappable. Do not clear a Google return that is still coming back through
     // sso-callback — that is how Welcome flashed before Home.
@@ -460,116 +458,6 @@ export default function LoginScreen() {
     }
   };
 
-  const runGoogleSso = () =>
-    completeGoogleSso({
-      alreadySignedIn: false,
-      startSSOFlow: () => startSSOFlow({ strategy: "oauth_google" }),
-      setActive: (args) => setActive(args),
-    });
-
-  const startGoogleSso = async () => {
-    const outcome = await runGoogleSso();
-    if (outcome.status === "activated" || outcome.status === "already_signed_in") {
-      useSession.getState().beginClerkSync({ google: true });
-      await adoptGridgoClient(
-        outcome.status === "activated" ? outcome.sessionId : undefined,
-      );
-      return;
-    }
-    if (outcome.status === "cancelled") {
-      useSession.getState().endClerkSync();
-      useSession.getState().clearSsoInFlight();
-    }
-    // `incomplete` is the usual Android return: the custom tab closed and the
-    // native `sso-callback` is about to adopt. Clearing the wait here is what
-    // dumped a successful Google onto Welcome.
-  };
-
-  /**
-   * A live Clerk session when Google or Apple is tapped.
-   *
-   * Same as the shop app: a live Clerk session is the person who just tapped.
-   * Adopt it. Only start the provider's flow when there is no usable session —
-   * signing that leftover out first is what trapped people on "Sign in again".
-   * True when the leftover was dealt with and the tap is over.
-   */
-  const settleLeftoverForProvider = async () => {
-    if (!isSignedIn) return false;
-    // Clerk already has a session. Join it without painting wait on the
-    // tap itself — syncClerkToGridgo raises the wait once the session is
-    // actually being adopted.
-    const leftover = await adoptGridgoClient(sessionId);
-    if (leftover.kind === "adopt" || leftover.kind === "needs_profile") return true;
-    if (leftover.kind === "wrong_role") {
-      useSession.getState().clearSsoInFlight();
-      return true;
-    }
-    if (leftover.kind === "error" && leftover.message !== clerkTokenUnavailableMessage) {
-      useSession.getState().clearSsoInFlight();
-      return true;
-    }
-    useSession.getState().clearError();
-    if (!(await releaseClerkSession(signOut))) {
-      useSession.getState().failClerkSync(clerkSignOutRecoveryMessage);
-      return true;
-    }
-    return false;
-  };
-
-  const signInWithGoogle = async () => {
-    setBusy(true);
-    setError(null);
-    useSession.getState().finishSigningOut();
-    useSession.getState().clearError();
-    try {
-      if (await settleLeftoverForProvider()) return;
-      await startGoogleSso();
-    } catch (caught) {
-      if (isAlreadySignedInError(caught)) {
-        await adoptGridgoClient(sessionId);
-        return;
-      }
-      useSession.getState().endClerkSync();
-      useSession.getState().clearSsoInFlight();
-      setError(clerkErrorMessage(caught, "Google sign-in did not finish. Try again."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  /**
-   * Sign in with Apple (iPhone only). Apple's sheet is native, so unlike
-   * Google there is no browser return to wait for: the flow either hands back
-   * a session, which lands through `completeClerkAuth` like every other
-   * finished Clerk flow, or the person closed the sheet and nothing is said.
-   */
-  const signInWithApple = async (start: () => Promise<AppleFlowResult>) => {
-    setBusy(true);
-    setError(null);
-    useSession.getState().finishSigningOut();
-    useSession.getState().clearError();
-    try {
-      if (await settleLeftoverForProvider()) return;
-      const outcome = appleSignInOutcome(await start());
-      if (outcome.status === "activated") {
-        useSession.getState().beginClerkSync();
-        await adoptGridgoClient(outcome.sessionId);
-        return;
-      }
-      if (outcome.status === "incomplete") setError(outcome.message);
-    } catch (caught) {
-      if (isAppleCancel(caught)) return;
-      if (isAlreadySignedInError(caught)) {
-        await adoptGridgoClient(sessionId);
-        return;
-      }
-      useSession.getState().endClerkSync();
-      setError(clerkErrorMessage(caught, "Apple sign-in did not finish. Try again."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const signOutRetry = clerkSignOutRetryLabel(sessionError, error);
   const verifyCopy = loginVerifyCopy(secondFactor, email);
   const heading =
@@ -687,8 +575,12 @@ export default function LoginScreen() {
             />
 
             <AuthDivider />
-            <AppleButton onPress={(start) => void signInWithApple(start)} disabled={busy} />
-            <GoogleButton onPress={() => void signInWithGoogle()} disabled={busy} />
+            <ProviderButtons
+              facebook={facebook}
+              disabled={busy}
+              onBusyChange={setBusy}
+              onStart={() => setError(null)}
+            />
 
             <View className="flex-row flex-wrap items-center justify-center gap-1">
               <Text className="text-body text-text-secondary">Don’t have an account?</Text>

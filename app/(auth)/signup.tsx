@@ -3,7 +3,9 @@ import { usePreventRemove } from "expo-router/react-navigation";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 
+import { AuthDivider } from "@/components/auth/AuthDivider";
 import { OtpCodeStep } from "@/components/auth/OtpCodeStep";
+import { ProviderButtons } from "@/components/auth/ProviderButtons";
 import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
 import { ErrorState } from "@/components/ErrorState";
 import { FormScreen } from "@/components/FormScreen";
@@ -12,6 +14,7 @@ import { PasswordField } from "@/components/form/PasswordField";
 import { TextField } from "@/components/form/TextField";
 import { SignupConsentFields } from "@/components/legal/SignupConsentFields";
 import { PrimaryButton } from "@/components/PrimaryButton";
+import { useFacebookOffered } from "@/hooks/useFacebookOffered";
 import { shouldPreventAuthLeave, staysOnAuthScreen } from "@/lib/authLanding";
 import { signupVerifyCopy } from "@/lib/verifyCode";
 import {
@@ -35,6 +38,7 @@ import { useEnrollmentConsent } from "@/store/enrollmentConsent";
 import { useLegalLibrary } from "@/store/legalLibrary";
 import { useSession } from "@/store/session";
 import { useSignupFlow } from "@/store/signupFlow";
+import { useSocialFinish } from "@/store/socialFinish";
 
 export default function SignupScreen() {
   const { signUp, fetchStatus } = useSignUp();
@@ -43,6 +47,8 @@ export default function SignupScreen() {
   const landing = useAuthLanding();
   const sessionError = useSession((state) => state.error);
   const adoptLoading = useSession((state) => state.loading);
+  const facebook = useFacebookOffered();
+  const providerBusy = useSocialFinish((state) => state.providerBusy);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -66,6 +72,7 @@ export default function SignupScreen() {
 
   useEffect(() => {
     void useLegalLibrary.getState().load();
+    useSocialFinish.getState().reset();
     return () => {
       useSignupFlow.getState().reset();
       // The boxes belonged to this form. A later Google sign-in on this phone
@@ -84,7 +91,7 @@ export default function SignupScreen() {
 
   if (!staysOnAuthScreen(landing)) return <AuthLandingRedirect landing={landing} />;
 
-  const busy = fetchStatus === "fetching" || adoptLoading;
+  const busy = fetchStatus === "fetching" || adoptLoading || providerBusy;
   // Versions to name, or an API with no legal library at all.
   const consentReady = Boolean(documents) || libraryStatus === "unsupported";
   const consentProblem = signupConsentProblem(consent);
@@ -287,6 +294,18 @@ export default function SignupScreen() {
                 Your GRIDGO client account starts here.
               </Text>
             </View>
+            {/*
+              One tap first, for the many who would rather not type a form.
+              Drawn only once Clerk offers Facebook; until then sign-up is the
+              email form it has always been, and Google and Apple stay on
+              Sign in, where they create an account just the same.
+            */}
+            {facebook ? (
+              <>
+                <ProviderButtons facebook disabled={busy} onStart={() => setError(null)} />
+                <AuthDivider label="or sign up with email" />
+              </>
+            ) : null}
             <View className="gap-4">
               <FormField label="Full name">
                 <TextField

@@ -372,3 +372,60 @@ export function readyLine(readyAt: string | null | undefined, now: Date = new Da
   const sameDay = date.toLocaleDateString("en-CA", zone) === now.toLocaleDateString("en-CA", zone);
   return sameDay ? `Ready ${time}` : `Ready ${date.toLocaleDateString("en-PH", { ...zone, weekday: "short" })} ${time}`;
 }
+
+/**
+ * The amount a pay sheet may ask for, or null. Zero, a negative or a missing
+ * figure is never an amount to pay: an Express order with no shop has no
+ * quote, and reading that as ₱0.00 is what showed a pay sheet nobody could
+ * use (9BA29059).
+ */
+export function payableMinor(quote: { downpaymentMinor?: number | null } | null | undefined): number | null {
+  const amount = quote?.downpaymentMinor;
+  return typeof amount === "number" && Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+/** What to do when no Express shop is open for this order. One calm line. */
+export function noExpressShopLine(fulfilment: ExpressFulfilment): string {
+  return fulfilment === "pickup"
+    ? "No Express shop is open near you right now. Choose Deliver, or try again later."
+    : "No Express shop can deliver here right now. Choose another place, or try again later.";
+}
+
+/** Why the Pay step cannot ask for money: still settling, stopped, or the draft's own error. */
+export type ExpressPayBlock = { line: string; kind: "wait" | "no_shop" | "stop" | "error" };
+
+/**
+ * Why the Pay step cannot ask for money yet, or null once it can: a place, a
+ * shop (or GRIDGO's pick), a ready draft and a real amount, in that order.
+ * Until then the payment row and the QR stay shut and `line` says why. A
+ * `stop` or `no_shop` will not clear by waiting, so it is said before anyone
+ * taps (the shop row carries `no_shop` itself).
+ */
+export function expressPayBlocker(input: {
+  place: boolean;
+  fulfilment: ExpressFulfilment;
+  /** "Who prints it?" picked the printer on the step before. */
+  withPrinter: boolean;
+  /** The shop list's length, null while it has not been read. Older flow only. */
+  shopCount: number | null;
+  /** A shop, or GRIDGO's pick, is set. */
+  shopChosen: boolean;
+  draft: "idle" | "loading" | "ready" | "error";
+  draftMessage?: string | null;
+  amountMinor: number | null;
+  /** False when nothing is paid now: a voucher covers it, or the shop accepts first. */
+  asksPayment?: boolean;
+}): ExpressPayBlock | null {
+  if (!input.place) return { line: "Set where you are first.", kind: "wait" };
+  if (!input.withPrinter && input.shopCount === 0) return { line: noExpressShopLine(input.fulfilment), kind: "no_shop" };
+  if (!input.shopChosen) {
+    if (input.withPrinter) return { line: "Choose who prints it first.", kind: "wait" };
+    return { line: input.shopCount == null ? "Finding shops…" : "Choose a shop first.", kind: "wait" };
+  }
+  if (input.draft === "error") return { line: input.draftMessage || "GRIDGO could not price this. Try again.", kind: "error" };
+  if (input.draft !== "ready") return { line: "Waiting for the price.", kind: "wait" };
+  if (input.asksPayment !== false && input.amountMinor == null) {
+    return { line: "GRIDGO has no price for this yet. Try again in a moment.", kind: "stop" };
+  }
+  return null;
+}

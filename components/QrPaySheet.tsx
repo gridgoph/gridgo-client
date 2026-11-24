@@ -137,6 +137,9 @@ export function paymentQrImageSource(imageUrl?: string | null) {
  * screenshot and the reference number are — those stay on the sheet behind
  * this one on purpose, because they are the part Operations matches by hand.
  */
+/** Said in place of the plate when it will not load; never an empty box. */
+export const QR_LOAD_FAILED = "The QR did not load. Check your connection, then try again. Do not pay until you can see it.";
+
 /** The sheet's words for what this scan pays. */
 export function qrPayCopy(
   paymentKind: NonNullable<Props["paymentKind"]>,
@@ -177,6 +180,11 @@ export function QrPaySheet({
   paymentKind = "checkout",
 }: Props) {
   const copy = qrPayCopy(paymentKind, downpaymentPercent);
+  // Zero is never an amount to pay: it reads as "not yet", never ₱0.00 (9BA29059).
+  const dueMinor = downpaymentMinor != null && downpaymentMinor > 0 ? downpaymentMinor : null;
+  // A plate that fails to load says so with a retry, never an empty box.
+  const [plateFailed, setPlateFailed] = useState(false);
+  const [plateTry, setPlateTry] = useState(0);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [saving, setSaving] = useState(false);
@@ -196,6 +204,7 @@ export function QrPaySheet({
     if (!open) {
       setSaving(false);
       setSaveNote(null);
+      setPlateFailed(false);
     }
   }
 
@@ -220,38 +229,64 @@ export function QrPaySheet({
         <View className="gg-panel-high gap-1">
           <Text className="text-caption text-text-muted">{copy.due}</Text>
           <Text className="text-display text-text-primary">
-            {downpaymentMinor == null ? "Not yet" : formatPhp(downpaymentMinor)}
+            {dueMinor == null ? "Not yet" : formatPhp(dueMinor)}
           </Text>
-          {downpaymentMinor == null ? (
+          {dueMinor == null ? (
             <Text className="text-caption text-text-muted">{copy.pending}</Text>
           ) : null}
         </View>
 
         <View className="items-center" style={{ overflow: "visible" }}>
-          <CropMarkFrame clip={false}>
-            <Image
-              source={paymentQrImageSource(imageUrl)}
-              accessibilityLabel="GRIDGO's QR Ph code"
-              resizeMode="contain"
-              style={{ width: plate.width, height: plate.height, overflow: "visible" }}
-            />
-          </CropMarkFrame>
+          {plateFailed ? (
+            <View
+              className="items-center justify-center gap-3 rounded-card border border-outline bg-surface px-4"
+              style={{ width: plate.width, minHeight: Math.min(plate.height, 240) }}
+            >
+              <Text className="text-center text-body font-medium text-text-primary" accessibilityRole="alert">
+                {QR_LOAD_FAILED}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  setPlateFailed(false);
+                  setPlateTry((count) => count + 1);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Load the QR again"
+                className="gg-btn-secondary self-stretch"
+              >
+                <Text className="text-button text-text-primary">Try again</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <CropMarkFrame clip={false}>
+              <Image
+                key={plateTry}
+                source={paymentQrImageSource(imageUrl)}
+                accessibilityLabel="GRIDGO's QR Ph code"
+                resizeMode="contain"
+                onError={() => setPlateFailed(true)}
+                style={{ width: plate.width, height: plate.height, overflow: "visible" }}
+              />
+            </CropMarkFrame>
+          )}
         </View>
 
         <View className="gap-2">
-          <Pressable
-            onPress={() => void onSave()}
-            disabled={saving}
-            accessibilityRole="button"
-            accessibilityLabel={SAVE_QR_A11Y}
-            accessibilityState={{ disabled: saving }}
-            className={saving ? "gg-btn-secondary gg-disabled" : "gg-btn-secondary"}
-            style={({ pressed }) => (pressed && !saving ? { opacity: 0.85 } : undefined)}
-          >
-            <Text className="text-button text-text-primary">
-              {saving ? "Saving…" : SAVE_QR_LABEL}
-            </Text>
-          </Pressable>
+          {plateFailed ? null : (
+            <Pressable
+              onPress={() => void onSave()}
+              disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel={SAVE_QR_A11Y}
+              accessibilityState={{ disabled: saving }}
+              className={saving ? "gg-btn-secondary gg-disabled" : "gg-btn-secondary"}
+              style={({ pressed }) => (pressed && !saving ? { opacity: 0.85 } : undefined)}
+            >
+              <Text className="text-button text-text-primary">
+                {saving ? "Saving…" : SAVE_QR_LABEL}
+              </Text>
+            </Pressable>
+          )}
           {saveNote ? (
             <Text className="text-caption text-text-muted">{saveNote}</Text>
           ) : null}

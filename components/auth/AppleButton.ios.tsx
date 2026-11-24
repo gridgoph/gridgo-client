@@ -12,7 +12,8 @@ import { useThemeName } from "@/hooks/useTheme";
 /**
  * Apple's own system button, as its Human Interface Guidelines ask: black on
  * Light, white on Dark, "Continue with Apple", the same 44pt height and 12pt
- * corners as the Google button beside it. It sits above Google, never lower.
+ * corners as the Google and Facebook buttons beside it, so it is never less
+ * prominent than they are (`ProviderButtons` decides the order).
  *
  * Apple's button has no disabled state, so a tap already in flight dims it
  * and stops touches the way `gg-disabled` does for every other control.

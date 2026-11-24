@@ -250,6 +250,10 @@ function AppNavigation() {
                   name="(auth)/signup"
                   options={pushedScreenOptions("Sign up")}
                 />
+                <Stack.Screen
+                  name="(auth)/finish-sign-in"
+                  options={pushedScreenOptions("Finish signing in")}
+                />
               </Stack.Protected>
 
               {/*

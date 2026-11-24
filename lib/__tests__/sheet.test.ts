@@ -1,4 +1,5 @@
 import {
+  afterSheetClose,
   DISMISS_DISTANCE,
   dragOffset,
   SHEET_SPRING,
@@ -55,5 +56,18 @@ describe("SHEET_SPRING", () => {
     // settles without overshoot, which is what stops it reading as a toy.
     const critical = 2 * Math.sqrt(SHEET_SPRING.stiffness * SHEET_SPRING.mass);
     expect(SHEET_SPRING.damping).toBeGreaterThanOrEqual(critical);
+  });
+});
+
+describe("afterSheetClose", () => {
+  it("closes only the sheet still open, so a hand-over to the QR stays put", () => {
+    // Pay with's slide-out ends after "Show the QR to scan" opened the QR.
+    expect(afterSheetClose("qr", "pay")).toBe("qr");
+    // Done on Pay with.
+    expect(afterSheetClose("pay", "pay")).toBeNull();
+    // Closing the QR goes back to Pay with.
+    expect(afterSheetClose("qr", "qr", "pay")).toBe("pay");
+    // A late close after everything was shut changes nothing.
+    expect(afterSheetClose<"pay" | "qr">(null, "pay")).toBeNull();
   });
 });

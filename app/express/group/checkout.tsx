@@ -17,10 +17,11 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { useServerNow } from "@/hooks/useVoucherClock";
 import * as api from "@/lib/api";
 import { cashCheckoutChoice, cashErrorMessage } from "@/lib/cash";
-import { distanceLabel } from "@/lib/express";
+import { distanceLabel, payableMinor } from "@/lib/express";
 import { homeDistanceLine, isHomePrinter, printerName } from "@/lib/homePrinter";
 import { firstName, pagesLine, timeLeft } from "@/lib/expressGroup";
 import { checkPaymentReference } from "@/lib/payment";
+import { afterSheetClose } from "@/lib/sheet";
 import { voucherSettlesUpFront } from "@/lib/vouchers";
 import { apiErrorCode } from "@/lib/whoPrints";
 import { artworkRightsPayload, useArtworkRights } from "@/store/artworkRights";
@@ -109,6 +110,10 @@ export default function GroupCheckoutScreen() {
   const owner = `express-group:${id ?? ""}`;
   const proof = usePaymentProof(owner, useExpressPayment);
   const [sheet, setSheet] = useState<"pay" | "qr" | null>(null);
+  // A close only clears its own sheet: Pay with's slide-out ends after the QR
+  // has opened, and clearing whatever was open bounced the QR away (9BA29059).
+  const closeSheet = (own: "pay" | "qr", next: "pay" | null = null) => () =>
+    setSheet((current) => afterSheetClose(current, own, next));
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [ticked, setTicked] = useState(false);
   const [attempted, setAttempted] = useState(false);
@@ -130,6 +135,9 @@ export default function GroupCheckoutScreen() {
   const quote = prepared?.quote ?? null;
   const pickup = group?.fulfillmentMode === "pickup";
   const noCash = voucherSettlesUpFront(quote);
+  // Never ₱0.00 and never a QR before a shop has priced the order.
+  const amountMinor = payableMinor({ downpaymentMinor: quote?.downpaymentMinor ?? quote?.totalMinor });
+  const payShut = !noCash && amountMinor == null;
   const cash = cashCheckoutChoice(
     settings,
     user,
@@ -298,7 +306,11 @@ export default function GroupCheckoutScreen() {
             ))}
           </View>
         </ExpressRow>
-        <ExpressRow icon={Wallet} title="Pay with" value={payValue} onToggle={() => setSheet("pay")} />
+        {payShut ? (
+          <ExpressRow icon={Wallet} title="Pay with" value="Not yet" trailing={<Text className="text-body text-text-muted">Not yet</Text>} />
+        ) : (
+          <ExpressRow icon={Wallet} title="Pay with" value={payValue} onToggle={() => setSheet("pay")} />
+        )}
         {quote ? (
           <View className="gap-1 border-t border-outline-subtle px-4 pb-3 pt-3">
             <MoneyLine label="Printing" value={api.formatPhp(quote.clientItemSubtotalMinor ?? 0)} />
@@ -339,17 +351,17 @@ export default function GroupCheckoutScreen() {
       <ArtworkRightsBox scope={GROUP_RIGHTS_SCOPE} onOpen={(href: Href) => router.push(href)} />
 
       <PayWithSheet
-        open={sheet === "pay"}
-        onClose={() => setSheet(null)}
+        open={sheet === "pay" && !payShut}
+        onClose={closeSheet("pay")}
         onShowQr={() => setSheet("qr")}
         proof={proof}
         cash={cash}
-        amountMinor={quote?.downpaymentMinor ?? quote?.totalMinor ?? null}
+        amountMinor={amountMinor}
       />
       <QrPaySheet
-        open={sheet === "qr"}
-        onClose={() => setSheet("pay")}
-        downpaymentMinor={quote?.downpaymentMinor ?? quote?.totalMinor ?? 0}
+        open={sheet === "qr" && amountMinor != null}
+        onClose={closeSheet("qr", "pay")}
+        downpaymentMinor={amountMinor}
         downpaymentPercent={100}
         imageUrl={paymentQrFromSettings(settings)?.imageUrl}
       />
