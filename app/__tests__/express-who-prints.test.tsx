@@ -32,7 +32,7 @@ it("says the list widened, and draws each printer's trust and fare up front", as
   expect(screen.getByText("Fewer than 3 printers are open nearby, so Away (₱149.00) is shown too.")).toBeTruthy();
   const shop = screen.getByLabelText(/^Corner Print, shop\. Verified\. Open now\. Ready .*Zone A · Nearby · ₱89\.00 delivery$/);
   expect(shop).toBeTruthy();
-  expect(screen.getByLabelText(/^Brgy\. Buhangin, home printer\. Starter\. Open now/)).toBeTruthy();
+  expect(screen.getByLabelText(/^Home printer in Brgy\. Buhangin\. Starter\. Open now/)).toBeTruthy();
   expect(screen.getByLabelText(/^Farther Print, shop\. Verified.*Zone B · Away · ₱149\.00 delivery$/)).toBeTruthy();
   const closed = screen.getByLabelText(/^Closed Print, shop\. Verified\. Closed/);
   expect(closed.props.accessibilityState).toMatchObject({ disabled: true });

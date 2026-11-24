@@ -1,5 +1,5 @@
 import { useRouter, type Href } from "expo-router";
-import { Bike, ChevronDown, MapPin, Receipt, Store, Wallet, X } from "lucide-react-native";
+import { Bike, ChevronDown, House, MapPin, Receipt, Store, Wallet, X } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -16,6 +16,7 @@ import * as api from "@/lib/api";
 import { cashCheckoutChoice, cashErrorMessage } from "@/lib/cash";
 import { userFacingError } from "@/lib/copy";
 import { choicesKey, looksRightHolds } from "@/lib/express";
+import { HOME_PICKUP_BEFORE_PAYMENT, isHomePrinter, printerName } from "@/lib/homePrinter";
 import { checkPaymentReference } from "@/lib/payment";
 import { voucherSettlesUpFront } from "@/lib/vouchers";
 import { apiErrorCode } from "@/lib/whoPrints";
@@ -76,7 +77,7 @@ function ShopRow({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       disabled={!place}
       accessibilityRole="button"
-      accessibilityLabel={shop ? `Shop: ${shop.name}. ${shopFacts(shop)}. Change shop` : "Choose a shop"}
+      accessibilityLabel={shop ? `Shop: ${printerName(shop)}. ${shopFacts(shop)}. Change shop` : "Choose a shop"}
       className="min-h-14 flex-row items-center gap-3 px-4 py-2.5"
       style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
     >
@@ -86,7 +87,7 @@ function ShopRow({ onPress }: { onPress: () => void }) {
           <>
             <View className="flex-row items-center gap-2">
               <Text className="min-w-0 shrink text-body font-bold text-text-primary" numberOfLines={1}>
-                {shop.name}
+                {printerName(shop)}
               </Text>
               <ShopTags shop={shop} />
             </View>
@@ -118,11 +119,16 @@ function PrinterRow() {
   const place = useExpress((state) => state.place);
   const chosenShop = useExpress((state) => state.chosenShop);
   const { draft } = useExpressPay();
-  const name = fareLimit ? (draft?.shop?.name ?? null) : (chosenShop?.name ?? draft?.shop?.name ?? null);
+  const printer = fareLimit ? (draft?.shop ?? null) : (chosenShop ?? draft?.shop ?? null);
+  const name = printerName(printer);
+  const home = isHomePrinter(printer);
+  const Glyph = home ? House : Store;
   const title = fareLimit ? "Just print it" : (name ?? "Choose a printer");
   const how = fulfilment === "delivery" ? `Deliver to ${place?.label ?? "…"}` : "You pick it up";
   const picked = fareLimit && name ? `GRIDGO picked ${name}` : null;
-  const line = [picked, how].filter(Boolean).join(". ");
+  // Before paying for a pickup at someone's home: the street comes after payment.
+  const homePickup = home && fulfilment === "pickup" ? HOME_PICKUP_BEFORE_PAYMENT : null;
+  const line = [picked, how, homePickup].filter(Boolean).join(". ");
   return (
     <Pressable
       onPress={() => useExpress.getState().goTo("printer")}
@@ -131,7 +137,7 @@ function PrinterRow() {
       className="min-h-14 flex-row items-center gap-3 px-4 py-2.5"
       style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
     >
-      <Store size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+      <Glyph size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
       <View className="min-w-0 flex-1 gap-0.5">
         <Text className="text-body font-bold text-text-primary" numberOfLines={1}>
           {title}
@@ -144,6 +150,7 @@ function PrinterRow() {
         <Text className="text-caption text-text-secondary" numberOfLines={1}>
           {how}
         </Text>
+        {homePickup ? <Text className="text-caption text-text-secondary">{homePickup}</Text> : null}
       </View>
       <Text className="text-body font-medium text-text-primary underline">Change</Text>
     </Pressable>

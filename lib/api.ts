@@ -645,6 +645,14 @@ export type Order = {
   fulfillmentMode?: FulfilmentMode | null;
   /** Supplier shop, once a supplier is assigned. Where the client collects. */
   pickup?: OrderPoint | null;
+  /**
+   * `home` when a home printer has the job (gridgo-api `docs/HOME_PRINTERS_API.md`).
+   * Its `pickup` is then `{barangay}` only, plus `street` once a pickup is fully
+   * paid — never coordinates.
+   */
+  printerType?: "shop" | "home" | (string & {});
+  barangay?: string | null;
+  verificationLevel?: "verified" | "starter" | (string & {});
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
   dropoffConfirmation?: DropoffConfirmation | null;
