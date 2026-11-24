@@ -1,5 +1,5 @@
 import { useAuth, useClerk, useSignUp } from "@clerk/expo";
-import { useLocalSearchParams, type Href } from "expo-router";
+import { Redirect, useLocalSearchParams, type Href } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 
 import { AuthLandingRedirect, useAuthLanding } from "@/components/AuthLandingRedirect";
@@ -16,9 +16,16 @@ import {
   googleSsoRotatingTokenNonce,
   reloadClerkSignInForSso,
 } from "@/lib/googleSso";
+import {
+  signInNeedsLinkCode,
+  signUpNeedsContact,
+  type SsoFutureSignIn,
+} from "@/lib/socialSignIn";
 import { useSession } from "@/store/session";
+import { useSocialFinish } from "@/store/socialFinish";
 
 const login = "/(auth)/login" as Href;
+const finishSignIn = "/(auth)/finish-sign-in" as Href;
 
 /**
  * Clerk's default browser-SSO redirect target (`gridgoclient://sso-callback`).
@@ -40,6 +47,7 @@ export default function SsoCallbackScreen() {
   const sessionError = useSession((state) => state.error);
   const attempted = useRef(false);
   const [failed, setFailed] = useState(false);
+  const [needsFinish, setNeedsFinish] = useState(false);
   const clerkRef = useRef(clerk);
   const getTokenRef = useRef(getToken);
   const setActiveRef = useRef(setActive);
@@ -96,6 +104,18 @@ export default function SsoCallbackScreen() {
         if (cancelled) return;
 
         if (outcome.status !== "activated" && outcome.status !== "already_signed_in") {
+          // A Facebook account with no email (or one Clerk wants confirmed
+          // before linking) has nothing to activate yet: it finishes on its
+          // own step, not on this wait.
+          const signIn = (clerkRef.current as { client?: { signIn?: SsoFutureSignIn } }).client
+            ?.signIn;
+          if (signUpNeedsContact(signUpRef.current) || signInNeedsLinkCode(signIn)) {
+            useSession.getState().endClerkSync();
+            useSession.getState().clearSsoInFlight();
+            useSocialFinish.getState().reset();
+            setNeedsFinish(true);
+            return;
+          }
           // Login's startSSOFlow may still be activating. Wait for isSignedIn.
           // Keep the Google wait — clearing it here dumps onto Welcome.
           attempted.current = false;
@@ -149,6 +169,8 @@ export default function SsoCallbackScreen() {
   // A refused Google account (rider, shop, ops) must reach login even if
   // Clerk is still signed in. failClerkSync can land before this screen
   // sets `failed`, and staying on the wait is the stuck "Taking your seat."
+  if (needsFinish) return <Redirect href={finishSignIn} />;
+
   if (failed || sessionError) {
     return <AuthLandingRedirect landing={{ kind: "signed_out" }} whenSignedOut={login} />;
   }
