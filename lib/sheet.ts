@@ -41,3 +41,13 @@ export function dragOffset(startOffset: number, dy: number): number {
   const next = startOffset + dy;
   return next < 0 ? next / 4 : next;
 }
+
+/**
+ * Which sheet is open once `own` reports its close. A `Sheet` calls `onClose`
+ * when its slide-out ends, by which time a button inside it may already have
+ * opened the next sheet ("Show the QR to scan"); that sheet stays open. Only a
+ * close of the sheet still open moves on to `next` (9BA29059).
+ */
+export function afterSheetClose<T extends string>(current: T | null, own: T, next: T | null = null): T | null {
+  return current === own ? next : current;
+}

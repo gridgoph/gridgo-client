@@ -1,5 +1,5 @@
 import { useRouter, type Href } from "expo-router";
-import { Bike, ChevronDown, House, MapPin, Receipt, Store, Wallet, X } from "lucide-react-native";
+import { Bike, ChevronDown, House, MapPin, Receipt, RotateCw, Store, Wallet, X } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -15,9 +15,10 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { cashCheckoutChoice, cashErrorMessage } from "@/lib/cash";
 import { userFacingError } from "@/lib/copy";
-import { choicesKey, looksRightHolds } from "@/lib/express";
+import { choicesKey, expressPayBlocker, looksRightHolds, noExpressShopLine, payableMinor } from "@/lib/express";
 import { HOME_PICKUP_BEFORE_PAYMENT, isHomePrinter, printerName, printerPhrase } from "@/lib/homePrinter";
 import { checkPaymentReference } from "@/lib/payment";
+import { afterSheetClose } from "@/lib/sheet";
 import { voucherSettlesUpFront } from "@/lib/vouchers";
 import { apiErrorCode } from "@/lib/whoPrints";
 import { artworkRightsPayload, useArtworkRights } from "@/store/artworkRights";
@@ -55,14 +56,32 @@ function useExpressPay() {
   const method = useExpressPayment((state) => state.method);
   // A3: checkout takes no payment; the client pays once the shop accepts.
   const payLater = draft?.paymentTiming === "after_acceptance" && !voucherSettlesUpFront(quote);
+  const noCash = voucherSettlesUpFront(quote);
+  const shops = useExpress((state) => state.shops);
+  const whoPrints = useExpress((state) => state.whoPrints);
+  const amountMinor = payableMinor(quote);
+  // No shop, no quote, no amount: nothing on this step may ask for money (9BA29059).
+  const payBlocker = expressPayBlocker({
+    place: place != null,
+    fulfilment,
+    withPrinter: whoPrints === "on",
+    shopCount: shops ? shops.length : null,
+    shopChosen: supplierId != null || (whoPrints === "on" && fareLimit != null),
+    draft: draftState.status === "idle" || draftState.key !== key ? "idle" : draftState.status,
+    draftMessage: draftState.status === "error" ? draftState.message : null,
+    amountMinor,
+    asksPayment: !noCash && !payLater,
+  });
   return {
     draft,
     draftState,
     quote,
     cash: payLater ? { ...cash, eligible: false } : cash,
     cashSelected: !payLater && cash.eligible && method === "cash",
-    noCash: voucherSettlesUpFront(quote),
+    noCash,
     payLater,
+    amountMinor,
+    payBlocker,
     ticked: looksRightHolds(tickedKey, choices),
     settings,
   };
@@ -73,7 +92,34 @@ function ShopRow({ onPress }: { onPress: () => void }) {
   const shops = useExpress((state) => state.shops);
   const supplierId = useExpress((state) => state.supplierId);
   const place = useExpress((state) => state.place);
+  const fulfilment = useExpress((state) => state.fulfilment);
+  const shopsError = useExpress((state) => state.shopsError);
   const shop = shops?.find((row) => row.supplierId === supplierId) ?? null;
+  const unread = !shops && Boolean(shopsError);
+  if (place && ((shops && !shops.length) || unread)) {
+    // Nobody to choose, or the list did not load: say why and what next, and let the row read again.
+    const title = unread ? "Shops did not load" : "No open Express shop nearby";
+    const line = shopsError ?? noExpressShopLine(fulfilment);
+    return (
+      <Pressable
+        onPress={() => void useExpress.getState().loadShops()}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}. ${line} Try again`}
+        className="min-h-14 flex-row items-center gap-3 px-4 py-2.5"
+        style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+      >
+        <Store size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text className="text-body font-bold text-text-primary">{title}</Text>
+          <Text className="text-caption text-text-secondary">{line}</Text>
+        </View>
+        <View className="flex-row items-center gap-1">
+          <RotateCw size={16} color={colors.textPrimary} strokeWidth={2} aria-hidden />
+          <Text className="text-body font-medium text-text-primary underline">Try again</Text>
+        </View>
+      </Pressable>
+    );
+  }
   return (
     <Pressable
       onPress={onPress}
@@ -99,7 +145,7 @@ function ShopRow({ onPress }: { onPress: () => void }) {
           </>
         ) : (
           <Text className="text-body text-text-secondary">
-            {!place ? "Set where you are first" : shops && !shops.length ? "No open Express shop nearby" : "Finding shops…"}
+            {!place ? "Set where you are first" : "Finding shops…"}
           </Text>
         )}
       </View>
@@ -239,9 +285,15 @@ export function PayStep() {
   const place = useExpress((state) => state.place);
   const method = useExpressPayment((state) => state.method);
   const proofState = useExpressPayment((state) => state.proof);
-  const { draft, draftState, quote, cash, noCash, payLater } = useExpressPay();
+  const { draft, draftState, quote, cash, noCash, payLater, amountMinor, payBlocker } = useExpressPay();
   const withPrinter = useExpress((state) => state.whoPrints === "on");
   const [sheet, setSheet] = useState<"shop" | "place" | "pay" | "qr" | null>(null);
+  // A sheet reports its close once its slide-out ends. By then "Show the QR to
+  // scan" may already have opened the next sheet, so a close only clears its
+  // own sheet: clearing whatever was open sent the QR straight back to Pay
+  // with, before its plate could load (9BA29059).
+  const closeSheet = (own: NonNullable<typeof sheet>, next: typeof sheet = null) => () =>
+    setSheet((current) => afterSheetClose(current, own, next));
   const [totalOpen, setTotalOpen] = useState(false);
   const proof = usePaymentProof(EXPRESS_PAYMENT_OWNER, useExpressPayment);
   useEffect(() => {
@@ -258,9 +310,11 @@ export function PayStep() {
       : proofState.phase === "stored"
         ? "QR Ph · receipt added"
         : "QR Ph · add receipt";
+  // The payment row opens only once there is a shop, a quote and an amount.
+  const payShut = Boolean(payBlocker) && !payLater;
   const totalValue = quote?.totalMinor != null
     ? api.formatPhp(quote.totalMinor)
-    : draftState.status === "error"
+    : draftState.status === "error" || payBlocker?.kind === "no_shop" || payBlocker?.kind === "stop"
       ? "Not priced"
       : "…";
 
@@ -300,6 +354,13 @@ export function PayStep() {
             value={payValue}
             trailing={<Text className="text-body text-text-secondary">After the shop accepts</Text>}
           />
+        ) : payShut ? (
+          <ExpressRow
+            icon={Wallet}
+            title="Pay with"
+            value="Not yet"
+            trailing={<Text className="text-body text-text-muted">Not yet</Text>}
+          />
         ) : (
           <ExpressRow icon={Wallet} title="Pay with" value={payValue} onToggle={() => setSheet("pay")} />
         )}
@@ -314,7 +375,11 @@ export function PayStep() {
             <Breakdown quote={quote} cartId={draft.cartId} delivery={fulfilment === "delivery"} />
           ) : (
             <Text className="text-caption text-text-muted">
-              {draftState.status === "error" ? draftState.message : "Pricing…"}
+              {draftState.status === "error"
+                ? draftState.message
+                : payBlocker?.kind === "no_shop" || payBlocker?.kind === "stop"
+                  ? payBlocker.line
+                  : "Pricing…"}
             </Text>
           )}
         </ExpressRow>
@@ -326,20 +391,20 @@ export function PayStep() {
       ) : null}
       <ArtworkRightsBox scope={EXPRESS_RIGHTS_SCOPE} onOpen={(href: Href) => router.push(href)} />
 
-      <ShopSheet open={sheet === "shop"} onClose={() => setSheet(null)} />
-      <PlaceSheet open={sheet === "place"} onClose={() => setSheet(null)} />
+      <ShopSheet open={sheet === "shop"} onClose={closeSheet("shop")} />
+      <PlaceSheet open={sheet === "place"} onClose={closeSheet("place")} />
       <PayWithSheet
-        open={sheet === "pay"}
-        onClose={() => setSheet(null)}
+        open={sheet === "pay" && !payShut}
+        onClose={closeSheet("pay")}
         onShowQr={() => setSheet("qr")}
         proof={proof}
         cash={cash}
-        amountMinor={quote?.downpaymentMinor ?? null}
+        amountMinor={amountMinor}
       />
       <QrPaySheet
-        open={sheet === "qr"}
-        onClose={() => setSheet("pay")}
-        downpaymentMinor={quote?.downpaymentMinor ?? 0}
+        open={sheet === "qr" && !payShut && amountMinor != null}
+        onClose={closeSheet("qr", "pay")}
+        downpaymentMinor={amountMinor}
         downpaymentPercent={100}
         imageUrl={paymentQrFromSettings(settings)?.imageUrl}
       />
@@ -366,7 +431,7 @@ function blockerLine(input: {
 
 export function PayFooter() {
   const router = useRouter();
-  const { draft, quote, cashSelected, noCash, payLater, ticked } = useExpressPay();
+  const { draft, quote, cashSelected, noCash, payLater, ticked, payBlocker } = useExpressPay();
   const fulfilment = useExpress((state) => state.fulfilment);
   const place = useExpress((state) => state.place);
   const proof = useExpressPayment((state) => state.proof);
@@ -377,7 +442,7 @@ export function PayFooter() {
   const [error, setError] = useState<string | null>(null);
 
   const paid = noCash || payLater || cashSelected || (proof.phase === "stored" && Boolean(proof.fileId) && checkPaymentReference(reference).ok);
-  const blocker = blockerLine({
+  const blocker = payBlocker?.line ?? blockerLine({
     draft: Boolean(draft),
     ticked,
     delivery: fulfilment === "delivery",
@@ -438,6 +503,17 @@ export function PayFooter() {
   };
 
   const amount = quote?.totalMinor != null ? ` · ${api.formatPhp(quote.totalMinor)}` : "";
+  // No shop or no price is said straight away; the rest once Place order is tried.
+  // No shop or no amount will not clear by waiting: the button is shut, and said why.
+  const shut = payBlocker?.kind === "no_shop" || payBlocker?.kind === "stop";
+  // The shop row above already says why there is no shop; this says what that means here.
+  const stopped = error
+    ? null
+    : payBlocker?.kind === "stop"
+      ? payBlocker.line
+      : payBlocker?.kind === "no_shop"
+        ? "Place order opens once a shop can take it."
+        : null;
   const message = error ?? (attempted ? blocker : null);
   return (
     <View className="gap-2 border-t border-outline-subtle bg-surface px-4 pb-2 pt-2">
@@ -449,7 +525,9 @@ export function PayFooter() {
           hint="Your files print as set on Preview"
         />
       ) : null}
-      {message ? (
+      {stopped ? (
+        <Text className="text-caption text-text-secondary">{stopped}</Text>
+      ) : message ? (
         <Text className="text-caption text-error" accessibilityRole="alert">
           {message}
         </Text>
@@ -460,7 +538,7 @@ export function PayFooter() {
       ) : null}
       <Pressable
         onPress={() => void placeOrder()}
-        disabled={busy}
+        disabled={busy || shut}
         accessibilityRole="button"
         accessibilityState={{ disabled: busy || Boolean(blocker) }}
         className={blocker || busy ? "gg-btn-primary gg-disabled" : "gg-btn-primary"}

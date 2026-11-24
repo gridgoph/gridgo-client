@@ -412,7 +412,12 @@ export const useExpress = create<ExpressState>((set, get) => ({
 
   setTicked: (ticked) => set({ tickedKey: ticked ? previewKey(get().prints) : null }),
 
-  setFulfilment: (fulfilment) => set({ fulfilment }),
+  setFulfilment: (fulfilment) => {
+    if (get().fulfilment === fulfilment) return;
+    set({ fulfilment });
+    // Shops open for a pick-up are not the shops that deliver: the older sheet reads again.
+    if (get().whoPrints === "off" && get().place) void get().loadShops();
+  },
 
   setPlace: (place) => {
     const previous = get().place;
@@ -425,10 +430,11 @@ export const useExpress = create<ExpressState>((set, get) => ({
   loadShops: async () => {
     const place = get().place;
     if (!place || get().sample || get().group) return;
+    const fulfilment = get().fulfilment;
     set({ shopsError: null });
     try {
-      const shops = await api.listExpressShops(place, "nearest");
-      if (get().place !== place) return;
+      const shops = await api.listExpressShops(place, "nearest", fulfilment);
+      if (get().place !== place || get().fulfilment !== fulfilment) return;
       useExpressShops.getState().remember(shops);
       const current = get().supplierId;
       const keep = shops.some((shop) => shop.supplierId === current);
@@ -437,7 +443,7 @@ export const useExpress = create<ExpressState>((set, get) => ({
         supplierId: keep ? current : (sortExpressShops(shops, "nearest")[0]?.supplierId ?? null),
       });
     } catch (error) {
-      if (get().place !== place) return;
+      if (get().place !== place || get().fulfilment !== fulfilment) return;
       set({ shops: get().shops, shopsError: userFacingError(error, "Shops could not load. Try again.") });
     }
   },

@@ -62,11 +62,13 @@ function PaymentForm({ order, installment, basket, onSubmitted }: Props) {
   const record = paymentInstallment(order, installment);
   // One transfer for the whole multi-shop basket: its total, not this group's.
   const basketId = order.basketId ?? null;
-  const dueMinor = basketId ? (basket?.totalMinor ?? null) : (record?.amountMinor ?? null);
+  const rawDueMinor = basketId ? (basket?.totalMinor ?? null) : (record?.amountMinor ?? null);
+  // Zero is not an amount to pay: no ₱0.00 and no QR for it (9BA29059).
+  const dueMinor = rawDueMinor != null && rawDueMinor > 0 ? rawDueMinor : null;
   const inFull = paysInFull(order);
   const check = checkPaymentReference(reference);
   const ocrReading = proof.ocr.status === "reading";
-  const ready = proof.state.phase === "stored" && Boolean(proof.state.fileId) && check.ok && !ocrReading && dueMinor !== null && dueMinor > 0;
+  const ready = proof.state.phase === "stored" && Boolean(proof.state.fileId) && check.ok && !ocrReading && dueMinor !== null;
   const frozen = busy || confirming;
 
   async function submit() {
@@ -112,7 +114,7 @@ function PaymentForm({ order, installment, basket, onSubmitted }: Props) {
 
       {record?.rejectionReason ? <ErrorState label="Payment needs correction" body={`${record.rejectionReason} Check the existing transfer before paying again.`} /> : null}
       {settingsError ? <ErrorState label="QR unavailable" body={settingsError} onRetry={() => void loadSettings()} /> : null}
-      <SecondaryButton label={!settings && !settingsError ? "Loading payment QR…" : "Show payment QR"} disabled={!settings || frozen} onPress={() => setShowQr(true)} />
+      <SecondaryButton label={!settings && !settingsError ? "Loading payment QR…" : "Show payment QR"} disabled={!settings || frozen || dueMinor === null} onPress={() => setShowQr(true)} />
       <QrPaySheet open={showQr} onClose={() => setShowQr(false)} downpaymentMinor={dueMinor} downpaymentPercent={downpaymentPercentOf(order)} paymentKind={installment === "balance" ? "final" : "initial"} imageUrl={paymentQrFromSettings(settings)?.imageUrl} />
 
       <PaymentProofRow state={proof.state} reading={ocrReading} disabled={frozen}
