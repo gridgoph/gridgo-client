@@ -41,11 +41,14 @@ export function printerName(printer: Printer | null | undefined): string | null 
   return barangay ? `Home printer in ${barangay}` : "Home printer";
 }
 
-/** How an Express order's sentences name a home: "the home printer in Matina Crossing". */
-export function printerPhrase(printer: Printer | null | undefined): string | null {
+/**
+ * How a sentence names a home: "the home printer in Matina Crossing", or "a
+ * home printer in …" for GRIDGO's own pick. A shop keeps its name.
+ */
+export function printerPhrase(printer: Printer | null | undefined, article: "the" | "a" = "the"): string | null {
   const name = printerName(printer);
   if (!name || !isHomePrinter(printer)) return name;
-  return `the ${name[0].toLowerCase()}${name.slice(1)}`;
+  return `${article} ${name[0].toLowerCase()}${name.slice(1)}`;
 }
 
 /** Said before paying for a pickup at someone's home, so the missing street is expected. */

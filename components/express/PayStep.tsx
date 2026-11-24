@@ -16,7 +16,7 @@ import * as api from "@/lib/api";
 import { cashCheckoutChoice, cashErrorMessage } from "@/lib/cash";
 import { userFacingError } from "@/lib/copy";
 import { choicesKey, looksRightHolds } from "@/lib/express";
-import { HOME_PICKUP_BEFORE_PAYMENT, isHomePrinter, printerName } from "@/lib/homePrinter";
+import { HOME_PICKUP_BEFORE_PAYMENT, isHomePrinter, printerName, printerPhrase } from "@/lib/homePrinter";
 import { checkPaymentReference } from "@/lib/payment";
 import { voucherSettlesUpFront } from "@/lib/vouchers";
 import { apiErrorCode } from "@/lib/whoPrints";
@@ -39,7 +39,9 @@ function useExpressPay() {
   const place = useExpress((state) => state.place);
   const draftState = useExpress((state) => state.draft);
   const tickedKey = useExpress((state) => state.tickedKey);
-  const choices = expressChoices({ prints, supplierId, fulfilment, place, fareLimit });
+  const shopsOnly = useExpress((state) => state.shopsOnly);
+  const verifiedOnly = useExpress((state) => state.verifiedOnly);
+  const choices = expressChoices({ prints, supplierId, fulfilment, place, fareLimit, shopsOnly, verifiedOnly });
   const key = choicesKey(choices);
   const draft = draftState.status === "ready" && draftState.key === key ? draftState.draft : null;
   const settings = usePlatformSettings((state) => state.settings);
@@ -125,7 +127,7 @@ function PrinterRow() {
   const Glyph = home ? House : Store;
   const title = fareLimit ? "Just print it" : (name ?? "Choose a printer");
   const how = fulfilment === "delivery" ? `Deliver to ${place?.label ?? "…"}` : "You pick it up";
-  const picked = fareLimit && name ? `GRIDGO picked ${name}` : null;
+  const picked = fareLimit && name ? `GRIDGO picked ${printerPhrase(printer, "a")}` : null;
   // Before paying for a pickup at someone's home: the street comes after payment.
   const homePickup = home && fulfilment === "pickup" ? HOME_PICKUP_BEFORE_PAYMENT : null;
   const line = [picked, how, homePickup].filter(Boolean).join(". ");

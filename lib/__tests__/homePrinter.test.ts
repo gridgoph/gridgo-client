@@ -78,3 +78,8 @@ describe("mappablePickup", () => {
     expect(isHomePrinter(undefined)).toBe(false);
   });
 });
+
+it("names GRIDGO's own pick with an indefinite article", () => {
+  expect(printerPhrase({ printerType: "home", barangay: "Poblacion District" }, "a")).toBe("a home printer in Poblacion District");
+  expect(printerPhrase({ printerType: "shop", name: "Corner Print" }, "a")).toBe("Corner Print");
+});

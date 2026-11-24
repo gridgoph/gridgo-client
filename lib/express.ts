@@ -191,6 +191,8 @@ export type ExpressChoices = {
   fareLimit?: ExpressFareLimit | null;
   fulfilment: ExpressFulfilment;
   dropoff: { lat: number; lng: number; label?: string | null } | null;
+  /** "Shops only" / "Verified only": they bind GRIDGO's own pick, so they are part of its draft. */
+  filters?: { shopsOnly: boolean; verifiedOnly: boolean } | null;
 };
 
 /**
@@ -214,6 +216,7 @@ export function choicesKey(choices: ExpressChoices): string {
     ]),
     supplierId: choices.fareLimit ? null : choices.supplierId,
     fareLimit: choices.fareLimit ?? null,
+    filters: choices.fareLimit ? [Boolean(choices.filters?.shopsOnly), Boolean(choices.filters?.verifiedOnly)] : null,
     fulfilment: choices.fulfilment,
     dropoff: choices.fulfilment === "delivery" && choices.dropoff
       ? [choices.dropoff.lat, choices.dropoff.lng, choices.dropoff.label ?? ""]

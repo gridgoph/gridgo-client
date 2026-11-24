@@ -6813,6 +6813,9 @@ export type ExpressDraftBody = {
   selection?: "just_print_it";
   /** Required with `selection`: how far GRIDGO may go for the fare. */
   fareLimit?: ExpressFareLimit;
+  /** With `selection`: GRIDGO picks only among shops / Verified printers. */
+  shopsOnly?: boolean;
+  verifiedOnly?: boolean;
   location: { lat: number; lng: number };
   fulfillmentMode: "pickup" | "delivery";
   dropoff?: { lat: number; lng: number; label: string };

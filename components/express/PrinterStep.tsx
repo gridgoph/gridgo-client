@@ -9,7 +9,7 @@ import { SkeletonBlock } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { readyLine, type ExpressFulfilment } from "@/lib/express";
-import { HOME_PICKUP_BEFORE_PAYMENT, homeBarangay, homeDistanceLine, printerName } from "@/lib/homePrinter";
+import { HOME_PICKUP_BEFORE_PAYMENT, homeBarangay, homeDistanceLine, printerName, printerPhrase } from "@/lib/homePrinter";
 import {
   A3_PICK_YOURSELF,
   fareLimitOptions,
@@ -387,8 +387,10 @@ export function PrinterFooter({ onContinue }: { onContinue: () => void }) {
   const prints = useExpress((state) => state.prints);
   const supplierId = useExpress((state) => state.supplierId);
   const fareLimit = useExpress((state) => state.fareLimit);
+  const shopsOnly = useExpress((state) => state.shopsOnly);
+  const verifiedOnly = useExpress((state) => state.verifiedOnly);
   const draft = useExpress((state) => state.draft);
-  const key = choicesKey(expressChoices({ prints, supplierId, fulfilment, place, fareLimit }));
+  const key = choicesKey(expressChoices({ prints, supplierId, fulfilment, place, fareLimit, shopsOnly, verifiedOnly }));
   const current = draft.status !== "idle" && draft.key === key ? draft : null;
   const blocker = printerBlocker({
     place: place != null,
@@ -400,7 +402,7 @@ export function PrinterFooter({ onContinue }: { onContinue: () => void }) {
   });
   const failed = current?.status === "error" ? current.message : null;
   const total = current?.status === "ready" ? current.draft.quote.totalMinor : null;
-  const picked = current?.status === "ready" && fareLimit != null ? printerName(current.draft.shop) : null;
+  const picked = current?.status === "ready" && fareLimit != null ? printerPhrase(current.draft.shop, "a") : null;
   const disabled = Boolean(blocker) || Boolean(failed);
   return (
     <View className="gap-2 border-t border-outline-subtle bg-surface px-4 pb-2 pt-2">
