@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.655 (New feature)
+
+- Print with your group: invite friends, each adds their own files, and the host pays once for one delivery.
+
 ## 1.0.648 (New feature)
 
 - Express now asks who prints it: let GRIDGO pick within your fare, or choose a printer. A3 is priced by each shop.
