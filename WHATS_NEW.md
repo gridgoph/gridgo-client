@@ -21,6 +21,10 @@ Changes that have merged but are not released yet. Each one is a file in [`whats
 
 <!-- CI adds each release below this line. -->
 
+## 1.0.678 (New feature)
+
+- Express: see the print shops on a map when choosing who prints, and tap one to pick it.
+
 ## 1.0.672 (Fix)
 
 - Buttons and rows dim when you tap them again, and small close buttons are back to full size.
