@@ -1,7 +1,8 @@
 import * as Linking from "expo-linking";
 import { Check, Copy, Link2, QrCode, Share2, Users } from "lucide-react-native";
 import { useState } from "react";
-import { Pressable, Share, Text, View } from "react-native";
+import { Share, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import Svg, { Path, Rect } from "react-native-svg";
 
 import { Sheet } from "@/components/Sheet";

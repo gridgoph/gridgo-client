@@ -1,6 +1,7 @@
 import { Moon, Sun, type LucideIcon } from "lucide-react-native";
 import { useEffect } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { useReducedMotion } from "@/hooks/useReducedMotion";

@@ -1,6 +1,7 @@
 import { TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { Redirect, useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";

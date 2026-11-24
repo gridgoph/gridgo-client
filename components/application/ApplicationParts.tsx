@@ -8,7 +8,8 @@ import {
   LockKeyhole,
 } from "lucide-react-native";
 import type { ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { StatusChip } from "@/components/StatusChip";
 import { useThemeColors } from "@/hooks/useTheme";

@@ -1,6 +1,7 @@
 import { Check, CircleAlert, Download, ExternalLink, Mail, Rocket, Users, type LucideIcon } from "lucide-react-native";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { CheckboxRow } from "@/components/form/CheckboxRow";
 import { TextField } from "@/components/form/TextField";

@@ -1,6 +1,7 @@
 import { Camera, ImageUp } from "lucide-react-native";
 import { useState } from "react";
-import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Image, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { DangerButton } from "@/components/DangerButton";
 import { CheckboxRow } from "@/components/form/CheckboxRow";

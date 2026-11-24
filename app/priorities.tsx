@@ -1,6 +1,7 @@
 import { Check } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { PriorityRankingBoard } from "@/components/PriorityRankingBoard";
 import { Screen } from "@/components/Screen";

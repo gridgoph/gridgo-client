@@ -1,7 +1,8 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ChevronRight } from "lucide-react-native";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from "expo-router";
 
 import { CategoryHuntField } from "@/components/CategoryHuntField";

@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { BadgePercent, Building2, ChevronRight } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import { canApplyAsBusiness } from "@/lib/accountProfile";

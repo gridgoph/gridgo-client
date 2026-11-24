@@ -1,7 +1,8 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Camera, ImageUp, PenLine } from "lucide-react-native";
 import { useCallback, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ApprovalReviewList } from "@/components/approval/ApprovalReviewList";
 import { SignaturePreview } from "@/components/approval/SignaturePreview";

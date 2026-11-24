@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { LayoutGrid, List } from "lucide-react-native";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import type { CategoryView } from "@/hooks/useCategoryView";
 import { useThemeColors } from "@/hooks/useTheme";

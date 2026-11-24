@@ -1,6 +1,7 @@
 import { Check, ChevronRight, MapPin, Package, Plus, Truck, type LucideIcon } from "lucide-react-native";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import { AddressDeletion, DeleteAddressButton } from "@/components/AddressDeletion";

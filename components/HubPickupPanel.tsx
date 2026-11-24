@@ -1,5 +1,6 @@
 import { ChevronRight, MapPin } from "lucide-react-native";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Linking, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { useThemeColors } from "@/hooks/useTheme";
 import type { HubPickup, HubSchedule } from "@/lib/api";

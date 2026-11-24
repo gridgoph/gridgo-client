@@ -1,5 +1,6 @@
 import { CircleAlert, CircleArrowDown, CircleCheck, X } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { WhatsNewList } from "@/components/WhatsNewList";

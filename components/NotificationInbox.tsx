@@ -1,6 +1,7 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Linking, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 
 import { AppUpdateNotices } from "@/components/AppUpdateNotices";

@@ -1,5 +1,6 @@
 import { PenLine } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ApprovalReviewList } from "@/components/approval/ApprovalReviewList";
 import { SignaturePreview } from "@/components/approval/SignaturePreview";

@@ -9,7 +9,8 @@ import {
   Zap,
 } from "lucide-react-native";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Text, View, useWindowDimensions } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,

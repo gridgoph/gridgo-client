@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Image, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Image, Text, useWindowDimensions, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CropMarkFrame } from "@/components/CropMarkFrame";

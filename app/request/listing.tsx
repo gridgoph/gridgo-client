@@ -1,7 +1,8 @@
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { Minus, Plus, TriangleAlert } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
 import { useLocalSearchParams, useRouter } from "expo-router";
 

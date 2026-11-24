@@ -1,4 +1,5 @@
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { QuantityStepper } from "@/components/form/QuantityStepper";
 import { PrimaryButton } from "@/components/PrimaryButton";
