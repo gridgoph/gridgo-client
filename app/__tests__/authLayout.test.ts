@@ -5,6 +5,10 @@ const authDir = join(__dirname, "../(auth)");
 const welcome = readFileSync(join(authDir, "welcome.tsx"), "utf8");
 const login = readFileSync(join(authDir, "login.tsx"), "utf8");
 const signup = readFileSync(join(authDir, "signup.tsx"), "utf8");
+const providers = readFileSync(
+  join(__dirname, "../../components/auth/ProviderButtons.tsx"),
+  "utf8",
+);
 
 describe("public Clerk auth layout", () => {
   it("starts with the branded welcome actions and supplied illustration", () => {
@@ -15,14 +19,17 @@ describe("public Clerk auth layout", () => {
     expect(welcome).toContain('label="Already have an account"');
   });
 
-  it("uses custom Clerk sign-in with password recovery and Google only", () => {
+  it("uses custom Clerk sign-in with password recovery and the shared provider block", () => {
     expect(login).toContain("useSignIn");
     expect(login).toContain("resetPasswordEmailCode");
-    expect(login).toContain("oauth_google");
-    expect(login).toContain("completeGoogleSso");
     expect(login).toContain("setActive");
     expect(login).toContain("PasswordField");
-    expect(login).not.toMatch(/facebook/i);
+    expect(login).toContain("ProviderButtons");
+    expect(providers).toContain("oauth_google");
+    expect(providers).toContain("completeGoogleSso");
+    // Facebook is drawn only while Clerk offers it (gridgo-client#448).
+    expect(login).toContain("useFacebookOffered");
+    expect(providers).toContain("FACEBOOK_STRATEGY");
   });
 
   it("keeps MFA verify on a real OTP step and recovery on its own form", () => {
