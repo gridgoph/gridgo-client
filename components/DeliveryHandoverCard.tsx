@@ -1,6 +1,7 @@
 import { ShieldAlert } from "lucide-react-native";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ClaimSlip } from "@/components/ClaimSlip";
 import { ConfirmDialog } from "@/components/ConfirmDialog";

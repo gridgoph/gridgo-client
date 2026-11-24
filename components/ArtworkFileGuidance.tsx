@@ -1,5 +1,6 @@
 import { CircleCheck, TriangleAlert, Upload } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { CheckboxRow } from "@/components/form/CheckboxRow";
 import { useThemeColors } from "@/hooks/useTheme";

@@ -2,7 +2,8 @@ import { Image } from "expo-image";
 import * as WebBrowser from "expo-web-browser";
 import { ExternalLink, FileImage, FileText, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ArtworkDeletion } from "@/components/ArtworkDeletion";
 import { ArtworkGuidanceRecord } from "@/components/ArtworkGuidanceRecord";

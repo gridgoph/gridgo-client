@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react-native";
 import { useMemo } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { OrderStageRail } from "@/components/OrderStageRail";

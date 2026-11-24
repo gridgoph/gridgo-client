@@ -1,7 +1,8 @@
 import { useSegments } from "expo-router";
 import { ChevronLeft, CircleCheck } from "lucide-react-native";
 import { useEffect } from "react";
-import { AppState, Pressable, ScrollView, Text, View } from "react-native";
+import { AppState, ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { TextField } from "@/components/form/TextField";
 import { PrimaryButton } from "@/components/PrimaryButton";

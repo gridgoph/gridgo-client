@@ -1,5 +1,6 @@
 import { CircleAlert, ExternalLink, FileImage, FileText, Trash2 } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { CropMarkFrame } from "@/components/CropMarkFrame";
 import { SamplePhoto } from "@/components/SamplePhoto";

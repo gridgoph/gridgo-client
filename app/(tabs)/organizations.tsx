@@ -1,7 +1,8 @@
 import { router, useFocusEffect } from "expo-router";
 import { ChevronLeft, Megaphone } from "lucide-react-native";
 import { useCallback } from "react";
-import { BackHandler, Pressable, ScrollView, Text, View } from "react-native";
+import { BackHandler, ScrollView, Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/EmptyState";

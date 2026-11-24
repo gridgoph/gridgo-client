@@ -1,7 +1,8 @@
 import { useRouter, type Href } from "expo-router";
 import { Bike, ChevronDown, House, MapPin, Receipt, RotateCw, Store, Wallet, X } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { ChoiceChips, ExpressRow } from "@/components/express/ExpressChrome";
 import { PayWithSheet, PlaceSheet, ShopSheet, ShopTags, shopFacts } from "@/components/express/PaySheets";

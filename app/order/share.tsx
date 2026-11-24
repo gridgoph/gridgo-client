@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Check, X } from "lucide-react-native";
 import { useEffect, useRef } from "react";
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import type Svg from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 

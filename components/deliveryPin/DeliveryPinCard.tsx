@@ -1,6 +1,7 @@
 import { MapPinned, Repeat2, UserRound } from "lucide-react-native";
 import { useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { DeliveryMap } from "@/components/DeliveryMap";
 import { PinDetailsFields, pinDetailsFrom, pinDetailsProblem, receiverFor, type PinDetails } from "@/components/deliveryPin/PinDetailsFields";

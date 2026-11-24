@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Pressable } from "@/components/Pressable";
 
 import { GroupPlate } from "@/components/ShopGroupSection";
 import { StatusChip } from "@/components/StatusChip";

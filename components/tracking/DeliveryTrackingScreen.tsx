@@ -10,7 +10,8 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Text, View, useWindowDimensions } from "react-native";
+import { Pressable } from "@/components/Pressable";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 import { CallRiderButton } from "@/components/call/CallRiderButton";
