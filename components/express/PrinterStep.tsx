@@ -5,6 +5,7 @@ import { Pressable } from "@/components/Pressable";
 
 import { ChoiceChips, ExpressRow } from "@/components/express/ExpressChrome";
 import { PlaceSheet } from "@/components/express/PaySheets";
+import { PrinterMap } from "@/components/express/PrinterMap";
 import { ErrorState } from "@/components/ErrorState";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -24,6 +25,7 @@ import {
   widenedLine,
   zoneLine,
 } from "@/lib/whoPrints";
+import { nothingFits } from "@/lib/printerMap";
 import { expressChoices, useExpress } from "@/store/express";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { choicesKey } from "@/lib/express";
@@ -253,8 +255,13 @@ export function PrinterStep() {
   const verifiedOnly = useExpress((state) => state.verifiedOnly);
   const supplierId = useExpress((state) => state.supplierId);
   const fareLimit = useExpress((state) => state.fareLimit);
+  const draft = useExpress((state) => state.draft);
   const settingsBands = usePlatformSettings((state) => state.settings?.deliveryFeeBands);
   const [placeOpen, setPlaceOpen] = useState(false);
+  // "Just print it" found nobody open inside its limit, for these exact choices.
+  const choices = choicesKey(expressChoices({ prints, supplierId, fulfilment, place, fareLimit, shopsOnly, verifiedOnly }));
+  const noFit =
+    draft.status === "error" && draft.key === choices && nothingFits({ fareLimit, draftCode: draft.code });
   const shopPrices = usesShopPrices(prints);
   const sort = validSort(printerSort, shopPrices);
   const bands = printers?.fareBands.length ? printers.fareBands : (settingsBands ?? []);
@@ -283,6 +290,20 @@ export function PrinterStep() {
           divided={false}
         />
       </View>
+
+      {place && !needsSavedPlace && !(error && !shops?.length) ? (
+        <PrinterMap
+          place={place}
+          cards={cards}
+          bands={bands}
+          fareLimit={fareLimit}
+          supplierId={supplierId}
+          fulfilment={fulfilment}
+          loading={loading}
+          noFit={noFit}
+          onChoose={(card) => useExpress.getState().chooseShop(card.supplierId, card)}
+        />
+      ) : null}
 
       <JustPrintIt bands={bands} />
 

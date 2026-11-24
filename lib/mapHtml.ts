@@ -18,6 +18,7 @@
  */
 
 import { cartoDarkTileUrl } from "@/lib/cartoTiles";
+import type { PrinterPin, PrinterReach } from "@/lib/printerMap";
 import type { GeoPoint, LonLat } from "@/lib/tracking";
 
 export type MapTheme = "light" | "dark";
@@ -86,6 +87,15 @@ export type MapModel = {
   recenterKey?: number;
   /** No pulse around the live rider. */
   reduceMotion?: boolean;
+  /**
+   * Express "Who prints it?" (gridgo-client#468): the printers to pin round
+   * the client's place (`dropoff`). A tap on one posts `{ type: "printer", id }`.
+   */
+  printers?: PrinterPin[];
+  /** Printer ids the view frames with the client's place; refit only when this changes. */
+  frame?: string[];
+  /** The fare limit's reach, a dashed ring round the client's place. */
+  reach?: PrinterReach | null;
 };
 
 const LIGHT_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -237,6 +247,35 @@ export function buildMapHtml(model: MapModel): string {
       border-color: rgba(255,255,255,0.14);
       box-shadow: 0 3px 10px rgba(0,0,0,0.5);
     }
+    /*
+      A printer is a disc, not a teardrop: many sit side by side, and the
+      client's own place keeps the one pin. 44px of hit area round a 30px
+      disc. Open is ink, closed is hollow, the picked one is the map's
+      highlight (the route colour, set from the model); the card under the
+      map says the same in words.
+    */
+    .ppin { position: relative; width: 44px; height: 44px; cursor: pointer; }
+    .ppin-disc {
+      position: absolute; left: 7px; top: 7px; width: 30px; height: 30px;
+      box-sizing: border-box; border-radius: 999px;
+      display: flex; align-items: center; justify-content: center;
+      background: #1a1a1a; color: #ffffff; border: 2px solid #ffffff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.30);
+      transition: transform 160ms ease-out;
+    }
+    .dark-attr .ppin-disc { background: #F0F0F0; color: #000000; border-color: #000000; }
+    .ppin.is-closed .ppin-disc {
+      background: #ffffff; color: #7A7A7A; border: 2px dashed #7A7A7A; box-shadow: none;
+    }
+    .dark-attr .ppin.is-closed .ppin-disc { background: #2A2A2A; color: #808080; border-color: #808080; }
+    .ppin.is-selected .ppin-disc {
+      left: 4px; top: 4px; width: 36px; height: 36px;
+      color: #1a1a1a; border: 3px solid #1a1a1a;
+    }
+    .dark-attr .ppin.is-selected .ppin-disc { border-color: #000000; }
+    .ppin svg { width: 15px; height: 15px; display: block; }
+    .ppin .pin-label { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); margin-top: 0; }
+    @media (prefers-reduced-motion: reduce) { .ppin-disc { transition: none; } }
     .route-banner {
       position: absolute; top: 8px; left: 8px; right: 8px; z-index: 1000;
       padding: 6px 10px; border-radius: 8px;
@@ -260,6 +299,8 @@ export function buildMapHtml(model: MapModel): string {
     var tileLayer = null;
     var routeLayer = null;
     var accuracyLayer = null;
+    var reachLayer = null;
+    var printerFrameKey = null;
     var markers = [];
     var dragging = false;
     // The client moved the map themselves; stop fitting it until they ask.
@@ -376,6 +417,57 @@ export function buildMapHtml(model: MapModel): string {
       });
     }
 
+    var STORE_GLYPH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"'
+      + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M4 10 5.5 5h13L20 10M4 10v9h16v-9M4 10h16M10 19v-5h4v5"/></svg>';
+
+    function printerIcon(p) {
+      var cls = 'ppin' + (p.open ? '' : ' is-closed') + (p.selected ? ' is-selected' : '');
+      var words = [];
+      if (p.selected) words.push(p.name);
+      if (p.flagged || p.selected) words.push(p.distance);
+      var caption = words.filter(Boolean).join(' · ');
+      return L.divIcon({
+        className: '',
+        html: '<div class="' + cls + '"><div class="ppin-disc"'
+          + (p.selected ? ' style="background:' + escapeHtml(MODEL.routeColor || '#FFDE58') + '"' : '')
+          + '>' + STORE_GLYPH + '</div>'
+          + (caption ? '<div class="pin-label">' + escapeHtml(caption) + '</div>' : '')
+          + '</div>',
+        iconSize: [44, 44],
+        iconAnchor: [22, 22]
+      });
+    }
+
+    function drawPrinters(m, bounds) {
+      var byId = {};
+      (m.printers || []).forEach(function (p) {
+        byId[p.id] = p;
+        var marker = L.marker([p.lat, p.lng], {
+          icon: printerIcon(p),
+          title: p.name + (p.open ? '' : ' (closed)') + (p.distance ? ', ' + p.distance : ''),
+          keyboard: true,
+          zIndexOffset: p.selected ? 1000 : (p.flagged ? 500 : (p.open ? 100 : 0))
+        }).addTo(map);
+        marker.on('click', function () { notify({ type: 'printer', id: p.id }); });
+        markers.push(marker);
+      });
+      if (reachLayer) map.removeLayer(reachLayer);
+      reachLayer = null;
+      if (m.dropoff && m.reach && m.reach.meters > 0) {
+        var ink = m.theme === 'dark' ? '#F0F0F0' : '#1A1A1A';
+        reachLayer = L.circle([m.dropoff.lat, m.dropoff.lng], {
+          radius: m.reach.meters,
+          color: ink, weight: 2, opacity: 0.75, dashArray: '6 6',
+          fillColor: ink, fillOpacity: 0.06,
+          interactive: false
+        }).addTo(map);
+      }
+      (m.frame || []).forEach(function (id) {
+        if (byId[id]) bounds.push([byId[id].lat, byId[id].lng]);
+      });
+    }
+
     function applyModel(m) {
       // Host messages can already be queued when the client grabs the pin.
       // Keep the marker and viewport under their finger until the drop.
@@ -388,7 +480,8 @@ export function buildMapHtml(model: MapModel): string {
       document.getElementById('route-banner').style.top = (8 + (m.padTop || 0)) + 'px';
 
       if (!map) {
-        map = L.map('map', { zoomControl: false, attributionControl: true });
+        // The printer map is a card in a scrolling step: a wheel scrolls the page, not the map.
+        map = L.map('map', { zoomControl: false, attributionControl: true, scrollWheelZoom: !m.printers });
         L.control.zoom({ position: 'bottomright' }).addTo(map);
         map.on('dragstart', userMove);
         map.on('dblclick', userMove);
@@ -488,6 +581,19 @@ export function buildMapHtml(model: MapModel): string {
           title: m.riderStale ? 'Rider — last known position' : 'Rider'
         }).addTo(map));
         bounds.push([m.rider.lat, m.rider.lng]);
+      }
+
+      if (m.printers) {
+        drawPrinters(m, bounds);
+        // Refit only when the place or the framed printers change: a tap that
+        // picks a printer must not slide the map out from under the finger.
+        var key = JSON.stringify([m.dropoff && [m.dropoff.lat, m.dropoff.lng], m.frame || []]);
+        if (key === printerFrameKey || userMoved) return;
+        printerFrameKey = key;
+        if (bounds.length >= 2) map.fitBounds(bounds, Object.assign(fitOptions(m), { maxZoom: 15 }));
+        else if (bounds.length === 1) map.setView(bounds[0], 14);
+        else map.setView([${DAVAO_CENTRE.lat}, ${DAVAO_CENTRE.lng}], ${DAVAO_CENTRE.zoom});
+        return;
       }
 
       // A pick moves one pin the client just put down. Refitting the view
@@ -654,12 +760,17 @@ export function pickerMapModel(input: {
 }
 
 /** A message the map page posts back: a tap that set a pin, or the client moving the view. */
-export type MapMessage = { type: "pin"; lat: number; lng: number } | { type: "moved" } | { type: "grab" };
+export type MapMessage =
+  | { type: "pin"; lat: number; lng: number }
+  | { type: "moved" }
+  | { type: "grab" }
+  | { type: "printer"; id: string };
 
 export function parseMapMessage(data: unknown): MapMessage | null {
   if (typeof data !== "string") return null;
   try {
-    const value = JSON.parse(data) as { type?: unknown; lat?: unknown; lng?: unknown };
+    const value = JSON.parse(data) as { type?: unknown; lat?: unknown; lng?: unknown; id?: unknown };
+    if (value.type === "printer" && typeof value.id === "string" && value.id) return { type: "printer", id: value.id };
     if (value.type === "moved") return { type: "moved" };
     if (value.type === "grab") return { type: "grab" };
     if (value.type === "pin" && typeof value.lat === "number" && typeof value.lng === "number") {
@@ -669,4 +780,36 @@ export function parseMapMessage(data: unknown): MapMessage | null {
     // Anything else on the channel is not ours.
   }
   return null;
+}
+
+/**
+ * Express "Who prints it?" (gridgo-client#468): the client's place as the one
+ * teardrop, the printers round it, and the fare limit's reach. Nothing on it
+ * moves a pin; a tap on a printer is posted back and picks it.
+ */
+export function printerMapModel(input: {
+  theme: MapTheme;
+  place: GeoPoint & { label?: string };
+  printers: PrinterPin[];
+  frame: string[];
+  reach: PrinterReach | null;
+  routeColor: string;
+}): MapModel {
+  return {
+    theme: input.theme,
+    pickup: null,
+    dropoff: { lat: input.place.lat, lng: input.place.lng },
+    pickupLabel: "",
+    dropoffLabel: input.place.label || "You",
+    routeCoordinates: [],
+    routeColor: input.routeColor,
+    rider: null,
+    riderStale: false,
+    routeUnavailable: false,
+    printers: input.printers,
+    frame: input.frame,
+    reach: input.reach,
+    // A compact card: pinch and double-tap zoom, no buttons over the pins.
+    hideZoom: true,
+  };
 }
