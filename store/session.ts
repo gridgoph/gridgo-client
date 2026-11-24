@@ -2,6 +2,7 @@ import { useCashRepayment } from "@/store/cashRepayment";
 import { useArtworkAttachments } from "@/store/artworkAttachments";
 import { useMyFiles } from "@/store/myFiles";
 import { useCoverSpine } from "@/store/coverSpine";
+import { useExpressGroup } from "@/store/expressGroup";
 import { claimAppleRevocation, forgetAppleRevocation } from "@/store/accountDeletion";
 import { useCart } from "@/store/cart";
 import { useListingDraft } from "@/store/listingDraft";
@@ -449,6 +450,8 @@ useSession.subscribe((state, previous) => {
   // (`claim`). An empty `user` alone is neither: every launch starts with one
   // while the session restores, and forgetting the basket then is #150.
   if (state.signingOut && !previous.signingOut) useCart.getState().reset();
+  // A group invite the host held on this phone goes with a real sign-out.
+  if (state.signingOut && !previous.signingOut) useExpressGroup.getState().reset();
   // Tester reminders are for the person signed in: a sign-out, or Clerk
   // reporting the session gone, cancels them.
   if ((state.signingOut && !previous.signingOut) || (previous.source && !state.source))
@@ -472,6 +475,8 @@ useSession.subscribe((state, previous) => {
     claimAppleRevocation(id);
   }
   useCheckoutPayment.getState().reset();
+  // Groups are read per account; held invite tokens survive a launch restore.
+  useExpressGroup.setState({ available: "unknown", mine: null, byId: {}, tracking: {}, loadError: {}, gone: {}, busy: null, error: null });
   useOrderPayment.getState().reset();
   useCashPayment.getState().reset();
   useCashRepayment.getState().reset();

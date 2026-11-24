@@ -15,6 +15,7 @@
  * routes, and the copy, which names this app's audience.
  */
 
+import { isGroupNotification } from "@/lib/expressGroup";
 import { Platform } from "react-native";
 
 import { CHAT_LIST_ROUTE, isChatThreadId } from "@/lib/chatThreads";
@@ -195,6 +196,18 @@ export const DELIVERY_MESSAGE_PUSH_TYPE = "delivery_message";
  */
 export const SUPPORT_MESSAGE_PUSH_TYPE = "support_message";
 
+/**
+ * Group order updates (`group_*`, gridgo-api `docs/GROUP_EXPRESS_API.md`). The
+ * push carries no group, so a tap reads the Alert back for its `groupId`.
+ */
+export { isGroupNotification };
+
+/** Where a group update opens: its group, which carries the shared tracking. */
+export function groupNotificationRoute(notification: { type?: string | null; groupId?: string | null }): string | null {
+  if (!isGroupNotification(notification.type) || !notification.groupId) return null;
+  return `/express/group/${encodeURIComponent(notification.groupId)}`;
+}
+
 /** Organization pushes (gridgo-api `docs/ORGANIZATION_ACCOUNTS_API.md`). Name no job. */
 const ORGANIZATION_PUSH_TYPES = new Set([
   "organization_officer_confirmation",
@@ -234,6 +247,9 @@ export function pushTargetRoute(data: PushData): string {
   // newest thread, which may be a different conversation.
   const chat = chatNotificationRoute(data);
   if (chat) return chat;
+  // A group update names no group in the push; until the tap reads it back
+  // (`usePushNotifications`) — and whenever it cannot — the inbox has it.
+  if (isGroupNotification(data.type)) return "/(tabs)/notifications";
   // A quote notice names its quote only in the inbox row, never the push
   // (gridgo-api#226): the tap reads it back (`usePushNotifications`), and
   // until then — or whenever it cannot — opens My quotes.

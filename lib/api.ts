@@ -1218,6 +1218,8 @@ export type Notification = {
   type?: string;
   /** Present when the update is about one job, so the row can open it. */
   orderId?: string;
+  /** A group order's updates name the group, before and after its order exists. */
+  groupId?: string | null;
   /** Job title from the list payload — not a hydrated order. */
   orderTitle?: string;
   /** Job state from the list payload, enough for the stage rail. */
@@ -6870,8 +6872,10 @@ export type FriendPass = { link: string | null; signups: number; successful: num
 export async function listExpressShops(
   point: { lat: number; lng: number },
   sort: "nearest" | "top_rated" | "fewest_jobs" = "nearest",
+  fulfillmentMode: FulfilmentMode | null = null,
 ): Promise<ExpressShop[]> {
-  const query = `lat=${encodeURIComponent(point.lat)}&lng=${encodeURIComponent(point.lng)}&sort=${sort}`;
+  const mode = fulfillmentMode ? `&fulfillmentMode=${fulfillmentMode}` : "";
+  const query = `lat=${encodeURIComponent(point.lat)}&lng=${encodeURIComponent(point.lng)}&sort=${sort}${mode}`;
   const result = await request<{ shops: ExpressShop[] }>(`/express/shops?${query}`);
   return result.shops;
 }
@@ -6921,15 +6925,24 @@ export async function checkoutExpress(
 ): Promise<{ order: MatchedOrder & { orderType?: string; expressOrder?: ExpressOrder | null }; invoice: Invoice }> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
     method: "POST",
-    body: JSON.stringify({
-      looksRight: true,
-      expressConfirmation: input.confirmation,
-      ...(input.payment ? { payment: { method: "qr_manual", ...input.payment } } : {}),
-      ...(input.artworkRights
-        ? { legalConsentVersion: LEGAL_CONSENT_VERSION, artworkRights: input.artworkRights }
-        : {}),
-    }),
+    body: JSON.stringify(expressCheckoutBody(input)),
   });
+}
+
+/** The Express checkout body, shared by a solo cart and a group checkout. */
+function expressCheckoutBody(input: {
+  confirmation: string;
+  payment: { reference: string; proofFileId: string } | { method: "cash" } | null;
+  artworkRights: ArtworkRightsBody | null;
+}) {
+  return {
+    looksRight: true,
+    expressConfirmation: input.confirmation,
+    ...(input.payment ? { payment: { method: "qr_manual", ...input.payment } } : {}),
+    ...(input.artworkRights
+      ? { legalConsentVersion: LEGAL_CONSENT_VERSION, artworkRights: input.artworkRights }
+      : {}),
+  };
 }
 
 /** `GET|POST /me/express-friend-pass` — POST makes the referral code on first use. */
@@ -6969,4 +6982,258 @@ export async function updateExpressGuide(action: ExpressGuideAction, fileId?: st
     body: JSON.stringify(fileId ? { action, fileId } : { action }),
   });
   return result.guide;
+}
+
+// ---------------------------------------------------------------------------
+// Group Express — gridgo-api `docs/GROUP_EXPRESS_API.md` (29CB83A5, 0459C559,
+// FE7FA7C0, F54BDF7A, 134A8F09). One host collects classmates' files into one
+// Express order with one delivery fee, pays GRIDGO once, and everyone tracks it.
+// ---------------------------------------------------------------------------
+
+export type ExpressGroupState = "open" | "checkout_open" | "ordered" | "cancelled" | "completed" | (string & {});
+
+/** One file in a group, exactly as `PUT /express/groups/:id/files` takes it. */
+export type ExpressGroupFile = Omit<ExpressDraftFile, "catalogItemId" | "paper"> & { paper: "a4" | "short" | "long" };
+
+/**
+ * One person's share. Money is null while no printer can quote
+ * (`quoteStatus: "pending"`). Members never see a page price: only pages and
+ * totals.
+ */
+export type ExpressGroupAmount = {
+  userId: string;
+  name: string;
+  fileCount: number;
+  /** Selected pages including copies. */
+  pageCount: number;
+  printSubtotalMinor: number | null;
+  deliveryShareMinor: number | null;
+  amountOwedMinor: number | null;
+  /** The host's own tick; tracking only, never a payment. */
+  paidBack: boolean;
+};
+
+export type ExpressGroupReview = {
+  qualityStars: number;
+  speedStars: number;
+  valueStars: number;
+  riderStars?: number;
+  comment: string | null;
+  at: string;
+};
+
+export type ExpressGroupMe = ExpressGroupAmount & { files: ExpressGroupFile[]; review: ExpressGroupReview | null };
+
+/** A same-zone replacement shop waiting on the host's use-or-cancel. Host only. */
+export type ExpressGroupShopDecision = {
+  status: "pending" | "use" | "cancel" | (string & {});
+  supplierId: string;
+  shopName: string;
+  location: OrderPoint | null;
+  distanceMeters: number;
+  openedAt: string;
+  /** No answer by then keeps the new shop. */
+  deadlineAt: string;
+  decidedAt?: string;
+};
+
+export type ExpressGroupTrackingCore = {
+  orderId: string;
+  state: string;
+  fulfillmentMode: FulfilmentMode | (string & {});
+  updatedAt: string;
+  /** Host only, once ready for pickup. */
+  pickupCode?: string;
+  /** Host only: the code the rider asks the receiver for. */
+  deliveryCode?: string;
+  riderId?: string;
+  /** The assigned rider's own estimate, never a routing promise. */
+  estimatedArrivalAt: string | null;
+  shopDecision?: ExpressGroupShopDecision;
+};
+
+export type ExpressGroup = {
+  id: string;
+  host: { id: string; name: string };
+  state: ExpressGroupState;
+  /** Before an order: the group state. After: the Express order's status. */
+  status: string;
+  version: number;
+  fulfillmentMode: FulfilmentMode;
+  closesAt: string;
+  checkoutOpenedAt: string | null;
+  /** Checkout must be paid before this, or the group is cancelled. */
+  payBy: string | null;
+  quoteStatus: "priced" | "pending" | (string & {});
+  people: number;
+  printingPeople: number;
+  cancelReason: string | null;
+  me: ExpressGroupMe;
+  tracking: ExpressGroupTrackingCore | null;
+  /** Host only from here down. */
+  members?: ExpressGroupAmount[];
+  totalMinor?: number | null;
+  deliveryFeeMinor?: number | null;
+  location?: OrderPoint;
+  dropoff?: OrderPoint | null;
+  backupReceiver?: { name: string; phone: string } | null;
+  cartId?: string | null;
+};
+
+/** What an invite link shows before joining. */
+export type ExpressGroupInvite = {
+  id: string;
+  hostName: string;
+  quoteStatus: string;
+  people: number;
+  closesAt: string;
+  fulfillmentMode: FulfilmentMode;
+};
+
+export type ExpressGroupTracking = ExpressGroupTrackingCore & {
+  me: ExpressGroupMe;
+  ping: { lat: number; lng: number; accuracy: number | null; at: string; leg: string } | null;
+  riderTracking: RiderTracking | null;
+  deliveryMilestones: DeliveryMilestone[];
+};
+
+export type ExpressGroupSetup = {
+  fulfillmentMode: FulfilmentMode;
+  location: { lat: number; lng: number };
+  dropoff?: { lat: number; lng: number; label: string };
+  backupReceiver?: { name: string; phone: string };
+  timeLimitMinutes: 15 | 30 | 60;
+};
+
+export type ExpressGroupPrepared = {
+  group: ExpressGroup;
+  cartId: string;
+  confirmation: string;
+  quote: ExpressQuote;
+  shop: ExpressShop;
+};
+
+function groupPath(id: string, tail = ""): string {
+  return `/express/groups/${encodeURIComponent(id)}${tail}`;
+}
+
+/** `GET /me/express-groups`. An API without groups answers 404. */
+export async function listMyExpressGroups(): Promise<ExpressGroup[]> {
+  const result = await request<{ groups: ExpressGroup[] }>("/me/express-groups");
+  return result.groups ?? [];
+}
+
+/** `POST /express/groups`. The invite token is returned once. */
+export async function createExpressGroup(body: ExpressGroupSetup): Promise<{ group: ExpressGroup; inviteToken: string }> {
+  return request("/express/groups", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function getExpressGroupInvite(token: string): Promise<ExpressGroupInvite> {
+  const result = await request<{ group: ExpressGroupInvite }>(`/express/groups/invites/${encodeURIComponent(token)}`);
+  return result.group;
+}
+
+export async function joinExpressGroup(token: string): Promise<ExpressGroup> {
+  const result = await request<{ group: ExpressGroup }>(`/express/groups/invites/${encodeURIComponent(token)}/join`, {
+    method: "POST",
+    body: "{}",
+  });
+  return result.group;
+}
+
+export async function getExpressGroup(id: string): Promise<ExpressGroup> {
+  const result = await request<{ group: ExpressGroup }>(groupPath(id));
+  return result.group;
+}
+
+/** Replaces the caller's own files; an empty list removes them all. */
+export async function saveExpressGroupFiles(id: string, files: ExpressGroupFile[]): Promise<ExpressGroup> {
+  const result = await request<{ group: ExpressGroup }>(groupPath(id, "/files"), {
+    method: "PUT",
+    body: JSON.stringify({ files }),
+  });
+  return result.group;
+}
+
+export async function leaveExpressGroup(id: string): Promise<void> {
+  await request(groupPath(id, "/leave"), { method: "POST", body: "{}" });
+}
+
+export async function removeExpressGroupMember(id: string, userId: string): Promise<ExpressGroup> {
+  const result = await request<{ group: ExpressGroup }>(groupPath(id, `/members/${encodeURIComponent(userId)}`), {
+    method: "DELETE",
+  });
+  return result.group;
+}
+
+async function groupAction(id: string, action: "close" | "cancel", body: object = {}): Promise<ExpressGroup> {
+  const result = await request<{ group: ExpressGroup }>(groupPath(id, `/${action}`), {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.group;
+}
+
+/** Opens checkout now and locks files and people. */
+export function closeExpressGroup(id: string): Promise<ExpressGroup> {
+  return groupAction(id, "close");
+}
+
+export function cancelExpressGroup(id: string): Promise<ExpressGroup> {
+  return groupAction(id, "cancel");
+}
+
+/** Picks the shop (pickup: the host's pick) and prices the whole group. */
+export async function prepareExpressGroup(id: string, supplierId: string | null): Promise<ExpressGroupPrepared> {
+  return request(groupPath(id, "/prepare"), {
+    method: "POST",
+    body: JSON.stringify(supplierId ? { supplierId } : {}),
+  });
+}
+
+/** The one payment for the whole group, with today's Express payment options. */
+export async function checkoutExpressGroup(
+  id: string,
+  input: {
+    confirmation: string;
+    payment: { reference: string; proofFileId: string } | { method: "cash" } | null;
+    artworkRights: ArtworkRightsBody | null;
+  },
+): Promise<{ group: ExpressGroup; orderId: string }> {
+  return request(groupPath(id, "/checkout"), {
+    method: "POST",
+    body: JSON.stringify(expressCheckoutBody(input)),
+  });
+}
+
+export async function getExpressGroupTracking(id: string): Promise<ExpressGroupTracking> {
+  return request<ExpressGroupTracking>(groupPath(id, "/tracking"));
+}
+
+export async function setExpressGroupPaidBack(id: string, userId: string, paidBack: boolean): Promise<ExpressGroup> {
+  const result = await request<{ group: ExpressGroup }>(
+    groupPath(id, `/members/${encodeURIComponent(userId)}/paid-back`),
+    { method: "PATCH", body: JSON.stringify({ paidBack }) },
+  );
+  return result.group;
+}
+
+export async function decideExpressGroupShop(id: string, decision: "use" | "cancel"): Promise<ExpressGroup> {
+  const result = await request<{ group: ExpressGroup }>(groupPath(id, "/shop-decision"), {
+    method: "POST",
+    body: JSON.stringify({ decision }),
+  });
+  return result.group;
+}
+
+/** Private participant feedback; the host's shop rating stays `POST /orders/:id/review`. */
+export async function reviewExpressGroup(
+  id: string,
+  body: { qualityStars: number; speedStars: number; valueStars: number; riderStars?: number; comment?: string },
+): Promise<ExpressGroupReview> {
+  const result = await request<{ review: ExpressGroupReview }>(groupPath(id, "/review"), {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return result.review;
 }

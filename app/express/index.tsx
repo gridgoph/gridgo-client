@@ -1,5 +1,5 @@
 import { usePreventRemove } from "expo-router/react-navigation";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -13,10 +13,14 @@ import { GuideTarget } from "@/components/GuideTarget";
 import * as api from "@/lib/api";
 import { peekCurrentLocation } from "@/lib/deviceLocation";
 import { expressFileProblem, looksRightHolds } from "@/lib/express";
+import { groupFiles } from "@/lib/expressGroup";
+import { useExpressGroup } from "@/store/expressGroup";
 import { useExpress, type ExpressStep } from "@/store/express";
 import { usePlatformSettings } from "@/store/platformSettings";
 
 const TITLES: Record<ExpressStep, string> = { files: "Your files", preview: "Preview", printer: "Who prints it?", pay: "Pay" };
+/** A group member's own files stop at Preview: the host pays for everyone. */
+const GROUP_STEPS: ExpressStep[] = ["files", "preview"];
 
 /** Where back goes from a step; Pay skips the printer step on an API without it. */
 function previousStep(step: ExpressStep, withPrinter: boolean): ExpressStep | null {
@@ -55,6 +59,11 @@ export default function ExpressScreen() {
   const leaving = useExpress((state) => state.leaving);
   // How to order is drawing its sample here: it moves the steps itself.
   const sample = useExpress((state) => state.sample);
+  // Editing one person's files for a group order (gridgo-client#451).
+  const group = useExpress((state) => state.group);
+  const groupBusy = useExpressGroup((state) => state.busy === "files");
+  const groupError = useExpressGroup((state) => state.error);
+  const router = useRouter();
 
   const filesReady = files.length > 0 && uploads.length === 0 && files.every((file) => !expressFileProblem(file));
   const ticked = looksRightHolds(tickedKey, { prints });
@@ -69,6 +78,10 @@ export default function ExpressScreen() {
         : filesReady && ticked && (!withPrinter || printerChosen));
 
   usePreventRemove(step !== "files" && !leaving && !sample, () => {
+    if (useExpress.getState().group) {
+      useExpress.getState().goTo("files");
+      return;
+    }
     const previous = previousStep(useExpress.getState().step, useExpress.getState().whoPrints !== "off");
     if (previous) useExpress.getState().goTo(previous);
   });
@@ -77,7 +90,9 @@ export default function ExpressScreen() {
   // location the phone already shares. Pay's place row asks on a tap.
   useEffect(() => {
     void usePlatformSettings.getState().load().catch(() => undefined);
-    if (sample || useExpress.getState().place) return;
+    // Whether the Files step offers a group order; an API without groups hides it.
+    if (!useExpress.getState().group) void useExpressGroup.getState().loadMine();
+    if (sample || useExpress.getState().group || useExpress.getState().place) return;
     let alive = true;
     void (async () => {
       const addresses = await api.listAddresses().catch(() => [] as api.ClientAddress[]);
@@ -108,22 +123,58 @@ export default function ExpressScreen() {
   // Every change makes a fresh draft once the settings settle: that is what
   // prices the order, and what the server's preview fingerprint checks.
   useEffect(() => {
-    if (step === "files" || !filesReady) return;
+    if (step === "files" || !filesReady || group) return;
     const timer = setTimeout(() => void useExpress.getState().refreshDraft(), DRAFT_SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [step, filesReady, prints, supplierId, chosenShop, fareLimit, whoPrints, fulfilment, place]);
+  }, [step, filesReady, group, prints, supplierId, chosenShop, fareLimit, whoPrints, fulfilment, place]);
 
   // "Who prints it?" reads who can print these exact files. On Preview it asks
   // once, so an API without the printer choice is known before Continue.
-  const readsPrinters = filesReady && (step === "printer" || (step === "preview" && whoPrints === "unknown"));
+  const readsPrinters = !group && filesReady && (step === "printer" || (step === "preview" && whoPrints === "unknown"));
   useEffect(() => {
     if (!readsPrinters || sample) return;
     const timer = setTimeout(() => void useExpress.getState().loadPrinters(), DRAFT_SETTLE_MS);
     return () => clearTimeout(timer);
   }, [readsPrinters, sample, prints, fulfilment, place, printerSort, shopsOnly, verifiedOnly]);
 
+  // Saved to the group, then back to the group screen that opened this.
+  const saveToGroup = async (empty = false) => {
+    const current = useExpress.getState();
+    if (!current.group) return;
+    useExpressGroup.getState().clearError();
+    const saved = await useExpressGroup.getState().saveFiles(current.group.id, empty ? [] : groupFiles(current.prints));
+    if (!saved) return;
+    useExpress.getState().leave();
+    requestAnimationFrame(() => router.back());
+  };
+
   const footer =
-    step === "files" ? (
+    group && step === "files" && files.length === 0 && uploads.length === 0 ? (
+      <View className="gap-2 border-t border-outline-subtle bg-surface px-4 pb-2 pt-2">
+        {groupError ? (
+          <Text className="text-caption text-error" accessibilityRole="alert">
+            {groupError}
+          </Text>
+        ) : null}
+        <Pressable
+          onPress={() => void saveToGroup(true)}
+          disabled={groupBusy}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: groupBusy }}
+          className={groupBusy ? "gg-btn-secondary gg-disabled" : "gg-btn-secondary"}
+        >
+          <Text className="text-button text-text-primary">{groupBusy ? "Saving…" : "Save with no files"}</Text>
+        </Pressable>
+      </View>
+    ) : group && step === "preview" ? (
+      <PreviewFooter
+        onContinue={() => void saveToGroup()}
+        continueLabel={groupBusy ? "Saving…" : "Save my files"}
+        priceNote="Your share comes next"
+        busy={groupBusy}
+        error={groupError}
+      />
+    ) : step === "files" ? (
       <View className="border-t border-outline-subtle bg-surface px-4 pb-2 pt-2">
         <Pressable
           onPress={() => useExpress.getState().goTo("preview")}
@@ -147,11 +198,12 @@ export default function ExpressScreen() {
 
   return (
     <FormScreen footer={footer} contentContainerStyle={{ paddingBottom: 12 }}>
-      <Stack.Screen options={{ title: TITLES[step], gestureEnabled: !sample }} />
+      <Stack.Screen options={{ title: group && step === "files" ? "Your group files" : TITLES[step], gestureEnabled: !sample }} />
       <ExpressStepBar
         step={step}
         canGo={canGo}
         withPrinter={withPrinter}
+        only={group ? GROUP_STEPS : null}
         onStep={(target) => useExpress.getState().goTo(target)}
       />
       <View className="gg-page pt-1">
