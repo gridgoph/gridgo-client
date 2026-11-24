@@ -7,6 +7,8 @@ import {
   choicesKey,
   defaultPrint,
   EXPRESS_MAX_FILES,
+  previewKey,
+  expressFileProblem,
   sortExpressShops,
   type ExpressChoices,
   type ExpressFulfilment,
@@ -19,8 +21,24 @@ import { userFacingError } from "@/lib/copy";
 import { SAMPLE_FILE, SAMPLE_PLACE, SAMPLE_SHOP, sampleDraft } from "@/lib/expressGuide";
 import { useExpressGuide } from "@/store/expressGuide";
 import { useExpressShops } from "@/store/expressShops";
+import {
+  apiErrorCode,
+  A3_PICK_YOURSELF,
+  NO_PRINTER_WITHIN_LIMIT,
+  printerChoiceMissing,
+  usesShopPrices,
+  validSort,
+} from "@/lib/whoPrints";
 
-export type ExpressStep = "files" | "preview" | "pay";
+/** "printer" is "Who prints it?" — shown only when the API offers the printer choice. */
+export type ExpressStep = "files" | "preview" | "printer" | "pay";
+
+/**
+ * Whether this API offers "Who prints it?" (gridgo-api B26328C8). Unknown until
+ * the first `POST /express/shops` answers; an older API answers 404 and the flow
+ * keeps today's three steps and shop sheet.
+ */
+export type WhoPrints = "unknown" | "on" | "off";
 
 export type ExpressUpload = {
   key: string;
@@ -51,6 +69,17 @@ type ExpressState = {
   shopsError: string | null;
   sort: ExpressShopSort;
   supplierId: string | null;
+  /** The card the client picked, kept even when a later sort no longer lists it. */
+  chosenShop: ExpressShop | null;
+  whoPrints: WhoPrints;
+  /** "Just print it" and how far GRIDGO may go for the fare. Null when the client picks the printer. */
+  fareLimit: api.ExpressFareLimit | null;
+  printerSort: api.ExpressPrinterSort;
+  shopsOnly: boolean;
+  verifiedOnly: boolean;
+  /** The last `POST /express/shops` answer, for the widening line and the fare bands. */
+  printers: api.ExpressPrintersRead | null;
+  printersLoading: boolean;
   draft: DraftState;
   /** The choices the client ticked "Looks right" on; any change clears it. */
   tickedKey: string | null;
@@ -83,7 +112,13 @@ type ExpressState = {
   setPlace: (place: ExpressPlace) => void;
   loadShops: () => Promise<void>;
   setSort: (sort: ExpressShopSort) => void;
-  chooseShop: (supplierId: string) => void;
+  chooseShop: (supplierId: string, card?: ExpressShop) => void;
+  loadPrinters: () => Promise<void>;
+  setFareLimit: (fareLimit: api.ExpressFareLimit) => void;
+  setPrinterSort: (sort: api.ExpressPrinterSort) => void;
+  setFilter: (filter: "shopsOnly" | "verifiedOnly", on: boolean) => void;
+  /** An A3 shop declined or timed out: the same files, back on "Who prints it?". */
+  startRepick: (order: Pick<api.Order, "fulfillmentMode" | "expressOrder">) => Promise<string | null>;
   refreshDraft: () => Promise<void>;
   adoptQuote: (cartId: string, quote: api.ExpressQuote) => void;
   chooseVoucher: (voucherId: string | null) => void;
@@ -93,6 +128,7 @@ type ExpressState = {
 const handles = new Map<string, api.UploadHandle>();
 let uploadSeq = 0;
 let draftSeq = 0;
+let printersSeq = 0;
 
 const INITIAL = {
   step: "files" as ExpressStep,
@@ -106,6 +142,15 @@ const INITIAL = {
   shopsError: null,
   sort: "nearest" as ExpressShopSort,
   supplierId: null,
+  chosenShop: null as ExpressShop | null,
+  whoPrints: "unknown" as WhoPrints,
+  // The easy default: GRIDGO picks the fastest nearby printer.
+  fareLimit: "nearby" as api.ExpressFareLimit | null,
+  printerSort: "nearby" as api.ExpressPrinterSort,
+  shopsOnly: false,
+  verifiedOnly: false,
+  printers: null as api.ExpressPrintersRead | null,
+  printersLoading: false,
   draft: { status: "idle" } as DraftState,
   tickedKey: null,
   voucherId: null,
@@ -114,46 +159,83 @@ const INITIAL = {
   sample: false,
 };
 
-export function expressChoices(state: Pick<ExpressState, "prints" | "supplierId" | "fulfilment" | "place">): ExpressChoices {
+export function expressChoices(
+  state: Pick<ExpressState, "prints" | "supplierId" | "fulfilment" | "place"> & { fareLimit?: api.ExpressFareLimit | null },
+): ExpressChoices {
   return {
     prints: state.prints,
     supplierId: state.supplierId,
+    fareLimit: state.fareLimit ?? null,
     fulfilment: state.fulfilment,
     dropoff: state.place,
   };
 }
 
-/** The draft body for the current choices, or null while something is missing. */
-export function draftBody(state: ExpressState): api.ExpressDraftBody | null {
-  const shop = state.shops?.find((row) => row.supplierId === state.supplierId);
-  if (!shop || !state.place || !state.prints.length) return null;
-  if (state.fulfilment === "delivery" && !state.place.addressId) return null;
+function draftFiles(prints: ExpressPrint[], catalogItemId: string | null): api.ExpressDraftFile[] {
+  return prints.map((print) => ({
+    fileId: print.fileId,
+    ...(catalogItemId ? { catalogItemId } : {}),
+    copies: print.copies,
+    ...(print.pageRange ? { pageRange: print.pageRange } : {}),
+    paper: print.paper,
+    colour: print.colour,
+    sides: print.sides,
+    layout: print.layout,
+    ...(print.note.trim() ? { note: print.note.trim() } : {}),
+    acceptedWarnings: print.acceptedWarnings,
+  }));
+}
+
+type PlaceBody = Pick<api.ExpressDraftBody, "location" | "fulfillmentMode" | "dropoff">;
+
+function placeBody(state: Pick<ExpressState, "place" | "fulfilment">): PlaceBody | null {
+  const place = state.place;
+  if (!place) return null;
+  if (state.fulfilment === "delivery" && !place.addressId) return null;
   return {
-    supplierId: shop.supplierId,
-    location: { lat: state.place.lat, lng: state.place.lng },
+    location: { lat: place.lat, lng: place.lng },
     fulfillmentMode: state.fulfilment,
-    ...(state.fulfilment === "delivery"
-      ? { dropoff: { lat: state.place.lat, lng: state.place.lng, label: state.place.label } }
-      : {}),
-    files: state.prints.map((print) => ({
-      fileId: print.fileId,
-      catalogItemId: shop.catalogItemIds[0],
-      copies: print.copies,
-      ...(print.pageRange ? { pageRange: print.pageRange } : {}),
-      paper: print.paper,
-      colour: print.colour,
-      sides: print.sides,
-      layout: print.layout,
-      ...(print.note.trim() ? { note: print.note.trim() } : {}),
-      acceptedWarnings: print.acceptedWarnings,
-    })),
+    ...(state.fulfilment === "delivery" ? { dropoff: { lat: place.lat, lng: place.lng, label: place.label } } : {}),
   };
 }
 
-function errorCode(error: unknown): string | null {
-  const code = (error as { code?: unknown } | null)?.code;
-  return typeof code === "string" ? code : null;
+/** The shop the client picked: the kept card, else the current list's row. */
+function chosenCard(state: Pick<ExpressState, "supplierId" | "chosenShop" | "shops">): ExpressShop | null {
+  if (!state.supplierId) return null;
+  if (state.chosenShop?.supplierId === state.supplierId) return state.chosenShop;
+  return state.shops?.find((row) => row.supplierId === state.supplierId) ?? null;
 }
+
+/** The draft body for the current choices, or null while something is missing. */
+export function draftBody(state: ExpressState): api.ExpressDraftBody | null {
+  if (!state.prints.length) return null;
+  const where = placeBody(state);
+  if (!where) return null;
+  if (state.fareLimit && state.whoPrints !== "off") {
+    // Only an API that answered the printer read can pick; A3 is never picked for the client.
+    if (state.whoPrints !== "on" || usesShopPrices(state.prints)) return null;
+    return { selection: "just_print_it", fareLimit: state.fareLimit, ...where, files: draftFiles(state.prints, null) };
+  }
+  const shop = chosenCard(state);
+  if (!shop || shop.selectable === false) return null;
+  return { supplierId: shop.supplierId, ...where, files: draftFiles(state.prints, shop.catalogItemIds[0] ?? null) };
+}
+
+/** The `POST /express/shops` body, or null until files and a place are ready. */
+export function printersBody(state: ExpressState): Parameters<typeof api.readExpressPrinters>[0] | null {
+  if (!state.prints.length || state.files.some((file) => expressFileProblem(file))) return null;
+  const where = placeBody(state);
+  if (!where) return null;
+  return {
+    ...where,
+    files: draftFiles(state.prints, null),
+    sort: validSort(state.printerSort, usesShopPrices(state.prints)),
+    shopsOnly: state.shopsOnly,
+    verifiedOnly: state.verifiedOnly,
+  };
+}
+
+const errorCode = apiErrorCode;
 
 /**
  * The Express order being built: files, each file's print settings, where and
@@ -174,6 +256,9 @@ export const useExpress = create<ExpressState>((set, get) => ({
     const key = choicesKey({ prints, supplierId: SAMPLE_SHOP.supplierId, fulfilment, dropoff: SAMPLE_PLACE });
     set({
       sample: true,
+      // The guide shows today's three steps with its one sample shop.
+      whoPrints: "off",
+      fareLimit: null,
       files: [SAMPLE_FILE],
       prints,
       activeFileId: SAMPLE_FILE.fileId,
@@ -182,7 +267,7 @@ export const useExpress = create<ExpressState>((set, get) => ({
       shops: [SAMPLE_SHOP],
       supplierId: SAMPLE_SHOP.supplierId,
       draft: { status: "ready", key, draft: sampleDraft() },
-      tickedKey: key,
+      tickedKey: previewKey(prints),
     });
   },
 
@@ -273,13 +358,15 @@ export const useExpress = create<ExpressState>((set, get) => ({
     });
   },
 
-  setTicked: (ticked) => set({ tickedKey: ticked ? choicesKey(expressChoices(get())) : null }),
+  setTicked: (ticked) => set({ tickedKey: ticked ? previewKey(get().prints) : null }),
 
   setFulfilment: (fulfilment) => set({ fulfilment }),
 
   setPlace: (place) => {
     const previous = get().place;
     set({ place });
+    // "Who prints it?" reads its own list once files are ready; the older sheet reads here.
+    if (get().whoPrints !== "off") return;
     if (!previous || previous.lat !== place.lat || previous.lng !== place.lng) void get().loadShops();
   },
 
@@ -305,7 +392,98 @@ export const useExpress = create<ExpressState>((set, get) => ({
 
   setSort: (sort) => set({ sort }),
 
-  chooseShop: (supplierId) => set({ supplierId }),
+  chooseShop: (supplierId, card) =>
+    set({
+      supplierId,
+      chosenShop: card ?? get().shops?.find((row) => row.supplierId === supplierId) ?? null,
+      fareLimit: null,
+    }),
+
+  setFareLimit: (fareLimit) => set({ fareLimit }),
+
+  setPrinterSort: (printerSort) => set({ printerSort }),
+
+  setFilter: (filter, on) => set(filter === "shopsOnly" ? { shopsOnly: on } : { verifiedOnly: on }),
+
+  loadPrinters: async () => {
+    const state = get();
+    if (state.sample || state.whoPrints === "off") return;
+    const body = printersBody(state);
+    if (!body) return;
+    const seq = ++printersSeq;
+    set({ printersLoading: true, shopsError: null });
+    try {
+      const read = await api.readExpressPrinters(body);
+      if (seq !== printersSeq) return;
+      useExpressShops.getState().remember(read.shops);
+      const current = get();
+      const fresh = current.supplierId ? read.shops.find((row) => row.supplierId === current.supplierId) : undefined;
+      // A picked printer that closed since is let go; one this sort hides is kept.
+      const lost = fresh?.selectable === false;
+      set({
+        whoPrints: "on",
+        printers: read,
+        shops: read.shops,
+        printersLoading: false,
+        ...(fresh ? { chosenShop: lost ? null : fresh } : {}),
+        ...(lost ? { supplierId: null } : {}),
+      });
+    } catch (error) {
+      if (seq !== printersSeq) return;
+      if (printerChoiceMissing(error)) {
+        // An API from before the printer choice: today's flow, today's shop sheet.
+        set({
+          whoPrints: "off",
+          fareLimit: null,
+          printersLoading: false,
+          // A3 needs the printer choice (each shop's price, paid after it accepts).
+          prints: get().prints.map((print) => (print.paper === "a3" ? { ...print, paper: "a4" } : print)),
+        });
+        if (get().step === "printer") set({ step: "pay" });
+        await get().loadShops();
+        return;
+      }
+      set({ printersLoading: false, shopsError: userFacingError(error, "Printers could not load. Try again.") });
+    }
+  },
+
+  startRepick: async (order) => {
+    get().reset();
+    const settings = order.expressOrder?.printSettings ?? [];
+    const files: api.StoredFile[] = [];
+    try {
+      for (const setting of settings) files.push(await api.getFile(setting.fileId));
+    } catch (error) {
+      return userFacingError(error, "Your files could not be opened. Start a new Express order.");
+    }
+    const prints: ExpressPrint[] = settings.map((setting) => {
+      const file = files.find((row) => row.fileId === setting.fileId) as api.StoredFile;
+      const paper = (["a4", "short", "long", "a3"] as const).find((value) => value === setting.paper) ?? defaultPrint(file).paper;
+      return {
+        ...defaultPrint(file),
+        copies: setting.copies,
+        pageRange: setting.pages?.range ?? null,
+        paper,
+        colour: setting.colour,
+        sides: setting.sides,
+        layout: (setting.layout as ExpressPrint["layout"]) ?? "fit_to_paper",
+        note: setting.note ?? "",
+        acceptedWarnings: setting.acceptedWarnings.filter(
+          (code): code is ExpressWarningCode => code === "paper_size_mismatch" || code === "rgb_colour",
+        ),
+      };
+    });
+    set({
+      files,
+      prints,
+      activeFileId: files[0]?.fileId ?? null,
+      fulfilment: order.fulfillmentMode === "delivery" ? "delivery" : "pickup",
+      // A3 has no "Just print it": the client picks again.
+      fareLimit: usesShopPrices(prints) ? null : "nearby",
+      step: "printer",
+    });
+    return null;
+  },
 
   refreshDraft: async () => {
     const state = get();
@@ -345,7 +523,14 @@ export const useExpress = create<ExpressState>((set, get) => ({
           message: userFacingError(error, "GRIDGO could not price this. Try again."),
         },
       });
-      if (errorCode(error) === "express_shop_unavailable") void get().loadShops();
+      const code = errorCode(error);
+      if (code === "express_shop_unavailable" && state.fareLimit && state.whoPrints !== "off") {
+        set({ draft: { status: "error", key, code, message: NO_PRINTER_WITHIN_LIMIT } });
+      } else if (code === "express_manual_selection_required") {
+        set({ draft: { status: "error", key, code, message: A3_PICK_YOURSELF } });
+      } else if (code === "express_shop_unavailable") {
+        void (get().whoPrints === "off" ? get().loadShops() : get().loadPrinters());
+      }
     }
   },
 
@@ -361,6 +546,7 @@ export const useExpress = create<ExpressState>((set, get) => ({
     for (const handle of handles.values()) handle.cancel();
     handles.clear();
     draftSeq++;
+    printersSeq++;
     set({ ...INITIAL });
   },
 }));

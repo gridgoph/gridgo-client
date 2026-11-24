@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import {
   Check,
   CircleCheck,
+  Clock,
   CircleX,
   Copy,
   Hand,
@@ -9,10 +10,12 @@ import {
   Navigation,
   Package,
   Printer,
+  RotateCcw,
   Send,
   Share2,
   Star,
   Ticket,
+  Wallet,
   type LucideIcon,
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
@@ -84,9 +87,25 @@ const HERO_ICONS: Record<ExpressPhase, LucideIcon> = {
   on_the_way: Package,
   done: CircleCheck,
   cancelled: CircleX,
+  pay_now: Wallet,
+  pay_expired: Clock,
+  repick: RotateCcw,
 };
 
-export function ExpressHero({ phase, title, line, countdown }: { phase: ExpressPhase; title: string; line: string; countdown: string | null }) {
+export function ExpressHero({
+  phase,
+  title,
+  line,
+  countdown,
+  payCountdown = null,
+}: {
+  phase: ExpressPhase;
+  title: string;
+  line: string;
+  countdown: string | null;
+  /** A3's payment window, "4:59". */
+  payCountdown?: string | null;
+}) {
   const colors = useThemeColors();
   const Icon = HERO_ICONS[phase];
   const tone = phase === "cancelled" ? colors.error : ["ready", "done", "accepted"].includes(phase) ? colors.success : colors.textPrimary;
@@ -101,6 +120,11 @@ export function ExpressHero({ phase, title, line, countdown }: { phase: ExpressP
         {countdown ? (
           <Text className="text-caption text-text-muted" accessibilityLiveRegion="polite">
             Shop has {countdown} to accept
+          </Text>
+        ) : null}
+        {payCountdown ? (
+          <Text className="text-body font-bold text-text-primary" accessibilityLiveRegion="polite">
+            {payCountdown} left to pay
           </Text>
         ) : null}
       </View>
