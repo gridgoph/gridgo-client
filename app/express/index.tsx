@@ -126,7 +126,7 @@ export default function ExpressScreen() {
     if (step === "files" || !filesReady || group) return;
     const timer = setTimeout(() => void useExpress.getState().refreshDraft(), DRAFT_SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [step, filesReady, group, prints, supplierId, chosenShop, fareLimit, whoPrints, fulfilment, place]);
+  }, [step, filesReady, group, prints, supplierId, chosenShop, fareLimit, whoPrints, fulfilment, place, shopsOnly, verifiedOnly]);
 
   // "Who prints it?" reads who can print these exact files. On Preview it asks
   // once, so an API without the printer choice is known before Continue.

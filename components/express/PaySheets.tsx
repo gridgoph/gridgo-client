@@ -12,6 +12,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { requestCurrentLocation } from "@/lib/deviceLocation";
 import { distanceLabel, readyLine, SORT_OPTIONS, sortExpressShops } from "@/lib/express";
+import { homeDistanceLine, isHomePrinter, printerName } from "@/lib/homePrinter";
 import { checkPaymentReference } from "@/lib/payment";
 import type { usePaymentProof } from "@/hooks/usePaymentProof";
 import { useExpress } from "@/store/express";
@@ -21,7 +22,7 @@ import { useExpressPayment } from "@/store/checkoutPayment";
 export function shopFacts(shop: api.ExpressShop): string {
   return [
     shop.rating ? `★ ${shop.rating.average.toFixed(1)}` : null,
-    distanceLabel(shop.distanceMeters),
+    isHomePrinter(shop) ? homeDistanceLine(shop.distanceMeters) : distanceLabel(shop.distanceMeters),
     shop.jobsAhead ? `${shop.jobsAhead} ahead` : "No queue",
     readyLine(shop.readyAt),
   ]
@@ -75,7 +76,7 @@ export function ShopSheet({ open, onClose }: { open: boolean; onClose: () => voi
                 }}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: chosen }}
-                accessibilityLabel={`${shop.name}${shop.isNew ? ", new" : ""}${shop.busy ? ", busy" : ""}. ${shopFacts(shop)}`}
+                accessibilityLabel={`${printerName(shop)}${shop.isNew ? ", new" : ""}${shop.busy ? ", busy" : ""}. ${shopFacts(shop)}`}
                 className={
                   chosen
                     ? "flex-row items-center gap-3 rounded-card border-2 border-accent bg-surface-high px-3 py-2.5"
@@ -85,7 +86,7 @@ export function ShopSheet({ open, onClose }: { open: boolean; onClose: () => voi
                 <View className="min-w-0 flex-1 gap-0.5">
                   <View className="flex-row items-center gap-2">
                     <Text className="min-w-0 shrink text-body font-bold text-text-primary" numberOfLines={1}>
-                      {shop.name}
+                      {printerName(shop)}
                     </Text>
                     <ShopTags shop={shop} />
                   </View>

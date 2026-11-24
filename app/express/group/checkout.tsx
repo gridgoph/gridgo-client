@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { Check, Receipt, Store, Users, Wallet, X } from "lucide-react-native";
+import { Check, House, Receipt, Store, Users, Wallet, X } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -18,6 +18,7 @@ import { useServerNow } from "@/hooks/useVoucherClock";
 import * as api from "@/lib/api";
 import { cashCheckoutChoice, cashErrorMessage } from "@/lib/cash";
 import { distanceLabel } from "@/lib/express";
+import { homeDistanceLine, isHomePrinter, printerName } from "@/lib/homePrinter";
 import { firstName, pagesLine, timeLeft } from "@/lib/expressGroup";
 import { checkPaymentReference } from "@/lib/payment";
 import { voucherSettlesUpFront } from "@/lib/vouchers";
@@ -64,10 +65,14 @@ function ShopChoice() {
             accessibilityState={{ selected: chosen, disabled: preparing }}
             className={chosen ? "min-h-14 flex-row items-center gap-3 rounded-card border-2 border-accent bg-surface px-3 py-2" : "min-h-14 flex-row items-center gap-3 rounded-card border border-outline bg-surface px-3 py-2"}
           >
-            <Store size={20} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+            {isHomePrinter(shop) ? (
+              <House size={20} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+            ) : (
+              <Store size={20} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+            )}
             <View className="min-w-0 flex-1">
               <Text className="text-body font-bold text-text-primary" numberOfLines={1}>
-                {shop.name}
+                {printerName(shop)}
               </Text>
               <Text className="text-caption text-text-secondary" numberOfLines={1}>
                 {shopFacts(shop)}
@@ -262,13 +267,17 @@ export default function GroupCheckoutScreen() {
         </View>
       ) : prepared?.shop ? (
         <View className="flex-row items-center gap-3 rounded-card border border-outline bg-surface px-4 py-3">
-          <Store size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+          {isHomePrinter(prepared.shop) ? (
+            <House size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+          ) : (
+            <Store size={18} color={colors.textSecondary} strokeWidth={2} aria-hidden />
+          )}
           <View className="min-w-0 flex-1">
             <Text className="text-body font-bold text-text-primary" numberOfLines={1}>
-              {prepared.shop.name}
+              {printerName(prepared.shop)}
             </Text>
             <Text className="text-caption text-text-secondary" numberOfLines={1}>
-              Nearest open shop · {distanceLabel(prepared.shop.distanceMeters)} · delivers to {group?.dropoff?.label ?? "you"}
+              {isHomePrinter(prepared.shop) ? "Nearest open printer" : "Nearest open shop"} · {isHomePrinter(prepared.shop) ? homeDistanceLine(prepared.shop.distanceMeters) : distanceLabel(prepared.shop.distanceMeters)} · delivers to {group?.dropoff?.label ?? "you"}
             </Text>
           </View>
         </View>

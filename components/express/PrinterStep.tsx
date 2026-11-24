@@ -9,6 +9,7 @@ import { SkeletonBlock } from "@/components/Skeleton";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
 import { readyLine, type ExpressFulfilment } from "@/lib/express";
+import { HOME_PICKUP_BEFORE_PAYMENT, homeBarangay, homeDistanceLine, printerName, printerPhrase } from "@/lib/homePrinter";
 import {
   A3_PICK_YOURSELF,
   fareLimitOptions,
@@ -161,12 +162,16 @@ export function PrinterCard({
   const price = shopPrintingPrice(card);
   const statusColor = status.tone === "success" ? "text-success" : status.tone === "info" ? "text-info" : "text-text-muted";
   const facts = [zone, reach].filter(Boolean).join(" · ");
+  // A home is named by its barangay and a rounded distance, never a person or a pin.
+  const homePlace = home ? [homeBarangay(card), homeDistanceLine(card.distanceMeters)].filter(Boolean).join(" · ") : null;
+  const title = home ? "Home printer" : card.name;
   const label = [
-    `${card.name}, ${home ? "home printer" : "shop"}`,
+    home ? printerName(card) : `${card.name}, shop`,
     card.verificationLevel === "verified" ? "Verified" : card.verificationLevel === "starter" ? "Starter" : null,
     status.label,
     ready,
     card.rating ? `rated ${card.rating.average.toFixed(1)}` : null,
+    home ? homeDistanceLine(card.distanceMeters) : null,
     facts || null,
     price != null ? `printing ${api.formatPhp(price)}` : null,
   ]
@@ -192,7 +197,7 @@ export function PrinterCard({
       <View className="min-w-0 flex-1 gap-0.5">
         <View className="flex-row items-center gap-2">
           <Text className="min-w-0 shrink text-body font-bold text-text-primary" numberOfLines={1}>
-            {card.name}
+            {title}
           </Text>
           <VerificationTag level={card.verificationLevel} />
         </View>
@@ -206,10 +211,18 @@ export function PrinterCard({
             </View>
           ) : null}
         </View>
+        {homePlace ? (
+          <Text className="text-caption text-text-primary" numberOfLines={1}>
+            {homePlace}
+          </Text>
+        ) : null}
         {facts ? (
           <Text className="text-caption text-text-secondary" numberOfLines={1}>
             {facts}
           </Text>
+        ) : null}
+        {chosen && home && fulfilment === "pickup" ? (
+          <Text className="pt-1 text-caption text-text-secondary">{HOME_PICKUP_BEFORE_PAYMENT}</Text>
         ) : null}
       </View>
       <View className="items-end justify-center">
@@ -374,8 +387,10 @@ export function PrinterFooter({ onContinue }: { onContinue: () => void }) {
   const prints = useExpress((state) => state.prints);
   const supplierId = useExpress((state) => state.supplierId);
   const fareLimit = useExpress((state) => state.fareLimit);
+  const shopsOnly = useExpress((state) => state.shopsOnly);
+  const verifiedOnly = useExpress((state) => state.verifiedOnly);
   const draft = useExpress((state) => state.draft);
-  const key = choicesKey(expressChoices({ prints, supplierId, fulfilment, place, fareLimit }));
+  const key = choicesKey(expressChoices({ prints, supplierId, fulfilment, place, fareLimit, shopsOnly, verifiedOnly }));
   const current = draft.status !== "idle" && draft.key === key ? draft : null;
   const blocker = printerBlocker({
     place: place != null,
@@ -387,7 +402,7 @@ export function PrinterFooter({ onContinue }: { onContinue: () => void }) {
   });
   const failed = current?.status === "error" ? current.message : null;
   const total = current?.status === "ready" ? current.draft.quote.totalMinor : null;
-  const picked = current?.status === "ready" && fareLimit != null ? current.draft.shop?.name : null;
+  const picked = current?.status === "ready" && fareLimit != null ? printerPhrase(current.draft.shop, "a") : null;
   const disabled = Boolean(blocker) || Boolean(failed);
   return (
     <View className="gap-2 border-t border-outline-subtle bg-surface px-4 pb-2 pt-2">

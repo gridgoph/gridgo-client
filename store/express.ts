@@ -169,7 +169,11 @@ const INITIAL = {
 };
 
 export function expressChoices(
-  state: Pick<ExpressState, "prints" | "supplierId" | "fulfilment" | "place"> & { fareLimit?: api.ExpressFareLimit | null },
+  state: Pick<ExpressState, "prints" | "supplierId" | "fulfilment" | "place"> & {
+    fareLimit?: api.ExpressFareLimit | null;
+    shopsOnly?: boolean;
+    verifiedOnly?: boolean;
+  },
 ): ExpressChoices {
   return {
     prints: state.prints,
@@ -177,6 +181,7 @@ export function expressChoices(
     fareLimit: state.fareLimit ?? null,
     fulfilment: state.fulfilment,
     dropoff: state.place,
+    filters: { shopsOnly: Boolean(state.shopsOnly), verifiedOnly: Boolean(state.verifiedOnly) },
   };
 }
 
@@ -223,7 +228,15 @@ export function draftBody(state: ExpressState): api.ExpressDraftBody | null {
   if (state.fareLimit && state.whoPrints !== "off") {
     // Only an API that answered the printer read can pick; A3 is never picked for the client.
     if (state.whoPrints !== "on" || usesShopPrices(state.prints)) return null;
-    return { selection: "just_print_it", fareLimit: state.fareLimit, ...where, files: draftFiles(state.prints, null) };
+    // The filters bind GRIDGO's pick too: "Shops only" must never come back as a home printer.
+    return {
+      selection: "just_print_it",
+      fareLimit: state.fareLimit,
+      ...(state.shopsOnly ? { shopsOnly: true } : {}),
+      ...(state.verifiedOnly ? { verifiedOnly: true } : {}),
+      ...where,
+      files: draftFiles(state.prints, null),
+    };
   }
   const shop = chosenCard(state);
   if (!shop || shop.selectable === false) return null;

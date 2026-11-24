@@ -366,9 +366,11 @@ export function PreviewFooter({
   const place = useExpress((state) => state.place);
   const draft = useExpress((state) => state.draft);
   const fareLimit = useExpress((state) => state.fareLimit);
+  const shopsOnly = useExpress((state) => state.shopsOnly);
+  const verifiedOnly = useExpress((state) => state.verifiedOnly);
   const choosesPrinter = useExpress((state) => state.whoPrints !== "off");
   const shopPrices = usesShopPrices(prints);
-  const key = choicesKey(expressChoices({ prints, supplierId, fulfilment, place, fareLimit }));
+  const key = choicesKey(expressChoices({ prints, supplierId, fulfilment, place, fareLimit, shopsOnly, verifiedOnly }));
   const ticked = looksRightHolds(tickedKey, { prints });
   const tickable = canTickLooksRight(files, prints);
   const price = draft.status === "ready" && draft.key === key && !shopPrices ? draft.draft.quote.clientItemSubtotalMinor : null;

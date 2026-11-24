@@ -645,6 +645,14 @@ export type Order = {
   fulfillmentMode?: FulfilmentMode | null;
   /** Supplier shop, once a supplier is assigned. Where the client collects. */
   pickup?: OrderPoint | null;
+  /**
+   * `home` when a home printer has the job (gridgo-api `docs/HOME_PRINTERS_API.md`).
+   * Its `pickup` is then `{barangay}` only, plus `street` once a pickup is fully
+   * paid — never coordinates.
+   */
+  printerType?: "shop" | "home" | (string & {});
+  barangay?: string | null;
+  verificationLevel?: "verified" | "starter" | (string & {});
   /** Delivery destination. */
   dropoff?: OrderPoint | null;
   dropoffConfirmation?: DropoffConfirmation | null;
@@ -6805,6 +6813,9 @@ export type ExpressDraftBody = {
   selection?: "just_print_it";
   /** Required with `selection`: how far GRIDGO may go for the fare. */
   fareLimit?: ExpressFareLimit;
+  /** With `selection`: GRIDGO picks only among shops / Verified printers. */
+  shopsOnly?: boolean;
+  verifiedOnly?: boolean;
   location: { lat: number; lng: number };
   fulfillmentMode: "pickup" | "delivery";
   dropoff?: { lat: number; lng: number; label: string };

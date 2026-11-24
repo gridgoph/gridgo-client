@@ -9,6 +9,7 @@ import {
   ExpressHero,
   ExpressRail,
   FriendPassCard,
+  HomePrinterCard,
   PickupCodeCard,
   RatingCard,
   ShopCard,
@@ -24,6 +25,7 @@ import * as api from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
 import { GUIDE_SAMPLE_ORDER_ID, SAMPLE_PICKUP_CODE, SAMPLE_SHOP } from "@/lib/expressGuide";
 import { acceptCountdown, expressView } from "@/lib/expressOrder";
+import { homePickupPlace, isHomePrinter, mappablePickup, printerPhrase } from "@/lib/homePrinter";
 import { refundEntry } from "@/lib/refunds";
 import { payCountdown } from "@/lib/whoPrints";
 import { useExpress } from "@/store/express";
@@ -155,12 +157,16 @@ function ExpressOrderScreen() {
   const express = order.expressOrder;
   const pickup = order.fulfillmentMode !== "delivery";
   const known = express.currentSupplierId ? shops[express.currentSupplierId] : undefined;
-  const view = expressView(order, known?.name ?? null, now);
+  // A home printer is named by its barangay; its pin never reaches the client.
+  const home = isHomePrinter(order) || isHomePrinter(known);
+  const homePlace = home ? homePickupPlace(order.pickup, order.barangay ?? known?.barangay ?? null) : null;
+  const printer = home ? { printerType: "home", barangay: homePlace?.barangay ?? null } : known;
+  const view = expressView(order, printerPhrase(printer) ?? null, now);
   const payLeft = view.phase === "pay_now" ? (payCountdown(express.payBy, now)?.label ?? null) : null;
   const canRepick = view.phase === "repick" || view.phase === "pay_expired";
   const refund = refundEntry(order, refunds, now);
   const countdown = view.phase === "sending" || view.phase === "moved" ? acceptCountdown(express.acceptBy, now) : null;
-  const point = order.pickup ?? known?.location ?? null;
+  const point = mappablePickup(order.pickup ?? known?.location ?? null, home);
   const done = view.phase === "done";
   const windowOpen = order.state === "issue_window_open" || order.state === "delivered";
   const rateable = ["completed", "payout_released"].includes(order.state) && !order.rated;
@@ -222,7 +228,14 @@ function ExpressOrderScreen() {
 
       {view.phase === "ready" && express.pickupCode ? <PickupCodeCard code={express.pickupCode} /> : null}
 
-      {view.phase !== "cancelled" && !done && !canRepick ? (
+      {view.phase !== "cancelled" && !done && !canRepick && homePlace ? (
+        <HomePrinterCard
+          place={homePlace}
+          pickup={pickup}
+          orderId={order.id}
+          canMessage={!["checking", "sending", "moved"].includes(view.phase)}
+        />
+      ) : view.phase !== "cancelled" && !done && !canRepick ? (
         <ShopCard
           name={known?.name ?? null}
           address={known?.address ?? null}
