@@ -1,7 +1,7 @@
 import { appInstallChannel } from "@/lib/buildDistribution";
 import { openReleaseDestination, releaseNoticeDestination } from "@/lib/releasePush";
 import { accountHold } from "@/lib/accountHold";
-import { getOrder, getQuoteRequest, getSupportChatThread, markNotificationRead } from "@/lib/api";
+import { getExpressGroup, getOrder, getQuoteRequest, getSupportChatThread, markNotificationRead } from "@/lib/api";
 import { isQuoteNotification, quoteNotificationRoute } from "@/lib/quoteRequests";
 import {
   useRouter,
@@ -13,6 +13,8 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { AppState, Linking } from "react-native";
 
 import {
+  groupNotificationRoute,
+  isGroupNotification,
   parsePushData,
   PUSH_FOREGROUND_BEHAVIOR,
   pushTapKey,
@@ -78,6 +80,19 @@ async function resolvePushDestination(data: PushData, target: string): Promise<s
       if (!notification.quoteRequestId) return target;
       await getQuoteRequest(notification.quoteRequestId);
       return quoteNotificationRoute(notification) ?? target;
+    } catch {
+      return target;
+    }
+  }
+  if (isGroupNotification(data.type)) {
+    if (!data.notificationId) return target;
+    try {
+      const notification = await markNotificationRead(data.notificationId);
+      const route = groupNotificationRoute(notification);
+      if (!route || !notification.groupId) return target;
+      // A removed member can no longer read the group; the inbox explains it.
+      await getExpressGroup(notification.groupId);
+      return route;
     } catch {
       return target;
     }

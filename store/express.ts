@@ -93,6 +93,12 @@ type ExpressState = {
    * nothing uploads, no shop list or draft is read, and nothing can be placed.
    */
   sample: boolean;
+  /**
+   * Editing one person's own files for a group order (gridgo-client#451):
+   * Files and Preview only. Nothing is priced here; GRIDGO works out the
+   * share against the whole group once the files are saved.
+   */
+  group: { id: string } | null;
 
   /** Fills the flow with the guide's sample file, shop and price. */
   startSample: () => void;
@@ -120,6 +126,8 @@ type ExpressState = {
   /** An A3 shop declined or timed out: the same files, back on "Who prints it?". */
   startRepick: (order: Pick<api.Order, "fulfillmentMode" | "expressOrder">) => Promise<string | null>;
   refreshDraft: () => Promise<void>;
+  /** Opens the flow on a group's files, filled in with what the caller already saved. */
+  startGroupFiles: (groupId: string, saved: api.ExpressGroupFile[]) => Promise<string | null>;
   adoptQuote: (cartId: string, quote: api.ExpressQuote) => void;
   chooseVoucher: (voucherId: string | null) => void;
   reset: () => void;
@@ -157,6 +165,7 @@ const INITIAL = {
   voucherOff: false,
   leaving: false,
   sample: false,
+  group: null as { id: string } | null,
 };
 
 export function expressChoices(
@@ -236,6 +245,36 @@ export function printersBody(state: ExpressState): Parameters<typeof api.readExp
 }
 
 const errorCode = apiErrorCode;
+
+/** A print setting saved on an order or a group, back as an editable print. */
+function savedPrint(
+  file: api.StoredFile,
+  setting: {
+    copies: number;
+    pageRange?: string | null;
+    paper: string;
+    colour: ExpressPrint["colour"];
+    sides: ExpressPrint["sides"];
+    layout: string;
+    note?: string | null;
+    acceptedWarnings: string[];
+  },
+): ExpressPrint {
+  const paper = (["a4", "short", "long", "a3"] as const).find((value) => value === setting.paper) ?? defaultPrint(file).paper;
+  return {
+    ...defaultPrint(file),
+    copies: setting.copies,
+    pageRange: setting.pageRange ?? null,
+    paper,
+    colour: setting.colour,
+    sides: setting.sides,
+    layout: (setting.layout as ExpressPrint["layout"]) ?? "fit_to_paper",
+    note: setting.note ?? "",
+    acceptedWarnings: setting.acceptedWarnings.filter(
+      (code): code is ExpressWarningCode => code === "paper_size_mismatch" || code === "rgb_colour",
+    ),
+  };
+}
 
 /**
  * The Express order being built: files, each file's print settings, where and
@@ -372,7 +411,7 @@ export const useExpress = create<ExpressState>((set, get) => ({
 
   loadShops: async () => {
     const place = get().place;
-    if (!place || get().sample) return;
+    if (!place || get().sample || get().group) return;
     set({ shopsError: null });
     try {
       const shops = await api.listExpressShops(place, "nearest");
@@ -407,7 +446,7 @@ export const useExpress = create<ExpressState>((set, get) => ({
 
   loadPrinters: async () => {
     const state = get();
-    if (state.sample || state.whoPrints === "off") return;
+    if (state.sample || state.group || state.whoPrints === "off") return;
     const body = printersBody(state);
     if (!body) return;
     const seq = ++printersSeq;
@@ -456,23 +495,12 @@ export const useExpress = create<ExpressState>((set, get) => ({
     } catch (error) {
       return userFacingError(error, "Your files could not be opened. Start a new Express order.");
     }
-    const prints: ExpressPrint[] = settings.map((setting) => {
-      const file = files.find((row) => row.fileId === setting.fileId) as api.StoredFile;
-      const paper = (["a4", "short", "long", "a3"] as const).find((value) => value === setting.paper) ?? defaultPrint(file).paper;
-      return {
-        ...defaultPrint(file),
-        copies: setting.copies,
+    const prints: ExpressPrint[] = settings.map((setting) =>
+      savedPrint(files.find((row) => row.fileId === setting.fileId) as api.StoredFile, {
+        ...setting,
         pageRange: setting.pages?.range ?? null,
-        paper,
-        colour: setting.colour,
-        sides: setting.sides,
-        layout: (setting.layout as ExpressPrint["layout"]) ?? "fit_to_paper",
-        note: setting.note ?? "",
-        acceptedWarnings: setting.acceptedWarnings.filter(
-          (code): code is ExpressWarningCode => code === "paper_size_mismatch" || code === "rgb_colour",
-        ),
-      };
-    });
+      }),
+    );
     set({
       files,
       prints,
@@ -485,9 +513,33 @@ export const useExpress = create<ExpressState>((set, get) => ({
     return null;
   },
 
+  startGroupFiles: async (groupId, saved) => {
+    get().reset();
+    const files: api.StoredFile[] = [];
+    try {
+      for (const setting of saved) files.push(await api.getFile(setting.fileId));
+    } catch (error) {
+      return userFacingError(error, "Your files could not be opened. Add them again.");
+    }
+    const prints = saved.map((setting) =>
+      savedPrint(files.find((row) => row.fileId === setting.fileId) as api.StoredFile, setting),
+    );
+    set({
+      group: { id: groupId },
+      // A group takes A4, Short and Long; there is no printer to choose.
+      whoPrints: "off",
+      fareLimit: null,
+      files,
+      prints,
+      activeFileId: files[0]?.fileId ?? null,
+      tickedKey: prints.length ? previewKey(prints) : null,
+    });
+    return null;
+  },
+
   refreshDraft: async () => {
     const state = get();
-    if (state.sample) return;
+    if (state.sample || state.group) return;
     const body = draftBody(state);
     if (!body) {
       if (state.draft.status !== "idle") set({ draft: { status: "idle" } });

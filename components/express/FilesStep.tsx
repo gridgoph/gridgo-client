@@ -3,6 +3,7 @@ import { CircleAlert, CircleCheck, FileText, FolderOpen, Image as ImageIcon, Sma
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { GroupOrderCard } from "@/components/express/GroupOrderCard";
 import { GuideTarget } from "@/components/GuideTarget";
 import { useThemeColors } from "@/hooks/useTheme";
 import type { StoredFile } from "@/lib/api";
@@ -194,6 +195,7 @@ export function FilesStep() {
           {full ? `Up to ${EXPRESS_MAX_FILES} files per order.` : "From Drive or Canva? Download it first, then add it here."}
         </Text>
       )}
+      <GroupOrderCard />
     </View>
   );
 }

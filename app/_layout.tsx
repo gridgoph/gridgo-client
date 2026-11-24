@@ -404,6 +404,26 @@ function AppNavigation() {
                   name="express/index"
                   options={{ ...pushedScreenOptions("Express", { bell: false }), headerRight: ExpressHeaderActions }}
                 />
+                {/*
+                  Group Express (gridgo-client#450–#452): start, the invite a
+                  link opens, the group itself, and the host's one checkout.
+                */}
+                <Stack.Screen
+                  name="express/group/new"
+                  options={{ ...pushedScreenOptions("Start a group", { bell: false }), headerRight: ExpressHeaderActions }}
+                />
+                <Stack.Screen
+                  name="express/group/join/[token]"
+                  options={{ ...pushedScreenOptions("Group invite", { bell: false }), headerRight: ExpressHeaderActions }}
+                />
+                <Stack.Screen
+                  name="express/group/[id]"
+                  options={{ ...pushedScreenOptions("Group order", { bell: false }), headerRight: ExpressHeaderActions }}
+                />
+                <Stack.Screen
+                  name="express/group/checkout"
+                  options={{ ...pushedScreenOptions("Group checkout", { bell: false }), headerRight: ExpressHeaderActions }}
+                />
                 <Stack.Screen
                   name="express/order/[id]"
                   options={{ ...pushedScreenOptions("Express order", { bell: false }), headerRight: ExpressHeaderActions }}

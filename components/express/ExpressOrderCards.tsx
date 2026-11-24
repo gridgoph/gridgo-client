@@ -24,6 +24,7 @@ import { Linking, Pressable, Share, Text, View } from "react-native";
 import { DeliveryMap } from "@/components/DeliveryMap";
 import { useThemeColors } from "@/hooks/useTheme";
 import * as api from "@/lib/api";
+import { apiErrorCode } from "@/lib/whoPrints";
 import { copyText } from "@/lib/copyText";
 import { userFacingError } from "@/lib/copy";
 import {
@@ -208,7 +209,18 @@ export function ShopCard({
 }
 
 /** Five stars and a few tags; the review route takes it once the order is complete. */
-export function RatingCard({ orderId, onRated }: { orderId: string; onRated: () => void }) {
+export function RatingCard({
+  orderId,
+  onRated,
+  rate = null,
+  title = "How was it?",
+}: {
+  orderId: string;
+  onRated: () => void;
+  /** Where the stars go; the order's own review unless a group sends private feedback. */
+  rate?: ((body: ReturnType<typeof ratingBody>) => Promise<unknown>) | null;
+  title?: string;
+}) {
   const colors = useThemeColors();
   const [stars, setStars] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
@@ -219,10 +231,10 @@ export function RatingCard({ orderId, onRated }: { orderId: string; onRated: () 
     setSending(true);
     setError(null);
     try {
-      await api.rateOrder(orderId, ratingBody(stars, tags));
+      await (rate ? rate(ratingBody(stars, tags)) : api.rateOrder(orderId, ratingBody(stars, tags)));
       onRated();
     } catch (failure) {
-      if ((failure as { code?: string } | null)?.code === "already_rated") onRated();
+      if ((failure as { code?: string } | null)?.code === "already_rated" || apiErrorCode(failure) === "already_rated") onRated();
       else setError(userFacingError(failure, "Your rating was not sent. Try again."));
     } finally {
       setSending(false);
@@ -231,7 +243,7 @@ export function RatingCard({ orderId, onRated }: { orderId: string; onRated: () 
 
   return (
     <View className="gg-card gap-3">
-      <Text className="text-body-lg font-bold text-text-primary">How was it?</Text>
+      <Text className="text-body-lg font-bold text-text-primary">{title}</Text>
       <View className="flex-row justify-between" accessibilityRole="radiogroup" accessibilityLabel="Stars">
         {[1, 2, 3, 4, 5].map((value) => (
           <Pressable
