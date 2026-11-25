@@ -21,7 +21,7 @@ describe("reading a member list", () => {
     expect(rows("Name,Email or mobile,Member since\nAlex Sample,,\n")).toEqual([{ name: "Alex Sample", contact: "", memberSince: "" }]);
   });
 
-  it("tolerates empty columns a spreadsheet leaves behind", () => {
+  it("tolerates empty columns a table program leaves behind", () => {
     expect(rows("Name,Email or mobile,Member since,,\nAlex Sample,a@example.com,2024-08,,\n")).toHaveLength(1);
   });
 
@@ -43,7 +43,7 @@ describe("reading a member list", () => {
   });
 });
 
-describe("what a spreadsheet does to a value", () => {
+describe("what a table program does to a value", () => {
   it("reads a written month, and leaves anything unclear for GRIDGO to send back", () => {
     expect(listDate("Aug 2024", NOW)).toBe("2024-08");
     expect(listDate("August 2024", NOW)).toBe("2024-08");
