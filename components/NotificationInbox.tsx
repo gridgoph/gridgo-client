@@ -12,6 +12,7 @@ import { PushEnableCard } from "@/components/PushEnableCard";
 import { SkeletonList } from "@/components/Skeleton";
 import { businessApplicationSentBack } from "@/lib/accountProfile";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
+import { MY_ORGS_ROUTE, opensMyOrgs } from "@/lib/memberships";
 import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { chatNotificationRoute, groupNotificationRoute } from "@/lib/push";
 import { quoteNotificationRoute } from "@/lib/quoteRequests";
@@ -101,6 +102,12 @@ export function NotificationInbox() {
                 // The officer check is answered on the Organizations tab (#165).
                 markGroupRead();
                 router.navigate(ORGANIZATIONS_ROUTE);
+              }
+            : opensMyOrgs(notification)
+            ? () => {
+                // A membership notice is about the org, not a job (#475).
+                markGroupRead();
+                router.push(MY_ORGS_ROUTE);
               }
             : opensVoucherWallet(notification.type)
             ? () => {

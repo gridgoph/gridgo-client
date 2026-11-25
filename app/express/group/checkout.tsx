@@ -5,6 +5,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { ExpressRow } from "@/components/express/ExpressChrome";
 import { MemberRow } from "@/components/express/GroupCards";
+import { MemberPerkNote } from "@/components/MemberParts";
 import { PayWithSheet, shopFacts } from "@/components/express/PaySheets";
 import { CheckboxRow } from "@/components/form/CheckboxRow";
 import { FormScreen } from "@/components/FormScreen";
@@ -20,6 +21,13 @@ import { cashCheckoutChoice, cashErrorMessage } from "@/lib/cash";
 import { distanceLabel, payableMinor } from "@/lib/express";
 import { homeDistanceLine, isHomePrinter, printerName } from "@/lib/homePrinter";
 import { firstName, pagesLine, timeLeft } from "@/lib/expressGroup";
+import {
+  expectedMemberPerk,
+  MEMBER_PERK_CHANGED,
+  memberPerkChangedMessage,
+  memberPerkLabel,
+  memberPerkOf,
+} from "@/lib/memberships";
 import { checkPaymentReference } from "@/lib/payment";
 import { afterSheetClose } from "@/lib/sheet";
 import { voucherSettlesUpFront } from "@/lib/vouchers";
@@ -34,11 +42,25 @@ import { useSession } from "@/store/session";
 /** One rights tick covers whatever the group order becomes. */
 const GROUP_RIGHTS_SCOPE = "express-group";
 
-function MoneyLine({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+function MoneyLine({
+  label,
+  value,
+  strong = false,
+  off = false,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  /** Something GRIDGO took off the total. */
+  off?: boolean;
+}) {
+  const ink = off ? "text-success" : "text-text-primary";
   return (
-    <View className="flex-row items-center justify-between py-0.5">
-      <Text className={strong ? "text-body font-bold text-text-primary" : "text-body text-text-secondary"}>{label}</Text>
-      <Text className={strong ? "text-body font-bold text-text-primary" : "text-body text-text-primary"}>{value}</Text>
+    <View className="flex-row items-center justify-between gap-3 py-0.5">
+      <Text className={strong ? "min-w-0 shrink text-body font-bold text-text-primary" : "min-w-0 shrink text-body text-text-secondary"}>
+        {label}
+      </Text>
+      <Text className={strong ? "text-body font-bold text-text-primary" : `text-body ${ink}`}>{value}</Text>
     </View>
   );
 }
@@ -199,7 +221,12 @@ export default function GroupCheckoutScreen() {
         : cashSelected
           ? ({ method: "cash" } as const)
           : { reference: reference.trim(), proofFileId: proofState.fileId as string };
-      const result = await api.checkoutExpressGroup(group.id, { confirmation: prepared.confirmation, payment, artworkRights });
+      const result = await api.checkoutExpressGroup(group.id, {
+        confirmation: prepared.confirmation,
+        payment,
+        artworkRights,
+        expectedMemberPerkMinor: expectedMemberPerk(quote),
+      });
       useExpressGroup.getState().adopt(result.group);
       useExpressPayment.getState().reset();
       useArtworkRights.getState().setAgreed(GROUP_RIGHTS_SCOPE, false);
@@ -210,6 +237,12 @@ export default function GroupCheckoutScreen() {
       if (code === "express_preview_required" || code === "group_preview_required" || code === "express_shop_unavailable") {
         void useGroupCheckout.getState().prepare();
         setPlaceError(code === "express_shop_unavailable" ? "That shop just closed. GRIDGO is finding the group another." : "Something changed. Check the new total, then pay.");
+      } else if (code === MEMBER_PERK_CHANGED) {
+        // Nothing was placed: preparing again reads GRIDGO's new total.
+        await useGroupCheckout.getState().prepare();
+        setPlaceError(
+          memberPerkChangedMessage(useGroupCheckout.getState().prepared?.quote, !noCash && !cashSelected),
+        );
       } else if (code && code.startsWith("cash_")) {
         useExpressPayment.getState().chooseMethod("qr_manual");
         setPlaceError(cashErrorMessage(code));
@@ -315,6 +348,9 @@ export default function GroupCheckoutScreen() {
           <View className="gap-1 border-t border-outline-subtle px-4 pb-3 pt-3">
             <MoneyLine label="Printing" value={api.formatPhp(quote.clientItemSubtotalMinor ?? 0)} />
             {group?.fulfillmentMode === "delivery" ? <MoneyLine label="Delivery, once" value={quote.deliveryFeeMinor != null ? api.formatPhp(quote.deliveryFeeMinor) : "—"} /> : null}
+            {memberPerkOf(quote) > 0 ? (
+              <MoneyLine label={memberPerkLabel(quote)} value={`−${api.formatPhp(memberPerkOf(quote))}`} off />
+            ) : null}
             {voucherOff > 0 ? (
               <View className="flex-row items-center justify-between py-0.5">
                 <Text className="min-w-0 flex-1 text-body text-text-secondary" numberOfLines={1}>
@@ -328,6 +364,7 @@ export default function GroupCheckoutScreen() {
             ) : null}
             <View className="my-1 h-px bg-outline-subtle" />
             <MoneyLine label="Total" value={quote.totalMinor != null ? api.formatPhp(quote.totalMinor) : "—"} strong />
+            <MemberPerkNote source={quote} />
             {voucherOff > 0 ? null : (
               <View className="mt-3 border-t border-outline-subtle pt-3">
                 <VoucherCodeField onSubmit={applyCode} label="Voucher code" />

@@ -12,6 +12,7 @@
  * one, never unit price × quantity; a missing unit price is "Not recorded".
  */
 
+import { memberPerkLabel, memberPerkOf } from "@/lib/memberships";
 import * as api from "@/lib/api";
 import type { AcknowledgementReceipt, AcknowledgementReceiptPayment, Order } from "@/lib/api";
 import { formatPhp } from "@/lib/api";
@@ -145,13 +146,20 @@ export function signedAmount(amountMinor: number): string {
 export function receiptAdjustments(
   receipt: Pick<
     AcknowledgementReceipt,
-    "deliveryFeeMinor" | "organizationDiscountMinor" | "voucherDiscountMinor" | "roundingAdjustmentMinor"
+    | "deliveryFeeMinor"
+    | "organizationDiscountMinor"
+    | "memberPerkMinor"
+    | "memberPerkLabel"
+    | "voucherDiscountMinor"
+    | "roundingAdjustmentMinor"
   >,
 ): { label: string; value: string }[] {
   const rows = [{ label: "Delivery fee", value: formatPhp(receipt.deliveryFeeMinor) }];
   if (receipt.organizationDiscountMinor) {
     rows.push({ label: "Organization discount", value: deduction(receipt.organizationDiscountMinor) });
   }
+  const perk = memberPerkOf(receipt);
+  if (perk) rows.push({ label: memberPerkLabel(receipt), value: deduction(perk) });
   if (receipt.voucherDiscountMinor) {
     rows.push({ label: "Voucher discount", value: deduction(receipt.voucherDiscountMinor) });
   }

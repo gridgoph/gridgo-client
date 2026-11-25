@@ -9,6 +9,7 @@ import { groupDateLine } from "@/lib/basketGroups";
 import { VOUCHER_LABEL, VOUCHER_SHARE_LABEL, voucherAmount } from "@/lib/vouchers";
 import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
+import { MEMBER_PERK_LABEL, memberPerkLabel } from "@/lib/memberships";
 import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
 import { orderReference } from "@/lib/orderReference";
 import {
@@ -126,6 +127,9 @@ export function ReceiptSlip({ view, showServiceFee, compact = false }: Props) {
               value={discountAmount(view.money.organizationDiscountMinor)}
             />
           ) : null}
+          {view.money.memberPerkMinor ? (
+            <SlipRow label={memberPerkLabel(view.money)} value={discountAmount(view.money.memberPerkMinor)} />
+          ) : null}
           {view.money.voucherDiscountMinor ? (
             <SlipRow label={VOUCHER_LABEL} value={voucherAmount(view.money.voucherDiscountMinor)} />
           ) : null}
@@ -226,6 +230,9 @@ function SlipGroup({ group }: { group: ReceiptGroup }) {
           label={ORGANIZATION_DISCOUNT_LABEL}
           value={discountAmount(group.organizationDiscountMinor)}
         />
+      ) : null}
+      {group.memberPerkMinor ? (
+        <SlipRow label={MEMBER_PERK_LABEL} value={discountAmount(group.memberPerkMinor)} />
       ) : null}
       {group.voucherDiscountMinor ? (
         <SlipRow label={VOUCHER_SHARE_LABEL} value={voucherAmount(group.voucherDiscountMinor)} />

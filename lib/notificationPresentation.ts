@@ -6,6 +6,7 @@ import { CHANGE_WINDOW_STATES, changeNotificationCopy, isChangeAsk } from "@/lib
 import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 import { ACK_RECEIPT_NOTIFICATION_TYPE } from "@/lib/acknowledgementReceipt";
 import { isJobComplete } from "@/lib/jobComplete";
+import { opensMyOrgs } from "@/lib/memberships";
 import { orderReference } from "@/lib/orderReference";
 import { isApplicationNotification } from "@/lib/organization";
 import { refundNotificationCopy } from "@/lib/refunds";
@@ -606,6 +607,8 @@ export function presentNotification(
                     ? "Opens your application"
                     : isQuoteNotification(notification.type)
                       ? "Opens this quote"
+                      : opensMyOrgs(notification)
+                        ? "Opens My orgs"
                       : notification.type === PLAY_OPTIN_PUSH_TYPE
                         ? "Opens the tester steps"
                         : releaseNoticeHint(notification),

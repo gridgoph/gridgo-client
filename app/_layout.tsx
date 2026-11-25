@@ -597,6 +597,10 @@ function AppNavigation() {
                 <Stack.Screen name="samples/[id]" options={pushedScreenOptions("Sample")} />
                 {/* The voucher wallet (gridgo-api#204), from Account. */}
                 <Stack.Screen name="vouchers" options={pushedScreenOptions("Vouchers")} />
+                {/* Organization members, the member's side (#475). */}
+                <Stack.Screen name="my-orgs/index" options={pushedScreenOptions("My orgs")} />
+                <Stack.Screen name="my-orgs/join" options={pushedScreenOptions("Join an org")} />
+                <Stack.Screen name="join/[token]" options={pushedScreenOptions("Join an org")} />
                 {/* Founding Tester invites (client#323), from the path card and Account. */}
                 <Stack.Screen name="invite" options={pushedScreenOptions("Invite a friend")} />
                 {/* The five mission steps and the voucher (client#335), from Home and the "+" sheet. */}

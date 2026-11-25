@@ -8,6 +8,7 @@ import { useThemeColors } from "@/hooks/useTheme";
 import { formatPhp } from "@/lib/api";
 import { addMoreFromLabel, deliveryOf, groupDateLine, type ShopGroupView } from "@/lib/basketGroups";
 import { listingZoneLine } from "@/lib/distanceZone";
+import { MEMBER_PERK_LABEL } from "@/lib/memberships";
 import { discountAmount, ORGANIZATION_DISCOUNT_LABEL } from "@/lib/organization";
 
 /**
@@ -188,6 +189,17 @@ export function ShopGroupSection({
         >
           <Text className="text-body text-text-secondary">{ORGANIZATION_DISCOUNT_LABEL}</Text>
           <Text className="text-body font-medium text-success">{discountAmount(group.organizationDiscountMinor)}</Text>
+        </View>
+      ) : null}
+
+      {group.memberPerkMinor ? (
+        <View
+          className="flex-row items-baseline justify-between gap-3 px-4"
+          accessible
+          accessibilityLabel={`${MEMBER_PERK_LABEL} on ${group.label}, minus ${formatPhp(group.memberPerkMinor)}`}
+        >
+          <Text className="text-body text-text-secondary">{MEMBER_PERK_LABEL}</Text>
+          <Text className="text-body font-medium text-success">{discountAmount(group.memberPerkMinor)}</Text>
         </View>
       ) : null}
 

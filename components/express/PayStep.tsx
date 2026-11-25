@@ -5,6 +5,7 @@ import { Text, View } from "react-native";
 import { Pressable } from "@/components/Pressable";
 
 import { ChoiceChips, ExpressRow } from "@/components/express/ExpressChrome";
+import { MemberPerkNote } from "@/components/MemberParts";
 import { PayWithSheet, PlaceSheet, ShopSheet, ShopTags, shopFacts } from "@/components/express/PaySheets";
 import { CheckboxRow } from "@/components/form/CheckboxRow";
 import { GuideTarget } from "@/components/GuideTarget";
@@ -18,6 +19,13 @@ import { cashCheckoutChoice, cashErrorMessage } from "@/lib/cash";
 import { userFacingError } from "@/lib/copy";
 import { choicesKey, expressPayBlocker, looksRightHolds, noExpressShopLine, payableMinor } from "@/lib/express";
 import { HOME_PICKUP_BEFORE_PAYMENT, isHomePrinter, printerName, printerPhrase } from "@/lib/homePrinter";
+import {
+  expectedMemberPerk,
+  MEMBER_PERK_CHANGED,
+  memberPerkChangedMessage,
+  memberPerkLabel,
+  memberPerkOf,
+} from "@/lib/memberships";
 import { checkPaymentReference } from "@/lib/payment";
 import { afterSheetClose } from "@/lib/sheet";
 import { voucherSettlesUpFront } from "@/lib/vouchers";
@@ -206,11 +214,25 @@ function PrinterRow() {
   );
 }
 
-function MoneyLine({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+function MoneyLine({
+  label,
+  value,
+  strong = false,
+  off = false,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  /** Something GRIDGO took off the total. */
+  off?: boolean;
+}) {
+  const ink = off ? "text-success" : "text-text-primary";
   return (
-    <View className="flex-row items-center justify-between py-0.5">
-      <Text className={strong ? "text-body font-bold text-text-primary" : "text-body text-text-secondary"}>{label}</Text>
-      <Text className={strong ? "text-body font-bold text-text-primary" : "text-body text-text-primary"}>{value}</Text>
+    <View className="flex-row items-center justify-between gap-3 py-0.5">
+      <Text className={strong ? "min-w-0 shrink text-body font-bold text-text-primary" : "min-w-0 shrink text-body text-text-secondary"}>
+        {label}
+      </Text>
+      <Text className={strong ? "text-body font-bold text-text-primary" : `text-body ${ink}`}>{value}</Text>
     </View>
   );
 }
@@ -252,6 +274,9 @@ function Breakdown({ quote, cartId, delivery }: { quote: api.ExpressQuote; cartI
       <MoneyLine label="Printing" value={money(quote.clientItemSubtotalMinor)} />
       {delivery ? <MoneyLine label="Delivery" value={money(quote.deliveryFeeMinor)} /> : null}
       {orgOff > 0 ? <MoneyLine label="Organization discount" value={`−${api.formatPhp(orgOff)}`} /> : null}
+      {memberPerkOf(quote) > 0 ? (
+        <MoneyLine label={memberPerkLabel(quote)} value={`−${api.formatPhp(memberPerkOf(quote))}`} off />
+      ) : null}
       {voucherOff > 0 ? (
         <View className="flex-row items-center justify-between py-0.5">
           <Text className="min-w-0 flex-1 text-body text-text-secondary" numberOfLines={1}>
@@ -271,6 +296,7 @@ function Breakdown({ quote, cartId, delivery }: { quote: api.ExpressQuote; cartI
       ) : null}
       <View className="my-1 h-px bg-outline-subtle" />
       <MoneyLine label="Total" value={money(quote.totalMinor)} strong />
+      <MemberPerkNote source={quote} />
       {quote.downpaymentMinor != null && quote.totalMinor != null && quote.downpaymentMinor !== quote.totalMinor ? (
         <MoneyLine label="Pay now" value={api.formatPhp(quote.downpaymentMinor)} />
       ) : null}
@@ -470,6 +496,7 @@ export function PayFooter() {
         confirmation: draft.confirmation,
         payment,
         artworkRights,
+        expectedMemberPerkMinor: expectedMemberPerk(quote),
       });
       useExpressPayment.getState().reset();
       useArtworkRights.getState().setAgreed(EXPRESS_RIGHTS_SCOPE, false);
@@ -482,6 +509,11 @@ export function PayFooter() {
         useExpress.getState().setTicked(false);
         void useExpress.getState().refreshDraft();
         setError("Something changed. Check the preview and tick Looks right again.");
+      } else if (code === MEMBER_PERK_CHANGED) {
+        // Nothing was placed: the same cart, priced again by GRIDGO.
+        const fresh = (await api.getCart(draft.cartId).catch(() => null))?.clientQuote ?? null;
+        if (fresh) useExpress.getState().adoptQuote(draft.cartId, fresh);
+        setError(memberPerkChangedMessage(fresh, !noCash && !payLater && !cashSelected));
       } else if (code === "express_shop_unavailable") {
         const state = useExpress.getState();
         if (state.whoPrints === "on") {
