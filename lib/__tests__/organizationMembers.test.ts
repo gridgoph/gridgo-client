@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api";
+import { lastDay } from "@/lib/memberships";
 import {
   askedLine,
   benefitLines,
@@ -7,7 +8,6 @@ import {
   inviteEvening,
   isNotPartner,
   isStaleMember,
-  lastDay,
   memberErrorMessage,
   memberInviteLink,
   memberInviteMessage,
@@ -15,7 +15,7 @@ import {
   memberSinceLine,
   memberYearOptions,
   membersRowDetail,
-  monthYear,
+  isOfficerMemberNotification,
   opensMembers,
   opensPartnership,
   ordersLine,
@@ -31,6 +31,7 @@ import {
   termEndsLine,
   withYear,
 } from "@/lib/organizationMembers";
+import { parsePushData, pushTargetRoute } from "@/lib/push";
 import { EVENT, MEMBER, PARTNERSHIP, SUMMARY, TERM } from "@/test/organizationMembers";
 
 const NOW = new Date("2026-11-26T04:00:00.000Z");
@@ -38,9 +39,8 @@ const refused = (status: number, error: string) => new ApiError(status, { error 
 
 describe("dates", () => {
   it("reads a joining month and never a made-up one", () => {
-    expect(monthYear("2024-08-15")).toBe("Aug 2024");
-    expect(monthYear("2024-08")).toBe("Aug 2024");
-    expect(monthYear("2024-13")).toBeNull();
+    expect(memberSinceLine("2024-08-15")).toBe("Member since Aug 2024");
+    expect(memberSinceLine("2024-13")).toBe("Member since date not set");
     expect(memberSinceLine(null)).toBe("Member since date not set");
   });
 
@@ -151,7 +151,17 @@ describe("inbox", () => {
     expect(opensMembers("membership.requested", "organization")).toBe(true);
     expect(opensMembers("membership.confirmed", "individual")).toBe(false);
     expect(opensMembers("order_state", "organization")).toBe(false);
+    expect(opensMembers("membership.confirmed", "organization")).toBe(true);
     expect(opensPartnership("organization_partner.set")).toBe(true);
+  });
+
+  it("opens a push only when its type is the officer's alone", () => {
+    const route = (type: string) => pushTargetRoute(parsePushData({ type, notificationId: "n1" }));
+    expect(route("membership.requested")).toBe("/organization/members");
+    expect(route("membership.left")).toBe("/organization/members");
+    expect(route("organization_partner.set")).toBe("/organization/partnership");
+    expect(route("membership.approved")).toBe("/my-orgs");
+    expect(isOfficerMemberNotification("membership.confirmed")).toBe(false);
   });
 });
 

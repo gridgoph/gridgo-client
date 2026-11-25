@@ -13,13 +13,13 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { useMemberListFile } from "@/hooks/useMemberListFile";
 import { useThemeColors } from "@/hooks/useTheme";
 import { LIST_COLUMNS, LIST_ROW_LIMIT } from "@/lib/memberListCsv";
+import { memberSinceLabel } from "@/lib/memberships";
 import {
   countOf,
   inviteEvening,
   MEMBER_INVITE_ROUTE,
   MEMBER_LIST_ROW_ROUTE,
   MEMBER_WAITING_ROUTE,
-  monthYear,
   saveListLabel,
 } from "@/lib/organizationMembers";
 import { readyRows, useMemberListDraft, type DraftRow } from "@/store/memberListDraft";
@@ -221,7 +221,7 @@ function DraftRowLine({ row, divided, disabled }: { row: DraftRow; divided: bool
           {rowName(row)}
         </Text>
         <Text className="text-caption text-text-muted" numberOfLines={1}>
-          {[row.contact, monthYear(row.memberSince) ?? row.memberSince].filter((part) => part.trim()).join(" · ") || "No contact"}
+          {[row.contact, memberSinceLabel(row.memberSince) ?? row.memberSince].filter((part) => part.trim()).join(" · ") || "No contact"}
         </Text>
       </View>
       <RowIcon icon="edit" label={`Edit ${rowName(row)}`} disabled={disabled} onPress={() => openRow(row.key)} />

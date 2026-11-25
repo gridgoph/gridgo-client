@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
 import { EmptyState } from "@/components/EmptyState";
+import { MemberChip } from "@/components/MemberParts";
 import { Pressable } from "@/components/Pressable";
 import { OptionPicker } from "@/components/form/OptionPicker";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -31,11 +32,9 @@ export function PartnerBadge() {
 
 /** The label a member carries, shown to the officer exactly as members see it. */
 export function MemberLabel({ label }: { label: string }) {
-  const colors = useThemeColors();
   return (
-    <View className="gg-chip self-start" style={{ borderColor: colors.brand }}>
-      <Check size={13} color={colors.brand} strokeWidth={2.5} aria-hidden />
-      <Text className="text-caption font-medium text-text-primary">{label} member</Text>
+    <View className="flex-row">
+      <MemberChip label={`${label} member`} />
     </View>
   );
 }

@@ -13,7 +13,8 @@ import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonList } from "@/components/Skeleton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useThemeColors } from "@/hooks/useTheme";
-import { countOf, lastDay, MEMBER_LIST_ROUTE, monthYear } from "@/lib/organizationMembers";
+import { lastDay, memberSinceLabel } from "@/lib/memberships";
+import { countOf, MEMBER_LIST_ROUTE } from "@/lib/organizationMembers";
 import type { MemberListEntry } from "@/lib/organizationMembersApi";
 import { useMemberInvite } from "@/store/memberInvite";
 
@@ -118,7 +119,7 @@ export default function WaitingScreen() {
 
 function EntryLine({ entry, divided, busy, onRemove }: { entry: MemberListEntry; divided: boolean; busy: boolean; onRemove: () => void }) {
   const colors = useThemeColors();
-  const since = monthYear(entry.memberSince);
+  const since = memberSinceLabel(entry.memberSince);
   const until = lastDay(entry.expiresAt);
   return (
     <View className={divided ? "flex-row items-center border-t border-outline-subtle py-1 pl-4 pr-1" : "flex-row items-center py-1 pl-4 pr-1"}>

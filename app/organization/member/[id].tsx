@@ -22,9 +22,9 @@ import { Screen } from "@/components/Screen";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { StatusChip } from "@/components/StatusChip";
+import { memberSinceLabel } from "@/lib/memberships";
 import {
   MEMBERS_ROUTE,
-  monthYear,
   perksUsedLine,
   pickFrom,
   pickValue,
@@ -118,7 +118,7 @@ function MemberDetail({ member, label }: { member: OrganizationMember; label: st
       </View>
 
       <View className="gg-card flex-row justify-between gap-4">
-        <StatTile value={monthYear(member.memberSince) ?? "Not set"} label="Member since" />
+        <StatTile value={memberSinceLabel(member.memberSince) ?? "Not set"} label="Member since" />
         <StatTile value={member.ordersThisTerm.toLocaleString("en-PH")} label="Orders this term" />
         <StatTile value={perksUsedLine(member)} label="Perks used" />
       </View>

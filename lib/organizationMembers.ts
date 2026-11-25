@@ -13,6 +13,7 @@
 
 import { ApiError, formatPhp } from "@/lib/api";
 import { userFacingError } from "@/lib/copy";
+import { lastDay, memberSinceLabel } from "@/lib/memberships";
 import { manilaDay } from "@/lib/organization";
 import type {
   MemberListCheck,
@@ -47,27 +48,19 @@ export const RENEW_LIMIT = 500;
    Dates
    -------------------------------------------------------------------------- */
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 export const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ] as const;
 
-/** "2024-08-15" or "2024-08" → "Aug 2024". */
-export function monthYear(value: string | null | undefined): string | null {
-  const match = /^(\d{4})-(\d{2})/.exec(value ?? "");
-  const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
-  return match && month ? `${month} ${match[1]}` : null;
-}
-
 export function memberSinceLine(value: string | null): string {
-  const since = monthYear(value);
+  const since = memberSinceLabel(value);
   return since ? `Member since ${since}` : "Member since date not set";
 }
 
 /** Somebody who was a member in an earlier term, and whose date comes back with them. */
 export function returningLine(value: string | null): string | null {
-  const since = monthYear(value);
+  const since = memberSinceLabel(value);
   return since ? `Was a member before, since ${since}` : null;
 }
 
@@ -135,12 +128,6 @@ export function askedLine(requestedAt: string, source: MemberSource, now: Date =
   return `${when} · ${source === "qr" ? "by QR" : source === "link" ? "by link" : "from your list"}`;
 }
 
-/** An end that falls exactly on midnight reads as the day before: that is the last day it holds. */
-export function lastDay(endsAt: string | null | undefined): string | null {
-  const time = Date.parse(endsAt ?? "");
-  return Number.isFinite(time) ? manilaDay(new Date(time - 1).toISOString()) : null;
-}
-
 export function termEndsLine(term: MemberTerm): string {
   return `Term ends ${manilaDay(term.endsOn) ?? term.endsOn}`;
 }
@@ -202,7 +189,7 @@ export function perkTerms(perk: NonNullable<Partnership["perk"]>): string {
 export const PERK_SMALL_ORDER = "Applied at checkout by itself. A small order may save less.";
 
 export function eventLine(event: OrganizationEvent): string {
-  const month = monthYear(event.month);
+  const month = memberSinceLabel(event.month);
   return `${countOf(event.orderCount, "order", "orders")} · ${formatPhp(event.totalMinor)}${month ? ` · ${month}` : ""}`;
 }
 
@@ -247,16 +234,21 @@ export function saveListLabel(ready: number): string {
    Inbox
    -------------------------------------------------------------------------- */
 
-const OFFICER_NOTICE_TYPES: ReadonlySet<string> = new Set([
+/** Notices only the organization receives. `membership.confirmed` also goes to the member. */
+const OFFICER_NOTICES: ReadonlySet<string> = new Set([
   "membership.requested",
   "membership.request_cancelled",
-  "membership.confirmed",
   "membership.left",
 ]);
 
-/** The officer's own member news. A member gets `membership.confirmed` too, so the account decides. */
+/** A push carries only its type, so it opens Members only when the type is the officer's alone. */
+export function isOfficerMemberNotification(type: string | null | undefined): boolean {
+  return type != null && OFFICER_NOTICES.has(type);
+}
+
+/** An inbox row for the officer. A member gets `membership.confirmed` too, so the account decides. */
 export function opensMembers(type: string | null | undefined, accountType: string | null | undefined): boolean {
-  return accountType === "organization" && type != null && OFFICER_NOTICE_TYPES.has(type);
+  return accountType === "organization" && (isOfficerMemberNotification(type) || type === "membership.confirmed");
 }
 
 export function opensPartnership(type: string | null | undefined): boolean {
