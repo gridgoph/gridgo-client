@@ -26,6 +26,12 @@ import { ACK_RECEIPT_NOTIFICATION_TYPE, acknowledgementReceiptHref } from "@/lib
 import { receiptNoticeHref } from "@/lib/receipt";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { isMemberNotification, MY_ORGS_ROUTE } from "@/lib/memberships";
+import {
+  isOfficerMemberNotification,
+  MEMBERS_ROUTE,
+  opensPartnership,
+  PARTNERSHIP_ROUTE,
+} from "@/lib/organizationMembers";
 import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { isQuoteNotification, QUOTES_ROUTE } from "@/lib/quoteRequests";
 import { PLAY_OPTIN_PUSH_TYPE, PLAY_OPTIN_ROUTE } from "@/lib/playOptin";
@@ -240,6 +246,9 @@ export function pushTargetRoute(data: PushData): string {
   if (data.type && ORGANIZATION_PUSH_TYPES.has(data.type)) return "/(tabs)/organizations";
   // The officer answered, or a term ended: My orgs shows where it stands (#475).
   if (isMemberNotification(data.type)) return MY_ORGS_ROUTE;
+  // Somebody asked to join or left, or GRIDGO set the partnership (#474).
+  if (isOfficerMemberNotification(data.type)) return MEMBERS_ROUTE;
+  if (opensPartnership(data.type)) return PARTNERSHIP_ROUTE;
   // A sent-back application opens on the application, filled in (#187).
   if (isApplicationNotification(data.type)) return APPLICATION_ROUTE;
   // A voucher notice opens the wallet it is about (gridgo-api#204).

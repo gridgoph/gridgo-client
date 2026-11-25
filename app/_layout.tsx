@@ -638,6 +638,19 @@ function AppNavigation() {
                   name="officer-handover"
                   options={pushedScreenOptions("Change of officer")}
                 />
+                {/* An officer's members and partnership (client#474), from Account. */}
+                <Stack.Screen name="organization/members" options={pushedScreenOptions("Members")} />
+                <Stack.Screen name="organization/approve/[id]" options={pushedScreenOptions("Approve request")} />
+                <Stack.Screen name="organization/member/[id]" options={pushedScreenOptions("Member")} />
+                <Stack.Screen name="organization/renew" options={pushedScreenOptions("Renew members")} />
+                <Stack.Screen name="organization/invite" options={pushedScreenOptions("Invite")} />
+                <Stack.Screen name="organization/member-list" options={pushedScreenOptions("Upload member list")} />
+                <Stack.Screen name="organization/member-list-row" options={pushedScreenOptions("Member list")} />
+                <Stack.Screen name="organization/waiting" options={pushedScreenOptions("Waiting to confirm")} />
+                <Stack.Screen name="organization/partnership" options={pushedScreenOptions("Partnership")} />
+                <Stack.Screen name="organization/events" options={pushedScreenOptions("Events")} />
+                <Stack.Screen name="organization/event/[id]" options={pushedScreenOptions("Event")} />
+                <Stack.Screen name="organization/event-edit" options={pushedScreenOptions("Event orders")} />
                 <Stack.Screen
                   name="statement-period"
                   options={pushedScreenOptions("Statement period")}

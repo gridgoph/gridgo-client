@@ -7,6 +7,7 @@ import { GRIDGO_OFFICE_LABEL } from "@/lib/gridgoOffice";
 import { ACK_RECEIPT_NOTIFICATION_TYPE } from "@/lib/acknowledgementReceipt";
 import { isJobComplete } from "@/lib/jobComplete";
 import { opensMyOrgs } from "@/lib/memberships";
+import { isOfficerMemberNotification, opensPartnership } from "@/lib/organizationMembers";
 import { orderReference } from "@/lib/orderReference";
 import { isApplicationNotification } from "@/lib/organization";
 import { refundNotificationCopy } from "@/lib/refunds";
@@ -609,6 +610,10 @@ export function presentNotification(
                       ? "Opens this quote"
                       : opensMyOrgs(notification)
                         ? "Opens My orgs"
+                      : isOfficerMemberNotification(notification.type)
+                        ? "Opens Members"
+                      : opensPartnership(notification.type)
+                        ? "Opens Partnership"
                       : notification.type === PLAY_OPTIN_PUSH_TYPE
                         ? "Opens the tester steps"
                         : releaseNoticeHint(notification),

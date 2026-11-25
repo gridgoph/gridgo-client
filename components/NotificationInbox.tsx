@@ -11,6 +11,7 @@ import { NotificationCard } from "@/components/NotificationCard";
 import { PushEnableCard } from "@/components/PushEnableCard";
 import { SkeletonList } from "@/components/Skeleton";
 import { businessApplicationSentBack } from "@/lib/accountProfile";
+import { MEMBERS_ROUTE, opensMembers, opensPartnership, PARTNERSHIP_ROUTE } from "@/lib/organizationMembers";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
 import { MY_ORGS_ROUTE, opensMyOrgs } from "@/lib/memberships";
 import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
@@ -70,6 +71,7 @@ export function NotificationInbox() {
 
   const unreadCount = countUnreadGroups(items, readIds);
   const applicationSentBack = useSession((state) => businessApplicationSentBack(state.user));
+  const accountType = useSession((state) => state.user?.accountType);
   const applicationNoticeId = openApplicationNoticeId(items, applicationSentBack);
   const { needYou, updates } = partitionInbox(items, { applicationNoticeId });
   const splitInbox = needYou.length > 0 && updates.length > 0;
@@ -114,6 +116,17 @@ export function NotificationInbox() {
                 // A voucher notice is about the wallet, not a job.
                 markGroupRead();
                 router.push(VOUCHERS_ROUTE);
+              }
+            : opensMembers(notification.type, accountType)
+            ? () => {
+                // Somebody asked, confirmed or left (#474).
+                markGroupRead();
+                router.push(MEMBERS_ROUTE);
+              }
+            : opensPartnership(notification.type)
+            ? () => {
+                markGroupRead();
+                router.push(PARTNERSHIP_ROUTE);
               }
             : isApplicationNotification(notification.type)
             ? () => {

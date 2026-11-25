@@ -47,6 +47,22 @@ function readyDraft(quote: Partial<api.ExpressQuote>) {
   useExpress.setState({ draft: { status: "ready", key, draft } });
 }
 
+it("shows the perk and the uses left while the total is folded", async () => {
+  seedPay({ shops: [printerCard()], supplierId: "shop_1" });
+  readyDraft({ memberPerkMinor: 400, memberPerk: PERK_LINE, discountKind: "member_perk", totalMinor: 3_600, downpaymentMinor: 3_600 });
+  await renderScreen(<PayStep />);
+  expect(screen.getByTestId("express-perk")).toBeTruthy();
+  expect(screen.getByText("Sample Guild member")).toBeTruthy();
+  expect(screen.getByText("Member perk 3 of 5 this term, applied automatically. 2 left after this order.")).toBeTruthy();
+});
+
+it("says nothing about a perk GRIDGO did not give", async () => {
+  seedPay({ shops: [printerCard()], supplierId: "shop_1" });
+  readyDraft({ memberPerkMinor: 0, memberPerk: null });
+  await renderScreen(<PayStep />);
+  expect(screen.queryByTestId("express-perk")).toBeNull();
+});
+
 it("shows the perk by its label under the total, with the use it takes", async () => {
   seedPay({ shops: [printerCard()], supplierId: "shop_1" });
   readyDraft({ memberPerkMinor: 400, memberPerk: PERK_LINE, discountKind: "member_perk", totalMinor: 3_600, downpaymentMinor: 3_600 });

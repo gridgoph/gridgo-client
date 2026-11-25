@@ -21,7 +21,8 @@ import {
   MEMBER_PRIVACY_LINE,
   orgName,
 } from "@/lib/memberships";
-import { useMemberships, useOwnMatches, useOwnMemberships } from "@/store/memberships";
+import { canJoinOrgs, useMemberships, useOwnMatches, useOwnMemberships } from "@/store/memberships";
+import { useSession } from "@/store/session";
 
 /**
  * Account → My orgs (gridgo-client#475): who lists you, where each membership
@@ -47,6 +48,8 @@ export default function MyOrgsScreen() {
   const join = () => router.push(JOIN_ORG_ROUTE);
   const current = memberships ? currentMemberships(memberships) : [];
   const ended = memberships ? endedMemberships(memberships) : [];
+  // An organization account keeps what it held but joins with nothing new.
+  const joins = useSession((state) => canJoinOrgs(state.user));
   const empty = memberships !== null && !current.length && !matches.length;
 
   return (
@@ -87,10 +90,12 @@ export default function MyOrgsScreen() {
               <UsersRound size={28} color={colors.textSecondary} strokeWidth={2} aria-hidden />
             </View>
             <Text className="text-center text-h3 text-text-primary" accessibilityRole="header">
-              Join your org
+              {joins ? "Join your org" : "No orgs on this account"}
             </Text>
             <Text className="text-center text-body text-text-secondary">
-              Members of partner orgs get money off their orders. Your officer has the QR or the link.
+              {joins
+                ? "Members of partner orgs get money off their orders. Your officer has the QR or the link."
+                : "This is an organization account. To join an org, use your own account."}
             </Text>
           </View>
         ) : null}
@@ -99,7 +104,7 @@ export default function MyOrgsScreen() {
           <MembershipCard key={membership.id} membership={membership} />
         ))}
 
-        {memberships !== null && !unavailable ? (
+        {memberships !== null && !unavailable && joins ? (
           empty ? (
             <PrimaryButton label="Join an org" onPress={join} />
           ) : (
