@@ -56,12 +56,15 @@ it("an older GRIDGO offers nothing and fails nothing", async () => {
   expect(api.listMemberships).not.toHaveBeenCalled();
 });
 
-it("never asks for an organization account", async () => {
+it("an organization account keeps the memberships it held, and is never matched or joined to more", async () => {
   signIn("org1", "organization");
+  api.listMemberships.mockResolvedValue(list({ memberships: [membership()], matches: [membershipMatch()] }));
   await useMemberships.getState().match();
   await useMemberships.getState().load();
+  expect(await useMemberships.getState().join("token", "link")).toBeNull();
   expect(api.matchMemberships).not.toHaveBeenCalled();
-  expect(api.listMemberships).not.toHaveBeenCalled();
+  expect(api.requestMembership).not.toHaveBeenCalled();
+  expect(useMemberships.getState()).toMatchObject({ memberships: [membership()], matches: [] });
 });
 
 it("confirms a match: it leaves the list, joins My orgs and is said once", async () => {

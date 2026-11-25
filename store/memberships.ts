@@ -82,20 +82,20 @@ let matchedAt = 0;
 /** The match in flight: a plain read would answer from before it. */
 let matching: Promise<void> | null = null;
 
-/** A member is a person: an organization account has members instead. */
+/** A person joins with their own account: an organization account has members instead. */
 export function canJoinOrgs(user: { accountType?: string | null } | null | undefined): boolean {
   return Boolean(user) && user?.accountType !== "organization";
 }
 
 export const useMemberships = create<MembershipsState>()((set, get) => {
-  const owner = () => {
-    const user = useSession.getState().user;
-    return user && canJoinOrgs(user) ? user.id : null;
-  };
+  // An organization account can still hold a membership from before it became
+  // one: GRIDGO prices its perk, so it is shown and can be left. It joins no more.
+  const owner = () => useSession.getState().user?.id ?? null;
+  const joins = () => canJoinOrgs(useSession.getState().user);
   const adopt = (list: MembershipList) =>
     set({
       memberships: Array.isArray(list.memberships) ? list.memberships : [],
-      matches: Array.isArray(list.matches) ? list.matches : [],
+      matches: joins() && Array.isArray(list.matches) ? list.matches : [],
       loading: false,
       error: null,
       unavailable: false,
@@ -169,7 +169,7 @@ export const useMemberships = create<MembershipsState>()((set, get) => {
 
     match: async () => {
       const ownerId = owner();
-      if (!ownerId) return;
+      if (!ownerId || !joins()) return;
       if (get().ownerId === ownerId && Date.now() - matchedAt < MATCH_GAP_MS) return;
       matchedAt = Date.now();
       const run = (async () => {
@@ -220,6 +220,7 @@ export const useMemberships = create<MembershipsState>()((set, get) => {
     },
 
     join: async (token, source) => {
+      if (!joins()) return null;
       const membership = await act("join", "Your request was not sent. Try again.", () =>
         requestMembership(token, source),
       );

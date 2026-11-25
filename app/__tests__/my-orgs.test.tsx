@@ -95,3 +95,11 @@ it("holds the shape while it loads", async () => {
   await renderScreen(<MyOrgsScreen />);
   expect(screen.getByLabelText("Loading your orgs")).toBeTruthy();
 });
+
+it("an organization account can leave what it held but is offered nothing to join", async () => {
+  useSession.setState({ user: { id: "u1", accountType: "organization", role: "client" } as never });
+  answer({ memberships: [membership()] });
+  await renderScreen(<MyOrgsScreen />);
+  expect(await screen.findByText("Leave Sample Guild")).toBeTruthy();
+  expect(screen.queryByText("Join another org")).toBeNull();
+});

@@ -119,3 +119,19 @@ it("a list that names this person can be answered from here too", async () => {
   await renderAccount();
   expect(await screen.findByText("Sample Guild lists you as a member. Open to confirm")).toBeTruthy();
 });
+
+it("an officer's account that is also a member shows both, and can open My orgs", async () => {
+  signedIn({ ...CLIENT, accountType: "organization" });
+  answer({ memberships: [membership()] });
+  await renderAccount();
+  expect(await screen.findByTestId("member-chip")).toBeTruthy();
+  expect(screen.getByText("Sample Guild · up to ₱10.00 off · 3 of 5 left")).toBeTruthy();
+});
+
+it("an organization account with no membership is not asked to join one", async () => {
+  signedIn({ ...CLIENT, accountType: "organization" });
+  answer({});
+  await renderAccount();
+  await waitFor(() => expect(useMemberships.getState().memberships).toEqual([]));
+  expect(screen.queryByText("My orgs")).toBeNull();
+});

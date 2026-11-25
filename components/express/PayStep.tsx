@@ -410,6 +410,13 @@ export function PayStep() {
             </Text>
           )}
         </ExpressRow>
+        {/* A member sees their perk before they pay, without opening the total. */}
+        {quote && !totalOpen && memberPerkOf(quote) > 0 ? (
+          <View className="gap-1 px-4 pb-4" testID="express-perk">
+            <MoneyLine label={memberPerkLabel(quote)} value={`−${api.formatPhp(memberPerkOf(quote))}`} off />
+            <MemberPerkNote source={quote} />
+          </View>
+        ) : null}
       </View>
       {draftState.status === "error" && !totalOpen ? (
         <Text className="text-caption text-error" accessibilityRole="alert">

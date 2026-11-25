@@ -28,7 +28,7 @@ import { canInvite, foundingTesterView, INVITE_ROUTE, INVITE_TITLE } from "@/lib
 import { startPrintHref } from "@/lib/startPrint";
 import { officerState, ORGANIZATIONS_ROUTE } from "@/lib/organization";
 import { MY_FILES_ROUTE } from "@/lib/myFiles";
-import { activeMemberships, MY_ORGS_ROUTE, myOrgsLine } from "@/lib/memberships";
+import { activeMemberships, currentMemberships, MY_ORGS_ROUTE, myOrgsLine } from "@/lib/memberships";
 import { QUOTES_ROUTE } from "@/lib/quoteRequests";
 import { SAMPLES_ROUTE } from "@/lib/sampleFirst";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
@@ -283,8 +283,8 @@ export default function AccountScreen() {
               detail={offer ? claimRowLine(offer) : walletSummary(vouchers, now)}
               onPress={() => router.push(VOUCHERS_ROUTE)}
             />
-            {/* Orgs this person belongs to; an organization account has members instead (#475). */}
-            {canJoinOrgs(user) && !membershipsUnavailable ? (
+            {/* Orgs this person belongs to (#475). An organization account joins none, but keeps one it already held. */}
+            {(canJoinOrgs(user) || currentMemberships(memberships ?? []).length) && !membershipsUnavailable ? (
               <DestinationRow
                 title="My orgs"
                 detail={myOrgsLine(memberships ?? [], memberMatches)}
