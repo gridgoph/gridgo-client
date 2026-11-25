@@ -25,6 +25,7 @@ import { APPLICATION_ROUTE, isApplicationNotification } from "@/lib/organization
 import { ACK_RECEIPT_NOTIFICATION_TYPE, acknowledgementReceiptHref } from "@/lib/acknowledgementReceipt";
 import { receiptNoticeHref } from "@/lib/receipt";
 import { isSurveyNotification, surveyRoute } from "@/lib/survey";
+import { isMemberNotification, MY_ORGS_ROUTE } from "@/lib/memberships";
 import { opensVoucherWallet, VOUCHERS_ROUTE } from "@/lib/vouchers";
 import { isQuoteNotification, QUOTES_ROUTE } from "@/lib/quoteRequests";
 import { PLAY_OPTIN_PUSH_TYPE, PLAY_OPTIN_ROUTE } from "@/lib/playOptin";
@@ -237,6 +238,8 @@ export function pushTargetRoute(data: PushData): string {
   // The officer check and Operations' notices belong to the organization,
   // and its tab is where they are answered (gridgo-client#165).
   if (data.type && ORGANIZATION_PUSH_TYPES.has(data.type)) return "/(tabs)/organizations";
+  // The officer answered, or a term ended: My orgs shows where it stands (#475).
+  if (isMemberNotification(data.type)) return MY_ORGS_ROUTE;
   // A sent-back application opens on the application, filled in (#187).
   if (isApplicationNotification(data.type)) return APPLICATION_ROUTE;
   // A voucher notice opens the wallet it is about (gridgo-api#204).

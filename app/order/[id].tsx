@@ -29,8 +29,10 @@ import { IssueWindowCard } from "@/components/IssueWindowCard";
 import { JobCompleteCard } from "@/components/JobCompleteCard";
 import { OrderDisclosure } from "@/components/OrderDisclosure";
 import { OrderReference } from "@/components/OrderReference";
+import { MemberPerkRow } from "@/components/MemberParts";
 import { OrganizationDiscountRow } from "@/components/OrganizationDiscount";
 import { VoucherDiscountRow } from "@/components/VoucherDiscountRow";
+import { MEMBER_PERK_LABEL } from "@/lib/memberships";
 import { VOUCHER_LABEL, VOUCHER_SHARE_LABEL } from "@/lib/vouchers";
 import { PaymentPanel, PaymentUnderReviewCard } from "@/components/PaymentPanel";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -1108,6 +1110,7 @@ function MoneyDetails({
       <View>
         <SpecRow label="Printing" value={printing != null ? formatPhp(printing) : "—"} />
         <OrganizationDiscountRow source={order} />
+        <MemberPerkRow source={order} label={order.basketId ? MEMBER_PERK_LABEL : undefined} />
         {/* On one part of a multi-shop order this is that part's share of the one voucher. */}
         <VoucherDiscountRow source={order} label={order.basketId ? VOUCHER_SHARE_LABEL : VOUCHER_LABEL} />
         <SpecRow

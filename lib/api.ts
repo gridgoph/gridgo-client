@@ -556,6 +556,9 @@ export type Order = {
   /** The GRIDGO-funded voucher this order used, already inside `totalMinor` (gridgo-api#204). */
   voucher?: VoucherLine | null;
   voucherDiscountMinor?: number;
+  /** A member perk taken out of GRIDGO's fee, already out of `totalMinor`. */
+  memberPerkMinor?: number | null;
+  memberPerk?: MemberPerkLine | null;
   /** The officer of record when the order was placed. Never today's officer. */
   organizationOfficer?: OrganizationOfficerSnapshot | null;
   /** A printed-invoice request this client filed, when there is one. */
@@ -1616,7 +1619,8 @@ export type RequestOptions = {
   deferUnauthorized?: boolean;
 };
 
-async function request<T>(
+/** Shared with the per-feature API files beside this one. */
+export async function request<T>(
   path: string,
   init: RequestInit = {},
   options: RequestOptions = {},
@@ -3045,6 +3049,21 @@ export type CartQuoteDeliveryLine = {
 };
 
 /**
+ * The member perk GRIDGO picked for this checkout (gridgo-api
+ * `docs/ORGANIZATION_MEMBERS_API.md`). On a quote it is the use this order
+ * would take; on a placed order it is that order's snapshot.
+ */
+export type MemberPerkLine = {
+  membershipId?: string;
+  /** "Sample Guild member", as GRIDGO writes it. */
+  label: string;
+  amountMinor: number;
+  useNumber: number;
+  maxOrdersPerTerm: number;
+  fundedBy?: string;
+};
+
+/**
  * GRIDGO's own figures for a draft basket (gridgo-api#146): every amount is
  * already the client's, fee inside. Read these rather than adding anything up
  * on the phone.
@@ -3076,9 +3095,12 @@ export type CartQuote = {
   /** What the voucher takes off, already out of `totalMinor`. Zero when none. */
   voucherDiscountMinor?: number;
   /** Which discount won: a voucher and the organization discount never stack. */
-  discountKind?: "voucher" | "organization" | null;
+  discountKind?: "voucher" | "organization" | "member_perk" | null;
+  /** GRIDGO's member perk, already out of `totalMinor`. Draw it, never subtract it. */
+  memberPerkMinor?: number | null;
+  memberPerk?: MemberPerkLine | null;
   /** Each group's share of the voucher, keyed by the group's id. */
-  voucherGroups?: { groupId: string; voucherDiscountMinor: number; totalMinor: number }[];
+  voucherGroups?: { groupId: string; voucherDiscountMinor: number; memberPerkMinor?: number; totalMinor: number }[];
 };
 
 export type CartLineRecord = {
@@ -3191,6 +3213,9 @@ export type CartGroup = {
   organizationDiscountMinor?: number;
   /** This group's share of the voucher, already out of `totalMinor` (gridgo-api#204). */
   voucherDiscountMinor?: number;
+  /** A member perk taken out of GRIDGO's fee, already out of `totalMinor`. */
+  memberPerkMinor?: number | null;
+  memberPerk?: MemberPerkLine | null;
   /** The group's client promise; null when GRIDGO cannot estimate it yet. */
   readyBy?: string | null;
   /** Tight, Secured or Rush for this group (gridgo-api#292). */
@@ -3267,6 +3292,9 @@ export type BasketGroup = {
   totalMinor: number;
   pickupFeeMinor?: number;
   organizationDiscountMinor?: number;
+  /** This group's share of the member perk, already out of its total. */
+  memberPerkMinor?: number | null;
+  memberPerk?: MemberPerkLine | null;
   /**
    * Which of this shop's deliveries this is, and how many it has, once the
    * client split one shop into separate deliveries (gridgo-api#275,
@@ -3372,6 +3400,9 @@ export type InvoiceGroup = {
   organizationDiscountMinor?: number;
   /** This group's share of the voucher, already out of `totalMinor` (gridgo-api#204). */
   voucherDiscountMinor?: number;
+  /** A member perk taken out of GRIDGO's fee, already out of `totalMinor`. */
+  memberPerkMinor?: number | null;
+  memberPerk?: MemberPerkLine | null;
   /**
    * Which of this shop's deliveries this is, and how many it has, once the
    * client split one shop into separate deliveries (gridgo-api#275,
@@ -3415,6 +3446,9 @@ export type Invoice = {
   /** The voucher line, already inside `totalMinor` (gridgo-api#204). */
   voucher?: VoucherLine | null;
   voucherDiscountMinor?: number;
+  /** A member perk taken out of GRIDGO's fee, already out of `totalMinor`. */
+  memberPerkMinor?: number | null;
+  memberPerk?: MemberPerkLine | null;
   /** The officer of record when the order was placed (gridgo-client#164). */
   organizationOfficer?: OrganizationOfficerSnapshot | null;
 };
@@ -4479,6 +4513,8 @@ export async function checkoutCart(
   payment: { reference: string; proofFileId: string } | { method: "cash" } | null,
   artworkRights?: ArtworkRightsBody | null,
   approval?: ApprovalBody | null,
+  /** The member perk on screen; GRIDGO refuses with `member_perk_changed` if it moved. */
+  expectedMemberPerkMinor?: number,
 ): Promise<{ order: MatchedOrder; invoice: Invoice; basket?: Basket }> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
     method: "POST",
@@ -4491,6 +4527,7 @@ export async function checkoutCart(
         : {}),
       // One approval for the whole basket; GRIDGO keeps a record per order.
       ...(approval ? { approval } : {}),
+      ...(expectedMemberPerkMinor === undefined ? {} : { expectedMemberPerkMinor }),
     }),
   });
 }
@@ -5130,6 +5167,8 @@ export type AcknowledgementReceipt = {
   deliveryFeeMinor: number;
   organizationDiscountMinor: number;
   voucherDiscountMinor: number;
+  memberPerkMinor?: number | null;
+  memberPerkLabel?: string | null;
   /** Signed; returned even when zero. */
   roundingAdjustmentMinor: number;
   grandTotalMinor: number;
@@ -6932,6 +6971,7 @@ export async function checkoutExpress(
     confirmation: string;
     payment: { reference: string; proofFileId: string } | { method: "cash" } | null;
     artworkRights: ArtworkRightsBody | null;
+    expectedMemberPerkMinor?: number;
   },
 ): Promise<{ order: MatchedOrder & { orderType?: string; expressOrder?: ExpressOrder | null }; invoice: Invoice }> {
   return request(`/me/carts/${encodeURIComponent(cartId)}/checkout`, {
@@ -6945,6 +6985,7 @@ function expressCheckoutBody(input: {
   confirmation: string;
   payment: { reference: string; proofFileId: string } | { method: "cash" } | null;
   artworkRights: ArtworkRightsBody | null;
+  expectedMemberPerkMinor?: number;
 }) {
   return {
     looksRight: true,
@@ -6953,6 +6994,9 @@ function expressCheckoutBody(input: {
     ...(input.artworkRights
       ? { legalConsentVersion: LEGAL_CONSENT_VERSION, artworkRights: input.artworkRights }
       : {}),
+    ...(input.expectedMemberPerkMinor === undefined
+      ? {}
+      : { expectedMemberPerkMinor: input.expectedMemberPerkMinor }),
   };
 }
 
@@ -7209,6 +7253,7 @@ export async function checkoutExpressGroup(
     confirmation: string;
     payment: { reference: string; proofFileId: string } | { method: "cash" } | null;
     artworkRights: ArtworkRightsBody | null;
+    expectedMemberPerkMinor?: number;
   },
 ): Promise<{ group: ExpressGroup; orderId: string }> {
   return request(groupPath(id, "/checkout"), {

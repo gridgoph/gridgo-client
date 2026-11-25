@@ -18,6 +18,7 @@ import { HomeSearch } from "@/components/HomeSearch";
 import { HomeActionRow } from "@/components/HomeRow";
 import { HomeSmartTile } from "@/components/HomeSmartTile";
 import { HomeTesterSlot } from "@/components/HomeTesterSlot";
+import { MemberConfirmedCard, MemberMatchCard } from "@/components/MemberMatchCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SeasonBanner } from "@/components/SeasonBanner";
 import { TourTarget } from "@/components/TourTarget";
@@ -28,6 +29,7 @@ import { useTourAutoStart, useTourScreen } from "@/hooks/useTourScreen";
 import * as api from "@/lib/api";
 import { EXPRESS_FILES_HREF, shouldOpenMissionPopup } from "@/lib/expressGuide";
 import { foundingTesterView } from "@/lib/foundingTester";
+import { MY_ORGS_ROUTE } from "@/lib/memberships";
 import { PLAY_OPTIN_ROUTE } from "@/lib/playOptin";
 import { featuredPrintsFrom, keepHeldFeatured, type HomeSample } from "@/lib/homeSamples";
 import { homeJobs } from "@/lib/homeJobs";
@@ -38,6 +40,7 @@ import { type HomePromotion } from "@/lib/homePromos";
 import { useBasketGroupTarget } from "@/store/basketGroup";
 import { useCart } from "@/store/cart";
 import { useHomeSummary, useOwnHomeSummary } from "@/store/homeSummary";
+import { useMemberships, useOwnMatches } from "@/store/memberships";
 import { useNotifications } from "@/store/notifications";
 import { useQuickActions } from "@/store/quickActions";
 import { trackHomePromo, useOwnHomePromos, useHomePromos } from "@/store/homePromos";
@@ -149,6 +152,8 @@ export default function HomeScreen() {
       // Coming back from checkout must re-read GRIDGO's basket count.
       loadCart(),
       loadSeasons(),
+      // An officer's answer, or a list that names this person.
+      useMemberships.getState().load(),
       // The Founding Tester missions ride on the account.
       refreshAccount(),
     ];
@@ -187,6 +192,9 @@ export default function HomeScreen() {
   const tile = summary || summaryFailed ? smartTileView(summary, user) : null;
   const seasonToday = davaoToday();
   const seasonBanner = seasonsHydrated ? bannersToShow(seasons, dismissedSeasons, seasonToday)[0] ?? null : null;
+  // One org at a time, and never over a job that is waiting on the client.
+  const memberMatch = useOwnMatches()[0] ?? null;
+  const memberConfirmed = useMemberships((s) => s.confirmed);
   const featured = samples ?? [];
   const showFeatured = samples === null || featured.length > 0;
 
@@ -298,6 +306,17 @@ export default function HomeScreen() {
                     </Pressable>
                   ) : null}
                 </View>
+              ) : memberConfirmed ? (
+                <MemberConfirmedCard
+                  membership={memberConfirmed}
+                  onOpen={() => {
+                    useMemberships.getState().clearConfirmed();
+                    router.push(MY_ORGS_ROUTE);
+                  }}
+                  onDismiss={() => useMemberships.getState().clearConfirmed()}
+                />
+              ) : memberMatch ? (
+                <MemberMatchCard match={memberMatch} />
               ) : seasonBanner ? (
                 <SeasonBanner window={seasonBanner} today={seasonToday} onDismiss={() => dismissSeason(seasonBanner.id)} />
               ) : (
