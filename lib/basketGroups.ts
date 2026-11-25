@@ -40,6 +40,7 @@ import { parseDeadline } from "@/lib/deadline";
 import { dayKeyOfDeadline } from "@/lib/deadlineCalendar";
 import { userFacingError } from "@/lib/copy";
 import { getOrderStateMeta, type OrderStateMeta } from "@/lib/orderState";
+import { memberPerkOf } from "@/lib/memberships";
 import { organizationDiscountOf } from "@/lib/organization";
 import { voucherDiscountOf } from "@/lib/vouchers";
 
@@ -79,6 +80,8 @@ export type ShopGroupView = {
   organizationDiscountMinor: number;
   /** This group's share of the one voucher; 0 or absent when there is none (gridgo-api#204). */
   voucherDiscountMinor?: number;
+  /** This group's share of the member perk, already out of its total. */
+  memberPerkMinor?: number;
   /** The zone word GRIDGO priced the group's delivery in, when it has one. */
   zone: DistanceZone | null;
   /** Only for an Out of Zone leg — the one place a client reads kilometres. */
@@ -121,6 +124,9 @@ export function shopGroups(cart: Cart | null | undefined): ShopGroupView[] {
       organizationDiscountMinor: organizationDiscountOf(group),
       // One voucher over the whole basket, split by GRIDGO across the groups.
       // The group carries its share on some payloads; the quote always does.
+      memberPerkMinor:
+        memberPerkOf(group) ||
+        memberPerkOf(cart.clientQuote?.voucherGroups?.find((share) => share.groupId === group.id)),
       voucherDiscountMinor:
         voucherDiscountOf(group) ||
         voucherDiscountOf(cart.clientQuote?.voucherGroups?.find((share) => share.groupId === group.id)),

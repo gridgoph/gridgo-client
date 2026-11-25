@@ -12,7 +12,7 @@ import { cashOrderLine, isCashOrder } from "@/lib/cash";
  * read as shop items + the snapshotted fee. The fee is not a third charge.
  */
 
-import type { Basket, BasketGroup, Invoice, InvoiceLine, MatchedOrder, Order, OrderPayments } from "@/lib/api";
+import type { Basket, BasketGroup, Invoice, InvoiceLine, MatchedOrder, MemberPerkLine, Order, OrderPayments } from "@/lib/api";
 import {
   basketGroupDeadlineOf,
   deliveryLabel,
@@ -25,6 +25,7 @@ import { formatPhp } from "@/lib/api";
 import { gridgoAmountMinor } from "@/lib/gridgoPrice";
 import { orderReference } from "@/lib/orderReference";
 import { FULL_PAYMENT_PERCENT, isInstallmentConfirmed, paysInFull } from "@/lib/payment";
+import { memberPerkLabel, memberPerkOf } from "@/lib/memberships";
 import { organizationDiscountOf } from "@/lib/organization";
 import { voucherDiscountOf } from "@/lib/vouchers";
 import { orderPrintingMinor, printingMinor, showsServiceFee } from "@/lib/serviceFee";
@@ -77,10 +78,17 @@ export function openReceiptAfterCheckout(router: ReceiptLandingRouter, orderId: 
 function discountField(source: {
   organizationDiscountMinor?: number | null;
   voucherDiscountMinor?: number | null;
-}): { organizationDiscountMinor?: number; voucherDiscountMinor?: number } {
+  memberPerkMinor?: number | null;
+  memberPerk?: MemberPerkLine | null;
+}): Pick<ReceiptMoney, "organizationDiscountMinor" | "voucherDiscountMinor" | "memberPerkMinor" | "memberPerkLabel"> {
   const minor = organizationDiscountOf(source);
   const voucher = voucherDiscountOf(source);
-  return { ...(minor ? { organizationDiscountMinor: minor } : {}), ...(voucher ? { voucherDiscountMinor: voucher } : {}) };
+  const perk = memberPerkOf(source);
+  return {
+    ...(minor ? { organizationDiscountMinor: minor } : {}),
+    ...(perk ? { memberPerkMinor: perk, memberPerkLabel: memberPerkLabel(source) } : {}),
+    ...(voucher ? { voucherDiscountMinor: voucher } : {}),
+  };
 }
 
 export function isCheckoutReceipt(from: string | string[] | undefined): boolean {
@@ -107,6 +115,9 @@ export type ReceiptMoney = {
   organizationDiscountMinor?: number;
   /** A GRIDGO-funded voucher, already inside `totalMinor` (gridgo-api#204). */
   voucherDiscountMinor?: number;
+  /** A member perk, already inside `totalMinor`, and the membership it came from. */
+  memberPerkMinor?: number;
+  memberPerkLabel?: string;
   totalMinor: number;
 };
 
@@ -131,6 +142,9 @@ export type ReceiptGroup = {
   organizationDiscountMinor?: number;
   /** This group's share of the voucher, already out of `totalMinor`. */
   voucherDiscountMinor?: number;
+  /** This group's share of the member perk, already out of `totalMinor`. */
+  memberPerkMinor?: number;
+  memberPerkLabel?: string;
   stopped?: string | null;
   cashLine?: string;
 };

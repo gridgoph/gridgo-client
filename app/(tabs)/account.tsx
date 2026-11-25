@@ -11,6 +11,7 @@ import { TabScreen } from "@/components/TabScreen";
 import { ClientMonogram } from "@/components/ClientMonogram";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FoundingTesterCard, FoundingTesterChip } from "@/components/FoundingTesterCard";
+import { MemberChip } from "@/components/MemberParts";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
 import { AccountPartnerBadge, AccountPartnerRows } from "@/components/organization/AccountPartner";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -27,11 +28,13 @@ import { canInvite, foundingTesterView, INVITE_ROUTE, INVITE_TITLE } from "@/lib
 import { startPrintHref } from "@/lib/startPrint";
 import { officerState, ORGANIZATIONS_ROUTE } from "@/lib/organization";
 import { MY_FILES_ROUTE } from "@/lib/myFiles";
+import { activeMemberships, MY_ORGS_ROUTE, myOrgsLine } from "@/lib/memberships";
 import { QUOTES_ROUTE } from "@/lib/quoteRequests";
 import { SAMPLES_ROUTE } from "@/lib/sampleFirst";
 import { PRIORITIES_ROUTE, priorityLabel } from "@/lib/priorities";
 import { accountTypeOption } from "@/lib/signup";
 import { cartIsOpen, useCart } from "@/store/cart";
+import { canJoinOrgs, useMemberships, useOwnMatches, useOwnMemberships } from "@/store/memberships";
 import { useIsApprovedOrganization, useOwnOrganization } from "@/store/organization";
 import { usePriorities } from "@/store/priorities";
 import { useInstallationSettled } from "@/store/foundingTester";
@@ -91,13 +94,19 @@ export default function AccountScreen() {
   const now = useServerNow(60_000);
   const loadPromotions = usePromotions((s) => s.load);
   const offer = claimOffer(usePromotions((s) => s.data));
+  const memberships = useOwnMemberships();
+  const memberMatches = useOwnMatches();
+  const membershipsUnavailable = useMemberships((s) => s.unavailable);
+  const loadMemberships = useMemberships((s) => s.load);
+  const activeMember = activeMemberships(memberships ?? []);
 
   useFocusEffect(
     useCallback(() => {
       void refresh();
       void loadVouchers();
       void loadPromotions();
-    }, [refresh, loadVouchers, loadPromotions]),
+      void loadMemberships();
+    }, [refresh, loadVouchers, loadPromotions, loadMemberships]),
   );
 
   const headline = accountHeadline(user);
@@ -182,6 +191,10 @@ export default function AccountScreen() {
                 client's own: no shop or rider app reads this projection.
               */}
               {foundingTester?.kind === "earned" ? <FoundingTesterChip label={foundingTester.label} /> : null}
+              {/* Each org that has this person as a member today (#475). */}
+              {activeMember.map((membership) => (
+                <MemberChip key={membership.id} label={membership.label} />
+              ))}
             </View>
           </Pressable>
 
@@ -270,6 +283,14 @@ export default function AccountScreen() {
               detail={offer ? claimRowLine(offer) : walletSummary(vouchers, now)}
               onPress={() => router.push(VOUCHERS_ROUTE)}
             />
+            {/* Orgs this person belongs to; an organization account has members instead (#475). */}
+            {canJoinOrgs(user) && !membershipsUnavailable ? (
+              <DestinationRow
+                title="My orgs"
+                detail={myOrgsLine(memberships ?? [], memberMatches)}
+                onPress={() => router.push(MY_ORGS_ROUTE)}
+              />
+            ) : null}
             {/*
               Founding Tester invites (client#323), for an account the
               programme is open to or one that earned the label.

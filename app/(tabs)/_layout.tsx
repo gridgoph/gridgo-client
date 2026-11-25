@@ -3,9 +3,11 @@ import { useEffect } from "react";
 
 import { GridgoTabBar } from "@/components/GridgoTabBar";
 import { isBarTab, TABS } from "@/constants/tabs";
+import { useMembershipMatches } from "@/hooks/useMembershipMatches";
 import { useThemeColors } from "@/hooks/useTheme";
 import { useOrganization } from "@/store/organization";
 import { usePendingGroupInvite } from "@/store/pendingGroupInvite";
+import { usePendingJoin } from "@/store/pendingJoin";
 import { useSession } from "@/store/session";
 
 /**
@@ -46,6 +48,20 @@ export default function TabsLayout() {
     });
     return () => cancelAnimationFrame(frame);
   }, [userId, pendingInvite, router]);
+
+  // So does a member link: a new student scans the QR first and signs up second.
+  const pendingJoin = usePendingJoin((s) => s.token);
+  useEffect(() => {
+    if (!userId || !pendingJoin) return;
+    const frame = requestAnimationFrame(() => {
+      if (usePendingJoin.getState().token !== pendingJoin) return;
+      usePendingJoin.getState().clear();
+      router.push({ pathname: "/join/[token]", params: { token: pendingJoin } });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [userId, pendingJoin, router]);
+
+  useMembershipMatches();
 
   return (
     <Tabs

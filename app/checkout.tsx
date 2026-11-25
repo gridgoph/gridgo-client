@@ -27,6 +27,7 @@ import { DeliveryZonesHelp } from "@/components/DeliveryZonesHelp";
 import { EmptyState } from "@/components/EmptyState";
 import { HubPickupPanel } from "@/components/HubPickupPanel";
 import { CheckoutVoucher } from "@/components/CheckoutVoucher";
+import { MemberPerkNote, MemberPerkRow } from "@/components/MemberParts";
 import { OrganizationDiscountRow, OrganizationSavingsNote } from "@/components/OrganizationDiscount";
 import { OrderDisclosure } from "@/components/OrderDisclosure";
 import { VoucherCoveredPayment } from "@/components/VoucherCoveredPayment";
@@ -138,8 +139,16 @@ import { useShopDeliveries } from "@/store/shopDeliveries";
 import { usePlatformSettings } from "@/store/platformSettings";
 import { useCheckoutPayment } from "@/store/checkoutPayment";
 import { useIsApprovedOrganization } from "@/store/organization";
+import { useMemberships } from "@/store/memberships";
 import { useNotificationNudge } from "@/store/notificationNudge";
 import { useVouchers } from "@/store/vouchers";
+import {
+  expectedMemberPerk,
+  MEMBER_PERK_CHANGED,
+  memberPerkChangedMessage,
+  memberPerkOf,
+} from "@/lib/memberships";
+import { apiErrorCode } from "@/lib/whoPrints";
 import { voucherDiscountOf, voucherErrorMessage, voucherSettlesUpFront } from "@/lib/vouchers";
 import { discountLineLabel } from "@/lib/promotions";
 import { artworkSignature, checkKey, useDesignLink } from "@/store/designLink";
@@ -642,6 +651,10 @@ export default function CheckoutScreen() {
         ) {
           adopt(fresh);
           void useVouchers.getState().load();
+          if (memberPerkOf(fresh.clientQuote) !== memberPerkOf(cart?.clientQuote)) {
+            setPlaceError(memberPerkChangedMessage(fresh.clientQuote, !noProof));
+            return;
+          }
           setPlaceError(
             noCash
               ? "Your total changed because the voucher can no longer be used on this order. Check the new total and how to pay it before you place the order."
@@ -672,6 +685,8 @@ export default function CheckoutScreen() {
         // Recorded by GRIDGO against every order this basket becomes.
         await artworkRightsPayload(),
         approval,
+        // Only a GRIDGO that quotes member perks is asked to hold one.
+        ...(expectedMemberPerk(cart?.clientQuote) === undefined ? [] : [expectedMemberPerk(cart?.clientQuote)]),
       );
       placedOrder.current = true;
       void api.recordFunnel({ kind: "paid", orderId: order.id });
@@ -696,6 +711,16 @@ export default function CheckoutScreen() {
           chooseMethod("qr_manual");
           void load();
         }
+      }
+      // The perk moved between the screen and the tap: nothing was placed, so
+      // GRIDGO's new total is read and shown before anyone pays it.
+      if (apiErrorCode(e) === MEMBER_PERK_CHANGED) {
+        const fresh = await api.getCart(cartId).catch(() => null);
+        if (fresh) adopt(fresh);
+        else void loadCart();
+        void useMemberships.getState().load();
+        setPlaceError(memberPerkChangedMessage(fresh?.clientQuote, !noProof && !cashSelected));
+        return;
       }
       // The approval was refused: said beside the approval, where the fix is.
       // A basket that changed since it was approved is read again and asked
@@ -1493,6 +1518,8 @@ export default function CheckoutScreen() {
 
             {/* Already out of the total GRIDGO sends (#166): drawn, never subtracted. */}
             <OrganizationDiscountRow source={cart?.clientQuote} />
+            {/* A member perk, the same way; it may sit beside a voucher (#475). */}
+            <MemberPerkRow source={cart?.clientQuote} />
             {/* Already out of the total too (gridgo-api#204); the two never stack. */}
             <VoucherDiscountRow source={cart?.clientQuote} label={discountLineLabel(cart?.clientQuote?.voucher)} />
 
@@ -1545,6 +1572,7 @@ export default function CheckoutScreen() {
           <Text className="text-caption text-text-muted">
             {cashSelected ? "GRIDGO issues a digital invoice with this cash order. Open Receipt as soon as the order is placed." : invoiceNote(serviceFeeVisibleToClient(settings))}
           </Text>
+          <MemberPerkNote source={cart?.clientQuote} />
           <OrganizationSavingsNote source={cart?.clientQuote} />
         </Section>
 
