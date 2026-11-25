@@ -1616,7 +1616,8 @@ export type RequestOptions = {
   deferUnauthorized?: boolean;
 };
 
-async function request<T>(
+/** The one signed-in request path. Feature modules that keep their calls in their own file use it. */
+export async function request<T>(
   path: string,
   init: RequestInit = {},
   options: RequestOptions = {},

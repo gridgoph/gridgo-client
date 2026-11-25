@@ -12,6 +12,7 @@ import { ClientMonogram } from "@/components/ClientMonogram";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FoundingTesterCard, FoundingTesterChip } from "@/components/FoundingTesterCard";
 import { tabScreenContentPadding } from "@/components/GridgoTabBar";
+import { AccountPartnerBadge, AccountPartnerRows } from "@/components/organization/AccountPartner";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SecondaryButton } from "@/components/SecondaryButton";
 import { useThemeColors } from "@/hooks/useTheme";
@@ -180,6 +181,7 @@ export default function AccountScreen() {
                 client's own: no shop or rider app reads this projection.
               */}
               {foundingTester?.kind === "earned" ? <FoundingTesterChip label={foundingTester.label} /> : null}
+              <AccountPartnerBadge />
             </View>
           </Pressable>
 
@@ -207,6 +209,7 @@ export default function AccountScreen() {
                 detail={officerRowDetail(organization)}
                 onPress={() => router.navigate(ORGANIZATIONS_ROUTE)}
               />
+              <AccountPartnerRows />
             </View>
           ) : null}
 
