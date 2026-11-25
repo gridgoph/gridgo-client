@@ -104,6 +104,12 @@ export function NotificationInbox() {
                 markGroupRead();
                 router.navigate(ORGANIZATIONS_ROUTE);
               }
+            : opensVoucherWallet(notification.type)
+            ? () => {
+                // A voucher notice is about the wallet, not a job.
+                markGroupRead();
+                router.push(VOUCHERS_ROUTE);
+              }
             : opensMembers(notification.type, accountType)
             ? () => {
                 // Somebody asked, confirmed or left (#474).
@@ -114,12 +120,6 @@ export function NotificationInbox() {
             ? () => {
                 markGroupRead();
                 router.push(PARTNERSHIP_ROUTE);
-              }
-            : opensVoucherWallet(notification.type)
-            ? () => {
-                // A voucher notice is about the wallet, not a job.
-                markGroupRead();
-                router.push(VOUCHERS_ROUTE);
               }
             : isApplicationNotification(notification.type)
             ? () => {

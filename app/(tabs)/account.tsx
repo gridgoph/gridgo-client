@@ -176,12 +176,12 @@ export default function AccountScreen() {
                   <Text className="text-caption text-text-secondary">Application pending</Text>
                 </View>
               ) : null}
+              <AccountPartnerBadge />
               {/*
                 The Founding Tester label, once GRIDGO has stamped it. The
                 client's own: no shop or rider app reads this projection.
               */}
               {foundingTester?.kind === "earned" ? <FoundingTesterChip label={foundingTester.label} /> : null}
-              <AccountPartnerBadge />
             </View>
           </Pressable>
 
